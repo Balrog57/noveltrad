@@ -793,6 +793,22 @@ class MainWindow(QMainWindow):
         file_input = QPushButton("Select File...")
         self.selected_file = None
         
+        src_lang_combo = QComboBox()
+        src_lang_combo.addItems(['en', 'zh', 'ja', 'ko', 'de', 'es', 'it', 'pt', 'ru'])
+        src_lang_combo.setCurrentText('en')
+        
+        tgt_lang_combo = QComboBox()
+        tgt_lang_combo.addItems(['fr', 'en', 'de', 'es', 'it', 'pt', 'zh', 'ja'])
+        tgt_lang_combo.setCurrentText('fr')
+        
+        genre_combo = QComboBox()
+        genre_combo.addItems(['general', 'xianxia', 'scifi', 'fantasy', 'romance', 'wuxia'])
+        genre_combo.setCurrentText('general')
+        
+        instructions_input = QTextEdit()
+        instructions_input.setPlaceholderText("Optional: Custom translation instructions (tone, style, etc.)")
+        instructions_input.setMinimumHeight(80)
+        
         def select_file():
             fname, _ = QFileDialog.getOpenFileName(self, "Open File", "", "Supported Files (*.epub *.docx *.txt)")
             if fname:
@@ -802,6 +818,10 @@ class MainWindow(QMainWindow):
         file_input.clicked.connect(select_file)
         layout.addRow("Project Name:", name_input)
         layout.addRow("Source File:", file_input)
+        layout.addRow("Source Language:", src_lang_combo)
+        layout.addRow("Target Language:", tgt_lang_combo)
+        layout.addRow("Genre:", genre_combo)
+        layout.addRow("Custom Instructions:", instructions_input)
         
         buttons = QHBoxLayout()
         ok_btn = QPushButton("Create")
@@ -813,9 +833,16 @@ class MainWindow(QMainWindow):
             if not name_input.text() or not self.selected_file:
                 QMessageBox.warning(self, "Error", "Please fill all fields")
                 return
-            self.create_project(name_input.text(), self.selected_file)
+            self.create_project(
+                name_input.text(), 
+                self.selected_file,
+                src_lang=src_lang_combo.currentText(),
+                tgt_lang=tgt_lang_combo.currentText(),
+                genre=genre_combo.currentText(),
+                custom_instructions=instructions_input.toPlainText().strip() or None
+            )
 
-    def create_project(self, name, source_file):
+    def create_project(self, name, source_file, src_lang='en', tgt_lang='fr', genre='general', custom_instructions=None):
         try:
             if getattr(sys, 'frozen', False):
                 base_dir = os.path.dirname(sys.executable)
@@ -829,7 +856,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Error", "Project already exists!")
                 return
 
-            self.project_manager.create_project(name, db_path, source_file)
+            self.project_manager.create_project(name, db_path, source_file, src_lang, tgt_lang, genre, custom_instructions)
             self.load_chapters()
             self.load_segments()
             self.status_bar.showMessage(f"Project '{name}' created successfully")

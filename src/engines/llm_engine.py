@@ -60,11 +60,14 @@ class LLMEngine(TranslationEngine):
         self.model = model_path
         return True
 
-    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None):
+    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None, custom_instructions=None):
         if not self.client:
             return f"[LLM Config Missing] {text}"
             
         system_prompt = f"You are a professional novel translator. Translate from {src_lang} to {tgt_lang}. Maintain novel flow and tone."
+        
+        if custom_instructions:
+            system_prompt += f"\n\nCustom instructions: {custom_instructions}"
         
         if glossary_terms:
             glossary_txt = "\n".join([f"{k} -> {v}" for k, v in glossary_terms.items()])

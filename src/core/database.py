@@ -12,6 +12,8 @@ class Project(BaseModel):
     name = CharField()
     source_language = CharField(default='en')
     target_language = CharField(default='fr')
+    genre = CharField(default='general')  # xianxia, scifi, fantasy, romance, general
+    custom_instructions = TextField(null=True)  # Custom translation instructions
     created_at = DateTimeField(default=datetime.datetime.now)
     updated_at = DateTimeField(default=datetime.datetime.now)
     file_path = CharField(null=True) # Path to the original file

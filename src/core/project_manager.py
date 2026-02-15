@@ -17,7 +17,7 @@ class ProjectManager:
             '.pdf': PdfHandler()
         }
 
-    def create_project(self, name, db_path, source_file, source_lang='en', target_lang='fr'):
+    def create_project(self, name, db_path, source_file, source_lang='en', target_lang='fr', genre='general', custom_instructions=None):
         """Creates a new project database and initializes it with segments from source_file."""
         self.db = init_db(db_path)
         
@@ -39,6 +39,8 @@ class ProjectManager:
             name=name,
             source_language=source_lang,
             target_language=target_lang,
+            genre=genre,
+            custom_instructions=custom_instructions,
             file_path=source_file
         )
         
