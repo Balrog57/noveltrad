@@ -7,19 +7,34 @@ class SegmentCard(QFrame):
     clicked = pyqtSignal(int)      # Signal to notify selection
     textChanged = pyqtSignal(int, str) # Signal to auto-save
 
+    STATUS_COLORS = {
+        'untranslated': {'border': '#ef4444', 'badge': '#ef4444', 'label': 'UNTRANSLATED'},
+        'machine': {'border': '#f97316', 'badge': '#f97316', 'label': 'MACHINE'},
+        'translated': {'border': '#3b82f6', 'badge': '#3b82f6', 'label': 'TRANSLATED'},
+        'ai_refined': {'border': '#8b5cf6', 'badge': '#8b5cf6', 'label': 'AI REFINED'},
+        'validated': {'border': '#22c55e', 'badge': '#22c55e', 'label': 'VALIDATED'},
+    }
+
     def __init__(self, segment, parent=None):
         super().__init__(parent)
         self.segment = segment
         self.segment_id = segment.index
         self.is_active = False
         
+        # Determine status for styling
+        status = segment.status or 'untranslated'
+        self.setProperty("segment_status", status)
+        
         # Style
         self.setObjectName("SegmentCard")
-        self.setProperty("status", segment.status or "draft")  # draft, translated, translating
+        self.setProperty("status", status)
         
         self.init_ui()
         
     def init_ui(self):
+        status = self.segment.status or 'untranslated'
+        colors = self.STATUS_COLORS.get(status, self.STATUS_COLORS['untranslated'])
+        
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(10)
@@ -32,8 +47,9 @@ class SegmentCard(QFrame):
         id_badge.setFixedWidth(40)
         id_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        status_label = QLabel(self.segment.status.upper() if self.segment.status else "DRAFT")
+        status_label = QLabel(colors['label'])
         status_label.setObjectName("StatusLabel")
+        status_label.setStyleSheet(f"color: {colors['badge']}; font-weight: bold;")
         
         header_layout.addWidget(id_badge)
         header_layout.addStretch()
@@ -52,7 +68,7 @@ class SegmentCard(QFrame):
         self.source_edit.setFrameShape(QFrame.Shape.NoFrame)
         self.source_edit.setMinimumHeight(80)
         self.source_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        self.source_edit.installEventFilter(self) # Install filter
+        self.source_edit.installEventFilter(self)
         
         # Target Text
         self.target_edit = QTextEdit(self.segment.target_text or "")
@@ -62,7 +78,7 @@ class SegmentCard(QFrame):
         self.target_edit.setMinimumHeight(80)
         self.target_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.target_edit.textChanged.connect(self.on_text_changed)
-        self.target_edit.installEventFilter(self) # Install filter
+        self.target_edit.installEventFilter(self)
         
         content_layout.addWidget(self.source_edit)
         content_layout.addWidget(self.target_edit)
@@ -87,6 +103,34 @@ class SegmentCard(QFrame):
         footer_layout.addWidget(confirm_label)
         
         main_layout.addWidget(self.footer)
+        
+        # Apply dynamic styling based on status
+        self.setStyleSheet(f"""
+            #SegmentCard {{
+                background-color: #111625;
+                border-radius: 8px;
+                border-left: 4px solid {colors['border']};
+            }}
+            #SegmentCard[segment_status="untranslated"] {{
+                border-left: 4px solid #ef4444;
+            }}
+            #SegmentCard[segment_status="machine"] {{
+                border-left: 4px solid #f97316;
+            }}
+            #SegmentCard[segment_status="translated"] {{
+                border-left: 4px solid #3b82f6;
+            }}
+            #SegmentCard[segment_status="ai_refined"] {{
+                border-left: 4px solid #8b5cf6;
+            }}
+            #SegmentCard[segment_status="validated"] {{
+                border-left: 4px solid #22c55e;
+            }}
+            #SegmentCard[active="true"] {{
+                background-color: #1e293b;
+                border: 1px solid #3b82f6;
+            }}
+        """)
 
     def eventFilter(self, obj, event):
         if event.type() == event.Type.MouseButtonPress:
