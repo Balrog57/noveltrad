@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+.venv
+
+# IDE
+.idea/
+.vscode/
+
+# Project
+*.ntrad
+*.log
+tests/*.ntrad
+tests/*.txt

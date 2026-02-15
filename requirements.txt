@@ -1,0 +1,24 @@
+# GUI
+PyQt6>=6.6.0
+
+# Document Handling
+EbookLib>=0.18
+BeautifulSoup4>=4.12.0
+python-docx>=1.1.0
+PyMuPDF>=1.23.0  # aka fitz
+
+# Translation Engines
+ctranslate2>=4.0.0
+sentencepiece>=0.1.99
+argostranslate>=1.9.0
+openai>=1.10.0  # For LLM integration
+
+# Database & Utils
+peewee>=3.17.0
+platformdirs>=4.0.0
+
+# Dev / Testing
+pytest>=8.0.0
+black
+flake8
+pyinstaller>=6.3.0

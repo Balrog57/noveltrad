@@ -1,0 +1,33 @@
+[project]
+name = "noveltrad"
+version = "2.0.0"
+description = "Application de Traduction Assistée par Ordinateur pour Romans et Web Novels"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Marc", email = "marc@example.com"},
+]
+dependencies = [
+    "PyQt6",
+    "EbookLib",
+    "BeautifulSoup4",
+    "python-docx",
+    "PyMuPDF",
+    "ctranslate2",
+    "argostranslate",
+    "openai",
+    "peewee",
+    "platformdirs",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
