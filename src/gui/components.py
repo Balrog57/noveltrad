@@ -1,7 +1,12 @@
 from PyQt6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, 
                              QPushButton, QWidget, QSizePolicy, QGraphicsDropShadowEffect)
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtGui import QColor, QFont, QTextCursor
+
+class SegmentCard(QFrame):
+    clicked = pyqtSignal(int)      # Signal to notify selection
+    textChanged = pyqtSignal(int, str) # Signal to auto-save
+    lookupWord = pyqtSignal(str)   # Signal to lookup word in dictionary
 
 class SegmentCard(QFrame):
     clicked = pyqtSignal(int)      # Signal to notify selection
@@ -135,7 +140,14 @@ class SegmentCard(QFrame):
     def eventFilter(self, obj, event):
         if event.type() == event.Type.MouseButtonPress:
             self.clicked.emit(self.segment_id)
-            # Do NOT return True, logic must continue to allow text edit focus/cursor move
+        
+        if event.type() == event.Type.MouseMove and obj == self.source_edit:
+            cursor = self.source_edit.cursorForPosition(event.pos())
+            cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+            word = cursor.selectedText().strip()
+            if word and len(word) > 1:
+                self.lookupWord.emit(word)
+        
         return super().eventFilter(obj, event)
 
     def mousePressEvent(self, event):

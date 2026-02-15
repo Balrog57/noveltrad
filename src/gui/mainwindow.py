@@ -383,6 +383,7 @@ class MainWindow(QMainWindow):
              for seg in segments: 
                 card = SegmentCard(seg)
                 card.clicked.connect(self.on_segment_card_clicked)
+                card.lookupWord.connect(self.on_word_lookup)
                 self.cards_layout.addWidget(card)
         
         self.cards_layout.addStretch()
@@ -430,6 +431,32 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Translated and Saved.")
         except Exception as e:
             self.ai_text.setText(f"Error: {e}")
+
+    def on_word_lookup(self, word):
+        """Handle word lookup from hover tooltip."""
+        from src.core.dictionary_manager import DictionaryManager
+        
+        src_lang = self.dict_src_lang.currentText()
+        tgt_lang = self.dict_tgt_lang.currentText()
+        
+        dm = DictionaryManager()
+        results = dm.search(src_lang, tgt_lang, word)
+        
+        if results:
+            result = results[0]
+            tooltip_text = f"{result.source_term} → {result.target_term}"
+            if result.context:
+                tooltip_text += f"\n[{result.context}]"
+            
+            for i in range(self.cards_layout.count() - 1):
+                widget = self.cards_layout.itemAt(i).widget()
+                if isinstance(widget, SegmentCard):
+                    widget.source_edit.setToolTip(tooltip_text)
+        else:
+            for i in range(self.cards_layout.count() - 1):
+                widget = self.cards_layout.itemAt(i).widget()
+                if isinstance(widget, SegmentCard):
+                    widget.source_edit.setToolTip("")
 
     def add_glossary_term(self):
         if not self.project_manager.current_project: return
