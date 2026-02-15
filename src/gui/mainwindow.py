@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QPushButton, QTableWidget, QTableWidgetItem, QSplitter, 
                              QListWidget, QTextEdit, QLabel, QFileDialog, QDockWidget, QTabWidget, QMenu,
                              QStatusBar, QToolBar, QMessageBox, QDialog, QFormLayout, QLineEdit, QComboBox, QListWidgetItem,
-                             QScrollArea, QFrame, QGridLayout)
+                             QScrollArea, QFrame, QGridLayout, QCheckBox)
 from src.gui.components import SegmentCard, Sidebar
 from src.gui.settings_dialog import SettingsDialog
 from PyQt6.QtCore import Qt, QSize
@@ -119,9 +119,15 @@ class MainWindow(QMainWindow):
         btn_batch.clicked.connect(self.batch_translate)
         btn_batch.setCursor(Qt.CursorShape.PointingHandCursor)
         
+        btn_search = QPushButton("Search & Replace")
+        btn_search.setStyleSheet("background-color: #1e293b; color: #e2e8f0; border-radius: 4px; padding: 6px 12px;")
+        btn_search.clicked.connect(self.show_search_replace)
+        btn_search.setCursor(Qt.CursorShape.PointingHandCursor)
+        
         header_layout.addWidget(btn_new)
         header_layout.addWidget(btn_open)
         header_layout.addWidget(btn_batch)
+        header_layout.addWidget(btn_search)
         header_layout.addWidget(btn_settings)
         header_layout.addWidget(btn_export)
         main_layout.addWidget(header)
@@ -873,3 +879,158 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(f"Loaded project: {fname}")
             except Exception as e:
                  QMessageBox.critical(self, "Error", f"Failed to open project: {str(e)}")
+
+    def show_search_replace(self):
+        """Show Search & Replace dialog."""
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Error", "No active project.")
+            return
+            
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Search & Replace")
+        dialog.resize(500, 200)
+        layout = QFormLayout(dialog)
+        
+        search_input = QLineEdit()
+        search_input.setPlaceholderText("Text to find...")
+        
+        replace_input = QLineEdit()
+        replace_input.setPlaceholderText("Replace with...")
+        
+        use_regex = QCheckBox("Use Regular Expressions")
+        case_sensitive = QCheckBox("Case Sensitive")
+        case_sensitive.setChecked(True)
+        
+        layout.addRow("Search:", search_input)
+        layout.addRow("Replace:", replace_input)
+        layout.addRow(use_regex)
+        layout.addRow(case_sensitive)
+        
+        result_label = QLabel("Will search in all segments")
+        layout.addRow(result_label)
+        
+        buttons = QHBoxLayout()
+        
+        find_btn = QPushButton("Find Next")
+        find_btn.clicked.connect(lambda: self._find_text(search_input, use_regex.isChecked(), case_sensitive.isChecked()))
+        
+        replace_btn = QPushButton("Replace")
+        replace_btn.clicked.connect(lambda: self._replace_text(search_input, replace_input, use_regex.isChecked(), case_sensitive.isChecked()))
+        
+        replace_all_btn = QPushButton("Replace All")
+        replace_all_btn.clicked.connect(lambda: self._replace_all_text(search_input, replace_input, use_regex.isChecked(), case_sensitive.isChecked()))
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        
+        buttons.addWidget(find_btn)
+        buttons.addWidget(replace_btn)
+        buttons.addWidget(replace_all_btn)
+        buttons.addWidget(close_btn)
+        
+        layout.addRow(buttons)
+        dialog.exec()
+
+    def _find_text(self, search_input, use_regex, case_sensitive):
+        """Find text in segments."""
+        import re
+        
+        search_text = search_input.text()
+        if not search_text:
+            return
+            
+        segments = self.project_manager.get_segments()
+        pattern_flags = 0 if case_sensitive else re.IGNORECASE
+        
+        try:
+            if use_regex:
+                pattern = re.compile(search_text, pattern_flags)
+            else:
+                pattern = re.compile(re.escape(search_text), pattern_flags)
+        except re.error as e:
+            QMessageBox.warning(self, "Invalid Regex", str(e))
+            return
+            
+        for seg in segments:
+            if seg.target_text and pattern.search(seg.target_text):
+                self.load_segments(seg.chapter_id)
+                self.current_segment_index = seg.index
+                for i in range(self.cards_layout.count() - 1):
+                    widget = self.cards_layout.itemAt(i).widget()
+                    if isinstance(widget, SegmentCard) and widget.segment_id == seg.index:
+                        widget.set_active(True)
+                        widget.target_edit.setFocus()
+                        break
+                self.status_bar.showMessage(f"Found at segment {seg.index}")
+                return
+                
+        QMessageBox.information(self, "Not Found", "Text not found in any segment.")
+
+    def _replace_text(self, search_input, replace_input, use_regex, case_sensitive):
+        """Replace first occurrence."""
+        import re
+        
+        search_text = search_input.text()
+        replace_text = replace_input.text()
+        
+        if not search_text:
+            return
+            
+        segments = self.project_manager.get_segments()
+        pattern_flags = 0 if case_sensitive else re.IGNORECASE
+        
+        try:
+            if use_regex:
+                pattern = re.compile(search_text, pattern_flags)
+            else:
+                pattern = re.compile(re.escape(search_text), pattern_flags)
+        except re.error as e:
+            QMessageBox.warning(self, "Invalid Regex", str(e))
+            return
+            
+        for seg in segments:
+            if seg.target_text:
+                new_text = pattern.sub(replace_text, seg.target_text)
+                if new_text != seg.target_text:
+                    seg.target_text = new_text
+                    seg.save()
+                    self.status_bar.showMessage(f"Replaced in segment {seg.index}")
+                    self.load_segments(seg.chapter_id)
+                    return
+                    
+        QMessageBox.information(self, "Not Found", "Text not found.")
+
+    def _replace_all_text(self, search_input, replace_input, use_regex, case_sensitive):
+        """Replace all occurrences."""
+        import re
+        
+        search_text = search_input.text()
+        replace_text = replace_input.text()
+        
+        if not search_text:
+            return
+            
+        segments = self.project_manager.get_segments()
+        pattern_flags = 0 if case_sensitive else re.IGNORECASE
+        
+        try:
+            if use_regex:
+                pattern = re.compile(search_text, pattern_flags)
+            else:
+                pattern = re.compile(re.escape(search_text), pattern_flags)
+        except re.error as e:
+            QMessageBox.warning(self, "Invalid Regex", str(e))
+            return
+        
+        count = 0
+        for seg in segments:
+            if seg.target_text:
+                new_text = pattern.sub(replace_text, seg.target_text)
+                if new_text != seg.target_text:
+                    seg.target_text = new_text
+                    seg.save()
+                    count += 1
+        
+        self.load_segments()
+        QMessageBox.information(self, "Replace Complete", f"Replaced in {count} segments.")
+
