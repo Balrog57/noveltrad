@@ -16,12 +16,17 @@ class LLMEngine(TranslationEngine):
         self.base_url = base_url
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
-    def translate(self, text, src_lang, tgt_lang, context=None):
+    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None):
         if not self.client:
             return f"[LLM Config Missing] {text}"
             
         # Context building
         system_prompt = f"You are a professional novel translator. Translate the following text from {src_lang} to {tgt_lang}. Maintain the flow, tone, and style of a novel."
+        
+        if glossary_terms:
+            glossary_txt = "\n".join([f"{k} -> {v}" for k, v in glossary_terms.items()])
+            system_prompt += f"\n\nUse the following glossary terms strictly:\n{glossary_txt}"
+            
         if context:
             user_prompt = f"Context:\n{context}\n\nText to translate:\n{text}"
         else:

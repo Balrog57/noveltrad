@@ -28,7 +28,7 @@ class NLLBEngine(TranslationEngine):
             print(f"Failed to load NLLB model: {e}")
             return False
 
-    def translate(self, text, src_lang, tgt_lang, context=None):
+    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None):
         if not self.translator or not self.tokenizer:
             return f"[NLLB Not Loaded] {text}"
 

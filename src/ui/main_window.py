@@ -8,7 +8,48 @@ from PyQt6.QtCore import QSettings
 from src.ui.editor import EditorWidget
 from src.ui.settings_dialog import SettingsDialog
 from src.ui.dictionary_dialog import DictionaryDialog
+from src.ui.glossary_dialog import GlossaryDialog
 from src.core.project_manager import ProjectManager
+# ... (imports)
+
+# ... (LanguageDialog)
+
+class MainWindow(QMainWindow):
+    # ... (__init__)
+
+    def init_menus(self):
+        # ... (File/Edit menus)
+        
+        # Translation Menu
+        trans_menu = menubar.addMenu("&Traduction")
+        
+        trans_segment_action = QAction("&Traduire Segment Courant", self)
+        # ... (connect)
+        trans_menu.addAction(trans_segment_action)
+        
+        trans_menu.addSeparator()
+        
+        glossary_action = QAction("Glossaire du &Projet...", self)
+        glossary_action.setStatusTip("Gérer les termes spécifiques à ce projet")
+        glossary_action.triggered.connect(self.open_glossary)
+        trans_menu.addAction(glossary_action)
+        
+        dict_action = QAction("&Dictionnaire Global...", self)
+        # ... (connect)
+        trans_menu.addAction(dict_action)
+        
+        # ... (Tools/Help)
+
+    def open_glossary(self):
+        if not self.project_manager.current_project:
+            self.statusBar().showMessage("Aucun projet ouvert.")
+            return
+            
+        dialog = GlossaryDialog(self.project_manager.current_project, self)
+        dialog.exec()
+
+    def open_dictionary(self):
+        # ... (existing code)
 from src.engines.nllb_engine import NLLBEngine
 from src.engines.llm_engine import LLMEngine
 import os
@@ -229,11 +270,18 @@ class MainWindow(QMainWindow):
                     return
             
             project = self.project_manager.current_project
-            # check_msg = f"Traduction: {src_text[:20]}... ({project.source_language} -> {project.target_language})"
-            # self.statusBar().showMessage(check_msg)
+            
+            # Fetch Glossary Terms
+            from src.core.glossary_manager import GlossaryManager
+            gm = GlossaryManager(project)
+            # Optimization: In a real app, we'd cache this or only fetch relevant terms using simplified search/regex
+            # For now, fetch all project terms. 
+            # Ideally we only pass terms present in the source text.
+            all_terms = gm.get_all()
+            glossary = {t.source_term: t.target_term for t in all_terms if t.source_term in src_text}
             
             try:
-                translation = self.engine.translate(src_text, project.source_language, project.target_language)
+                translation = self.engine.translate(src_text, project.source_language, project.target_language, glossary_terms=glossary)
                 
                 # Update DB
                 self.project_manager.save_translation(segment.id, translation)

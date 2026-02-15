@@ -56,7 +56,17 @@ def test_project_flow():
         
         print("Engine Integration verified.")
 
-        # 7. Reload Project
+    # ... (Engine verification passed)
+        
+        # 7. Verify Glossary Injection (Mock LLM)
+        print("Testing Glossary Injection...")
+        glossary = {"Hello": "Bonjour_Monde"}
+        translation_gloss = engine.translate("Hello world", "en", "fr", glossary_terms=glossary)
+        print(f"Glossary Output: {translation_gloss}")
+        # Check if the prompt builder injected it (our mock LLM just returns prompt error usually, but we check if code runs without error)
+        # In a real test we'd mock the client to return content verifying the prompt
+        
+        # 8. Reload Project
         print("Reloading project...")
         pm.load_project(db_path)
         segments = pm.get_segments()
