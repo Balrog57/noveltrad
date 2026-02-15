@@ -16,12 +16,23 @@ class Project(BaseModel):
     updated_at = DateTimeField(default=datetime.datetime.now)
     file_path = CharField(null=True) # Path to the original file
 
+class Chapter(BaseModel):
+    project = ForeignKeyField(Project, backref='chapters')
+    title = CharField()
+    order_index = IntegerField()
+    status = CharField(default='pending') # pending, in_progress, translated, reviewed
+
+    class Meta:
+        order_by = ('order_index',)
+
 class Segment(BaseModel):
-    project = ForeignKeyField(Project, backref='segments')
+    project = ForeignKeyField(Project, backref='all_segments') # Keep global project link for easy queries
+    chapter = ForeignKeyField(Chapter, backref='segments', null=True) # Allow null for transition/orphan segments
     index = IntegerField()
     source_text = TextField()
     target_text = TextField(null=True)
     status = CharField(default='untranslated') # untranslated, translated, validated
+    metadata = TextField(null=True) # JSON string for format-specific data (node_index, etc.)
     
     class Meta:
         order_by = ('index',)
@@ -49,5 +60,6 @@ class GlobalDictionaryTerm(BaseModel):
 def init_db(db_path):
     db.init(db_path)
     db.connect()
-    db.create_tables([Project, Segment, GlossaryTerm, GlobalDictionaryTerm])
+    # Create tables separately to handle references
+    db.create_tables([Project, Chapter, Segment, GlossaryTerm, GlobalDictionaryTerm])
     return db

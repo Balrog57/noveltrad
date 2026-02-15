@@ -1,67 +1,58 @@
-# NovelTrad
+# NovelTrad Desktop
 
-**Application de Traduction Assistée par Ordinateur (TAO) pour Romans et Web Novels.**
+A high-performance desktop application for novel translation, featuring AI-powered suggestions (LLM) and comprehensive glossary management. Replicating the "Stitch" design philosophy for a premium user experience.
 
-NovelTrad est une application de bureau conçue pour aider les traducteurs de romans (Xianxia, Fantasy, Sci-Fi, etc.) à travailler efficacement grâce à une interface bilingue et l'intégration de moteurs de traduction IA (NLLB, LLM, OpenAI).
+## Features
 
-## Fonctionnalités Principales
+- **Native Desktop App**: Built with PyQt6 for speed and OS integration.
+- **Stitch-Inspired UI**: Modern dark theme, sidebar navigation, and card-based segment editor.
+- **Format Support**: EPUB, DOCX, TXT.
+- **AI Integration**: Supports OpenAI API (and compatible endpoints) for translation suggestions.
+- **Glossary Management**: Create and manage project-specific glossaries.
+- **Offline Capable**: Core features work offline; AI features require internet if using cloud API.
 
-*   **Interface Bilingue** : Édition côte à côte (Source / Cible) avec synchronisation du défilement.
-*   **Multi-Moteurs** : Support de NLLB (Offline via CTranslate2) et LLM (Local via Ollama/LM Studio ou Online via OpenAI).
-*   **Gestion de Projets** : Organisation par roman et chapitres.
-*   **Glossaires & Dictionnaires** :
-    *   Gestion de glossaires par projet.
-    *   Dictionnaire global multi-langues.
-*   **Formats Supportés** :
-    *   Import : TXT, EPUB (Basique), DOCX.
-    *   Export : TXT.
-*   **Confidentialité** : Fonctionne entièrement en local (sauf si utilisation d'API en ligne).
+## Installation (Development)
 
-## Installation
+1. **Clone the repository**
+2. **Create a Virtual Environment**:
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\Activate
+   ```
+3. **Install Dependencies**:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+4. **Run the Application**:
+   ```powershell
+   python src/main_qt.py
+   ```
 
-### Prérequis
+## Building Executable
 
-*   Python 3.10+
-*   Git
+To create a standalone `.exe` file:
 
-### Installation Développement
+1. Run the build script:
+   ```powershell
+   .\Build-NovelTrad-Qt.bat
+   ```
+   This will generate `dist/NovelTrad/NovelTrad.exe`.
 
-1.  Cloner le dépôt :
-    ```bash
-    git clone https://github.com/VotreUsername/noveltrad.git
-    cd noveltrad
-    ```
+## Creating Installer
 
-2.  Créer un environnement virtuel :
-    ```bash
-    python -m venv venv
-    .\venv\Scripts\activate
-    ```
+To create a distributable setup file:
 
-3.  Installer les dépendances :
-    ```bash
-    pip install -r requirements.txt
-    ```
+1. Install [Inno Setup](https://jrsoftware.org/isdl.php).
+2. Right-click `NovelTrad.iss` and choose "Compile".
+   OR run:
+   ```powershell
+   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" NovelTrad.iss
+   ```
+   This will create `Output/NovelTrad_Setup.exe`.
 
-## Utilisation
+## Project Structure
 
-1.  Lancer l'application :
-    ```bash
-    python src/main.py
-    ```
-2.  Créer un nouveau projet (Fichier -> Nouveau Projet).
-3.  Importer un fichier (TXT ou EPUB).
-4.  Configurer les moteurs de traduction (Outils -> Paramètres).
-5.  Commencer à traduire !
-
-## Architecture
-
-Le projet suit une architecture MVC modulaire :
-*   `src/core` : Logique métier et modèles de données.
-*   `src/ui` : Interface utilisateur (PyQt6).
-*   `src/engines` : Moteurs de traduction (Abstract, NLLB, LLM).
-*   `src/formats` : Gestionnaires de formats de fichiers.
-
-## Licence
-
-[Votre Licence Ici]
+- `src/gui/`: Main UI logic (`mainwindow.py`, `components.py`, `styles.py`).
+- `src/core/`: Database models (`database.py`) and project logic (`project_manager.py`).
+- `src/engines/`: Translation engine interfaces (`llm_engine.py`, etc.).
+- `src/formats/`: File parsers.
