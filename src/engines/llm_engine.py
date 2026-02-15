@@ -190,6 +190,50 @@ JSON:
             print(f"Incremental Glossary Error: {e}")
             return json.dumps([])
 
+    def refine_translation(self, source_text, translated_text, src_lang="en", tgt_lang="fr", glossary_terms=None):
+        """Refine/Edit AI - improve machine translation using LLM."""
+        if not self.client:
+            return translated_text
+            
+        system_prompt = f"""You are an expert translator editor. Your task is to improve the translation quality.
+Focus on:
+- Improving fluency and naturalness in {tgt_lang}
+- Fixing grammar and style issues
+- Maintaining the original meaning
+- Keeping consistent terminology
+
+Return ONLY the refined translation, no explanations."""
+
+        if glossary_terms:
+            glossary_txt = "\n".join([f"{k} -> {v}" for k, v in glossary_terms.items()])
+            system_prompt += f"\n\nMaintain these terms:\n{glossary_txt}"
+        
+        user_prompt = f"""Source text ({src_lang}):
+{source_text}
+
+Current translation ({tgt_lang}):
+{translated_text}
+
+Provide the improved translation:"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=2000
+            )
+            
+            content = response.choices[0].message.content
+            return content.strip() if content else translated_text
+            
+        except Exception as e:
+            print(f"Refine Error: {e}")
+            return translated_text
+
     def translate_batch(self, texts, src_lang, tgt_lang):
         return [self.translate(t, src_lang, tgt_lang) for t in texts]
 

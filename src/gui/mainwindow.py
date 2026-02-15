@@ -205,6 +205,12 @@ class MainWindow(QMainWindow):
         btn_regen.clicked.connect(self.auto_translate_current)
         ai_box_layout.addWidget(btn_regen)
         
+        btn_refine = QPushButton("Editor AI - Refine Translation")
+        btn_refine.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_refine.setStyleSheet("background-color: #8b5cf6; color: white; border-radius: 6px; padding: 8px; font-weight: bold; margin-top: 5px;")
+        btn_refine.clicked.connect(self.editor_ai_refine)
+        ai_box_layout.addWidget(btn_refine)
+        
         right_layout.addWidget(ai_box)
         
         # Dictionary Search Box
@@ -457,6 +463,62 @@ class MainWindow(QMainWindow):
                 widget = self.cards_layout.itemAt(i).widget()
                 if isinstance(widget, SegmentCard):
                     widget.source_edit.setToolTip("")
+    
+    def editor_ai_refine(self):
+        """Refine/Edit AI - improve machine translation."""
+        if self.current_segment_index == -1:
+            QMessageBox.warning(self, "Error", "No segment selected.")
+            return
+            
+        if not self.llm_engine or not self.llm_engine.is_available():
+            QMessageBox.warning(self, "Error", "LLM engine not available.")
+            return
+        
+        active_card = None
+        for i in range(self.cards_layout.count() - 1):
+            widget = self.cards_layout.itemAt(i).widget()
+            if isinstance(widget, SegmentCard) and widget.segment_id == self.current_segment_index:
+                active_card = widget
+                break
+                
+        if not active_card: return
+        
+        source_text = active_card.segment.source_text
+        translated_text = active_card.target_edit.toPlainText()
+        
+        if not translated_text:
+            QMessageBox.warning(self, "Error", "No translation to refine. Translate first.")
+            return
+        
+        try:
+            self.status_bar.showMessage("Refining translation with AI...")
+            QApplication.processEvents()
+            
+            p = self.project_manager.current_project
+            
+            glossary_terms = {}
+            for term in GlossaryTerm.select().where(GlossaryTerm.project == p):
+                glossary_terms[term.source_term] = term.target_term
+            
+            refined = self.llm_engine.refine_translation(
+                source_text,
+                translated_text,
+                src_lang=p.source_language,
+                tgt_lang=p.target_language,
+                glossary_terms=glossary_terms
+            )
+            
+            active_card.target_edit.setPlainText(refined)
+            self.ai_text.setText(refined)
+            
+            active_card.segment.target_text = refined
+            active_card.segment.status = 'ai_refined'
+            active_card.segment.save()
+            
+            self.status_bar.showMessage("Translation refined and saved.")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Refinement failed: {e}")
 
     def add_glossary_term(self):
         if not self.project_manager.current_project: return
