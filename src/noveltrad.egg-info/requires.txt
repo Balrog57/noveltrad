@@ -1,0 +1,10 @@
+PyQt6
+EbookLib
+BeautifulSoup4
+python-docx
+PyMuPDF
+ctranslate2
+argostranslate
+openai
+peewee
+platformdirs

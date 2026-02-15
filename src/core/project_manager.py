@@ -3,6 +3,7 @@ from src.formats.txt_handler import TxtHandler
 from src.formats.epub_handler import EpubHandler
 from src.formats.docx_handler import DocxHandler
 from src.formats.pdf_handler import PdfHandler
+from src.core.tmx_handler import TMXHandler
 import os
 import json
 
@@ -18,22 +19,9 @@ class ProjectManager:
         }
 
     def create_project(self, name, db_path, source_file, source_lang='en', target_lang='fr', genre='general', custom_instructions=None):
-        """Creates a new project database and initializes it with segments from source_file."""
+        """Creates a new project database (file or directory)."""
         self.db = init_db(db_path)
         
-        # Determine handler
-        _, ext = os.path.splitext(source_file)
-        handler = self.handlers.get(ext.lower())
-        if not handler:
-             # Try to find a handler that supports this extension
-             for h in self.handlers.values():
-                 if ext.lower() in h.get_supported_extensions():
-                     handler = h
-                     break
-        
-        if not handler:
-            raise ValueError(f"No handler found for file type: {ext}")
-
         # Create Project Record
         self.current_project = Project.create(
             name=name,
@@ -43,10 +31,50 @@ class ProjectManager:
             custom_instructions=custom_instructions,
             file_path=source_file
         )
-        
-        # Import Segments
-        segments_data = handler.read(source_file)
-        self.import_segments(segments_data)
+
+        if os.path.isdir(source_file):
+            # Special case: Import directory (only .txt supported for now)
+            txt_files = [f for f in os.listdir(source_file) if f.lower().endswith('.txt')]
+            txt_files.sort()
+            
+            handler = self.handlers.get('.txt')
+            for i, filename in enumerate(txt_files):
+                full_path = os.path.join(source_file, filename)
+                segments_data = handler.read(full_path)
+                
+                # Create a chapter for each file
+                chapter = Chapter.create(
+                    project=self.current_project,
+                    title=filename,
+                    order_index=i + 1
+                )
+                
+                # Import segments to this specific chapter
+                with self.db.atomic():
+                    for data in segments_data:
+                        Segment.create(
+                            project=self.current_project,
+                            chapter=chapter,
+                            index=data['index'],
+                            source_text=data['source_text'],
+                            metadata=json.dumps(data.get('metadata')) if data.get('metadata') else None
+                        )
+        else:
+            # Determine handler for single file
+            _, ext = os.path.splitext(source_file)
+            handler = self.handlers.get(ext.lower())
+            if not handler:
+                 for h in self.handlers.values():
+                     if ext.lower() in h.get_supported_extensions():
+                         handler = h
+                         break
+            
+            if not handler:
+                raise ValueError(f"No handler found for file type: {ext}")
+
+            # Import Segments
+            segments_data = handler.read(source_file)
+            self.import_segments(segments_data)
         
         return self.current_project
 
@@ -287,5 +315,176 @@ class ProjectManager:
                    .replace('>', '&gt;')
                    .replace('"', '&quot;')
                    .replace("'", '&apos;'))
+    def close_project(self):
+        """Closes the current project and database connection."""
+        if self.db:
+            self.db.close()
+        self.current_project = None
+        self.db = None
+
+    def export_project_tmx(self, output_path):
+        """Exports all translated segments of the current project to a TMX file."""
+        if not self.current_project:
+            return False
+        
+        segments = Segment.select().where(
+            (Segment.project == self.current_project) & 
+            (Segment.target_text.is_null(False)) & 
+            (Segment.target_text != "")
+        )
+        
+        return TMXHandler.export_tmx(
+            segments, 
+            self.current_project.source_language, 
+            self.current_project.target_language, 
+            output_path
+        )
+
+    def import_project_tmx(self, tmx_path):
+        """Import translations from a TMX file into the current project's untranslated segments."""
+        if not self.current_project:
+            return 0
+        
+        pairs = TMXHandler.import_tmx(tmx_path)
+        # Build a dictionary for fast lookup
+        tm_dict = {src: tgt for src, tgt in pairs}
+        
+        count = 0
+        # Only target segments that are currently empty
+        segments = Segment.select().where(
+            (Segment.project == self.current_project) & 
+            ((Segment.target_text.is_null()) | (Segment.target_text == ""))
+        )
+        
+        with self.db.atomic():
+            for seg in segments:
+                if seg.source_text in tm_dict:
+                    seg.target_text = tm_dict[seg.source_text]
+                    seg.status = 'translated'
+                    seg.save()
+                    count += 1
+        return count
+
+    def add_to_tm(self, source, target):
+        """Adds a translation pair to the Translation Memory."""
+        if not self.current_project or not source or not target:
+            return
+            
+        # Avoid exact duplicates
+        exists = TranslationMemory.select().where(
+            (TranslationMemory.source_text == source) & 
+            (TranslationMemory.target_text == target)
+        ).exists()
+        
+        if not exists:
+            TranslationMemory.create(
+                source_lang=self.current_project.source_language,
+                target_lang=self.current_project.target_language,
+                source_text=source,
+                target_text=target,
+                project=self.current_project
+            )
+
+    def get_fuzzy_matches(self, text, threshold=0.6):
+        """Finds potential translation matches in the TM."""
+        if not self.current_project or not text:
+            return []
+            
+        # For performance, we first filter by segments containing at least one long word from the text
+        words = [w for w in text.split() if len(w) > 3]
+        if not words:
+            return []
+            
+        # SQL search for performance
+        candidates = TranslationMemory.select().where(
+            (TranslationMemory.source_lang == self.current_project.source_language) &
+            (TranslationMemory.source_text.contains(words[0]))
+        ).limit(20)
+        
+        from difflib import SequenceMatcher
+        results = []
+        for cand in candidates:
+            ratio = SequenceMatcher(None, text, cand.source_text).ratio()
+            if ratio >= threshold:
+                results.append({
+                    'source': cand.source_text,
+                    'target': cand.target_text,
+                    'similarity': int(ratio * 100)
+                })
+        
+        # Sort by similarity
+        results.sort(key=lambda x: x['similarity'], reverse=True)
+        return results
+
+    def auto_structure_project(self, llm_engine):
+        """Structure AI - split segments into chapters based on LLM detection."""
+        if not self.current_project:
+            return 0
+            
+        # 1. Collect first 10k characters or so to detect chapters
+        segments = Segment.select().where(Segment.project == self.current_project).order_by(Segment.index)
+        sample_text = ""
+        for s in segments[:500]: # Sample first 500 segments
+            sample_text += f"[{s.index}] {s.source_text}\n"
+            if len(sample_text) > 15000: break
+            
+        # 2. Detect chapters via LLM
+        chapter_list_json = llm_engine.detect_chapters(sample_text)
+        try:
+            import json
+            chapter_list = json.loads(chapter_list_json)
+        except:
+            return 0
+            
+        if not chapter_list:
+            return 0
+            
+        # 3. Create new chapters and reassign segments
+        count = 0
+        with self.db.atomic():
+            # Get existing chapters to delete later or keep? 
+            # We'll reassign everything to new chapters.
+            # We assume order is correct in chapter_list.
+            
+            boundaries = [] # list of (start_index, title)
+            for ch_data in chapter_list:
+                title = ch_data.get('title', "Untitled Chapter")
+                start_line = ch_data.get('start_line', "").lower()
+                
+                # Find start index
+                found_idx = -1
+                if start_line:
+                    for s in segments:
+                        if start_line in s.source_text.lower():
+                            found_idx = s.index
+                            break
+                if found_idx != -1:
+                    boundaries.append((found_idx, title))
+
+            if not boundaries:
+                return 0
+
+            # Sort boundaries just in case
+            boundaries.sort()
+
+            # Create chapters and update segments
+            for i, (start_idx, title) in enumerate(boundaries):
+                end_idx = boundaries[i+1][0] if i+1 < len(boundaries) else 999999
+                
+                new_chapter = Chapter.create(
+                    project=self.current_project,
+                    title=title,
+                    order_index=i + 1
+                )
+                
+                # Reassign segments in range
+                Segment.update(chapter=new_chapter).where(
+                    (Segment.project == self.current_project) & 
+                    (Segment.index >= start_idx) & 
+                    (Segment.index < end_idx)
+                ).execute()
+                count += 1
+                
+        return count
 
 

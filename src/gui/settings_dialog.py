@@ -32,6 +32,11 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self.appearance_tab, "Appearance")
         self.init_appearance_tab()
         
+        # Tools Tab
+        self.tools_tab = QWidget()
+        self.tabs.addTab(self.tools_tab, "Tools")
+        self.init_tools_tab()
+        
         # Buttons
         btns = QHBoxLayout()
         btns.addStretch()
@@ -81,6 +86,39 @@ class SettingsDialog(QDialog):
         layout.addRow("API Key:", self.llm_key)
         self.llm_model = QLineEdit("gemma-2-9b-it")
         layout.addRow("Model Name:", self.llm_model)
+
+    def init_tools_tab(self):
+        layout = QVBoxLayout(self.tools_tab)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setSpacing(15)
+        
+        layout.addWidget(QLabel("<b>Resource Management</b>"))
+        
+        btn_store = QPushButton("Open Language Store")
+        btn_store.setToolTip("Download and install offline models (Argos, NLLB)")
+        btn_store.setMinimumHeight(40)
+        btn_store.clicked.connect(self.open_store)
+        layout.addWidget(btn_store)
+        
+        layout.addWidget(QLabel("<b>Project Analytics</b>"))
+        
+        btn_stats = QPushButton("Show Project Statistics")
+        btn_stats.setToolTip("View word count, progress and status breakdown")
+        btn_stats.setMinimumHeight(40)
+        btn_stats.clicked.connect(self.open_stats)
+        layout.addWidget(btn_stats)
+        
+        layout.addStretch()
+
+    def open_store(self):
+        self.accept()
+        if self.parent() and hasattr(self.parent(), 'show_language_store'):
+            self.parent().show_language_store()
+
+    def open_stats(self):
+        self.accept()
+        if self.parent() and hasattr(self.parent(), 'show_statistics'):
+            self.parent().show_statistics()
 
     def init_appearance_tab(self):
         layout = QFormLayout(self.appearance_tab)

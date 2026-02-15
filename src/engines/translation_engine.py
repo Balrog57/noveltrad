@@ -66,3 +66,11 @@ class TranslationEngine(ABC):
     def is_available(self):
         """Retourne True si le moteur est prêt à être utilisé."""
         pass
+
+    def get_available_models(self):
+        """Retourne la liste des modèles disponibles au téléchargement."""
+        return []
+
+    def install_model(self, model_id, callback=None):
+        """Télécharge et installe un modèle."""
+        return False

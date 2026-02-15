@@ -258,13 +258,19 @@ Current translation ({tgt_lang}):
 
 Provide the improved translation:"""
 
+        is_translategemma = "translategemma" in self.model.lower()
+        if is_translategemma:
+            messages = [{"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"}]
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=messages,
                 temperature=0.3,
                 max_tokens=2000
             )
@@ -272,9 +278,35 @@ Provide the improved translation:"""
             content = response.choices[0].message.content
             return content.strip() if content else translated_text
             
+    def detect_chapters(self, text):
+        """Structure AI - detect chapter boundaries in raw text."""
+        if not self.client:
+            import json
+            return json.dumps([])
+            
+        system_prompt = "You are a professional editor. Identify the starting lines of all chapters in this text. Provide the chapter title and the exact first few words. Return only a JSON list."
+        user_prompt = f"Text to analyze:\n{text[:8000]}\n\nJSON Output: [{{'title': '...', 'start_line': '...'}}]"
+
+        is_translategemma = "translategemma" in self.model.lower()
+        if is_translategemma:
+            messages = [{"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"}]
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.1
+            )
+            return self._extract_json(response.choices[0].message.content)
         except Exception as e:
-            print(f"Refine Error: {e}")
-            return translated_text
+            print(f"Chapter Detection Error: {e}")
+            import json
+            return json.dumps([])
 
     def translate_batch(self, texts, src_lang, tgt_lang):
         return [self.translate(t, src_lang, tgt_lang) for t in texts]

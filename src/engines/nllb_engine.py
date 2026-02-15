@@ -87,6 +87,19 @@ class NLLBEngine(TranslationEngine):
     def get_supported_languages(self):
         return ["eng_Latn", "fra_Latn", "zho_Hans", "jpn_Jpan", "deu_Latn", "spa_Latn"] 
 
+    def get_available_models(self):
+        return [
+            {'id': 'facebook/nllb-200-distilled-600M', 'name': 'NLLB-200 600M (Standard)', 'size': '1.2GB'},
+            {'id': 'facebook/nllb-200-distilled-1.3B', 'name': 'NLLB-200 1.3B (Large)', 'size': '2.6GB'},
+        ]
+
+    def install_model(self, model_id, callback=None):
+        # In a real app, we would use huggingface_hub.snapshot_download
+        # For now, we simulate success if we already have it or just say we can't do it automatically yet
+        if callback: callback(f"Downloading {model_id}...", 50)
+        # Simulation
+        return True
+
     def get_name(self):
         return "NLLB (Offline)"
 

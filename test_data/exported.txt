@@ -1,0 +1,6 @@
+Translated: Hello world
+
+Translated: This is a test
+
+Translated: Another line here
+

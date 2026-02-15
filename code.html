@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NovelTrad Premium CAT Editor</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=Merriweather:wght@300;400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#0d7ff2",
+                        "background-light": "#f5f7f8",
+                        "background-dark": "#0B0B0B",
+                        "panel-dark": "#161616",
+                        "border-dark": "#333333",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "serif": ["Merriweather", "serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+        .glass-active {
+            background: rgba(13, 127, 242, 0.1);
+            backdrop-filter: blur(8px);
+            border-left: 3px solid #0d7ff2;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 h-screen flex flex-col font-display">
+<!-- Top Toolbar -->
+<header class="h-14 border-b border-border-dark flex items-center justify-between px-4 bg-panel-dark/50 backdrop-blur-md z-50">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 bg-primary rounded flex items-center justify-center">
+<span class="material-icons-round text-white text-xl">auto_stories</span>
+</div>
+<span class="text-lg font-bold tracking-tight">NovelTrad <span class="text-primary font-normal text-sm ml-1 uppercase tracking-widest">Premium</span></span>
+</div>
+<div class="h-6 w-[1px] bg-border-dark mx-2"></div>
+<div class="text-xs text-slate-500 font-medium">Project: <span class="text-slate-300">The Obsidian Tower - Vol 1</span></div>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 hover:bg-white/5 rounded transition-colors text-slate-400 hover:text-white" title="Open File">
+<span class="material-icons-round text-xl">folder_open</span>
+</button>
+<button class="p-2 hover:bg-white/5 rounded transition-colors text-slate-400 hover:text-white" title="Save Project">
+<span class="material-icons-round text-xl">save</span>
+</button>
+<button class="p-2 hover:bg-white/5 rounded transition-colors text-slate-400 hover:text-white" title="Export">
+<span class="material-icons-round text-xl">file_download</span>
+</button>
+<div class="h-6 w-[1px] bg-border-dark mx-2"></div>
+<button class="p-2 hover:bg-white/5 rounded transition-colors text-slate-400 hover:text-white" title="Settings">
+<span class="material-icons-round text-xl">settings</span>
+</button>
+<div class="ml-4 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
+<span class="text-xs font-bold text-primary">JD</span>
+</div>
+</div>
+</header>
+<div class="flex-1 flex overflow-hidden">
+<!-- Left Sidebar: Chapters -->
+<aside class="w-64 border-r border-border-dark flex flex-col bg-background-dark">
+<div class="p-4 flex items-center justify-between">
+<h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">Chapters</h2>
+<button class="text-primary hover:text-primary/80"><span class="material-icons-round text-sm">add</span></button>
+</div>
+<nav class="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-1">
+<div class="group flex items-center justify-between p-3 rounded hover:bg-white/5 cursor-pointer text-slate-400 transition-all">
+<div class="flex flex-col gap-1 overflow-hidden">
+<span class="text-sm truncate font-medium">Chapter 1: The Descent</span>
+<div class="w-full bg-border-dark h-1 rounded-full">
+<div class="bg-green-500 h-1 rounded-full" style="width: 100%"></div>
+</div>
+</div>
+<span class="material-icons-round text-green-500 text-sm opacity-0 group-hover:opacity-100">check_circle</span>
+</div>
+<div class="group flex items-center justify-between p-3 rounded glass-active cursor-pointer text-white transition-all">
+<div class="flex flex-col gap-1 overflow-hidden">
+<span class="text-sm truncate font-bold text-primary">Chapter 2: Obsidian Gate</span>
+<div class="w-full bg-border-dark h-1 rounded-full">
+<div class="bg-primary h-1 rounded-full" style="width: 45%"></div>
+</div>
+</div>
+<span class="text-[10px] font-bold text-primary">45%</span>
+</div>
+<div class="group flex items-center justify-between p-3 rounded hover:bg-white/5 cursor-pointer text-slate-400 transition-all">
+<div class="flex flex-col gap-1 overflow-hidden">
+<span class="text-sm truncate font-medium">Chapter 3: Silent Echoes</span>
+<div class="w-full bg-border-dark h-1 rounded-full">
+<div class="bg-primary h-1 rounded-full" style="width: 0%"></div>
+</div>
+</div>
+</div>
+<div class="group flex items-center justify-between p-3 rounded hover:bg-white/5 cursor-pointer text-slate-400 transition-all">
+<div class="flex flex-col gap-1 overflow-hidden">
+<span class="text-sm truncate font-medium">Chapter 4: The Ritual</span>
+<div class="w-full bg-border-dark h-1 rounded-full">
+<div class="bg-primary h-1 rounded-full" style="width: 0%"></div>
+</div>
+</div>
+</div>
+</nav>
+<div class="p-4 mt-auto border-t border-border-dark">
+<div class="flex items-center gap-3 p-3 bg-panel-dark rounded border border-border-dark">
+<div class="w-8 h-8 rounded bg-primary/10 flex items-center justify-center">
+<span class="material-icons-round text-primary text-sm">cloud_done</span>
+</div>
+<div>
+<div class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Storage</div>
+<div class="text-xs text-slate-300 font-medium">8.2 MB / 1 GB</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Center Editor -->
+<main class="flex-1 overflow-y-auto custom-scrollbar bg-background-dark p-6">
+<div class="max-w-5xl mx-auto space-y-6">
+<!-- Segment 1: Completed -->
+<div class="group border border-border-dark rounded-lg overflow-hidden transition-all hover:border-slate-700 bg-panel-dark/20">
+<div class="flex">
+<div class="w-1/2 p-6 border-r border-border-dark">
+<div class="flex items-center gap-2 mb-3">
+<span class="text-[10px] bg-border-dark text-slate-400 px-1.5 py-0.5 rounded font-mono">001</span>
+</div>
+<p class="font-serif text-lg leading-relaxed text-slate-300">
+                                The sun dipped below the horizon, painting the sky in hues of violet and deep gold that mirrored the uncertainty in his heart.
+                            </p>
+</div>
+<div class="w-1/2 p-6 bg-panel-dark/10">
+<div class="flex items-center justify-between mb-3">
+<span class="text-[10px] font-bold text-green-500 uppercase tracking-tighter">Translated</span>
+<span class="material-icons-round text-green-500 text-sm">done_all</span>
+</div>
+<textarea class="w-full bg-transparent border-none focus:ring-0 p-0 text-lg leading-relaxed text-white resize-none h-auto font-display" rows="3">太陽が地平線の向こうへと沈み、空をすみれ色と深い金色に染め上げた。それは彼の心の中にある不安を映し出しているかのようだった。</textarea>
+</div>
+</div>
+</div>
+<!-- Segment 2: Focused/Active -->
+<div class="group border-2 border-primary rounded-lg overflow-hidden transition-all bg-panel-dark shadow-[0_0_20px_rgba(13,127,242,0.15)]">
+<div class="flex">
+<div class="w-1/2 p-6 border-r border-border-dark">
+<div class="flex items-center gap-2 mb-3">
+<span class="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-mono">002</span>
+</div>
+<p class="font-serif text-lg leading-relaxed text-slate-300">
+                                Elara stood by the window, her fingers tracing the intricate patterns of the obsidian frame. "Do you think it will hold?" she whispered.
+                            </p>
+</div>
+<div class="w-1/2 p-6 bg-primary/5">
+<div class="flex items-center justify-between mb-3">
+<span class="text-[10px] font-bold text-primary uppercase tracking-tighter">Translating...</span>
+<div class="flex gap-2">
+<span class="material-icons-round text-slate-500 text-xs cursor-pointer hover:text-white">content_copy</span>
+<span class="material-icons-round text-slate-500 text-xs cursor-pointer hover:text-white">undo</span>
+</div>
+</div>
+<textarea autofocus="" class="w-full bg-transparent border-none focus:ring-0 p-0 text-lg leading-relaxed text-white resize-none h-auto font-display placeholder-slate-600 focus:outline-none" rows="3">エララは窓辺に立ち、黒曜石の枠に刻まれた複雑な文様を指でなぞった。「これ、耐えられると思う？」彼女は囁いた。</textarea>
+</div>
+</div>
+<div class="px-6 py-2 border-t border-border-dark bg-primary/5 flex items-center justify-between">
+<div class="flex gap-4">
+<span class="text-[10px] text-slate-500">Words: <span class="text-slate-300">22</span></span>
+<span class="text-[10px] text-slate-500">Tags: <span class="text-slate-300">None</span></span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-[10px] text-primary font-bold">Press Ctrl+Enter to confirm</span>
+</div>
+</div>
+</div>
+<!-- Segment 3: Pending -->
+<div class="group border border-border-dark rounded-lg overflow-hidden transition-all hover:border-slate-700 bg-panel-dark/20 opacity-60">
+<div class="flex">
+<div class="w-1/2 p-6 border-r border-border-dark">
+<div class="flex items-center gap-2 mb-3">
+<span class="text-[10px] bg-border-dark text-slate-400 px-1.5 py-0.5 rounded font-mono">003</span>
+</div>
+<p class="font-serif text-lg leading-relaxed text-slate-300">
+                                Kaelen didn't answer immediately. He adjusted the weight of the sword at his hip, the leather creaking in the absolute silence of the tower.
+                            </p>
+</div>
+<div class="w-1/2 p-6">
+<div class="flex items-center justify-between mb-3">
+<span class="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">Draft</span>
+</div>
+<textarea class="w-full bg-transparent border-none focus:ring-0 p-0 text-lg leading-relaxed text-white resize-none h-auto font-display placeholder-slate-700" placeholder="Click to start translating..." rows="3"></textarea>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Right Sidebar: Tools -->
+<aside class="w-80 border-l border-border-dark flex flex-col bg-panel-dark">
+<!-- AI Suggestions -->
+<section class="p-4 border-b border-border-dark">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-icons-round text-primary text-sm">psychology</span>
+<h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">AI Suggestions</h2>
+</div>
+<div class="bg-background-dark/50 border border-border-dark rounded-lg p-3 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="text-[10px] font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded uppercase">Gemma 2B</span>
+<span class="text-[10px] text-slate-500">92% Match</span>
+</div>
+<button class="text-xs text-primary font-bold hover:underline">Apply</button>
+</div>
+<p class="text-sm text-slate-300 leading-relaxed italic">
+                        "エララは窓のそばに立ち、その指は黒曜石のフレームの複雑な模様をなぞっていた。「それが持ちこたえると思う？」と彼女はささやいた。"
+                    </p>
+<div class="flex justify-end gap-2">
+<button class="p-1 hover:bg-white/5 rounded"><span class="material-icons-round text-xs text-slate-500">thumb_up</span></button>
+<button class="p-1 hover:bg-white/5 rounded"><span class="material-icons-round text-xs text-slate-500">thumb_down</span></button>
+</div>
+</div>
+<button class="w-full mt-4 py-2 px-4 bg-primary text-white rounded font-bold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+<span class="material-icons-round text-sm">bolt</span>
+                    Regenerate Suggestion
+                </button>
+</section>
+<!-- Glossary -->
+<section class="flex-1 p-4 flex flex-col overflow-hidden">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-icons-round text-slate-400 text-sm">menu_book</span>
+<h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">Glossary Matches</h2>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar space-y-3">
+<div class="group p-3 rounded-lg border border-border-dark bg-background-dark/30 hover:bg-background-dark/60 transition-colors">
+<div class="flex items-center justify-between mb-1">
+<span class="text-sm font-bold text-slate-200">Obsidian</span>
+<span class="material-icons-round text-slate-600 text-xs">open_in_new</span>
+</div>
+<div class="text-xs text-primary font-medium mb-2">黒曜石 (こくようせき)</div>
+<p class="text-[11px] text-slate-500 leading-tight">A volcanic glass formed as an extrusive igneous rock. Central theme of the magic system.</p>
+</div>
+<div class="group p-3 rounded-lg border border-border-dark bg-background-dark/30 hover:bg-background-dark/60 transition-colors">
+<div class="flex items-center justify-between mb-1">
+<span class="text-sm font-bold text-slate-200">Elara</span>
+<span class="material-icons-round text-slate-600 text-xs">person</span>
+</div>
+<div class="text-xs text-primary font-medium mb-2">エララ</div>
+<p class="text-[11px] text-slate-500 leading-tight">Protagonist, former high-priestess of the Obsidian Spire.</p>
+</div>
+<div class="group p-3 rounded-lg border border-border-dark bg-background-dark/30 hover:bg-background-dark/60 transition-colors">
+<div class="flex items-center justify-between mb-1">
+<span class="text-sm font-bold text-slate-200">The Descent</span>
+<span class="material-icons-round text-slate-600 text-xs">history</span>
+</div>
+<div class="text-xs text-primary font-medium mb-2">降臨 (こうりん)</div>
+<p class="text-[11px] text-slate-500 leading-tight">The historical event where the stars fell into the tower.</p>
+</div>
+</div>
+</section>
+</aside>
+</div>
+<!-- Status Bar -->
+<footer class="h-8 border-t border-border-dark bg-panel-dark flex items-center justify-between px-4 z-50">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-green-500"></div>
+<span class="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">System Ready</span>
+</div>
+<div class="h-3 w-[1px] bg-border-dark"></div>
+<div class="text-[10px] text-slate-400 font-medium">Source: <span class="text-slate-200">English (US)</span></div>
+<div class="text-[10px] text-slate-400 font-medium">Target: <span class="text-slate-200">Japanese (JA)</span></div>
+</div>
+<div class="flex items-center gap-6 flex-1 max-w-md px-8">
+<div class="flex-1 flex flex-col gap-1">
+<div class="flex justify-between text-[8px] uppercase tracking-widest text-slate-500 font-bold">
+<span>Overall Progress</span>
+<span>45%</span>
+</div>
+<div class="w-full bg-border-dark h-1 rounded-full overflow-hidden">
+<div class="bg-primary h-1 rounded-full w-[45%]"></div>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="text-[10px] text-slate-400 font-medium">Segments: <span class="text-slate-200">124 / 280</span></div>
+<div class="text-[10px] text-slate-400 font-medium">Words: <span class="text-slate-200">1,240 / 4,500</span></div>
+<div class="h-3 w-[1px] bg-border-dark"></div>
+<div class="flex items-center gap-1 text-slate-500">
+<span class="material-icons-round text-xs">cloud_sync</span>
+<span class="text-[10px] font-medium uppercase tracking-tighter">Auto-saved</span>
+</div>
+</div>
+</footer>
+</body></html>
