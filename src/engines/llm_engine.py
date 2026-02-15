@@ -47,9 +47,63 @@ TRANSLATION_STYLE_GUIDES = {
     "fantasy": "Tone: Epic and descriptive.",
 }
 
+# Comprehensive mapping from ISO codes to full names (from TranslateGemma template)
 LANGUAGE_NAMES = {
-    "aa": "Afar", "ab": "Abkhazian", "af": "Afrikaans", "ak": "Akan", "am": "Amharic", "an": "Aragonese", "ar": "Arabic", "as": "Assamese", "az": "Azerbaijani", "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian", "bm": "Bambara", "bn": "Bengali", "bo": "Tibetan", "br": "Breton", "bs": "Bosnian", "ca": "Catalan", "ce": "Chechen", "co": "Corsican", "cs": "Czech", "cv": "Chuvash", "cy": "Welsh", "da": "Danish", "de": "German", "dv": "Divehi", "dz": "Dzongkha", "ee": "Ewe", "el": "Greek", "en": "English", "eo": "Esperanto", "es": "Spanish", "et": "Estonian", "eu": "Basque", "fa": "Persian", "ff": "Fulah", "fi": "Finnish", "fo": "Faroese", "fr": "French", "fy": "Western Frisian", "ga": "Irish", "gd": "Scottish Gaelic", "gl": "Galician", "gn": "Guarani", "gu": "Gujarati", "gv": "Manx", "ha": "Hausa", "he": "Hebrew", "hi": "Hindi", "hr": "Croatian", "ht": "Haitian", "hu": "Hungarian", "hy": "Armenian", "ia": "Interlingua", "id": "Indonesian", "ie": "Interlingue", "ig": "Igbo", "ii": "Sichuan Yi", "ik": "Inupiaq", "io": "Ido", "is": "Icelandic", "it": "Italian", "iu": "Inuktitut", "ja": "Japanese", "jv": "Javanese", "ka": "Georgian", "ki": "Kikuyu", "kk": "Kazakh", "kl": "Kalaallisut", "km": "Central Khmer", "kn": "Kannada", "ko": "Korean", "ks": "Kashmiri", "ku": "Kurdish", "kw": "Cornish", "ky": "Kyrgyz", "la": "Latin", "lb": "Luxembourgish", "lg": "Ganda", "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lu": "Luba-Katanga", "lv": "Latvian", "mg": "Malagasy", "mi": "Maori", "mk": "Macedonian", "ml": "Malayalam", "mn": "Mongolian", "mr": "Marathi", "ms": "Malay", "mt": "Maltese", "my": "Burmese", "nb": "Norwegian Bokmål", "nd": "North Ndebele", "ne": "Nepali", "nl": "Dutch", "nn": "Norwegian Nynorsk", "no": "Norwegian", "nr": "South Ndebele", "nv": "Navajo", "ny": "Chichewa", "oc": "Occitan", "om": "Oromo", "or": "Oriya", "os": "Ossetian", "pa": "Punjabi", "pl": "Polish", "ps": "Pashto", "pt": "Portuguese", "qu": "Quechua", "rm": "Romansh", "rn": "Rundi", "ro": "Romanian", "ru": "Russian", "rw": "Kinyarwanda", "sa": "Sanskrit", "sc": "Sardinian", "sd": "Sindhi", "se": "Northern Sami", "sg": "Sango", "si": "Sinhala", "sk": "Slovak", "sl": "Slovenian", "sn": "Shona", "so": "Somali", "sq": "Albanian", "sr": "Serbian", "ss": "Swati", "st": "Southern Sotho", "su": "Sundanese", "sv": "Swedish", "sw": "Swahili", "ta": "Tamil", "te": "Telugu", "tg": "Tajik", "th": "Thai", "ti": "Tigrinya", "tk": "Turkmen", "tl": "Tagalog", "tn": "Tswana", "to": "Tonga", "tr": "Turkish", "ts": "Tsonga", "tt": "Tatar", "ug": "Uyghur", "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "ve": "Venda", "vi": "Vietnamese", "vo": "Volapük", "wa": "Walloon", "wo": "Wolof", "xh": "Xhosa", "yi": "Yiddish", "yo": "Yoruba", "za": "Zhuang", "zh": "Chinese", "zh-Hans": "Chinese", "zh-Hant": "Chinese", "zu": "Zulu"
+    "aa": "Afar", "ab": "Abkhazian", "af": "Afrikaans", "ak": "Akan", "am": "Amharic", "an": "Aragonese", 
+    "ar": "Arabic", "as": "Assamese", "az": "Azerbaijani", "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian", 
+    "bm": "Bambara", "bn": "Bengali", "bo": "Tibetan", "br": "Breton", "bs": "Bosnian", "ca": "Catalan", 
+    "ce": "Chechen", "co": "Corsican", "cs": "Czech", "cv": "Chuvash", "cy": "Welsh", "da": "Danish", 
+    "de": "German", "dv": "Divehi", "dz": "Dzongkha", "ee": "Ewe", "el": "Greek", "en": "English", 
+    "eo": "Esperanto", "es": "Spanish", "et": "Estonian", "eu": "Basque", "fa": "Persian", "ff": "Fulah", 
+    "fi": "Finnish", "fo": "Faroese", "fr": "French", "fy": "Western Frisian", "ga": "Irish", "gd": "Scottish Gaelic", 
+    "gl": "Galician", "gn": "Guarani", "gu": "Gujarati", "gv": "Manx", "ha": "Hausa", "he": "Hebrew", "hi": "Hindi", 
+    "hr": "Croatian", "ht": "Haitian", "hu": "Hungarian", "hy": "Armenian", "ia": "Interlingua", "id": "Indonesian", 
+    "ie": "Interlingue", "ig": "Igbo", "ii": "Sichuan Yi", "ik": "Inupiaq", "io": "Ido", "is": "Icelandic", 
+    "it": "Italian", "iu": "Inuktitut", "ja": "Japanese", "jv": "Javanese", "ka": "Georgian", "ki": "Kikuyu", 
+    "kk": "Kazakh", "kl": "Kalaallisut", "km": "Central Khmer", "kn": "Kannada", "ko": "Korean", "ks": "Kashmiri", 
+    "ku": "Kurdish", "kw": "Cornish", "ky": "Kyrgyz", "la": "Latin", "lb": "Luxembourgish", "lg": "Ganda", 
+    "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lu": "Luba-Katanga", "lv": "Latvian", "mg": "Malagasy", 
+    "mi": "Maori", "mk": "Macedonian", "ml": "Malayalam", "mn": "Mongolian", "mr": "Marathi", "ms": "Malay", 
+    "mt": "Maltese", "my": "Burmese", "nb": "Norwegian Bokmål", "nd": "North Ndebele", "ne": "Nepali", 
+    "nl": "Dutch", "nn": "Norwegian Nynorsk", "no": "Norwegian", "nr": "South Ndebele", "nv": "Navajo", 
+    "ny": "Chichewa", "oc": "Occitan", "om": "Oromo", "or": "Oriya", "os": "Ossetian", "pa": "Punjabi", 
+    "pl": "Polish", "ps": "Pashto", "pt": "Portuguese", "qu": "Quechua", "rm": "Romansh", "rn": "Rundi", 
+    "ro": "Romanian", "ru": "Russian", "rw": "Kinyarwanda", "sa": "Sanskrit", "sc": "Sardinian", "sd": "Sindhi", 
+    "se": "Northern Sami", "sg": "Sango", "si": "Sinhala", "sk": "Slovak", "sl": "Slovenian", "sn": "Shona", 
+    "so": "Somali", "sq": "Albanian", "sr": "Serbian", "ss": "Swati", "st": "Southern Sotho", "su": "Sundanese", 
+    "sv": "Swedish", "sw": "Swahili", "ta": "Tamil", "te": "Telugu", "tg": "Tajik", "th": "Thai", "ti": "Tigrinya", 
+    "tk": "Turkmen", "tl": "Tagalog", "tn": "Tswana", "to": "Tonga", "tr": "Turkish", "ts": "Tsonga", "tt": "Tatar", 
+    "ug": "Uyghur", "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "ve": "Venda", "vi": "Vietnamese", "vo": "Volapük", 
+    "wa": "Walloon", "wo": "Wolof", "xh": "Xhosa", "yi": "Yiddish", "yo": "Yoruba", "za": "Zhuang", "zh": "Chinese", 
+    "zh-Hans": "Chinese", "zh-Hant": "Chinese", "zu": "Zulu"
 }
+
+# Inverted mapping to find code by name
+NAME_TO_CODE = {v.lower(): k for k, v in LANGUAGE_NAMES.items()}
+# Add common variants
+NAME_TO_CODE.update({
+    "chinese": "zh",
+    "french": "fr",
+    "english": "en",
+    "spanish": "es",
+    "japanese": "ja",
+    "korean": "ko",
+    "russian": "ru",
+    "german": "de"
+})
+
+def get_language_code(lang_str):
+    """Helper to convert language name or code to official ISO code."""
+    if not lang_str: return "en"
+    clean = lang_str.lower().strip().replace("_", "-")
+    # If it's already a known code
+    if clean in LANGUAGE_NAMES:
+        return clean
+    # If it's a known name
+    if clean in NAME_TO_CODE:
+        return NAME_TO_CODE[clean]
+    # Default fallback
+    return clean[:2]
 
 class LLMEngine(TranslationEngine):
     def __init__(self, api_key="lm-studio", base_url="http://localhost:1234/v1", model="gemma-3-12b"):
@@ -73,46 +127,51 @@ class LLMEngine(TranslationEngine):
         if not self.client:
             return f"[LLM Config Missing] {text}"
             
-        system_prompt = f"You are a professional novel translator. Maintain novel flow and tone."
+        system_prompt = f"Maintain novel flow and tone (Project: NovelTrad)."
         
         if genre and genre in TRANSLATION_STYLE_GUIDES:
-            system_prompt += f"\n\nStyle Guide:\n{TRANSLATION_STYLE_GUIDES[genre]}"
+            system_prompt += f"\nStyle Guide: {TRANSLATION_STYLE_GUIDES[genre]}"
             
         if custom_instructions:
-            system_prompt += f"\n\nCustom instructions: {custom_instructions}"
+            system_prompt += f"\nCustom instructions: {custom_instructions}"
         
         if glossary_terms:
-            glossary_txt = "\n".join([f"{k} -> {v}" for k, v in glossary_terms.items()])
-            system_prompt += f"\n\nUse these terms strictly:\n{glossary_txt}"
+            glossary_txt = ", ".join([f"{k}:{v}" for k, v in glossary_terms.items()])
+            system_prompt += f"\nGlossary: {glossary_txt}"
             
-        # Format language codes and names
-        src_code = src_lang.lower().replace("_", "-")
-        tgt_code = tgt_lang.lower().replace("_", "-")
-        src_name = LANGUAGE_NAMES.get(src_code, src_lang)
-        tgt_name = LANGUAGE_NAMES.get(tgt_code, tgt_lang)
-
-        user_prompt = f"Context:\n{context}\n\nTranslate:\n{text}" if context else f"{text}"
+        src_code = get_language_code(src_lang)
+        tgt_code = get_language_code(tgt_lang)
 
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            # Official TranslateGemma Prompt Format
-            full_prompt = (
-                f"You are a professional {src_name} ({src_code}) to {tgt_name} ({tgt_code}) translator. "
-                f"Your goal is to accurately convey the meaning and nuances of the original {src_name} text "
-                f"while adhering to {tgt_name} grammar, vocabulary, and cultural sensitivities.\n"
-                f"Produce only the {tgt_name} translation, without any additional explanations or commentary. "
-                f"Please translate the following {src_name} text into {tgt_name}:\n\n\n{user_prompt}"
-            )
-            # Add secondary instructions as system context if fallback or using standard model
-            # but for TranslateGemma we stick to the specialized prompt
-            if system_prompt and "novel translator" not in system_prompt:
-                 full_prompt = f"[Instructions: {system_prompt}]\n\n{full_prompt}"
-            
-            messages = [{"role": "user", "content": full_prompt}]
+            # Combined text with metadata for the model
+            full_text = ""
+            if system_prompt:
+                full_text += f"[[Instructions: {system_prompt}]]\n"
+            if context:
+                full_text += f"[[Context: {context}]]\n"
+            full_text += text
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "source_lang_code": src_code,
+                            "target_lang_code": tgt_code,
+                            "text": full_text
+                        }
+                    ]
+                }
+            ]
         else:
+            user_prompt = f"Context:\n{context}\n\nTranslate:\n{text}" if context else f"{text}"
+            src_name = LANGUAGE_NAMES.get(src_code, src_lang)
+            tgt_name = LANGUAGE_NAMES.get(tgt_code, tgt_lang)
             messages = [
                 {"role": "system", "content": f"{system_prompt}\nTranslate from {src_name} to {tgt_name}."},
-                {"role": "user", "content": f"Translate:\n{text}"}
+                {"role": "user", "content": user_prompt}
             ]
         
         try:
@@ -123,8 +182,7 @@ class LLMEngine(TranslationEngine):
             content = response.choices[0].message.content
             return content.strip() if content else ""
         except Exception as e:
-            error_msg = str(e)
-            return f"[LLM Error] {error_msg}"
+            return f"[LLM Error] {str(e)}"
 
     def generate_glossary(self, text, src_lang="Chinese", tgt_lang="French", genre="general"):
         """Generate glossary terms from text using LLM."""
@@ -133,24 +191,30 @@ class LLMEngine(TranslationEngine):
             return json.dumps([])
 
         genre_prompt = GENRE_PROMPTS.get(genre, GENRE_PROMPTS["general"])
-        # Format language codes
-        src_code = src_lang.lower().replace("_", "-")
-        tgt_code = tgt_lang.lower().replace("_", "-")
-        src_name = LANGUAGE_NAMES.get(src_code, src_lang)
-        tgt_name = LANGUAGE_NAMES.get(tgt_code, tgt_lang)
+        src_code = get_language_code(src_lang)
+        tgt_code = get_language_code(tgt_lang)
 
-        system_prompt = f"{genre_prompt}\nExtract important terms needing consistent translation. Return JSON array with: source, target, category."
-        user_prompt = f"Source: {src_name} -> Target: {tgt_name}\n\nText:\n{text[:3000]}\n\nJSON array format: [{{'source': 'term', 'target': 'translation', 'category': 'Name'}}]"
-
+        system_prompt = f"{genre_prompt}\nExtract terms as JSON array: [{{'source': 'term', 'target': 'translation', 'category': 'Name'}}]"
+        
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            # Adaptation for TranslateGemma: single user message
-            full_prompt = f"{system_prompt}\n\nProduce only the translation/extraction requested.\n\n\n{user_prompt}"
-            messages = [{"role": "user", "content": full_prompt}]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "source_lang_code": src_code,
+                            "target_lang_code": tgt_code,
+                            "text": f"[[TASK: GLOSSARY EXTRACTION]]\n{system_prompt}\n\n{text[:3000]}"
+                        }
+                    ]
+                }
+            ]
         else:
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": f"Text:\n{text[:3000]}"}
             ]
 
         try:
@@ -172,26 +236,32 @@ class LLMEngine(TranslationEngine):
             return json.dumps([])
             
         existing_list = existing_terms[:50] if isinstance(existing_terms, list) else []
-        existing_str = "\n".join([f"- {e.get('source', e.get('source_term', ''))} -> {e.get('target', e.get('target_term', ''))}" for e in existing_list])
+        existing_str = ", ".join([f"{e.get('source', e.get('source_term', ''))}:{e.get('target', e.get('target_term', ''))}" for e in existing_list])
         
-        # Format language codes
-        src_code = src_lang.lower().replace("_", "-")
-        tgt_code = tgt_lang.lower().replace("_", "-")
-        src_name = LANGUAGE_NAMES.get(src_code, src_lang)
-        tgt_name = LANGUAGE_NAMES.get(tgt_code, tgt_lang)
-
+        src_code = get_language_code(src_lang)
+        tgt_code = get_language_code(tgt_lang)
         genre_prompt = GENRE_PROMPTS.get(genre, GENRE_PROMPTS["general"])
-        system_prompt = f"{genre_prompt}\nExtract NEW terms NOT in existing glossary.\nExisting:\n{existing_str}\n\nReturn ONLY new terms as JSON array."
-        user_prompt = f"Source: {src_name} -> Target: {tgt_name}\n\nNew text:\n{text[:3000]}\n\nJSON: [{{'source': 'term', 'target': 'translation', 'category': 'Name'}}]"
+        system_prompt = f"{genre_prompt}\nExtract NEW terms (Not in: {existing_str})."
 
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            full_prompt = f"{system_prompt}\n\nProduce only the requested JSON array.\n\n\n{user_prompt}"
-            messages = [{"role": "user", "content": full_prompt}]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "source_lang_code": src_code,
+                            "target_lang_code": tgt_code,
+                            "text": f"[[TASK: INCREMENTAL GLOSSARY]]\n{system_prompt}\n\nJSON Output required.\n\n{text[:3000]}"
+                        }
+                    ]
+                }
+            ]
         else:
             messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "system", "content": f"{system_prompt}\nReturn ONLY new terms as JSON array."},
+                {"role": "user", "content": f"New text:\n{text[:3000]}"}
             ]
 
         try:
@@ -236,57 +306,46 @@ class LLMEngine(TranslationEngine):
         if not self.client:
             return translated_text
             
-        system_prompt = f"""You are an expert translator editor. Your task is to improve the translation quality.
-Focus on:
-- Improving fluency and naturalness in {tgt_lang}
-- Fixing grammar and style issues
-- Maintaining the original meaning
-- Keeping consistent terminology
-
-Return ONLY the refined translation, no explanations."""
-
+        system_prompt = f"Expert Editor. Improve fluency/naturalness in {tgt_lang}. Keep consistent terminology. No explanations."
         if glossary_terms:
-            glossary_txt = "\n".join([f"{k} -> {v}" for k, v in glossary_terms.items()])
-            system_prompt += f"\n\nMaintain these terms:\n{glossary_txt}"
+            glos = ", ".join([f"{k}:{v}" for k, v in glossary_terms.items()])
+            system_prompt += f" Glossary: {glos}"
         
-        user_prompt = f"""Source text ({src_lang}):
-{source_text}
-
-Current translation ({tgt_lang}):
-{translated_text}
-
-Provide the improved translation:"""
+        src_code = get_language_code(src_lang)
+        tgt_code = get_language_code(tgt_lang)
 
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            # Adaptation for TranslateGemma: single user message
-            src_code = src_lang.lower().replace("_", "-")
-            tgt_code = tgt_lang.lower().replace("_", "-")
-            src_name = LANGUAGE_NAMES.get(src_code, src_lang)
-            tgt_name = LANGUAGE_NAMES.get(tgt_code, tgt_lang)
-
-            full_prompt = (
-                f"You are a professional {src_name} ({src_code}) to {tgt_name} ({tgt_code}) translator and editor. "
-                f"{system_prompt}\n"
-                f"Produce only the improved {tgt_name} translation.\n\n\n{user_prompt}"
-            )
-            messages = [{"role": "user", "content": full_prompt}]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "source_lang_code": src_code,
+                            "target_lang_code": tgt_code,
+                            "text": f"[[TASK: REFINE TRANSLATION]]\nInstructions: {system_prompt}\n\nSource: {source_text}\n\nCurrent: {translated_text}\n\nReturn improved version only."
+                        }
+                    ]
+                }
+            ]
         else:
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": f"Source: {source_text}\n\nCurrent: {translated_text}"}
             ]
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=0.3,
-                max_tokens=2000
+                temperature=0.3
             )
-            
             content = response.choices[0].message.content
             return content.strip() if content else translated_text
+        except Exception as e:
+            print(f"Refine Error: {e}")
+            return translated_text
             
     def detect_chapters(self, text):
         """Structure AI - detect chapter boundaries in raw text."""
@@ -294,18 +353,29 @@ Provide the improved translation:"""
             import json
             return json.dumps([])
             
-        system_prompt = "You are a professional editor. Identify the starting lines of all chapters in this text. Provide the chapter title and the exact first few words. Return only a JSON list."
-        user_prompt = f"Text to analyze:\n{text[:8000]}\n\nJSON Output: [{{'title': '...', 'start_line': '...'}}]"
-
+        system_prompt = "Identify starting lines of chapters. Return JSON list: [{{'title': '...', 'start_line': '...'}}]"
+        
+        # We use en-fr as dummy codes if we don't know the project context here, 
+        # but usually it's better than nothing.
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            # Adaptation for TranslateGemma: single user message
-            full_prompt = f"{system_prompt}\n\nProduce only the requested JSON list.\n\n\n{user_prompt}"
-            messages = [{"role": "user", "content": full_prompt}]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "source_lang_code": "zh",
+                            "target_lang_code": "fr",
+                            "text": f"[[TASK: CHAPTER DETECTION]]\n{system_prompt}\n\nText:\n{text[:8000]}"
+                        }
+                    ]
+                }
+            ]
         else:
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": f"Text:\n{text[:8000]}"}
             ]
 
         try:
