@@ -124,10 +124,16 @@ class MainWindow(QMainWindow):
         btn_search.clicked.connect(self.show_search_replace)
         btn_search.setCursor(Qt.CursorShape.PointingHandCursor)
         
+        btn_stats = QPushButton("Statistics")
+        btn_stats.setStyleSheet("background-color: #1e293b; color: #e2e8f0; border-radius: 4px; padding: 6px 12px;")
+        btn_stats.clicked.connect(self.show_statistics)
+        btn_stats.setCursor(Qt.CursorShape.PointingHandCursor)
+        
         header_layout.addWidget(btn_new)
         header_layout.addWidget(btn_open)
         header_layout.addWidget(btn_batch)
         header_layout.addWidget(btn_search)
+        header_layout.addWidget(btn_stats)
         header_layout.addWidget(btn_settings)
         header_layout.addWidget(btn_export)
         main_layout.addWidget(header)
@@ -1037,4 +1043,60 @@ class MainWindow(QMainWindow):
         
         self.load_segments()
         QMessageBox.information(self, "Replace Complete", f"Replaced in {count} segments.")
+
+    def show_statistics(self):
+        """Show project statistics."""
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Error", "No active project.")
+            return
+            
+        project = self.project_manager.current_project
+        segments = self.project_manager.get_segments()
+        
+        total_segments = len(segments)
+        untranslated = sum(1 for s in segments if not s.target_text or s.status == 'untranslated')
+        machine = sum(1 for s in segments if s.status == 'translated')
+        ai_refined = sum(1 for s in segments if s.status == 'ai_refined')
+        validated = sum(1 for s in segments if s.status == 'validated')
+        
+        source_words = sum(len(s.source_text.split()) for s in segments)
+        target_words = sum(len(s.target_text.split()) if s.target_text else 0 for s in segments)
+        
+        progress = int(((total_segments - untranslated) / total_segments * 100)) if total_segments > 0 else 0
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Statistics - {project.name}")
+        dialog.resize(400, 350)
+        layout = QVBoxLayout(dialog)
+        
+        title = QLabel(f"<h2>{project.name}</h2>")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        info = QLabel(f"""
+<b>Languages:</b> {project.source_language} → {project.target_language}<br>
+<b>Genre:</b> {project.genre or 'general'}<br><br>
+
+<b>Segments:</b> {total_segments}<br>
+<b>Progress:</b> {progress}%<br><br>
+
+<b>Status Breakdown:</b><br>
+• Untranslated: {untranslated}<br>
+• Machine Translated: {machine}<br>
+• AI Refined: {ai_refined}<br>
+• Validated: {validated}<br><br>
+
+<b>Word Count:</b><br>
+• Source: {source_words:,} words<br>
+• Target: {target_words:,} words
+        """)
+        info.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(info)
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+        
+        dialog.exec()
+
 
