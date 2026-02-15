@@ -3,15 +3,15 @@ import logging
 # Define placeholders or try-imports to handle platform/version incompatibilities
 try:
     from src.engines.nllb_engine import NLLBEngine
-except ImportError:
+except Exception as e:
     NLLBEngine = None
-    logging.warning("NLLBEngine could not be loaded.")
+    logging.warning(f"NLLBEngine could not be loaded: {e}")
 
 try:
     from src.engines.llm_engine import LLMEngine
-except ImportError:
+except Exception as e:
     LLMEngine = None
-    logging.warning("LLMEngine could not be loaded.")
+    logging.warning(f"LLMEngine could not be loaded: {e}")
 
 try:
     from src.engines.argos_engine import ArgosEngine

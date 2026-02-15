@@ -11,6 +11,7 @@ PyMuPDF>=1.23.0  # aka fitz
 ctranslate2>=4.0.0
 sentencepiece>=0.1.99
 argostranslate>=1.9.0
+transformers>=4.35.0
 openai>=1.10.0  # For LLM integration
 
 # Database & Utils
