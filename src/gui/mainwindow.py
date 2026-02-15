@@ -32,6 +32,45 @@ class MainWindow(QMainWindow):
         self.apply_theme()
         
         self.init_ui()
+        self.setup_shortcuts()
+        
+    def setup_shortcuts(self):
+        """Set up keyboard shortcuts."""
+        from PyQt6.QtGui import QShortcut, QKeySequence
+        from PyQt6.QtCore import Qt
+        
+        shortcuts = [
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_N, self.new_project_dialog),
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_O, self.open_project_dialog),
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_S, self.save_current_segment),
+            (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier | Qt.Key.Key_C, self.batch_translate),
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_F, self.show_search_replace),
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_G, self.generate_glossary_ai),
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_R, self.auto_translate_current),
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_E, self.editor_ai_refine),
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_Comma, self.show_settings),
+            (Qt.Key.Key_F5, self.show_statistics),
+        ]
+        
+        for key, slot in shortcuts:
+            shortcut = QShortcut(self)
+            shortcut.setKey(QKeySequence(key))
+            shortcut.activated.connect(slot)
+
+    def save_current_segment(self):
+        """Save current segment (Ctrl+S)."""
+        if self.current_segment_index == -1:
+            return
+        for i in range(self.cards_layout.count() - 1):
+            widget = self.cards_layout.itemAt(i).widget()
+            if isinstance(widget, SegmentCard) and widget.segment_id == self.current_segment_index:
+                text = widget.target_edit.toPlainText()
+                widget.segment.target_text = text
+                if text:
+                    widget.segment.status = 'translated'
+                widget.segment.save()
+                self.status_bar.showMessage(f"Segment {self.current_segment_index} saved.")
+                break
         
     def apply_theme(self):
         import json
