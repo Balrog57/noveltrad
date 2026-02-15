@@ -1,4 +1,4 @@
-from src.core.database import init_db, Project, Chapter, Segment, GlossaryTerm
+from src.core.database import init_db, Project, Chapter, Segment, GlossaryTerm, TranslationMemory
 from src.formats.txt_handler import TxtHandler
 from src.formats.epub_handler import EpubHandler
 from src.formats.docx_handler import DocxHandler
@@ -165,4 +165,125 @@ class ProjectManager:
             valid_segments.append(seg)
             
         handler.write(output_path, valid_segments, original_file_path=self.current_project.file_path)
+
+    def add_to_translation_memory(self, source_text, target_text, source_lang=None, target_lang=None):
+        """Add a validated segment to translation memory."""
+        if not self.current_project:
+            return None
+        src = source_lang or self.current_project.source_language
+        tgt = target_lang or self.current_project.target_language
+        return TranslationMemory.create(
+            project=self.current_project,
+            source_lang=src,
+            target_lang=tgt,
+            source_text=source_text,
+            target_text=target_text
+        )
+
+    def search_translation_memory(self, text, source_lang=None, target_lang=None, threshold=60):
+        """Search TM for similar segments using fuzzy matching."""
+        if not self.current_project:
+            return []
+        src = source_lang or self.current_project.source_language
+        tgt = target_lang or self.current_project.target_language
+        
+        results = TranslationMemory.select().where(
+            (TranslationMemory.source_lang == src) &
+            (TranslationMemory.target_lang == tgt)
+        )
+        
+        matches = []
+        for tm in results:
+            similarity = self._calculate_similarity(text, tm.source_text)
+            if similarity >= threshold:
+                matches.append({
+                    'source': tm.source_text,
+                    'target': tm.target_text,
+                    'similarity': similarity
+                })
+        
+        return sorted(matches, key=lambda x: x['similarity'], reverse=True)[:10]
+
+    def _calculate_similarity(self, s1, s2):
+        """Calculate simple similarity percentage between two strings."""
+        if not s1 or not s2:
+            return 0
+        s1, s2 = s1.lower(), s2.lower()
+        if s1 == s2:
+            return 100
+        
+        len1, len2 = len(s1), len(s2)
+        max_len = max(len1, len2)
+        if max_len == 0:
+            return 100
+        
+        matches = sum(c1 == c2 for c1, c2 in zip(s1, s2))
+        return int((matches / max_len) * 100)
+
+    def export_tm(self, output_path):
+        """Export translation memory to TMX format."""
+        if not self.current_project:
+            return
+        
+        tms = TranslationMemory.select().where(TranslationMemory.project == self.current_project)
+        
+        tmx_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
+        tmx_content += '<!DOCTYPE tmx SYSTEM "tmx14.dtd">\n'
+        tmx_content += '<tmx version="1.4">\n'
+        tmx_content += '  <header creationtool="NovelTrad" datatype="plaintext"/>\n'
+        tmx_content += '  <body>\n'
+        
+        for tm in tms:
+            tmx_content += '    <tu>\n'
+            tmx_content += f'      <tuv xml:lang="{tm.source_lang}"><seg>{self._escape_xml(tm.source_text)}</seg></tuv>\n'
+            tmx_content += f'      <tuv xml:lang="{tm.target_lang}"><seg>{self._escape_xml(tm.target_text)}</seg></tuv>\n'
+            tmx_content += '    </tu>\n'
+        
+        tmx_content += '  </body>\n'
+        tmx_content += '</tmx>'
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(tmx_content)
+
+    def import_tm(self, file_path):
+        """Import translation memory from TMX format."""
+        import xml.etree.ElementTree as ET
+        
+        count = 0
+        try:
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            
+            for tu in root.findall('.//tu'):
+                tuvs = tu.findall('tuv')
+                if len(tuvs) >= 2:
+                    src_lang = tuvs[0].get('{http://www.w3.org/XML/1998/namespace}lang') or tuvs[0].get('xml:lang', 'en')
+                    tgt_lang = tuvs[1].get('{http://www.w3.org/XML/1998/namespace}lang') or tuvs[1].get('xml:lang', 'fr')
+                    src_text = tuvs[0].find('seg').text or ''
+                    tgt_text = tuvs[1].find('seg').text or ''
+                    
+                    if src_text and tgt_text:
+                        TranslationMemory.create(
+                            project=self.current_project,
+                            source_lang=src_lang,
+                            target_lang=tgt_lang,
+                            source_text=src_text,
+                            target_text=tgt_text
+                        )
+                        count += 1
+        except Exception as e:
+            print(f"TM Import Error: {e}")
+        
+        return count
+
+    def _escape_xml(self, text):
+        """Escape XML special characters."""
+        if not text:
+            return ""
+        return (text.replace('&', '&amp;')
+                   .replace('<', '&lt;')
+                   .replace('>', '&gt;')
+                   .replace('"', '&quot;')
+                   .replace("'", '&apos;'))
+
 

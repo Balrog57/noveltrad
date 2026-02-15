@@ -57,9 +57,22 @@ class GlobalDictionaryTerm(BaseModel):
             (('source_lang', 'target_lang', 'source_term'), True),
         )
 
+class TranslationMemory(BaseModel):
+    source_lang = CharField()
+    target_lang = CharField()
+    source_text = TextField()
+    target_text = TextField()
+    project = ForeignKeyField(Project, backref='translation_memory', null=True)
+    created_at = DateTimeField(default=datetime.datetime.now)
+    
+    class Meta:
+        indexes = (
+            (('source_lang', 'target_lang', 'source_text'), False),
+        )
+
 def init_db(db_path):
     db.init(db_path)
     db.connect()
     # Create tables separately to handle references
-    db.create_tables([Project, Chapter, Segment, GlossaryTerm, GlobalDictionaryTerm])
+    db.create_tables([Project, Chapter, Segment, GlossaryTerm, GlobalDictionaryTerm, TranslationMemory])
     return db
