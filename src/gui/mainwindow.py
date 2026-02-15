@@ -579,36 +579,40 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Generating glossary with AI...")
             QApplication.processEvents()
             
-            # Get all source text from current chapter or project
             project = self.project_manager.current_project
             segments = self.project_manager.get_segments()
             
             if not segments:
                 QMessageBox.warning(self, "Error", "No segments found.")
                 return
-                
-            # Combine text for analysis (limit to first ~5000 chars)
+            
             combined_text = " ".join([s.source_text for s in segments[:100]])[:5000]
             
-            # Get existing glossary to avoid duplicates
             existing_terms = list(GlossaryTerm.select().where(GlossaryTerm.project == project))
             existing_dict = {t.source_term: t.target_term for t in existing_terms}
             
-            # Call LLM to generate glossary
-            result_json = self.llm_engine.generate_glossary(
-                combined_text,
-                src_lang=project.source_language,
-                tgt_lang=project.target_language,
-                genre="general"  # Could be made configurable
-            )
+            if existing_terms:
+                result_json = self.llm_engine.generate_glossary_incremental(
+                    combined_text,
+                    existing_terms,
+                    src_lang=project.source_language,
+                    tgt_lang=project.target_language,
+                    genre=project.genre or "general"
+                )
+            else:
+                result_json = self.llm_engine.generate_glossary(
+                    combined_text,
+                    src_lang=project.source_language,
+                    tgt_lang=project.target_language,
+                    genre=project.genre or "general"
+                )
             
             import json
             try:
-                new_terms = json.loads(result_json)
+                new_terms = json.loads(result_json) if result_json else []
             except:
                 new_terms = []
             
-            # Add new terms to database
             added_count = 0
             for term in new_terms:
                 source = term.get("source", "")
