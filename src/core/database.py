@@ -45,6 +45,14 @@ class GlossaryTerm(BaseModel):
     target_term = CharField()
     category = CharField(default='general') # name, location, skill, etc.
     is_auto_generated = BooleanField(default=False)
+    
+    # Phase C: Enriched Glossary
+    variants = TextField(null=True) # JSON list of strings
+    priority = IntegerField(default=10) # Higher number = higher priority
+    notes = TextField(null=True)
+    case_sensitive = BooleanField(default=True)
+    source = CharField(default='manual') # manual, ai_generated, validated
+    created_at = DateTimeField(default=datetime.datetime.now)
 
 class GlobalDictionaryTerm(BaseModel):
     source_lang = CharField() # e.g., 'en', 'zh', 'de'
@@ -77,4 +85,22 @@ def init_db(db_path):
     db.connect()
     # Create tables separately to handle references
     db.create_tables([Project, Chapter, Segment, GlossaryTerm, GlobalDictionaryTerm, TranslationMemory])
+    
+    # Phase C: Auto-migration for existing databases
+    # Silence errors if columns already exist
+    migrations = [
+        ('glossaryterm', 'variants', 'TEXT'),
+        ('glossaryterm', 'priority', 'INTEGER DEFAULT 10'),
+        ('glossaryterm', 'notes', 'TEXT'),
+        ('glossaryterm', 'case_sensitive', 'INTEGER DEFAULT 1'),
+        ('glossaryterm', 'source', "VARCHAR(255) DEFAULT 'manual'"),
+        ('glossaryterm', 'created_at', 'DATETIME')
+    ]
+    
+    for table, col, type_def in migrations:
+        try:
+            db.execute_sql(f'ALTER TABLE {table} ADD COLUMN {col} {type_def}')
+        except:
+            pass
+            
     return db

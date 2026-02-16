@@ -20,10 +20,17 @@ except Exception as e:
     ArgosEngine = None
     logging.error(f"ArgosEngine could not be loaded: {e}")
 
+try:
+    from src.engines.google_engine import GoogleEngine
+except Exception as e:
+    GoogleEngine = None
+    logging.warning(f"GoogleEngine could not be loaded: {e}")
+
 ENGINES = {}
 if NLLBEngine: ENGINES['NLLB'] = NLLBEngine
 if LLMEngine: ENGINES['LLM'] = LLMEngine
 if ArgosEngine: ENGINES['Argos'] = ArgosEngine
+if GoogleEngine: ENGINES['Google'] = GoogleEngine
 
 def get_engine_class(name):
     """Returns the class for the given engine name."""

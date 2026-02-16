@@ -1,5 +1,6 @@
 from src.core.database import GlossaryTerm, Project, db
 import csv
+import json
 import xml.etree.ElementTree as ET
 
 class GlossaryManager:
@@ -9,7 +10,7 @@ class GlossaryManager:
     def set_project(self, project: Project):
         self.project = project
 
-    def add_term(self, source, target, category="general"):
+    def add_term(self, source, target, category="general", notes=None, priority=10, case_sensitive=True, variants=None):
         if not self.project:
             return None
             
@@ -18,7 +19,11 @@ class GlossaryManager:
                 project=self.project,
                 source_term=source,
                 target_term=target,
-                category=category
+                category=category,
+                notes=notes,
+                priority=priority,
+                case_sensitive=case_sensitive,
+                variants=json.dumps(variants) if variants else None
             )
         except Exception:
             # Handle duplicates or DB errors
@@ -31,12 +36,45 @@ class GlossaryManager:
         return GlossaryTerm.select().where(
             (GlossaryTerm.project == self.project) &
             (GlossaryTerm.source_term.contains(query))
-        )
+        ).order_by(GlossaryTerm.priority.desc())
+
+    def find_matches(self, text):
+        """Find all glossary terms appearing in the text."""
+        if not self.project or not text:
+            return []
+            
+        terms = self.get_all()
+        matches = []
+        
+        for term in terms:
+            candidates = [term.source_term]
+            if term.variants:
+                try:
+                    candidates.extend(json.loads(term.variants))
+                except: pass
+            
+            for cand in candidates:
+                if not cand: continue
+                
+                found = False
+                if term.case_sensitive:
+                    if cand in text:
+                        found = True
+                else:
+                    if cand.lower() in text.lower():
+                        found = True
+                        
+                if found:
+                    matches.append(term)
+                    break
+        
+        matches.sort(key=lambda x: (x.priority, len(x.source_term)), reverse=True)
+        return matches
 
     def get_all(self):
         if not self.project:
             return []
-        return list(GlossaryTerm.select().where(GlossaryTerm.project == self.project))
+        return list(GlossaryTerm.select().where(GlossaryTerm.project == self.project).order_by(GlossaryTerm.priority.desc()))
 
     def delete_term(self, term_id):
         GlossaryTerm.delete_by_id(term_id)
@@ -51,7 +89,15 @@ class GlossaryManager:
             with db.atomic():
                 for row in reader:
                     if len(row) >= 2:
-                        self.add_term(row[0], row[1], row[2] if len(row) > 2 else "general")
+                        source = row[0]
+                        target = row[1]
+                        category = row[2] if len(row) > 2 else "general"
+                        notes = row[3] if len(row) > 3 else None
+                        try:
+                            priority = int(row[4]) if len(row) > 4 else 10
+                        except: priority = 10
+                        
+                        self.add_term(source, target, category, notes, priority)
                         count += 1
         return count
 

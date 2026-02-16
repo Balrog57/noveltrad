@@ -22,6 +22,8 @@ from src.gui.qa_dialog import QADialog
 from src.gui.chat_widget import ChatWidget
 from src.gui.custom_instructions_dialog import CustomInstructionsDialog
 from src.core.concordancer import Concordancer
+from src.gui.glossary_editor_dialog import GlossaryEditorDialog
+from src.gui.statistics_dialog import StatisticsDialog
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -238,7 +240,9 @@ class MainWindow(QMainWindow):
         self.btn_align = create_header_btn("compare_arrows", "Alignement (TAO)", self.show_alignment_dialog)
         self.btn_qa = create_header_btn("verified", "QA Check", self.show_qa_dialog)
         self.btn_layout = create_header_btn("view_column", "Basculer Vue (H/V)", self.toggle_layout_mode)
+        self.btn_layout = create_header_btn("view_column", "Basculer Vue (H/V)", self.toggle_layout_mode)
         self.btn_instruct = create_header_btn("assignment", "Instructions IA", self.show_custom_instructions_dialog)
+        self.btn_stats = create_header_btn("analytics", "Statistiques & Coûts", self.show_statistics_dialog)
         
         header_layout.addWidget(self.btn_new)
         header_layout.addWidget(self.btn_open)
@@ -248,6 +252,7 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.btn_qa)
         header_layout.addWidget(self.btn_layout)
         header_layout.addWidget(self.btn_instruct)
+        header_layout.addWidget(self.btn_stats)
         header_layout.addWidget(sep2)
         header_layout.addWidget(self.btn_settings)
         
@@ -362,6 +367,14 @@ class MainWindow(QMainWindow):
         gloss_head.addWidget(gloss_icon)
         gloss_head.addWidget(gloss_title)
         gloss_head.addStretch()
+        
+        self.btn_manage_glossary = QPushButton()
+        self.btn_manage_glossary.setIcon(self.colorize_icon("settings", "#94a3b8")) # Using settings icon for management
+        self.btn_manage_glossary.setFixedSize(24, 24)
+        self.btn_manage_glossary.setToolTip("Manage Glossary")
+        self.btn_manage_glossary.setStyleSheet("border: none;")
+        self.btn_manage_glossary.clicked.connect(self.open_glossary_manager)
+        gloss_head.addWidget(self.btn_manage_glossary)
         gloss_box.addLayout(gloss_head)
         
         self.glossary_list = QListWidget()
@@ -986,6 +999,24 @@ class MainWindow(QMainWindow):
             f"Imported {count} terms.\nErrors: {errors}"
         )
         self.status_bar.showMessage(f"Dictionary import complete: {count} terms.")
+
+    def open_glossary_manager(self):
+        """Open the comprehensive glossary editor."""
+        if not self.project_manager.current_project: return
+        
+        dialog = GlossaryEditorDialog(self, self.project_manager.current_project)
+        dialog.exec()
+        # Refresh glossary list in main window
+        self.load_glossary()
+
+    def show_statistics_dialog(self):
+        """Show project statistics and cost estimation."""
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Infos", "Aucun projet ouvert.")
+            return
+            
+        dialog = StatisticsDialog(self.project_manager.current_project, self)
+        dialog.exec()
 
     def batch_translate(self):
         """Translate all untranslated segments in the current chapter"""
