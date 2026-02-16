@@ -64,6 +64,19 @@ class ArgosEngine(TranslationEngine):
         return [self.translate(t, src_lang, tgt_lang) for t in texts]
 
     def get_supported_languages(self):
+        """Returns all languages that COULD be installed/supported."""
+        try:
+            packages = self.get_available_models()
+            codes = set()
+            for pkg in packages:
+                codes.add(pkg['from_code'])
+                codes.add(pkg['to_code'])
+            return sorted(list(codes))
+        except:
+            return []
+
+    def get_installed_languages(self):
+        """Returns only currently installed language codes."""
         try:
             languages = argostranslate.translate.get_installed_languages()
             return [lang.code for lang in languages]

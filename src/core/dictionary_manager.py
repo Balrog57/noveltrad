@@ -101,6 +101,10 @@ class DictionaryManager:
         for term in GlobalDictionaryTerm.select(GlobalDictionaryTerm.source_lang, GlobalDictionaryTerm.target_lang).distinct():
             pairs.add((term.source_lang, term.target_lang))
         return list(pairs)
+
+    def has_language(self, code):
+        """Checks if there are any terms with this source code."""
+        return GlobalDictionaryTerm.select().where(GlobalDictionaryTerm.source_lang == code).exists()
         
     def import_csv(self, file_path, src_lang, tgt_lang):
         """Import CSV with format: source,target[,context]"""
@@ -163,20 +167,161 @@ class DictionaryManager:
         
         return stats
         
-    def bulk_add(self, terms_list):
-        """Bulk add list of terms [(src_lang, tgt_lang, source, target, context), ...]"""
-        count = 0
-        with db.atomic():
-            for item in terms_list:
-                try:
-                    GlobalDictionaryTerm.create(
-                        source_lang=item[0],
-                        target_lang=item[1],
-                        source_term=item[2],
-                        target_term=item[3],
-                        context=item[4] if len(item) > 4 else None
-                    )
-                    count += 1
-                except Exception:
-                    pass
-        return count
+    def download_dictionary(self, language_code, callback=None):
+        """
+        Attempts to download a dictionary for the given language code.
+        Defaults to Kaikki.org (Language -> English definitions).
+        """
+        # specialized handling for Chinese -> French (CFDICT)
+        if language_code == 'zh':
+             return self._download_cfdict(callback)
+             
+        # generic handling: Kaikki (Language -> English)
+        return self._download_kaikki(language_code, callback)
+
+    def _download_cfdict(self, callback):
+        """Downloads CFDICT (Chinese -> French)."""
+        url = "https://raw.githubusercontent.com/settlen/cfdict/master/cfdict.u8"
+        try:
+            if callback: callback("Downloading CFDICT...", 10)
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            
+            # Save to temporary file
+            temp_path = os.path.join(os.path.dirname(self.db_path), "cfdict.temp")
+            with open(temp_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    
+            if callback: callback("Importing CFDICT...", 50)
+            
+            # Import (Format: Traditional Simplified [pinyin] /Meanings/)
+            count = 0
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                with db.atomic():
+                    for line in f:
+                        if line.startswith('#'): continue
+                        # Parse CFDICT line
+                        # This is a rough parser, CFDICT format is specific
+                        # Trad Simp [pinyin] /English/French/
+                        parts = line.split(' ')
+                        if len(parts) > 2:
+                            # Simply take the whole line for now or improve parsing
+                            # Better: use a library/regex
+                            # For now, we store raw line as "context" or simplistic parsing
+                            # source = Simplified (parts[1])
+                            # target = Meanings (after /)
+                            simp = parts[1]
+                            rest = " ".join(parts[2:])
+                            if '/' in rest:
+                                _, meanings = rest.split('/', 1)
+                                meanings = meanings.strip('/')
+                                self.add_term('zh', 'fr', simp, meanings)
+                                count += 1
+                                
+            os.remove(temp_path)
+            if callback: callback(f"Installed {count} terms.", 100)
+            return True
+            
+        except Exception as e:
+            print(f"CFDICT download failed: {e}")
+            return False
+
+    def _download_kaikki(self, code, callback):
+        """Downloads from Kaikki.org (Language -> English)."""
+        from src.engines.llm_engine import LANGUAGE_NAMES
+        
+        name = LANGUAGE_NAMES.get(code)
+        if not name:
+            name = LANGUAGE_NAMES.get(code.split('_')[0]) # Try generic code
+            
+        # Kaikki uses full English names, Title Case (e.g. 'French', 'Japanese')
+        if not name:
+            print(f"Could not find name for code {code}")
+            return False
+            
+        # Ensure capitalization
+        name = name.title()
+        
+        url = f"https://kaikki.org/dictionary/{name}/words.jsonl.gz"
+        
+        try:
+            if callback: callback(f"Downloading {name} dictionary...", 10)
+            response = requests.get(url, stream=True)
+            if response.status_code == 404:
+                # Try finding mapped name (sometimes specific handling needed)
+                print(f"Dictionary not found for {name} at {url}")
+                return False
+                
+            response.raise_for_status()
+            
+            # Save .gz
+            gz_path = os.path.join(os.path.dirname(self.db_path), f"{code}_dict.jsonl.gz")
+            with open(gz_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            if callback: callback(f"Extracting {name} dictionary...", 40)
+            
+            # Extract and Import
+            import gzip
+            count = 0
+            
+            # We process line by line to avoid memory issues
+            with gzip.open(gz_path, 'rt', encoding='utf-8') as f:
+                with db.atomic(): # Transaction might be too large for whole file?
+                    # Batch commit every 1000
+                    batch_size = 1000
+                    batch = []
+                    
+                    for line in f:
+                        try:
+                            entry = json.loads(line)
+                            word = entry.get('word')
+                            senses = entry.get('senses', [])
+                            
+                            if not word or not senses: continue
+                            
+                            # Get first gloss
+                            gloss = None
+                            for sense in senses:
+                                if 'glosses' in sense:
+                                    gloss = "; ".join(sense['glosses'])
+                                    break
+                            
+                            if gloss:
+                                batch.append(('zh' if code == 'zh' else code, 'en', word, gloss, None))
+                                
+                            if len(batch) >= batch_size:
+                                self.bulk_add_safe(batch)
+                                count += len(batch)
+                                batch = []
+                                if callback and count % 5000 == 0:
+                                    callback(f"Imported {count} terms...", 50)
+                                    
+                        except Exception:
+                            continue
+                    
+                    if batch:
+                        self.bulk_add_safe(batch)
+                        count += len(batch)
+                        
+            os.remove(gz_path)
+            if callback: callback(f"Installed {count} terms.", 100)
+            return True
+            
+        except Exception as e:
+            print(f"Kaikki download failed: {e}")
+            return False
+
+    def bulk_add_safe(self, terms_list):
+        """Bulk add with conflict handling."""
+        # SQLite bulk insert
+        # We use a custom query since peewee's bulk_create might not handleignore
+        data = [{'source_lang': i[0], 'target_lang': i[1], 'source_term': i[2], 'target_term': i[3], 'context': i[4]} for i in terms_list]
+        try:
+             # Insert many
+             with db.atomic():
+                 GlobalDictionaryTerm.insert_many(data).on_conflict_ignore().execute()
+        except:
+             pass

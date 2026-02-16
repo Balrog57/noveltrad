@@ -72,29 +72,52 @@ class MainWindow(QMainWindow):
                     self.project_manager.add_to_tm(widget.segment.source_text, text)
                 widget.segment.save()
                 self.status_bar.showMessage(f"Segment {self.current_segment_index} saved.")
+                self.update_footer_stats()
                 break
         
     def apply_theme(self):
         import json
         import os
+        from PyQt6.QtGui import QFont
         
         config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config.json")
         theme = "Dark (Default)"
+        font_size_name = "Medium"
         
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                 theme = config.get('theme', 'Dark (Default)')
+                font_size_name = config.get('font_size', 'Medium')
             except:
                 pass
-                
-        if theme == "Light":
-            from src.gui.styles import LIGHT_THEME
-            self.setStyleSheet(LIGHT_THEME)
+        
+        # Apply Font Size
+        size_map = {
+            "Small": 12,
+            "Medium": 14,
+            "Large": 16
+        }
+        # Set global font
+        if font_size_name == "Large":
+            point_size = 16
+        elif font_size_name == "Small":
+            point_size = 12
         else:
-            from src.gui.styles import DARK_THEME
+            point_size = 14
+            
+        # Security: Never less than 1
+        point_size = max(1, point_size)
+            
+        self.setFont(QFont("Inter", point_size))
+        
+        # Load Stylesheet
+        from src.gui.styles import DARK_THEME, LIGHT_THEME
+        if "Dark" in theme:
             self.setStyleSheet(DARK_THEME)
+        else:
+            self.setStyleSheet(LIGHT_THEME)
         
     def init_ui(self):
         # Central Widget & Main Layout
@@ -104,332 +127,310 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Helper for icons
+        icon_path = lambda name: os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "icons", f"{name}.svg")
+        
         # 1. Header Area
-        header = QFrame()
-        header.setStyleSheet("background-color: #0b0f19; border-bottom: 1px solid #1e293b;")
-        header.setFixedHeight(60)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(20, 0, 20, 0)
+        self.header = QFrame()
+        self.header.setObjectName("Header")
+        self.header.setFixedHeight(56)
+        header_layout = QHBoxLayout(self.header)
+        header_layout.setContentsMargins(16, 0, 16, 0)
+        header_layout.setSpacing(12)
         
-        # Logo/Title
-        logo_container = QWidget()
-        logo_layout = QHBoxLayout(logo_container)
-        logo_layout.setContentsMargins(0, 0, 0, 0)
-        logo_layout.setSpacing(8)
+        # Logo & Premium Badge
+        logo_icon = QLabel()
+        logo_icon.setFixedSize(32, 32)
+        logo_icon.setPixmap(QIcon(icon_path("menu_book")).pixmap(24, 24))
+        logo_icon.setStyleSheet("background-color: #0d7ff2; border-radius: 4px;")
+        logo_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        title_label = QLabel("NovelTrad")
-        title_label.setObjectName("HeaderLabel")
+        title_container = QVBoxLayout()
+        title_container.setSpacing(0)
         
-        premium_badge = QLabel("PREMIUM")
-        premium_badge.setObjectName("PremiumBadge")
-        premium_badge.setFixedSize(65, 20)
-        premium_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_title = QLabel("NovelTrad")
+        main_title.setStyleSheet("font-size: 18px; font-weight: 800; color: white;")
         
-        logo_layout.addWidget(title_label)
-        logo_layout.addWidget(premium_badge)
-        header_layout.addWidget(logo_container)
+        premium_label = QLabel("PREMIUM")
+        premium_label.setStyleSheet("color: #0d7ff2; font-size: 9px; font-weight: 700; letter-spacing: 2px;")
         
-        # Project Title
-        self.project_label = QLabel()
-        self.project_label.setStyleSheet("color: #94a3b8; font-size: 13px; margin-left: 20px;")
-        header_layout.addWidget(self.project_label)
-            
+        title_container.addWidget(main_title)
+        title_container.addWidget(premium_label)
+        
+        header_layout.addWidget(logo_icon)
+        header_layout.addLayout(title_container)
+        
+        sep1 = QFrame()
+        sep1.setFixedWidth(1)
+        sep1.setFixedHeight(24)
+        sep1.setStyleSheet("background-color: #333333;")
+        header_layout.addWidget(sep1)
+        
+        # Project Info
+        project_info = QVBoxLayout()
+        project_info.setSpacing(2)
+        project_label = QLabel("Project:")
+        project_label.setObjectName("ProjectTitle")
+        self.project_name_label = QLabel("No Project Loaded")
+        self.project_name_label.setObjectName("ProjectName")
+        project_info.addWidget(project_label)
+        project_info.addWidget(self.project_name_label)
+        header_layout.addLayout(project_info)
+        
         header_layout.addStretch()
         
         # Header Actions
-        btn_new = QPushButton("+ New Project")
-        btn_new.setProperty("primary", True)
-        btn_new.clicked.connect(self.new_project_dialog)
-        btn_new.setCursor(Qt.CursorShape.PointingHandCursor)
+        def create_header_btn(icon_name, tooltip, callback):
+            btn = QPushButton()
+            btn.setObjectName("IconButton")
+            btn.setIcon(QIcon(icon_path(icon_name)))
+            btn.setIconSize(QSize(20, 20))
+            btn.setToolTip(tooltip)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(callback)
+            return btn
+
+        self.btn_open = create_header_btn("folder_open", "Open Project (Ctrl+O)", self.open_project_dialog)
+        self.btn_save = create_header_btn("save", "Save (Ctrl+S)", self.save_current_segment)
+        self.btn_export = create_header_btn("file_download", "Export", self.export_project_dialog)
         
-        btn_open = QPushButton("Open")
-        btn_open.clicked.connect(self.open_project_dialog)
-        btn_open.setCursor(Qt.CursorShape.PointingHandCursor)
+        sep2 = QFrame()
+        sep2.setFixedWidth(1)
+        sep2.setFixedHeight(24)
+        sep2.setStyleSheet("background-color: #333333;")
         
-        btn_settings = QPushButton("Settings")
-        btn_settings.clicked.connect(self.show_settings)
-        btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_settings = create_header_btn("settings", "Settings (Ctrl+,)", self.show_settings)
         
-        btn_export = QPushButton("Export")
-        btn_export.setProperty("primary", True)
-        btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
+        header_layout.addWidget(self.btn_open)
+        header_layout.addWidget(self.btn_save)
+        header_layout.addWidget(self.btn_export)
+        header_layout.addWidget(sep2)
+        header_layout.addWidget(self.btn_settings)
         
-        export_menu = QMenu(self)
-        export_menu.addAction("Export Translated File", self.export_project_dialog)
-        export_menu.addSeparator()
-        export_menu.addAction("Export TMX Memory", self.export_tmx_dialog)
-        export_menu.addAction("Import TMX Memory", self.import_tmx_dialog)
-        btn_export.setMenu(export_menu)
+        main_layout.addWidget(self.header)
         
-        btn_batch = QPushButton("Batch Translate")
-        btn_batch.setStyleSheet("background-color: #7c3aed; color: white; border-radius: 4px; padding: 6px 12px; font-weight: bold;")
-        btn_batch.clicked.connect(self.batch_translate)
-        btn_batch.setCursor(Qt.CursorShape.PointingHandCursor)
+        # 2. Main Workspace (Splitter)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setHandleWidth(1)
+        self.splitter.setStyleSheet("QSplitter::handle { background-color: #333333; }")
         
-        btn_search = QPushButton("Search & Replace")
-        btn_search.setStyleSheet("background-color: #1e293b; color: #e2e8f0; border-radius: 4px; padding: 6px 12px;")
-        btn_search.clicked.connect(self.show_search_replace)
-        btn_search.setCursor(Qt.CursorShape.PointingHandCursor)
-        
-        header_layout.addWidget(btn_new)
-        header_layout.addWidget(btn_open)
-        header_layout.addWidget(btn_batch)
-        header_layout.addWidget(btn_search)
-        header_layout.addWidget(btn_settings)
-        header_layout.addWidget(btn_export)
-        main_layout.addWidget(header)
-        
-        # 2. Workspace Splitter (Sidebar | Center | Right)
-        workspace_layout = QHBoxLayout()
-        workspace_layout.setContentsMargins(0, 0, 0, 0)
-        workspace_layout.setSpacing(0)
-        
-        # A. Left Sidebar (Chapters)
+        # Left: Chapters
         self.sidebar_container = QFrame()
-        self.sidebar_container.setObjectName("SidebarContainer")
-        self.sidebar_container.setFixedWidth(260)
-        
+        self.sidebar_container.setObjectName("Sidebar")
         sidebar_layout = QVBoxLayout(self.sidebar_container)
-        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setContentsMargins(0, 8, 0, 0)
+        
+        chapters_header = QHBoxLayout()
+        chapters_header.setContentsMargins(16, 8, 16, 8)
+        ch_label = QLabel("CHAPTERS")
+        ch_label.setObjectName("SidebarTitle")
+        chapters_header.addWidget(ch_label)
+        chapters_header.addStretch()
+        sidebar_layout.addLayout(chapters_header)
         
         self.sidebar = Sidebar()
-        # Connect signal
         self.sidebar.itemClicked.connect(self.on_chapter_selected)
         sidebar_layout.addWidget(self.sidebar)
         
-        # Structure AI Button at the bottom of sidebar
-        self.btn_structure = QPushButton("Structure AI")
-        self.btn_structure.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_structure.setStyleSheet("""
-            QPushButton {
-                background-color: #1e293b;
-                color: #e2e8f0;
-                border: 1px solid #334155;
-                margin: 10px 20px;
-                padding: 10px;
-                font-weight: bold;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #334155;
-                border-color: #3b82f6;
-            }
-        """)
-        self.btn_structure.clicked.connect(self.auto_structure_chapters)
-        sidebar_layout.addWidget(self.btn_structure)
-        
-        workspace_layout.addWidget(self.sidebar_container)
-        
-        # B. Center Content (Scrollable List of Cards)
-        center_area = QWidget()
-        center_layout = QVBoxLayout(center_area)
-        center_layout.setContentsMargins(0, 0, 0, 0)
+        # Center: Editor
+        editor_container = QWidget()
+        editor_layout = QVBoxLayout(editor_container)
+        editor_layout.setContentsMargins(0, 0, 0, 0)
         
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         self.cards_container = QWidget()
-        self.cards_container.setStyleSheet("background: transparent;")
         self.cards_layout = QVBoxLayout(self.cards_container)
-        self.cards_layout.setContentsMargins(30, 30, 30, 30)
-        self.cards_layout.setSpacing(20)
-        self.cards_layout.addStretch() # Push items up
+        self.cards_layout.setContentsMargins(24, 24, 24, 24)
+        self.cards_layout.setSpacing(24)
+        self.cards_layout.addStretch()
         
         self.scroll_area.setWidget(self.cards_container)
-        center_layout.addWidget(self.scroll_area)
+        editor_layout.addWidget(self.scroll_area)
         
-        workspace_layout.addWidget(center_area, stretch=1)
+        # Right: Tools
+        self.right_panel = QFrame()
+        self.right_panel.setObjectName("RightPanel")
+        self.right_panel.setFixedWidth(320)
+        right_layout = QVBoxLayout(self.right_panel)
+        right_layout.setContentsMargins(16, 16, 16, 16)
+        right_layout.setSpacing(16)
         
-        # C. Right Panel (AI / Glossary)
-        right_panel = QFrame()
-        right_panel.setObjectName("RightPanel")
-        right_panel.setFixedWidth(340)
-        right_panel.setStyleSheet("background-color: #0f121a; border-left: 1px solid #1e293b;")
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(20, 20, 20, 20)
-        right_layout.setSpacing(20)
+        # Dictionary Support
+        dict_box = QVBoxLayout()
+        dict_box.setSpacing(8)
+        dict_head = QHBoxLayout()
+        dict_icon = QLabel()
+        dict_icon.setPixmap(QIcon(icon_path("search")).pixmap(16, 16))
+        dict_title = QLabel("DICTIONARY")
+        dict_title.setObjectName("SidebarTitle")
+        dict_head.addWidget(dict_icon)
+        dict_head.addWidget(dict_title)
+        dict_head.addStretch()
+        dict_box.addLayout(dict_head)
         
-        # AI Suggestions Box
-        ai_box = QFrame()
-        ai_box_layout = QVBoxLayout(ai_box)
-        ai_box_layout.setContentsMargins(0,0,0,0)
-        
-        ai_label = QLabel("AI SUGGESTIONS")
-        ai_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #94a3b8; letter-spacing: 1px;")
-        ai_box_layout.addWidget(ai_label)
-        
-        self.ai_card = QFrame()
-        self.ai_card.setStyleSheet("background-color: #111625; border-radius: 8px; border: 1px solid #1e293b; padding: 15px;")
-        self.ai_text = QLabel("Select a segment to see suggestions.")
-        self.ai_text.setWordWrap(True)
-        self.ai_text.setStyleSheet("color: #e2e8f0; font-family: 'Segoe UI'; font-size: 14px; line-height: 1.4;")
-        
-        ai_card_layout = QVBoxLayout(self.ai_card)
-        ai_card_layout.setContentsMargins(0,0,0,0)
-        ai_card_layout.addWidget(self.ai_text)
-        
-        ai_box_layout.addWidget(self.ai_card)
-        
-        btn_regen = QPushButton("Regenerate Suggestion")
-        btn_regen.setObjectName("RegenButton")
-        btn_regen.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_regen.setStyleSheet("background-color: #3b82f6; color: white; border-radius: 6px; padding: 10px; font-weight: bold;")
-        btn_regen.clicked.connect(self.auto_translate_current)
-        ai_box_layout.addWidget(btn_regen)
-        
-        btn_refine = QPushButton("Editor AI - Refine Translation")
-        btn_refine.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_refine.setStyleSheet("background-color: #8b5cf6; color: white; border-radius: 6px; padding: 8px; font-weight: bold; margin-top: 5px;")
-        btn_refine.clicked.connect(self.editor_ai_refine)
-        ai_box_layout.addWidget(btn_refine)
-        
-        right_layout.addWidget(ai_box)
-        
-        # Translation Memory Box
-        tm_box = QFrame()
-        tm_box_layout = QVBoxLayout(tm_box)
-        tm_box_layout.setContentsMargins(0,20,0,10)
-        
-        tm_label = QLabel("TRANSLATION MEMORY")
-        tm_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #94a3b8; letter-spacing: 1px;")
-        tm_box_layout.addWidget(tm_label)
-        
-        self.tm_list = QListWidget()
-        self.tm_list.setStyleSheet("""
-            QListWidget { background: transparent; border: none; }
-            QListWidget::item { background: #111625; border: 1px solid #1e293b; border-radius: 6px; margin-bottom: 6px; padding: 10px; font-size: 11px; color: #cbd5e1; }
-            QListWidget::item:hover { border: 1px solid #3b82f6; }
-        """)
-        tm_box_layout.addWidget(self.tm_list)
-        right_layout.addWidget(tm_box)
-        
-        # Dictionary Search Box
-        dict_box = QFrame()
-        dict_box_layout = QVBoxLayout(dict_box)
-        dict_box_layout.setContentsMargins(0,0,0,0)
-        
-        dict_header = QHBoxLayout()
-        dict_label = QLabel("DICTIONARY")
-        dict_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #94a3b8; letter-spacing: 1px;")
-        dict_header.addWidget(dict_label)
-        dict_header.addStretch()
-        
-        dict_box_layout.addLayout(dict_header)
-        
-        # Search input
-        self.dict_search = QLineEdit()
-        self.dict_search.setPlaceholderText("Search dictionary...")
-        self.dict_search.setStyleSheet("""
-            QLineEdit {
-                background-color: #1e293b;
-                border: 1px solid #334155;
-                border-radius: 4px;
-                padding: 8px;
-                color: #e2e8f0;
-            }
-            QLineEdit:focus {
-                border-color: #3b82f6;
-            }
-        """)
-        self.dict_search.returnPressed.connect(self.search_dictionary)
-        dict_box_layout.addWidget(self.dict_search)
-        
-        # Language selector
-        lang_container = QWidget()
-        lang_layout = QHBoxLayout(lang_container)
-        lang_layout.setContentsMargins(0, 0, 0, 0)
-        
+        dict_controls = QHBoxLayout()
         self.dict_src_lang = QComboBox()
-        self.dict_src_lang.addItems(['en', 'fr', 'zh', 'ja', 'de', 'ko', 'es', 'it', 'pt', 'ru', 'vi', 'th', 'ar'])
-        self.dict_src_lang.setCurrentText('en')
-        self.dict_src_lang.setStyleSheet("background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 4px;")
-        
-        swap_dict_btn = QPushButton("⇄")
-        swap_dict_btn.setFixedSize(24, 24)
-        swap_dict_btn.setStyleSheet("background: transparent; color: #3b82f6; font-weight: bold;")
-        def swap_dict_langs():
-            src = self.dict_src_lang.currentText()
-            tgt = self.dict_tgt_lang.currentText()
-            self.dict_src_lang.setCurrentText(tgt)
-            self.dict_tgt_lang.setCurrentText(src)
-        swap_dict_btn.clicked.connect(swap_dict_langs)
-
         self.dict_tgt_lang = QComboBox()
-        self.dict_tgt_lang.addItems(['fr', 'en', 'zh', 'ja', 'de', 'es', 'it', 'pt', 'ru', 'vi', 'th', 'ar'])
-        self.dict_tgt_lang.setCurrentText('fr')
-        self.dict_tgt_lang.setStyleSheet("background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 4px;")
+        # Populate with some defaults
+        for lang in ["Chinese", "English", "French", "Japanese"]:
+            self.dict_src_lang.addItem(lang)
+            self.dict_tgt_lang.addItem(lang)
+        self.dict_src_lang.setCurrentText("Chinese")
+        self.dict_tgt_lang.setCurrentText("French")
         
-        lang_layout.addWidget(self.dict_src_lang)
-        lang_layout.addWidget(swap_dict_btn)
-        lang_layout.addWidget(self.dict_tgt_lang)
-        lang_layout.addStretch()
-        dict_box_layout.addWidget(lang_container)
+        dict_controls.addWidget(self.dict_src_lang)
+        dict_controls.addWidget(self.dict_tgt_lang)
+        dict_box.addLayout(dict_controls)
         
-        # Results list
+        self.dict_input = QLineEdit()
+        self.dict_input.setPlaceholderText("Search word...")
+        self.dict_input.returnPressed.connect(self.on_dictionary_search)
+        dict_box.addWidget(self.dict_input)
+        
         self.dict_results = QListWidget()
-        self.dict_results.setStyleSheet("""
-            QListWidget { background: transparent; border: none; }
-            QListWidget::item { background: #111625; border: 1px solid #1e293b; border-radius: 6px; margin-bottom: 6px; padding: 8px; }
-        """)
-        dict_box_layout.addWidget(self.dict_results)
+        self.dict_results.setFixedHeight(120)
+        dict_box.addWidget(self.dict_results)
         
-        # Import dictionary button
-        btn_import_dict = QPushButton("Import Dictionary")
-        btn_import_dict.setStyleSheet("background-color: #1e293b; color: #94a3b8; border-radius: 4px; padding: 6px;")
-        btn_import_dict.clicked.connect(self.import_dictionary)
-        dict_box_layout.addWidget(btn_import_dict)
-        
-        right_layout.addWidget(dict_box)
-        
-        # Glossary Box
-        gloss_box = QFrame()
-        gloss_box_layout = QVBoxLayout(gloss_box)
-        gloss_box_layout.setContentsMargins(0,0,0,0)
-        
-        gloss_header = QHBoxLayout()
-        gloss_label = QLabel("GLOSSARY MATCHES")
-        gloss_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #94a3b8; letter-spacing: 1px;")
-        gloss_header.addWidget(gloss_label)
-        gloss_header.addStretch()
-        
-        btn_add_term = QPushButton("+")
-        btn_add_term.setFixedSize(24, 24)
-        btn_add_term.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_add_term.setStyleSheet("background: #1e293b; color: #3b82f6; border-radius: 4px;")
-        btn_add_term.clicked.connect(self.add_glossary_term)
-        gloss_header.addWidget(btn_add_term)
-        
-        gloss_box_layout.addLayout(gloss_header)
+        right_layout.addLayout(dict_box)
+
+        # Glossary
+        gloss_box = QVBoxLayout()
+        gloss_head = QHBoxLayout()
+        gloss_icon = QLabel()
+        gloss_icon.setPixmap(QIcon(icon_path("menu_book")).pixmap(16, 16))
+        gloss_title = QLabel("GLOSSARY MATCHES")
+        gloss_title.setObjectName("SidebarTitle")
+        gloss_head.addWidget(gloss_icon)
+        gloss_head.addWidget(gloss_title)
+        gloss_head.addStretch()
+        gloss_box.addLayout(gloss_head)
         
         self.glossary_list = QListWidget()
-        self.glossary_list.setStyleSheet("""
-            QListWidget { background: transparent; border: none; }
-            QListWidget::item { background: #111625; border: 1px solid #1e293b; border-radius: 6px; margin-bottom: 8px; padding: 10px; }
-            QListWidget::item:hover { border: 1px solid #3b82f6; }
-        """)
-        gloss_box_layout.addWidget(self.glossary_list)
+        self.glossary_list.setFixedHeight(150)
+        gloss_box.addWidget(self.glossary_list)
+        right_layout.addLayout(gloss_box)
         
-        # Glossary AI Button
-        btn_glossary_scan = QPushButton("Scan Chapter for Terms")
-        btn_glossary_scan.setObjectName("RegenButton")
-        btn_glossary_scan.setToolTip("Use AI to detect character names, items and locations in this chapter")
-        btn_glossary_scan.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_glossary_scan.setStyleSheet("background-color: #7c3aed; color: white; border-radius: 6px; padding: 8px; font-weight: bold; margin-top: 10px;")
-        btn_glossary_scan.clicked.connect(self.scan_chapter_glossary)
-        gloss_box_layout.addWidget(btn_glossary_scan)
+        # AI Suggestions
+        ai_box = QVBoxLayout()
+        ai_head = QHBoxLayout()
+        ai_icon = QLabel()
+        ai_icon.setPixmap(QIcon(icon_path("psychology")).pixmap(16, 16))
+        ai_box_title = QLabel("AI SUGGESTIONS")
+        ai_box_title.setObjectName("SidebarTitle")
+        ai_head.addWidget(ai_icon)
+        ai_head.addWidget(ai_box_title)
+        ai_head.addStretch()
+        ai_box.addLayout(ai_head)
         
-        right_layout.addWidget(gloss_box)
+        self.ai_card = QFrame()
+        self.ai_card.setObjectName("ToolSection")
+        self.ai_text = QLabel("Select a segment...")
+        self.ai_text.setWordWrap(True)
+        self.ai_text.setStyleSheet("color: #94a3b8; font-style: italic; min-height: 60px;")
+        ai_card_layout = QVBoxLayout(self.ai_card)
+        ai_card_layout.addWidget(self.ai_text)
+        ai_box.addWidget(self.ai_card)
+        
+        self.btn_regen = QPushButton("Regenerate Suggestion")
+        self.btn_regen.setObjectName("PrimaryButton")
+        self.btn_regen.setIcon(QIcon(icon_path("bolt")))
+        self.btn_regen.clicked.connect(self.auto_translate_current)
+        ai_box.addWidget(self.btn_regen)
+        right_layout.addLayout(ai_box)
+        
         right_layout.addStretch()
         
-        workspace_layout.addWidget(right_panel)
-        main_layout.addLayout(workspace_layout)
+        self.splitter.addWidget(self.sidebar_container)
+        self.splitter.addWidget(editor_container)
+        self.splitter.addWidget(self.right_panel)
+        self.splitter.setStretchFactor(1, 1)
         
-        # Status Bar
-        self.status_bar = QStatusBar()
-        self.status_bar.setStyleSheet("background: #0b0f19; color: #64748b; border-top: 1px solid #1e293b;")
-        self.setStatusBar(self.status_bar)
+        main_layout.addWidget(self.splitter)
+        
+        # 3. Footer Area
+        self.footer = QFrame()
+        self.footer.setObjectName("Footer")
+        self.footer.setFixedHeight(32)
+        footer_layout = QHBoxLayout(self.footer)
+        footer_layout.setContentsMargins(12, 0, 12, 0)
+        footer_layout.setSpacing(16)
+        
+        # Status
+        status_point = QWidget()
+        status_point.setFixedSize(8, 8)
+        status_point.setStyleSheet("background-color: #22c55e; border-radius: 4px;")
+        status_label = QLabel("SYSTEM READY")
+        status_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #94a3b8;")
+        footer_layout.addWidget(status_point)
+        footer_layout.addWidget(status_label)
+        
+        footer_layout.addWidget(self.create_separator())
+        
+        # Language Selectors
+        self.source_lang_label = QLabel("Source: --")
+        self.source_lang_label.setStyleSheet("font-size: 10px; color: #94a3b8;")
+        self.target_lang_label = QLabel("Target: --")
+        self.target_lang_label.setStyleSheet("font-size: 10px; color: #94a3b8;")
+        footer_layout.addWidget(self.source_lang_label)
+        footer_layout.addWidget(self.target_lang_label)
+        
+        footer_layout.addStretch()
+        
+        # Progress
+        progress_info = QVBoxLayout()
+        progress_info.setSpacing(2)
+        progress_head = QHBoxLayout()
+        progress_head.addWidget(QLabel("OVERALL PROGRESS"))
+        self.progress_pct = QLabel("0%")
+        progress_head.addWidget(self.progress_pct)
+        progress_head.itemAt(0).widget().setStyleSheet("font-size: 8px; font-weight: 800; color: #64748b;")
+        self.progress_pct.setStyleSheet("font-size: 8px; font-weight: 800; color: #64748b;")
+        
+        self.progress_bar = QFrame()
+        self.progress_bar.setFixedHeight(4)
+        self.progress_bar.setFixedWidth(200)
+        self.progress_bar.setStyleSheet("background-color: #333333; border-radius: 2px;")
+        self.progress_fill = QFrame(self.progress_bar)
+        self.progress_fill.setFixedHeight(4)
+        self.progress_fill.setStyleSheet("background-color: #0d7ff2; border-radius: 2px;")
+        self.progress_fill.setFixedWidth(0)
+        
+        progress_info.addLayout(progress_head)
+        progress_info.addWidget(self.progress_bar)
+        footer_layout.addLayout(progress_info)
+        
+        footer_layout.addStretch()
+        
+        # Stats
+        self.segments_count = QLabel("Segments: 0 / 0")
+        self.words_count = QLabel("Words: 0 / 0")
+        self.segments_count.setStyleSheet("font-size: 10px; color: #94a3b8;")
+        self.words_count.setStyleSheet("font-size: 10px; color: #94a3b8;")
+        footer_layout.addWidget(self.segments_count)
+        footer_layout.addWidget(self.words_count)
+        
+        footer_layout.addWidget(self.create_separator())
+        
+        # Auto-saved
+        save_icon = QLabel()
+        save_icon.setPixmap(QIcon(icon_path("cloud_done")).pixmap(12, 12))
+        save_label = QLabel("AUTO-SAVED")
+        save_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748b;")
+        footer_layout.addWidget(save_icon)
+        footer_layout.addWidget(save_label)
+        
+        main_layout.addWidget(self.footer)
+
+    def create_separator(self):
+        sep = QFrame()
+        sep.setFixedWidth(1)
+        sep.setFixedHeight(12)
+        sep.setStyleSheet("background-color: #333333;")
+        return sep
 
     def load_chapters(self):
         self.sidebar.clear()
@@ -445,6 +446,10 @@ class MainWindow(QMainWindow):
             progress = int((translated / total) * 100) if total > 0 else 0
             
             self.sidebar.add_item(chapter.id, chapter.title, progress)
+        
+        if self.project_manager.current_project:
+            self.project_name_label.setText(self.project_manager.current_project.name)
+            self.update_footer_stats()
 
     def on_chapter_selected(self, chapter_id):
         self.load_segments(chapter_id)
@@ -473,10 +478,10 @@ class MainWindow(QMainWindow):
         # Add stretch back at the end after adding items? Or add items then add stretch.
         
         if not self.project_manager.current_project:
-             self.project_label.setText("")
+             self.project_name_label.setText("No Project Loaded")
              return
              
-        self.project_label.setText(f"Project: {self.project_manager.current_project.name}")
+        self.project_name_label.setText(self.project_manager.current_project.name)
         
         # If no chapter_id, pick first chapter
         if not chapter_id:
@@ -499,6 +504,41 @@ class MainWindow(QMainWindow):
         self.cards_layout.addStretch()
             
         self.load_glossary()
+        self.update_footer_stats()
+
+    def update_footer_stats(self):
+        """Update Footer with project statistics and progress."""
+        if not self.project_manager.current_project:
+            return
+            
+        project = self.project_manager.current_project
+        segments = list(self.project_manager.get_segments())
+        
+        total = len(segments)
+        translated = sum(1 for s in segments if s.status and s.status != 'untranslated')
+        
+        # Word counts
+        source_words = sum(len(s.source_text.split()) for s in segments)
+        target_words = sum(len(s.target_text.split()) if s.target_text else 0 for s in segments)
+        
+        self.segments_count.setText(f"Segments: {translated} / {total}")
+        self.words_count.setText(f"Words: {target_words} / {source_words}")
+        
+        progress = int((translated / total) * 100) if total > 0 else 0
+        
+        # Update UI
+        self.source_lang_label.setText(f"Source: {project.source_language.upper()}")
+        self.target_lang_label.setText(f"Target: {project.target_language.upper()}")
+        
+        self.progress_pct.setText(f"{progress}%")
+        
+        # Progress Bar fill (max width 200 as defined in UI)
+        fill_width = int((progress / 100.0) * 200)
+        self.progress_fill.setFixedWidth(fill_width)
+        
+        self.segments_count.setText(f"Segments: {translated} / {total}")
+        self.words_count.setText(f"Words: {target_words:,} / {source_words:,}")
+
 
     def on_segment_card_clicked(self, segment_id):
         self.current_segment_index = segment_id
@@ -734,11 +774,11 @@ class MainWindow(QMainWindow):
     def glossary_context_menu(self, pos):
         pass
 
-    def search_dictionary(self):
+    def on_dictionary_search(self):
         """Search the dictionary for the entered query"""
         from src.core.dictionary_manager import DictionaryManager
         
-        query = self.dict_search.text().strip()
+        query = self.dict_input.text().strip()
         if not query:
             return
             

@@ -4,6 +4,6 @@
   "llm_url": "http://localhost:1234/v1",
   "llm_key": "",
   "llm_model": "nikolaykozloff/translategemma-12b-it",
-  "theme": "Dark (Default)",
+  "theme": "Light",
   "font_size": "Medium"
 }

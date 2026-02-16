@@ -1,20 +1,13 @@
 from PyQt6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, 
-                             QPushButton, QWidget, QSizePolicy, QGraphicsDropShadowEffect)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QColor, QFont, QTextCursor
+                             QPushButton, QWidget, QSizePolicy)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QIcon, QPixmap
+import os
 
 class SegmentCard(QFrame):
     clicked = pyqtSignal(int)      # Signal to notify selection
     textChanged = pyqtSignal(int, str) # Signal to auto-save
     lookupWord = pyqtSignal(str)   # Signal to lookup word in dictionary
-
-    STATUS_COLORS = {
-        'untranslated': {'border': '#ef4444', 'badge': '#ef4444', 'label': 'UNTRANSLATED'},
-        'machine': {'border': '#f97316', 'badge': '#f97316', 'label': 'MACHINE'},
-        'translated': {'border': '#3b82f6', 'badge': '#3b82f6', 'label': 'TRANSLATED'},
-        'ai_refined': {'border': '#8b5cf6', 'badge': '#8b5cf6', 'label': 'AI REFINED'},
-        'validated': {'border': '#22c55e', 'badge': '#22c55e', 'label': 'VALIDATED'},
-    }
 
     def __init__(self, segment, parent=None):
         super().__init__(parent)
@@ -22,126 +15,100 @@ class SegmentCard(QFrame):
         self.segment_id = segment.index
         self.is_active = False
         
-        # Determine status for styling
-        status = segment.status or 'untranslated'
-        self.setProperty("segment_status", status)
-        
         # Style
         self.setObjectName("SegmentCard")
-        self.setProperty("status", status)
+        self.setProperty("active", False)
         
         self.init_ui()
         
     def init_ui(self):
-        status = self.segment.status or 'untranslated'
-        colors = self.STATUS_COLORS.get(status, self.STATUS_COLORS['untranslated'])
-        
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(12)
         
-        # Header Row (ID and Status)
+        # Header Row
         header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
         
-        id_badge = QLabel(f"{self.segment_id:03d}")
-        id_badge.setObjectName("IdBadge")
-        id_badge.setFixedWidth(40)
-        id_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        id_label = QLabel(f"SEGMENT #{self.segment_id}")
+        id_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px;")
         
-        status_label = QLabel(colors['label'])
-        status_label.setObjectName("StatusLabel")
-        status_label.setStyleSheet(f"color: {colors['badge']}; font-weight: bold;")
+        self.status_badge = QLabel(self.segment.status.upper() if self.segment.status else "UNTRANSLATED")
+        status_color = self.get_status_color(self.segment.status)
+        self.status_badge.setStyleSheet(f"font-size: 9px; font-weight: 800; color: {status_color}; padding: 2px 6px; border: 1px solid {status_color}; border-radius: 4px;")
         
-        header_layout.addWidget(id_badge)
+        header_layout.addWidget(id_label)
         header_layout.addStretch()
-        header_layout.addWidget(status_label)
-        
+        header_layout.addWidget(self.status_badge)
         main_layout.addLayout(header_layout)
         
-        # Content Row (Source | Target)
-        content_layout = QHBoxLayout()
-        content_layout.setSpacing(20)
+        # Text areas (50/50 Split)
+        text_layout = QHBoxLayout()
+        text_layout.setSpacing(0) # No spacing, use border-r
+        text_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Source Text
+        # Source (Left)
+        source_container = QFrame()
+        source_container.setObjectName("SourceContainer")
+        source_container.setStyleSheet("border-r: 1px solid #333333; padding: 12px;")
+        source_layout = QVBoxLayout(source_container)
+        
         self.source_edit = QTextEdit(self.segment.source_text)
-        self.source_edit.setReadOnly(True)
         self.source_edit.setObjectName("SourceText")
+        self.source_edit.setReadOnly(True)
         self.source_edit.setFrameShape(QFrame.Shape.NoFrame)
-        self.source_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.source_edit.installEventFilter(self)
+        source_layout.addWidget(self.source_edit)
         
-        # Target Text
+        # Target (Right)
+        target_container = QFrame()
+        target_container.setObjectName("TargetContainer")
+        target_container.setStyleSheet("padding: 12px;")
+        target_layout = QVBoxLayout(target_container)
+        
         self.target_edit = QTextEdit(self.segment.target_text or "")
-        self.target_edit.setPlaceholderText("Click to start translating...")
         self.target_edit.setObjectName("TargetText")
+        self.target_edit.setPlaceholderText("Click to start translating...")
         self.target_edit.setFrameShape(QFrame.Shape.NoFrame)
-        self.target_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.target_edit.textChanged.connect(self.on_text_changed)
         self.target_edit.installEventFilter(self)
+        target_layout.addWidget(self.target_edit)
         
-        content_layout.addWidget(self.source_edit)
-        content_layout.addWidget(self.target_edit)
+        text_layout.addWidget(source_container, 1)
+        text_layout.addWidget(target_container, 1)
+        main_layout.addLayout(text_layout)
         
-        main_layout.addLayout(content_layout)
-        
-        # Footer (Actions)
+        # Footer Action (Visible only when active)
         self.footer = QFrame()
-        self.footer.setObjectName("CardFooter")
+        self.footer.setFixedHeight(24)
         self.footer.setVisible(False)
         footer_layout = QHBoxLayout(self.footer)
-        footer_layout.setContentsMargins(0, 5, 0, 0)
+        footer_layout.setContentsMargins(0, 0, 0, 0)
         
-        words_label = QLabel(f"Words: {len(self.segment.source_text.split())}")
-        words_label.setStyleSheet("color: #64748b; font-size: 11px;")
+        words_count = len(self.segment.source_text.split())
+        words_info = QLabel(f"{words_count} words")
+        words_info.setStyleSheet("color: #64748b; font-size: 10px;")
         
-        confirm_label = QLabel("Press Ctrl+Enter to confirm")
-        confirm_label.setStyleSheet("color: #3b82f6; font-size: 11px; font-weight: bold;")
+        help_text = QLabel("Press Ctrl+Enter to confirm and save")
+        help_text.setStyleSheet("color: #0d7ff2; font-size: 10px; font-weight: 600;")
         
-        footer_layout.addWidget(words_label)
+        footer_layout.addWidget(words_info)
         footer_layout.addStretch()
-        footer_layout.addWidget(confirm_label)
-        
+        footer_layout.addWidget(help_text)
         main_layout.addWidget(self.footer)
-        
-        # Apply dynamic styling based on status
-        self.setStyleSheet(f"""
-            #SegmentCard {{
-                background-color: #111625;
-                border-radius: 8px;
-                border-left: 4px solid {colors['border']};
-            }}
-            #SegmentCard[segment_status="untranslated"] {{
-                border-left: 4px solid #ef4444;
-            }}
-            #SegmentCard[segment_status="machine"] {{
-                border-left: 4px solid #f97316;
-            }}
-            #SegmentCard[segment_status="translated"] {{
-                border-left: 4px solid #3b82f6;
-            }}
-            #SegmentCard[segment_status="ai_refined"] {{
-                border-left: 4px solid #8b5cf6;
-            }}
-            #SegmentCard[segment_status="validated"] {{
-                border-left: 4px solid #22c55e;
-            }}
-            #SegmentCard[active="true"] {{
-                background-color: #1e293b;
-                border: 1px solid #3b82f6;
-            }}
-        """)
+
+    def get_status_color(self, status):
+        colors = {
+            'translated': '#3b82f6',
+            'ai_refined': '#8b5cf6',
+            'validated': '#22c55e',
+            'machine': '#f59e0b'
+        }
+        return colors.get(status, '#ef4444')
 
     def eventFilter(self, obj, event):
         if event.type() == event.Type.MouseButtonPress:
             self.clicked.emit(self.segment_id)
-        
-        if event.type() == event.Type.MouseMove and obj == self.source_edit:
-            cursor = self.source_edit.cursorForPosition(event.pos())
-            cursor.select(QTextCursor.SelectionType.WordUnderCursor)
-            word = cursor.selectedText().strip()
-            if word and len(word) > 1:
-                self.lookupWord.emit(word)
-        
         return super().eventFilter(obj, event)
 
     def mousePressEvent(self, event):
@@ -154,7 +121,7 @@ class SegmentCard(QFrame):
         self.setProperty("active", active)
         self.footer.setVisible(active)
         
-        # Refresh style
+        # Trigger style refresh
         self.style().unpolish(self)
         self.style().polish(self)
         
@@ -165,58 +132,59 @@ class SegmentCard(QFrame):
         self.textChanged.emit(self.segment_id, self.target_edit.toPlainText())
 
 class SidebarItem(QFrame):
-    clicked = pyqtSignal(int) # Emits item ID
+    clicked = pyqtSignal(int)
 
     def __init__(self, item_id, title, progress=0, is_active=False, parent=None):
         super().__init__(parent)
         self.item_id = item_id
         self.title = title
         self.is_active = is_active
-        self.setObjectName("SidebarItem")
+        self.progress = progress
+        
         self.setProperty("active", is_active)
+        self.setFixedHeight(56)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         
+        self.init_ui()
+        
+    def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(4)
         
-        # Title Row
         title_row = QHBoxLayout()
-        self.title_lbl = QLabel(title)
-        self.title_lbl.setObjectName("SidebarTitle")
-        title_row.addWidget(self.title_lbl)
+        self.title_lbl = QLabel(self.title)
+        self.title_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #cbd5e1;")
         
-        if progress > 0 or is_active:
-             # Show percentage if progress > 0 or if active (even if 0%)
-            prog_text = f"{progress}%"
-            prog_lbl = QLabel(prog_text)
-            prog_lbl.setObjectName("SidebarProgress")
-            title_row.addWidget(prog_lbl)
-            
+        self.prog_pct = QLabel(f"{self.progress}%")
+        self.prog_pct.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748b;")
+        
+        title_row.addWidget(self.title_lbl)
+        title_row.addStretch()
+        title_row.addWidget(self.prog_pct)
         layout.addLayout(title_row)
         
-        # Progress Bar Container
-        # HTML: <div class="w-full bg-border-dark h-1 rounded-full"><div class="bg-green-500..." /></div>
-        prog_container = QFrame()
-        prog_container.setFixedHeight(4)
-        prog_container.setStyleSheet("background-color: #333333; border-radius: 2px; border: none;")
-        prog_layout = QHBoxLayout(prog_container)
-        prog_layout.setContentsMargins(0, 0, 0, 0)
-        prog_layout.setSpacing(0)
+        # Progress Bar
+        self.bar_bg = QFrame()
+        self.bar_bg.setFixedHeight(4)
+        self.bar_bg.setStyleSheet("background-color: #1e1e1e; border-radius: 2px;")
         
-        # Fill
-        if progress > 0:
-            fill = QFrame()
-            # If 100%, green, else primary blue
-            color = "#22c55e" if progress == 100 else "#0d7ff2"
-            fill.setStyleSheet(f"background-color: {color}; border-radius: 2px; border: none;")
-            
-            # Use stretch factors to simulate width percentage
-            prog_layout.addWidget(fill, progress)
-            prog_layout.addStretch(100 - progress)
-        else:
-            prog_layout.addStretch(1)
+        self.bar_fill = QFrame(self.bar_bg)
+        self.bar_fill.setFixedHeight(4)
+        fill_color = "#22c55e" if self.progress == 100 else "#0d7ff2"
+        self.bar_fill.setStyleSheet(f"background-color: {fill_color}; border-radius: 2px;")
+        
+        layout.addWidget(self.bar_bg)
+        self.update_progress(self.progress)
 
-        layout.addWidget(prog_container)
+    def update_progress(self, progress):
+        self.progress = progress
+        self.prog_pct.setText(f"{progress}%")
+        # In a real layout, we'd use a resize event or layout stretch
+        # For simplicity in this demo component:
+        width = int((progress / 100.0) * 228) # Approximate width
+        # Better: use a layout or paintEvent for the bar
+        self.bar_fill.setFixedWidth(max(0, width))
 
     def mousePressEvent(self, event):
         self.clicked.emit(self.item_id)
@@ -227,9 +195,9 @@ class SidebarItem(QFrame):
         self.setProperty("active", active)
         self.style().unpolish(self)
         self.style().polish(self)
-        if hasattr(self, 'title_lbl'):
-             self.title_lbl.style().unpolish(self.title_lbl)
-             self.title_lbl.style().polish(self.title_lbl)
+        
+        title_color = "#ffffff" if active else "#cbd5e1"
+        self.title_lbl.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {title_color};")
 
 class Sidebar(QWidget):
     itemClicked = pyqtSignal(int)
@@ -237,23 +205,9 @@ class Sidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 20, 0, 0)
-        self.layout.setSpacing(5)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(2)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
-        # Header "CHAPTERS"
-        header = QHBoxLayout()
-        header.setContentsMargins(20, 0, 20, 10)
-        lbl = QLabel("CHAPTERS")
-        lbl.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold; letter-spacing: 1px;")
-        header.addWidget(lbl)
-        header.addStretch()
-        btn_add = QPushButton("+")
-        btn_add.setFixedSize(20, 20)
-        btn_add.setStyleSheet("background: transparent; color: #3b82f6; border: none; font-weight: bold;")
-        header.addWidget(btn_add)
-        self.layout.addLayout(header)
-        
         self.items = []
         
     def add_item(self, item_id, title, progress=0, active=False):

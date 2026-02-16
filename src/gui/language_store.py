@@ -8,15 +8,15 @@ class InstallThread(QThread):
     progress = pyqtSignal(str, int)
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, engine, model_id):
+    def __init__(self, manager, code):
         super().__init__()
-        self.engine = engine
-        self.model_id = model_id
+        self.manager = manager
+        self.code = code
 
     def run(self):
         try:
-            success = self.engine.install_model(self.model_id, callback=self.on_progress)
-            self.finished.emit(success, self.model_id)
+            self.manager.install_language_pack(self.code, callback=self.on_progress)
+            self.finished.emit(True, self.code)
         except Exception as e:
             self.finished.emit(False, str(e))
 
@@ -26,28 +26,27 @@ class InstallThread(QThread):
 class LanguageStore(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Language Store")
-        self.resize(600, 500)
+        self.setWindowTitle("Language Store (Unified)")
+        self.resize(600, 600)
         
-        from src.engines import list_engines, get_engine_instance
-        self.engines_list = list_engines()
-        self.current_engine_name = self.engines_list[0] if self.engines_list else None
+        from src.core.language_manager import LanguageManager
+        self.lang_manager = LanguageManager()
         
         self.init_ui()
-        self.load_models()
+        self.load_languages()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
         
-        # Engine Selector
-        header = QHBoxLayout()
-        header.addWidget(QLabel("Select Engine:"))
-        self.engine_combo = QComboBox()
-        self.engine_combo.addItems(self.engines_list)
-        self.engine_combo.currentTextChanged.connect(self.on_engine_changed)
-        header.addWidget(self.engine_combo)
-        header.addStretch()
-        layout.addLayout(header)
+        # Header
+        header = QLabel("Unified Language Packs")
+        header.setStyleSheet("font-size: 16px; font-weight: bold; color: #e2e8f0; margin-bottom: 10px;")
+        layout.addWidget(header)
+        
+        description = QLabel("Installing a pack adds support for Argos Translate, NLLB, and the Dictionary.")
+        description.setStyleSheet("color: #94a3b8; margin-bottom: 10px;")
+        description.setWordWrap(True)
+        layout.addWidget(description)
         
         # Models List
         self.models_list = QListWidget()
@@ -73,7 +72,7 @@ class LanguageStore(QDialog):
         
         # Actions
         actions = QHBoxLayout()
-        self.install_btn = QPushButton("Install Selected")
+        self.install_btn = QPushButton("Install Pack")
         self.install_btn.setProperty("primary", True)
         self.install_btn.setMinimumHeight(40)
         self.install_btn.clicked.connect(self.install_selected)
@@ -86,33 +85,22 @@ class LanguageStore(QDialog):
         actions.addWidget(self.install_btn)
         layout.addLayout(actions)
 
-    def on_engine_changed(self, name):
-        self.current_engine_name = name
-        self.load_models()
-
-    def load_models(self):
-        self.models_list.clear()
-        if not self.current_engine_name:
-            return
-            
-        from src.engines import get_engine_instance
-        engine = get_engine_instance(self.current_engine_name)
-        if not engine:
-            return
-            
-        models = engine.get_available_models()
-        installed = engine.get_supported_languages()
+    def load_languages(self):
+        self.models_list.clear() # Clear existing items
+        languages = self.lang_manager.get_supported_languages()
         
-        for model in models:
-            # model is dict: id, name, size, from_code, to_code
-            status = "(Installed)" if model.get('from_code') in installed and model.get('to_code') in installed else ""
-            display_text = f"{model['name']} {status}"
-            
+        for lang in languages:
+            # lang is {'code': 'fr', 'name': 'French', 'installed': bool}
+            status = "(Installed)" if lang.get('installed') else ""
+            display_text = f"{lang['name']} ({lang['code']}) {status}"
             item = QListWidgetItem(display_text)
-            item.setData(Qt.ItemDataRole.UserRole, model['id'])
+            item.setData(Qt.ItemDataRole.UserRole, lang['code'])
             if status:
-                item.setForeground(Qt.GlobalColor.gray)
+                item.setForeground(Qt.GlobalColor.gray) # Grey out installed items? Or Green?
+                # Gray implies disabled/done. Let's keep it consistent with previous logic.
             self.models_list.addItem(item)
+            
+        self.status_label.setText(f"Found {len(languages)} supported languages.")
 
     def install_selected(self):
         selected = self.models_list.currentItem()
@@ -120,16 +108,21 @@ class LanguageStore(QDialog):
             QMessageBox.warning(self, "Warning", "Please select a language pack to install.")
             return
             
-        model_id = selected.data(Qt.ItemDataRole.UserRole)
+        code = selected.data(Qt.ItemDataRole.UserRole)
+        name = selected.text()
         
-        from src.engines import get_engine_instance
-        engine = get_engine_instance(self.current_engine_name)
+        reply = QMessageBox.question(self, "Confirm Installation", 
+                                   f"Install unified pack for {name}?\nThis will download models and dictionaries.",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                                   
+        if reply == QMessageBox.StandardButton.No:
+            return
         
         self.install_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         
-        self.thread = InstallThread(engine, model_id)
+        self.thread = InstallThread(self.lang_manager, code)
         self.thread.progress.connect(self.on_install_progress)
         self.thread.finished.connect(self.on_install_finished)
         self.thread.start()
@@ -142,9 +135,8 @@ class LanguageStore(QDialog):
         self.install_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         if success:
-            self.status_label.setText(f"Successfully installed {result}")
-            QMessageBox.information(self, "Success", f"Language pack {result} installed successfully.")
-            self.load_models()
+            self.status_label.setText(f"Successfully installed pack for {result}")
+            QMessageBox.information(self, "Success", f"Language pack for {result} installed successfully.")
         else:
             self.status_label.setText(f"Installation failed")
             QMessageBox.critical(self, "Error", f"Installation failed: {result}")

@@ -422,7 +422,15 @@ class LLMEngine(TranslationEngine):
         return [self.translate(t, src_lang, tgt_lang) for t in texts]
 
     def get_supported_languages(self):
-        return ["Any"]
+        # Supported languages for TranslateGemma-12B-it (55 languages)
+        return [
+            "af", "am", "ar", "bg", "bn", "bs", "ca", "ceb", "cs", "cy", "da", "de", "el", "en", "es", 
+            "et", "eu", "fa", "fi", "fr", "ga", "gl", "gu", "ha", "he", "hi", "hr", "hu", "hy", "id", 
+            "ig", "it", "ja", "jv", "ka", "kk", "km", "ko", "ku", "ky", "lo", "lt", "lv", "mk", "ml", 
+            "mn", "mr", "ms", "my", "ne", "nl", "no", "or", "pa", "pl", "ps", "pt", "ro", "ru", "sd", 
+            "si", "sk", "sl", "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "th", "tl", "tr", "uk", 
+            "ur", "uz", "vi", "xh", "yo", "zh", "zu"
+        ]
 
     def get_name(self):
         return f"LLM ({self.model})"
