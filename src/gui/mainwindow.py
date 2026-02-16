@@ -17,6 +17,10 @@ from src.core.project_manager import ProjectManager
 from src.engines import get_engine_instance, list_engines
 from src.core.database import Segment, GlossaryTerm, Chapter
 from src.core.language_manager import LanguageManager
+from src.gui.alignment_dialog import AlignmentDialog
+from src.gui.qa_dialog import QADialog
+from src.gui.chat_widget import ChatWidget
+from src.core.concordancer import Concordancer
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -229,10 +233,15 @@ class MainWindow(QMainWindow):
         
         self.btn_settings = create_header_btn("settings", "Settings (Ctrl+,)", self.show_settings)
         
+        self.btn_align = create_header_btn("compare_arrows", "Alignement (TAO)", self.show_alignment_dialog)
+        self.btn_qa = create_header_btn("verified", "QA Check", self.show_qa_dialog)
+        
         header_layout.addWidget(self.btn_new)
         header_layout.addWidget(self.btn_open)
         header_layout.addWidget(self.btn_save)
         header_layout.addWidget(self.btn_export)
+        header_layout.addWidget(self.btn_align)
+        header_layout.addWidget(self.btn_qa)
         header_layout.addWidget(sep2)
         header_layout.addWidget(self.btn_settings)
         
@@ -382,6 +391,44 @@ class MainWindow(QMainWindow):
         self.btn_regen.clicked.connect(self.auto_translate_current)
         ai_box.addWidget(self.btn_regen)
         right_layout.addLayout(ai_box)
+        
+        # Concordancer Search
+        conc_box = QVBoxLayout()
+        conc_head = QHBoxLayout()
+        conc_icon = QLabel()
+        conc_icon.setPixmap(self.colorize_icon("search", "#ffffff").pixmap(16, 16))
+        conc_title = QLabel("CONCORDANCER")
+        conc_title.setObjectName("SidebarTitle")
+        conc_head.addWidget(conc_icon)
+        conc_head.addWidget(conc_title)
+        conc_head.addStretch()
+        conc_box.addLayout(conc_head)
+        
+        self.conc_input = QLineEdit()
+        self.conc_input.setPlaceholderText("Search in TM & project...")
+        self.conc_input.returnPressed.connect(self.search_concordancer)
+        conc_box.addWidget(self.conc_input)
+        
+        self.conc_results = QListWidget()
+        self.conc_results.setFixedHeight(100)
+        conc_box.addWidget(self.conc_results)
+        right_layout.addLayout(conc_box)
+        
+        # AI Chat Widget (collapsible)
+        chat_head = QHBoxLayout()
+        chat_icon = QLabel()
+        chat_icon.setPixmap(self.colorize_icon("psychology", "#ffffff").pixmap(16, 16))
+        chat_title = QLabel("AI CHAT")
+        chat_title.setObjectName("SidebarTitle")
+        chat_head.addWidget(chat_icon)
+        chat_head.addWidget(chat_title)
+        chat_head.addStretch()
+        right_layout.addLayout(chat_head)
+        
+        self.chat_widget = ChatWidget()
+        self.chat_widget.set_engine(self.llm_engine)
+        self.chat_widget.setMaximumHeight(250)
+        right_layout.addWidget(self.chat_widget)
         
         right_layout.addStretch()
         
@@ -1605,4 +1652,52 @@ class MainWindow(QMainWindow):
         # Fallback to LLM
         return self.llm_engine
 
+    def show_alignment_dialog(self):
+        """Open the alignment tool dialog."""
+        dialog = AlignmentDialog(self, project_manager=self.project_manager)
+        dialog.exec()
+
+    def show_qa_dialog(self):
+        """Open the QA Check dialog for current project segments."""
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Erreur", "Aucun projet ouvert.")
+            return
+
+        segments = list(self.project_manager.get_segments())
+        glossary_terms = list(
+            GlossaryTerm.select().where(
+                GlossaryTerm.project == self.project_manager.current_project
+            )
+        )
+
+        dialog = QADialog(self, segments=segments, glossary_terms=glossary_terms)
+        dialog.navigate_to_segment.connect(self.on_segment_card_clicked)
+        dialog.exec()
+
+    def search_concordancer(self):
+        """Search the concordancer for the entered query."""
+        query = self.conc_input.text().strip()
+        if not query:
+            return
+
+        self.conc_results.clear()
+
+        concordancer = Concordancer()
+        segments = []
+        tm_entries = []
+
+        if self.project_manager.current_project:
+            segments = list(self.project_manager.get_segments())
+
+        results = concordancer.search(query, segments=segments, tm_entries=tm_entries)
+
+        if results:
+            for r in results:
+                text = f"[{r.match_type}] {r.source_text[:60]}…"
+                if r.target_text:
+                    text += f"\n→ {r.target_text[:60]}…"
+                item = QListWidgetItem(text)
+                self.conc_results.addItem(item)
+        else:
+            self.conc_results.addItem("Aucun résultat trouvé.")
 
