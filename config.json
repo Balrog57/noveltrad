@@ -1,0 +1,9 @@
+{
+  "backup_enabled": false,
+  "backup_interval": "Every 5 mins",
+  "llm_url": "http://localhost:1234/v1",
+  "llm_key": "",
+  "llm_model": "nikolaykozloff/translategemma-12b-it",
+  "theme": "Dark (Default)",
+  "font_size": "Medium"
+}
