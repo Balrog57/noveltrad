@@ -98,23 +98,11 @@ class MainWindow(QMainWindow):
         progress = int((translated / total) * 100) if total > 0 else 0
         self.sidebar.update_item_progress(self.current_chapter_id, progress)
         
-    def apply_theme(self):
-        import json
-        import os
-        from PyQt6.QtGui import QFont
+        from src.core.config_manager import ConfigManager
         
-        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config.json")
-        theme = "Dark (Default)"
-        font_size_name = "Medium"
-        
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                theme = config.get('theme', 'Dark (Default)')
-                font_size_name = config.get('font_size', 'Medium')
-            except:
-                pass
+        config = ConfigManager()
+        theme = config.get("theme", "dark")
+        font_size_name = config.get("font_size", "Medium")
         
         # Apply Font Size
         size_map = {
@@ -137,7 +125,8 @@ class MainWindow(QMainWindow):
         
         # Load Stylesheet
         from src.gui.styles import DARK_THEME, LIGHT_THEME
-        if "Dark" in theme:
+        # Support both 'dark' (ConfigManager) and 'Dark (Default)' (Legacy)
+        if hasattr(theme, 'lower') and 'dark' in theme.lower():
             self.setStyleSheet(DARK_THEME)
         else:
             self.setStyleSheet(LIGHT_THEME)

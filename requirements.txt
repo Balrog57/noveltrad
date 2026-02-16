@@ -22,3 +22,5 @@ platformdirs>=4.0.0
 pyinstaller>=6.3.0
 black
 flake8
+
+deep-translator>=1.11.0

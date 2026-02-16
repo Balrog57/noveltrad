@@ -40,9 +40,12 @@ class CostEstimator:
         
         # Try to find matching model key
         normalized_name = model_name.lower()
-        for key, price in CostEstimator.MODELS_PRICING.items():
+        # Sort keys by length descending to match longest key first (e.g. gpt-4o-mini before gpt-4o)
+        sorted_keys = sorted(CostEstimator.MODELS_PRICING.keys(), key=len, reverse=True)
+        
+        for key in sorted_keys:
             if key in normalized_name:
-                pricing = price
+                pricing = CostEstimator.MODELS_PRICING[key]
                 break
         
         # Cost = (Input Tokens * Input Price) + (Output Tokens * Output Price)
