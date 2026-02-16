@@ -8,10 +8,6 @@ class SegmentCard(QFrame):
     textChanged = pyqtSignal(int, str) # Signal to auto-save
     lookupWord = pyqtSignal(str)   # Signal to lookup word in dictionary
 
-class SegmentCard(QFrame):
-    clicked = pyqtSignal(int)      # Signal to notify selection
-    textChanged = pyqtSignal(int, str) # Signal to auto-save
-
     STATUS_COLORS = {
         'untranslated': {'border': '#ef4444', 'badge': '#ef4444', 'label': 'UNTRANSLATED'},
         'machine': {'border': '#f97316', 'badge': '#f97316', 'label': 'MACHINE'},

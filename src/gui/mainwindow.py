@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
             (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_S, self.save_current_segment),
             (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier | Qt.Key.Key_C, self.batch_translate),
             (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_F, self.show_search_replace),
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_G, self.generate_glossary_ai),
+            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_G, self.scan_chapter_glossary),
             (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_R, self.auto_translate_current),
             (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_E, self.editor_ai_refine),
             (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_Comma, self.show_settings),
