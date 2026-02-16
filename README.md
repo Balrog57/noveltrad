@@ -7,9 +7,10 @@ A high-performance desktop application for novel translation, featuring AI-power
 - **Native Desktop App**: Built with PyQt6 for speed and OS integration.
 - **Stitch-Inspired UI**: Modern dark theme, sidebar navigation, and card-based segment editor.
 - **Format Support**: EPUB, DOCX, TXT.
-- **AI Integration**: Supports OpenAI API (and compatible endpoints) for translation suggestions.
+- **AI Integration**: Support for OpenAI, TranslateGemma (via LM Studio), Argos, and NLLB.
+- **TranslateGemma Optimization**: Specialized engine for `translategemma-12b-it` using the Completion API to bypass LM Studio Jinja2 template errors. Optimized for NVIDIA RTX GPUs (e.g., RTX 5070 Ti) with a recommended 8192 context window.
 - **Glossary Management**: Create and manage project-specific glossaries.
-- **Offline Capable**: Core features work offline; AI features require internet if using cloud API.
+- **Offline Capable**: Core features work offline; AI features require internet if using cloud API or can run locally with LM Studio.
 
 ## Installation (Development)
 

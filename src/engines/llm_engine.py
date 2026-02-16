@@ -142,37 +142,47 @@ class LLMEngine(TranslationEngine):
         src_code = get_language_code(src_lang)
         tgt_code = get_language_code(tgt_lang)
 
+        user_prompt = f"Context:\n{context}\n\nTranslate:\n{text}" if context else f"{text}"
         is_translategemma = "translategemma" in self.model.lower()
+        
         if is_translategemma:
-            # Combined text with metadata for the model
-            full_text = ""
+            # Construct special TranslateGemma raw prompt
+            # Format: [[Instructions: ...]] [[Context: ...]] [source_lang_code: ..., target_lang_code: ...] Text
+            raw_prompt = ""
             if system_prompt:
-                full_text += f"[[Instructions: {system_prompt}]]\n"
+                raw_prompt += f"[[Instructions: {system_prompt}]]\n"
             if context:
-                full_text += f"[[Context: {context}]]\n"
-            full_text += text
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "source_lang_code": src_code,
-                            "target_lang_code": tgt_code,
-                            "text": full_text
-                        }
-                    ]
-                }
-            ]
-        else:
-            user_prompt = f"Context:\n{context}\n\nTranslate:\n{text}" if context else f"{text}"
-            src_name = LANGUAGE_NAMES.get(src_code, src_lang)
-            tgt_name = LANGUAGE_NAMES.get(tgt_code, tgt_lang)
-            messages = [
-                {"role": "system", "content": f"{system_prompt}\nTranslate from {src_name} to {tgt_name}."},
-                {"role": "user", "content": user_prompt}
-            ]
+                raw_prompt += f"[[Context: {context}]]\n"
+            
+            raw_prompt += f"[source_lang_code: {src_code}, target_lang_code: {tgt_code}]\n\n{text}"
+            
+            try:
+                # Use completions endpoint for raw prompt injection
+                response = self.client.completions.create(
+                    model=self.model,
+                    prompt=raw_prompt,
+                    temperature=0.3,
+                    max_tokens=2048
+                )
+                text = response.choices[0].text.strip()
+                
+                # Extract first translation segment if model continues generating
+                # Often TranslateGemma echoes the input or adds its own tags
+                if "[source_lang_code:" in text:
+                    text = text.split("]", 1)[-1].strip() if "]" in text else text
+                
+                # Split by the next language tag if it exists (model babbling)
+                if "[source_lang_code:" in text:
+                    text = text.split("[source_lang_code:", 1)[0].strip()
+                    
+                return text.strip()
+            except Exception as e:
+                return f"[LLM Completion Error] {str(e)}"
+        
+        # Standard Chat API for other models
+        messages = [
+            {"role": "user", "content": f"{system_prompt}\nTranslate from {src_name} to {tgt_name}.\n\n{user_prompt}"}
+        ]
         
         try:
             response = self.client.chat.completions.create(
@@ -198,24 +208,24 @@ class LLMEngine(TranslationEngine):
         
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "source_lang_code": src_code,
-                            "target_lang_code": tgt_code,
-                            "text": f"[[TASK: GLOSSARY EXTRACTION]]\n{system_prompt}\n\n{text[:3000]}"
-                        }
-                    ]
-                }
-            ]
-        else:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Text:\n{text[:3000]}"}
-            ]
+            raw_prompt = f"[[TASK: GLOSSARY EXTRACTION]]\n{system_prompt}\n\n[source_lang_code: {src_code}, target_lang_code: {tgt_code}]\n\n{text[:3000]}"
+            try:
+                response = self.client.completions.create(
+                    model=self.model,
+                    prompt=raw_prompt,
+                    temperature=0.1,
+                    max_tokens=2048
+                )
+                text = response.choices[0].text
+                if "[source_lang_code:" in text:
+                    text = text.split("]", 1)[-1].strip() if "]" in text else text
+                return self._extract_json(text)
+            except Exception as e:
+                return json.dumps([])
+
+        messages = [
+            {"role": "user", "content": f"{system_prompt}\n\nText:\n{text[:3000]}"}
+        ]
 
         try:
             response = self.client.chat.completions.create(
@@ -245,24 +255,21 @@ class LLMEngine(TranslationEngine):
 
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "source_lang_code": src_code,
-                            "target_lang_code": tgt_code,
-                            "text": f"[[TASK: INCREMENTAL GLOSSARY]]\n{system_prompt}\n\nJSON Output required.\n\n{text[:3000]}"
-                        }
-                    ]
-                }
-            ]
-        else:
-            messages = [
-                {"role": "system", "content": f"{system_prompt}\nReturn ONLY new terms as JSON array."},
-                {"role": "user", "content": f"New text:\n{text[:3000]}"}
-            ]
+            raw_prompt = f"[[TASK: INCREMENTAL GLOSSARY]]\n{system_prompt}\n\n[source_lang_code: {src_code}, target_lang_code: {tgt_code}]\n\nReturn JSON array.\n\n{text[:3000]}"
+            try:
+                response = self.client.completions.create(
+                    model=self.model,
+                    prompt=raw_prompt,
+                    temperature=0.1,
+                    max_tokens=2048
+                )
+                return self._extract_json(response.choices[0].text)
+            except Exception as e:
+                return json.dumps([])
+
+        messages = [
+            {"role": "user", "content": f"{system_prompt}\nReturn ONLY new terms as JSON array.\n\nNew text:\n{text[:3000]}"}
+        ]
 
         try:
             response = self.client.chat.completions.create(
@@ -316,24 +323,21 @@ class LLMEngine(TranslationEngine):
 
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "source_lang_code": src_code,
-                            "target_lang_code": tgt_code,
-                            "text": f"[[TASK: REFINE TRANSLATION]]\nInstructions: {system_prompt}\n\nSource: {source_text}\n\nCurrent: {translated_text}\n\nReturn improved version only."
-                        }
-                    ]
-                }
-            ]
-        else:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Source: {source_text}\n\nCurrent: {translated_text}"}
-            ]
+            raw_prompt = f"[[TASK: REFINE TRANSLATION]]\n{system_prompt}\n\n[source_lang_code: {src_code}, target_lang_code: {tgt_code}]\n\nSource: {source_text}\n\nCurrent: {translated_text}"
+            try:
+                response = self.client.completions.create(
+                    model=self.model,
+                    prompt=raw_prompt,
+                    temperature=0.3,
+                    max_tokens=2048
+                )
+                return response.choices[0].text.strip()
+            except Exception as e:
+                return translated_text
+
+        messages = [
+            {"role": "user", "content": f"{system_prompt}\n\nSource: {source_text}\n\nCurrent: {translated_text}"}
+        ]
 
         try:
             response = self.client.chat.completions.create(
@@ -359,24 +363,25 @@ class LLMEngine(TranslationEngine):
         # but usually it's better than nothing.
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "source_lang_code": "zh",
-                            "target_lang_code": "fr",
-                            "text": f"[[TASK: CHAPTER DETECTION]]\n{system_prompt}\n\nText:\n{text[:8000]}"
-                        }
-                    ]
-                }
-            ]
-        else:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Text:\n{text[:8000]}"}
-            ]
+            # Conservative slice for 8k context window (Instructions ~500, Text 4000, Buffer 3600)
+            raw_prompt = f"[[TASK: CHAPTER DETECTION]]\n{system_prompt}\n\n[source_lang_code: zh, target_lang_code: fr]\n\n{text[:4000]}"
+            try:
+                response = self.client.completions.create(
+                    model=self.model,
+                    prompt=raw_prompt,
+                    temperature=0.1,
+                    max_tokens=2048
+                )
+                res_text = response.choices[0].text
+                if "[source_lang_code:" in res_text:
+                    res_text = res_text.split("]", 1)[-1].strip() if "]" in res_text else res_text
+                return self._extract_json(res_text)
+            except Exception as e:
+                return json.dumps([])
+
+        messages = [
+            {"role": "user", "content": f"{system_prompt}\n\nText:\n{text[:4000]}"}
+        ]
 
         try:
             response = self.client.chat.completions.create(
