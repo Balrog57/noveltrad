@@ -131,6 +131,48 @@ class ProjectManager:
                         metadata=json.dumps(meta) if meta else None
                     )
 
+    def import_file(self, file_path):
+        """Imports a file as a new chapter in the current project."""
+        if not self.current_project:
+            raise ValueError("No active project")
+            
+        _, ext = os.path.splitext(file_path)
+        handler = self.handlers.get(ext.lower())
+        if not handler:
+             for h in self.handlers.values():
+                 if ext.lower() in h.get_supported_extensions():
+                     handler = h
+                     break
+        
+        if not handler:
+            raise ValueError(f"No handler found for file type: {ext}")
+
+        segments_data = handler.read(file_path)
+        
+        # Create a new chapter
+        chapter_title = os.path.basename(file_path)
+        
+        # Get next order index
+        last_chapter = Chapter.select().where(Chapter.project == self.current_project).order_by(Chapter.order_index.desc()).first()
+        new_order = (last_chapter.order_index + 1) if last_chapter else 1
+        
+        new_chapter = Chapter.create(
+            project=self.current_project,
+            title=chapter_title,
+            order_index=new_order
+        )
+        
+        with self.db.atomic():
+            for data in segments_data:
+                Segment.create(
+                    project=self.current_project,
+                    chapter=new_chapter,
+                    index=data['index'],
+                    source_text=data['source_text'],
+                    metadata=json.dumps(data.get('metadata')) if data.get('metadata') else None
+                )
+        return new_chapter
+
     def load_project(self, db_path):
         """Loads an existing project database."""
         if not os.path.exists(db_path):

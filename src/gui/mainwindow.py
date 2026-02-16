@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
 from src.gui.components import SegmentCard, Sidebar
 from src.gui.settings_dialog import SettingsDialog
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction, QIcon, QColor, QPixmap
 import os
 import sys
 
@@ -15,7 +15,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from src.core.project_manager import ProjectManager
 from src.engines import get_engine_instance, list_engines
-from src.core.database import Segment, GlossaryTerm
+from src.core.database import Segment, GlossaryTerm, Chapter
+from src.core.language_manager import LanguageManager
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -24,6 +25,7 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 1280, 800)
         
         self.project_manager = ProjectManager()
+        self.language_manager = LanguageManager()
         # Use factory to get default engine, or None if failed
         self.llm_engine = get_engine_instance('LLM') or None
         self.current_segment_index = -1
@@ -132,6 +134,18 @@ class MainWindow(QMainWindow):
         else:
             self.setStyleSheet(LIGHT_THEME)
         
+    def colorize_icon(self, icon_name, color="#e2e8f0"):
+        border_color = color
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "icons", f"{icon_name}.svg")
+        if not os.path.exists(icon_path): return QIcon()
+        
+        pixmap = QIcon(icon_path).pixmap(24, 24)
+        mask = pixmap.createMaskFromColor(Qt.GlobalColor.transparent, Qt.MaskMode.MaskInColor)
+        
+        pixmap.fill(QColor(color))
+        pixmap.setMask(mask)
+        return QIcon(pixmap)
+
     def init_ui(self):
         # Central Widget & Main Layout
         central_widget = QWidget()
@@ -139,10 +153,9 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-
-        # Helper for icons
-        icon_path = lambda name: os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "icons", f"{name}.svg")
         
+
+
         # 1. Header Area
         self.header = QFrame()
         self.header.setObjectName("Header")
@@ -154,12 +167,13 @@ class MainWindow(QMainWindow):
         # Logo & Premium Badge
         logo_icon = QLabel()
         logo_icon.setFixedSize(32, 32)
-        logo_icon.setPixmap(QIcon(icon_path("menu_book")).pixmap(24, 24))
+        logo_icon.setPixmap(self.colorize_icon("menu_book", "#ffffff").pixmap(24, 24))
         logo_icon.setStyleSheet("background-color: #0d7ff2; border-radius: 4px;")
         logo_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         title_container = QVBoxLayout()
         title_container.setSpacing(0)
+        title_container.setContentsMargins(0, 4, 0, 4)
         
         main_title = QLabel("NovelTrad")
         main_title.setStyleSheet("font-size: 18px; font-weight: 800; color: white;")
@@ -180,8 +194,8 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(sep1)
         
         # Project Info
-        project_info = QVBoxLayout()
-        project_info.setSpacing(2)
+        project_info = QHBoxLayout()
+        project_info.setSpacing(8)
         project_label = QLabel("Project:")
         project_label.setObjectName("ProjectTitle")
         self.project_name_label = QLabel("No Project Loaded")
@@ -196,14 +210,15 @@ class MainWindow(QMainWindow):
         def create_header_btn(icon_name, tooltip, callback):
             btn = QPushButton()
             btn.setObjectName("IconButton")
-            btn.setIcon(QIcon(icon_path(icon_name)))
+            btn.setIcon(self.colorize_icon(icon_name, "#ffffff"))
             btn.setIconSize(QSize(20, 20))
             btn.setToolTip(tooltip)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(callback)
             return btn
 
-        self.btn_open = create_header_btn("folder_open", "Open Project (Ctrl+O)", self.open_project_dialog)
+        self.btn_new = create_header_btn("add_circle", "New Project", self.new_project_dialog)
+        self.btn_open = create_header_btn("folder_open", "Open Existing Project (.ntrad)", self.open_project_dialog)
         self.btn_save = create_header_btn("save", "Save (Ctrl+S)", self.save_current_segment)
         self.btn_export = create_header_btn("file_download", "Export", self.export_project_dialog)
         
@@ -214,6 +229,7 @@ class MainWindow(QMainWindow):
         
         self.btn_settings = create_header_btn("settings", "Settings (Ctrl+,)", self.show_settings)
         
+        header_layout.addWidget(self.btn_new)
         header_layout.addWidget(self.btn_open)
         header_layout.addWidget(self.btn_save)
         header_layout.addWidget(self.btn_export)
@@ -239,6 +255,17 @@ class MainWindow(QMainWindow):
         ch_label.setObjectName("SidebarTitle")
         chapters_header.addWidget(ch_label)
         chapters_header.addStretch()
+        
+        # Add Chapter Button
+        add_chapter_btn = QPushButton()
+        add_chapter_btn.setObjectName("IconButton")
+        add_chapter_btn.setIcon(self.colorize_icon("add_circle", "#cbd5e1"))
+        add_chapter_btn.setIconSize(QSize(16, 16))
+        add_chapter_btn.setToolTip("Import Chapter from File")
+        add_chapter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_chapter_btn.clicked.connect(self.import_chapter_dialog)
+        chapters_header.addWidget(add_chapter_btn)
+        
         sidebar_layout.addLayout(chapters_header)
         
         self.sidebar = Sidebar()
@@ -277,7 +304,7 @@ class MainWindow(QMainWindow):
         dict_box.setSpacing(8)
         dict_head = QHBoxLayout()
         dict_icon = QLabel()
-        dict_icon.setPixmap(QIcon(icon_path("search")).pixmap(16, 16))
+        dict_icon.setPixmap(self.colorize_icon("search", "#ffffff").pixmap(16, 16))
         dict_title = QLabel("DICTIONARY")
         dict_title.setObjectName("SidebarTitle")
         dict_head.addWidget(dict_icon)
@@ -314,7 +341,7 @@ class MainWindow(QMainWindow):
         gloss_box = QVBoxLayout()
         gloss_head = QHBoxLayout()
         gloss_icon = QLabel()
-        gloss_icon.setPixmap(QIcon(icon_path("menu_book")).pixmap(16, 16))
+        gloss_icon.setPixmap(self.colorize_icon("menu_book", "#ffffff").pixmap(16, 16))
         gloss_title = QLabel("GLOSSARY MATCHES")
         gloss_title.setObjectName("SidebarTitle")
         gloss_head.addWidget(gloss_icon)
@@ -332,7 +359,7 @@ class MainWindow(QMainWindow):
         ai_box = QVBoxLayout()
         ai_head = QHBoxLayout()
         ai_icon = QLabel()
-        ai_icon.setPixmap(QIcon(icon_path("psychology")).pixmap(16, 16))
+        ai_icon.setPixmap(self.colorize_icon("psychology", "#ffffff").pixmap(16, 16))
         ai_box_title = QLabel("AI SUGGESTIONS")
         ai_box_title.setObjectName("SidebarTitle")
         ai_head.addWidget(ai_icon)
@@ -351,7 +378,7 @@ class MainWindow(QMainWindow):
         
         self.btn_regen = QPushButton("Regenerate Suggestion")
         self.btn_regen.setObjectName("PrimaryButton")
-        self.btn_regen.setIcon(QIcon(icon_path("bolt")))
+        self.btn_regen.setIcon(self.colorize_icon("bolt", "#ffffff"))
         self.btn_regen.clicked.connect(self.auto_translate_current)
         ai_box.addWidget(self.btn_regen)
         right_layout.addLayout(ai_box)
@@ -385,12 +412,21 @@ class MainWindow(QMainWindow):
         footer_layout.addWidget(self.create_separator())
         
         # Language Selectors
-        self.source_lang_label = QLabel("Source: --")
-        self.source_lang_label.setStyleSheet("font-size: 10px; color: #94a3b8;")
-        self.target_lang_label = QLabel("Target: --")
-        self.target_lang_label.setStyleSheet("font-size: 10px; color: #94a3b8;")
-        footer_layout.addWidget(self.source_lang_label)
-        footer_layout.addWidget(self.target_lang_label)
+        # Language Selectors
+        self.source_lang_combo = QComboBox()
+        self.source_lang_combo.setMinimumWidth(120)
+        self.source_lang_combo.currentIndexChanged.connect(lambda: self.on_language_changed('source'))
+        
+        self.target_lang_combo = QComboBox()
+        self.target_lang_combo.setMinimumWidth(120)
+        self.target_lang_combo.currentIndexChanged.connect(lambda: self.on_language_changed('target'))
+        
+        footer_layout.addWidget(QLabel("Source:"))
+        footer_layout.addWidget(self.source_lang_combo)
+        footer_layout.addWidget(QLabel("Target:"))
+        footer_layout.addWidget(self.target_lang_combo)
+        
+        self.load_languages_into_footer()
         
         footer_layout.addStretch()
         
@@ -431,7 +467,7 @@ class MainWindow(QMainWindow):
         
         # Auto-saved
         save_icon = QLabel()
-        save_icon.setPixmap(QIcon(icon_path("cloud_done")).pixmap(12, 12))
+        save_icon.setPixmap(self.colorize_icon("cloud_done", "#64748b").pixmap(12, 12))
         save_label = QLabel("AUTO-SAVED")
         save_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748b;")
         footer_layout.addWidget(save_icon)
@@ -613,7 +649,21 @@ class MainWindow(QMainWindow):
             
             p = self.project_manager.current_project
             src = active_card.segment.source_text
-            trans = self.llm_engine.translate(src, p.source_language, p.target_language)
+            
+            # Get glossary terms
+            glossary_terms = {}
+            for term in GlossaryTerm.select().where(GlossaryTerm.project == p):
+                glossary_terms[term.source_term] = term.target_term
+            
+            engine = self.get_current_translation_engine()
+            # Pass extra params if the engine supports them (LLMEngine does, others might ignore or need update)
+            # We updated signatures in argos/nllb but let's be safe or just pass kwargs
+            trans = engine.translate(
+                src, p.source_language, p.target_language,
+                glossary_terms=glossary_terms,
+                genre=p.genre,
+                custom_instructions=p.custom_instructions
+            )
             
             active_card.target_edit.setPlainText(trans)
             self.ai_text.setText(trans)
@@ -693,7 +743,9 @@ class MainWindow(QMainWindow):
                 translated_text,
                 src_lang=p.source_language,
                 tgt_lang=p.target_language,
-                glossary_terms=glossary_terms
+                glossary_terms=glossary_terms,
+                genre=p.genre,
+                custom_instructions=p.custom_instructions
             )
             
             active_card.target_edit.setPlainText(refined)
@@ -872,8 +924,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "No active project.")
             return
             
-        if not self.llm_engine or not self.llm_engine.is_available():
-            QMessageBox.warning(self, "Error", "LLM engine not available. Please configure in Settings.")
+        engine = self.get_current_translation_engine()
+        if not engine or not engine.is_available():
+            QMessageBox.warning(self, "Error", "Selected translation engine not available. Please check Settings.")
             return
             
         # Get current chapter or all segments
@@ -912,33 +965,30 @@ class MainWindow(QMainWindow):
             for term in GlossaryTerm.select().where(GlossaryTerm.project == project):
                 glossary_terms[term.source_term] = term.target_term
             
+            # Prepare texts for batch translation
+            texts_to_translate = [s.source_text for s in untranslated]
+            
+            # Translate batch
+            translations = engine.translate_batch(
+                texts_to_translate,
+                project.source_language,
+                project.target_language,
+                glossary_terms=glossary_terms,
+                genre=project.genre,
+                custom_instructions=project.custom_instructions
+            )
+            
             translated_count = 0
             
-            for i, seg in enumerate(untranslated):
-                # Update progress
-                progress = int((i / total) * 100)
-                self.status_bar.showMessage(f"Translating segment {i+1}/{total} ({progress}%)")
-                QApplication.processEvents()
-                
-                try:
-                    # Translate
-                    translation = self.llm_engine.translate(
-                        seg.source_text,
-                        project.source_language,
-                        project.target_language,
-                        glossary_terms=glossary_terms,
-                        genre=project.genre,
-                        custom_instructions=project.custom_instructions
-                    )
-                    
-                    # Save
-                    seg.target_text = translation
-                    seg.status = 'translated'
-                    seg.save()
-                    translated_count += 1
-                    
-                except Exception as e:
-                    print(f"Error translating segment {seg.index}: {e}")
+            # Apply translations
+            with self.project_manager.db.atomic():
+                for i, translation in enumerate(translations):
+                    if i < len(untranslated):
+                        seg = untranslated[i]
+                        seg.target_text = translation
+                        seg.status = 'translated'
+                        seg.save()
+                        translated_count += 1
                     
             # Refresh display
             self.load_segments()
@@ -953,8 +1003,11 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Batch translation failed.")
 
     def show_settings(self):
+        from src.gui.settings_dialog import SettingsDialog
         dialog = SettingsDialog(self)
-        dialog.exec()
+        if dialog.exec():
+            self.apply_theme()
+            self.status_bar.showMessage("Settings saved and theme applied.", 3000)
 
     def show_language_store(self):
         from src.gui.language_store import LanguageStore
@@ -1157,16 +1210,95 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
+    def new_project_dialog(self):
+        from src.gui.new_project_dialog import NewProjectDialog
+        
+        dialog = NewProjectDialog(self, self.language_manager)
+        if dialog.exec():
+            data = dialog.get_data()
+            
+            # Ask where to save the project file (.ntrad)
+            db_path, _ = QFileDialog.getSaveFileName(
+                self, "Save Project File", 
+                os.path.join(os.getcwd(), f"{data['name']}.ntrad"),
+                "NovelTrad Project (*.ntrad)"
+            )
+            
+            if db_path:
+                try:
+                    self.status_bar.showMessage("Creating project...")
+                    QApplication.processEvents()
+                    
+                    self.project_manager.create_project(
+                        name=data['name'],
+                        db_path=db_path,
+                        source_file=data['source_path'],
+                        source_lang=data['source_lang'],
+                        target_lang=data['target_lang']
+                    )
+                    
+                    self.load_project(fname=db_path)
+                    
+                    # Force update of language selectors
+                    self.load_languages_into_footer()
+                    # Set combos
+                    idx_src = self.source_lang_combo.findData(data['source_lang'])
+                    if idx_src >= 0: self.source_lang_combo.setCurrentIndex(idx_src)
+                    
+                    idx_tgt = self.target_lang_combo.findData(data['target_lang'])
+                    if idx_tgt >= 0: self.target_lang_combo.setCurrentIndex(idx_tgt)
+
+                    QMessageBox.information(self, "Success", "Project created successfully!")
+                    
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to create project: {e}")
+
+    def import_chapter_dialog(self):
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Error", "No project loaded.")
+            return
+
+        fname, _ = QFileDialog.getOpenFileName(
+            self, "Import Chapter", "", 
+            "Documents (*.txt *.docx *.epub *.pdf);;All Files (*)"
+        )
+        
+        if fname:
+            try:
+                self.project_manager.import_file(fname)
+                self.load_chapters()
+                self.status_bar.showMessage(f"Imported chapter: {os.path.basename(fname)}")
+            except Exception as e:
+                 QMessageBox.critical(self, "Error", f"Failed to import chapter: {str(e)}")
+
     def open_project_dialog(self):
         fname, _ = QFileDialog.getOpenFileName(self, "Open Project", "", "NovelTrad Projects (*.ntrad)")
         if fname:
-            try:
-                self.project_manager.load_project(fname)
-                self.load_chapters()
-                self.load_segments()
-                self.status_bar.showMessage(f"Loaded project: {fname}")
-            except Exception as e:
-                 QMessageBox.critical(self, "Error", f"Failed to open project: {str(e)}")
+            self.load_project(fname)
+
+    def load_project(self, fname):
+        try:
+            self.project_manager.load_project(fname)
+            
+            # Update Header
+            if self.project_manager.current_project:
+                self.project_name_label.setText(self.project_manager.current_project.name)
+            
+            self.load_chapters()
+            self.load_segments()
+            self.status_bar.showMessage(f"Loaded project: {fname}")
+            
+            # Update Footer languages
+            p = self.project_manager.current_project
+            if p:
+                idx_src = self.source_lang_combo.findData(p.source_language)
+                if idx_src >= 0: self.source_lang_combo.setCurrentIndex(idx_src)
+                
+                idx_tgt = self.target_lang_combo.findData(p.target_language)
+                if idx_tgt >= 0: self.target_lang_combo.setCurrentIndex(idx_tgt)
+                
+        except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open project: {str(e)}")
 
     def show_search_replace(self):
         """Show Search & Replace dialog."""
@@ -1410,5 +1542,67 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Structure AI failed: {str(e)}")
                 self.status_bar.showMessage("Structure AI error.")
+
+    def load_languages_into_footer(self):
+        languages = self.language_manager.get_supported_languages()
+        
+        self.source_lang_combo.blockSignals(True)
+        self.target_lang_combo.blockSignals(True)
+        
+        self.source_lang_combo.clear()
+        self.target_lang_combo.clear()
+        
+        icon_path_check = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "icons", "check_circle.svg")
+        
+        for lang in languages:
+            if not lang['installed']:
+                continue
+            icon = self.colorize_icon("check_circle", "#22c55e")
+            self.source_lang_combo.addItem(icon, lang['name'], lang['code'])
+            self.target_lang_combo.addItem(icon, lang['name'], lang['code'])
+            
+        self.source_lang_combo.blockSignals(False)
+        self.target_lang_combo.blockSignals(False)
+
+    def on_language_changed(self, mode):
+        if not self.project_manager.current_project:
+            return
+            
+        src_idx = self.source_lang_combo.currentIndex()
+        tgt_idx = self.target_lang_combo.currentIndex()
+        
+        if src_idx >= 0:
+            src_code = self.source_lang_combo.itemData(src_idx)
+            self.project_manager.current_project.source_language = src_code
+            
+        if tgt_idx >= 0:
+            tgt_code = self.target_lang_combo.itemData(tgt_idx)
+            self.project_manager.current_project.target_language = tgt_code
+            
+        self.project_manager.current_project.save()
+        self.status_bar.showMessage(f"Project languages updated: {self.source_lang_combo.currentText()} -> {self.target_lang_combo.currentText()}", 3000)
+
+    def get_current_translation_engine(self):
+        import json
+        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "config.json")
+        default_engine_name = "LLM (Online/Local)"
+        
+        if os.path.exists(config_path):
+             try:
+                 with open(config_path, 'r', encoding='utf-8') as f:
+                     config = json.load(f)
+                 default_engine_name = config.get('default_engine', 'LLM (Online/Local)')
+             except:
+                 pass
+        
+        if "Argos" in default_engine_name:
+            if self.language_manager.argos:
+                return self.language_manager.argos
+        elif "NLLB" in default_engine_name:
+            if self.language_manager.nllb:
+                 return self.language_manager.nllb
+        
+        # Fallback to LLM
+        return self.llm_engine
 
 

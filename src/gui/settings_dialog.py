@@ -34,7 +34,7 @@ class SettingsDialog(QDialog):
         
         # Tools Tab
         self.tools_tab = QWidget()
-        self.tabs.addTab(self.tools_tab, "Tools")
+        self.tabs.addTab(self.tools_tab, "Language Store")
         self.init_tools_tab()
         
         # Buttons
@@ -100,14 +100,6 @@ class SettingsDialog(QDialog):
         btn_store.clicked.connect(self.open_store)
         layout.addWidget(btn_store)
         
-        layout.addWidget(QLabel("<b>Project Analytics</b>"))
-        
-        btn_stats = QPushButton("Show Project Statistics")
-        btn_stats.setToolTip("View word count, progress and status breakdown")
-        btn_stats.setMinimumHeight(40)
-        btn_stats.clicked.connect(self.open_stats)
-        layout.addWidget(btn_stats)
-        
         layout.addStretch()
 
     def open_store(self):
@@ -115,10 +107,6 @@ class SettingsDialog(QDialog):
         if self.parent() and hasattr(self.parent(), 'show_language_store'):
             self.parent().show_language_store()
 
-    def open_stats(self):
-        self.accept()
-        if self.parent() and hasattr(self.parent(), 'show_statistics'):
-            self.parent().show_statistics()
 
     def init_appearance_tab(self):
         layout = QFormLayout(self.appearance_tab)
@@ -148,6 +136,7 @@ class SettingsDialog(QDialog):
                 self.llm_url.setText(config.get('llm_url', 'http://localhost:1234/v1'))
                 self.llm_key.setText(config.get('llm_key', 'lm-studio'))
                 self.llm_model.setText(config.get('llm_model', 'gemma-2-9b-it'))
+                self.engine_combo.setCurrentText(config.get('default_engine', 'LLM (Online/Local)'))
                 
                 # Appearance
                 theme = config.get('theme', 'Dark (Default)')
@@ -166,6 +155,7 @@ class SettingsDialog(QDialog):
             'llm_url': self.llm_url.text(),
             'llm_key': self.llm_key.text(),
             'llm_model': self.llm_model.text(),
+            'default_engine': self.engine_combo.currentText(),
             'theme': self.theme_combo.currentText(),
             'font_size': self.font_size.currentText()
         }

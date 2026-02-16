@@ -7,24 +7,39 @@ QWidget {
     font-family: 'Inter', 'Segoe UI', sans-serif;
 }
 
+QLabel {
+    background-color: transparent;
+}
+
 QFrame#Header {
-    background-color: rgba(22, 22, 22, 0.5);
+    background-color: #000000;
     border-bottom: 1px solid #333333;
 }
 
 QFrame#Footer {
-    background-color: #161616;
+    background-color: #000000;
     border-top: 1px solid #333333;
 }
 
 QFrame#Sidebar {
-    background-color: #0B0B0B;
+    background-color: #000000;
     border-right: 1px solid #333333;
 }
 
 QFrame#RightPanel {
-    background-color: #161616;
+    background-color: #000000;
     border-left: 1px solid #333333;
+}
+
+QSplitter::handle {
+    background-color: #333333;
+    border: none;
+}
+QSplitter::handle:horizontal {
+    width: 2px;
+}
+QSplitter::handle:hover {
+    background-color: #0d7ff2;
 }
 
 /* Scrollbars */
@@ -45,7 +60,7 @@ QScrollBar::handle:vertical:hover {
 
 /* Segment Cards */
 QFrame#SegmentCard {
-    background-color: rgba(22, 22, 22, 0.2);
+    background-color: #1a1a1a; 
     border: 1px solid #333333;
     border-radius: 8px;
     margin: 2px;
@@ -54,15 +69,17 @@ QFrame#SegmentCard:hover {
     border-color: #475569;
 }
 QFrame#SegmentCard[active="true"] {
-    background-color: #161616;
-    border: 2px solid #0d7ff2;
+    background-color: #1e1e1e;
+    border: 2px solid #3b82f6;
 }
 
 /* Labels */
 QLabel#SidebarTitle {
-    color: #94a3b8;
+    color: #cbd5e1;
     font-weight: 700;
-    font-size: 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 QLabel#ProjectTitle {

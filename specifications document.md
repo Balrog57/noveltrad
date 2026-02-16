@@ -14,6 +14,15 @@ Version 2.0
 
 Février 2026
 
+# 0. Règles de Développement et Références Standards
+
+> [!IMPORTANT]
+> **Règle d'Or du Workspace**
+> Tout développement, ajout de fonctionnalité ou modification doit se référer strictement aux sources suivantes :
+> 1. **Ce présent document** (`specifications document.md`) pour le périmètre fonctionnel.
+> 2. **Définition standard TAO** (Source : [Wikipedia](https://fr.wikipedia.org/wiki/Traduction_assist%C3%A9e_par_ordinateur)) : Le logiciel doit inclure les fonctions piliers (Mémoire de Traduction, Gestionnaire de Terminologie, Concordancier, Alignement).
+> 3. **Standards IA & UX** (Source : [AI Novel Translation](https://www.ainoveltranslation.com/)) : L'interface et les fonctions IA doivent viser le niveau de fluidité et de puissance de cet outil de référence (Glossary AI, Batch Translation, Structure AI).
+
 # Table des matières
 
 1. Présentation générale du projet
@@ -434,6 +443,18 @@ Inspiré de la fonctionnalité Editor AI d’AI Novel Translation :
 - Vitesse de traduction moyenne
 - Coût estimé si utilisation d’IA en ligne
 ## 12.7 Raccourcis clavier
+
+## 12.8 Concordancier (Fonctionnalité TAO Standard)
+- Recherche de termes dans le contexte des traductions précédentes (TM) et des corpus de référence.
+- Affichage des segments source/cible contenant le terme recherché pour vérifier l'usage en contexte.
+
+## 12.9 Assurance Qualité (QA Check)
+- Vérification automatique avant export :
+    - Balises manquantes ou altérées.
+    - Incohérence des nombres/chiffres.
+    - Termes du glossaire non respectés (si forcé).
+    - Segments vides ou non traduits.
+    - Ponctuation finale différente de la source.
 
 # 13. Exigences non fonctionnelles
 

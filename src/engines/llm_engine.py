@@ -331,12 +331,19 @@ class LLMEngine(TranslationEngine):
         except:
             return json.dumps([])
 
-    def refine_translation(self, source_text, translated_text, src_lang="en", tgt_lang="fr", glossary_terms=None):
+    def refine_translation(self, source_text, translated_text, src_lang="en", tgt_lang="fr", glossary_terms=None, genre=None, custom_instructions=None):
         """Refine/Edit AI - improve machine translation using LLM."""
         if not self.client:
             return translated_text
             
         system_prompt = f"Expert Editor. Improve fluency/naturalness in {tgt_lang}. Keep consistent terminology. No explanations."
+        
+        if genre and genre in TRANSLATION_STYLE_GUIDES:
+            system_prompt += f" Style: {TRANSLATION_STYLE_GUIDES[genre]}"
+            
+        if custom_instructions:
+            system_prompt += f" Instructions: {custom_instructions}"
+            
         if glossary_terms:
             glos = ", ".join([f"{k}:{v}" for k, v in glossary_terms.items()])
             system_prompt += f" Glossary: {glos}"
@@ -418,8 +425,8 @@ class LLMEngine(TranslationEngine):
             import json
             return json.dumps([])
 
-    def translate_batch(self, texts, src_lang, tgt_lang):
-        return [self.translate(t, src_lang, tgt_lang) for t in texts]
+    def translate_batch(self, texts, src_lang, tgt_lang, **kwargs):
+        return [self.translate(t, src_lang, tgt_lang, **kwargs) for t in texts]
 
     def get_supported_languages(self):
         # Supported languages for TranslateGemma-12B-it (55 languages)

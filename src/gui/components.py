@@ -50,7 +50,7 @@ class SegmentCard(QFrame):
         # Source (Left)
         source_container = QFrame()
         source_container.setObjectName("SourceContainer")
-        source_container.setStyleSheet("border-r: 1px solid #333333; padding: 12px;")
+        source_container.setStyleSheet("border-right: 1px solid #404040; padding: 12px;")
         source_layout = QVBoxLayout(source_container)
         
         self.source_edit = QTextEdit(self.segment.source_text)
@@ -167,7 +167,7 @@ class SidebarItem(QFrame):
         # Progress Bar
         self.bar_bg = QFrame()
         self.bar_bg.setFixedHeight(4)
-        self.bar_bg.setStyleSheet("background-color: #1e1e1e; border-radius: 2px;")
+        self.bar_bg.setStyleSheet("background-color: #262626; border-radius: 2px;")
         
         self.bar_fill = QFrame(self.bar_bg)
         self.bar_fill.setFixedHeight(4)
