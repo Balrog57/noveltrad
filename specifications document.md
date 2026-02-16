@@ -20,8 +20,18 @@ Février 2026
 > **Règle d'Or du Workspace**
 > Tout développement, ajout de fonctionnalité ou modification doit se référer strictement aux sources suivantes :
 > 1. **Ce présent document** (`specifications document.md`) pour le périmètre fonctionnel.
-> 2. **Définition standard TAO** (Source : [Wikipedia](https://fr.wikipedia.org/wiki/Traduction_assist%C3%A9e_par_ordinateur)) : Le logiciel doit inclure les fonctions piliers (Mémoire de Traduction, Gestionnaire de Terminologie, Concordancier, Alignement).
-> 3. **Standards IA & UX** (Source : [AI Novel Translation](https://www.ainoveltranslation.com/)) : L'interface et les fonctions IA doivent viser le niveau de fluidité et de puissance de cet outil de référence (Glossary AI, Batch Translation, Structure AI).
+
+> 2. **Définition Standard TAO** (Source : [Wikipedia](https://fr.wikipedia.org/wiki/Traduction_assist%C3%A9e_par_ordinateur), [OmegaT Beginners](https://hackmd.io/@omegat/for_cat_beginners)) : Le logiciel doit inclure les fonctions piliers :
+>    * **Mémoire de Traduction (TM)** : Base de données de segments déjà traduits pour réutilisation (Fuzzy Match).
+>    * **Gestionnaire de Terminologie** : Glossaires pour la cohérence des termes.
+>    * **Concordancier** : Recherche contextuelle dans les mémoires et corpus.
+>    * **Alignement** : Création de mémoires à partir d'archives (Bitextes).
+>    * **Segmentation et Tags** : Découpage par phrase et protection stricte du formatage via balises.
+> 3. **Standards IA & UX** (Source : [AI Novel Translation](https://www.ainoveltranslation.com/)) : L'interface doit viser une expérience "Frictionless" :
+>    * **Glossary AI** : Extraction et maintien de la cohérence terminologique par IA.
+>    * **Batch Translation** : Traitement de gros volumes avec préservation de structure.
+>    * **Structure AI** : Analyse sémantique de la structure du roman.
+
 
 # Table des matières
 
@@ -43,21 +53,24 @@ Février 2026
 
 9. Dictionnaire local
 
+
 10. Intégration IA (locale et en ligne)
 
 11. Gestion des projets
 
 12. Fonctionnalités détaillées
 
-13. Exigences non fonctionnelles
+13. Alignement et Segmentation (Spécifique TAO)
 
-14. Stack technique recommandée
+14. Exigences non fonctionnelles
 
-15. Modèle de données
+15. Stack technique recommandée
 
-16. Phases de développement
+16. Modèle de données
 
-17. Annexes
+17. Phases de développement
+
+18. Annexes
 
 # 1. Présentation générale du projet
 
@@ -102,6 +115,24 @@ L’application n’est pas limitée à un genre. Elle prend en charge tout type
 - Traduction collaborative multi-utilisateurs en temps réel
 - OCR intégré pour images de texte (possible en v2)
 - Publication directe sur plateformes de lecture
+
+## 2.3 Philosophie UX : "Complexité sous le capot, Simplicité en surface"
+L'objectif est de réconcilier la puissance des outils TAO professionnels (OmegaT) avec l'accessibilité des outils modernes.
+- **Principe** : L'utilisateur ne doit pas avoir à configurer des pipelines complexes pour démarrer.
+- **Accessibilité** : Les fonctions avancées (Alignement, Regex, TMX) doivent être accessibles mais ne pas encombrer le flux de travail principal.
+- **Expérience** : L'interface doit guider l'utilisateur naturellement à travers les étapes logiques de la traduction d'un roman.
+
+## 2.4 Flux de travail cible (Workflow)
+Le logiciel est conçu pour suivre ce cheminement précis :
+1.  **Chargement** : Import du roman (EPUB/DOCX) + Détection automatique de la structure (Structure AI).
+2.  **Préparation** : Génération automatique du glossaire (Glossary AI) + Révision manuelle rapide / Import de glossaires existants.
+3.  **Traduction de masse (Batch)** : Lancement de la traduction automatique (Local ctranslate2/Argos ou LLM) sur l'ensemble ou une sélection de chapitres.
+4.  **Révision (Post-édition)** :
+    *   Lecture chapitre par chapitre.
+    *   Correction segment par segment assistée par le **Dictionnaire**, le **Concordancier** et le **Glossaire**.
+    *   Utilisation de l'IA pour raffiner/reformuler des passages complexes.
+5.  **Finalisation & Export** : Validation des chapitres et export final au format d'origine (livre traduit).
+
 # 3. Architecture technique
 
 ## 3.1 Vue d’ensemble
@@ -444,9 +475,16 @@ Inspiré de la fonctionnalité Editor AI d’AI Novel Translation :
 - Coût estimé si utilisation d’IA en ligne
 ## 12.7 Raccourcis clavier
 
+
 ## 12.8 Concordancier (Fonctionnalité TAO Standard)
-- Recherche de termes dans le contexte des traductions précédentes (TM) et des corpus de référence.
-- Affichage des segments source/cible contenant le terme recherché pour vérifier l'usage en contexte.
+- **Définition** : Moteur de recherche contextuel dans les mémoires de traduction (TM) et corpus de référence.
+- **Fonctionnalité** :
+    - Recherche d'un mot ou d'une expression (source OU cible).
+    - Affichage des résultats en contexte (segment complet source + cible).
+    - Permet de voir "comment ce terme a été traduit dans le passé" ou "dans quels contextes ce mot apparaît".
+    - Recherche approximative (fuzzy search) incluse.
+
+
 
 ## 12.9 Assurance Qualité (QA Check)
 - Vérification automatique avant export :
@@ -456,9 +494,37 @@ Inspiré de la fonctionnalité Editor AI d’AI Novel Translation :
     - Segments vides ou non traduits.
     - Ponctuation finale différente de la source.
 
-# 13. Exigences non fonctionnelles
+# 13. Alignement et Segmentation (Spécifique TAO)
 
-## 13.1 Performance
+Cette section détaille les fonctionnalités indispensables pour qualifier l'outil de "Logiciel TAO" selon les standards OmegaT et l'industrie.
+
+## 13.1 Gestion de la Segmentation
+* **Principe** : Le texte source n'est pas traité comme un bloc, mais découpé en unités logiques appelées "segments" (généralement des phrases).
+* **Règles de segmentation** :
+    * Segmentation par défaut par ponctuation (. ! ?).
+    * Gestion des exceptions (ex: "M. Smith", "chap. 1") pour ne pas couper au mauvais endroit.
+    * segmentation spécifique selon la langue (ex: CJK sans ponctuation latine).
+* **Visualisation** : L'interface affiche une vue segmentée (une ligne source = une ligne cible).
+
+## 13.2 Gestion des Balises (Tags)
+* **Définition** : Les balises (ex: `<b0>`, `<i1>`) représentent le formatage original (gras, italique, liens) qui ne doit pas être traduit mais préservé.
+* **Comportement** :
+    * Le traducteur peut déplacer les balises dans le segment cible pour les adapter à la syntaxe.
+    * **Interdiction** de supprimer ou modifier le contenu des balises.
+    * **Validation** : Le logiciel empêche l'export ou signale une erreur critique si les balises du segment cible ne correspondent pas au segment source.
+
+## 13.3 Outil d'Alignement
+* **Objectif** : Créer une mémoire de traduction (TMX) à partir de deux fichiers existants (un original et sa traduction) qui n'ont pas été traduits avec l'outil.
+* **Fonctionnement** :
+    * Import du fichier source et du fichier cible.
+    * Algorithme d'appariement automatique des segments (basé sur la longueur, la structure, des ancres).
+    * Interface visuelle de correction pour l'utilisateur (fusionner/diviser des segments, corriger les correspondances).
+    * Export du résultat en TMX pour l'intégrer au projet.
+
+
+# 14. Exigences non fonctionnelles
+
+## 14.1 Performance
 
 - Traduction d’un paragraphe (NLLB) : < 3 secondes sur CPU moderne
 - Traduction d’un chapitre (~5000 mots) : < 90 secondes via NMT, variable via LLM
@@ -467,33 +533,39 @@ Inspiré de la fonctionnalité Editor AI d’AI Novel Translation :
 - Chargement d’un modèle NLLB : < 30 secondes
 - Ouverture d’un EPUB de 500 pages : < 10 secondes
 - Export EPUB/DOCX avec préservation du formatage : < 30 secondes
+
 - Recherche dans le dictionnaire : < 100ms
-## 13.2 Compatibilité
+## 14.2 Compatibilité
 
 - Systèmes d’exploitation : Windows 10/11, macOS 12+, Linux (Ubuntu 22.04+)
 - Python 3.10 ou supérieur
 - Support GPU optionnel (CUDA pour NVIDIA, accélération Metal pour macOS)
+
 - Fonctionnement complet hors ligne (sauf services web et IA en ligne)
-## 13.3 Utilisabilité
+## 14.3 Utilisabilité
 
 - Interface entièrement en français (internationalisation possible en v2)
 - Thème clair et sombre
 - Polices configurables pour toutes les langues
 - Sauvegarde automatique régulière (configurable)
 - Annulation multi-niveaux (Ctrl+Z)
+
 - Assistant de premier lancement pour configurer les modèles et télécharger les dictionnaires
-## 13.4 Sécurité et données
+## 14.4 Sécurité et données
 
 - Toutes les données restent en local (aucun envoi à des serveurs tiers sauf activation explicite d’un service en ligne)
 - Clés API stockées de manière sécurisée (keyring ou chiffrement local)
-- Pas de télémétrie ni de collecte de données
-# 14. Stack technique recommandée
 
-# 15. Modèle de données
+- Pas de télémétrie ni de collecte de données
+# 15. Stack technique recommandée
+
+
+# 16. Modèle de données
 
 Schéma principal de la base SQLite :
 
-## 15.1 Table projects
+
+## 16.1 Table projects
 
 id INTEGER PRIMARY KEY
 
@@ -515,7 +587,8 @@ created_at DATETIME
 
 updated_at DATETIME
 
-## 15.2 Table chapters
+
+## 16.2 Table chapters
 
 id INTEGER PRIMARY KEY
 
@@ -531,7 +604,8 @@ status TEXT  -- 'pending', 'in_progress', 'translated', 'reviewed'
 
 order_index INTEGER
 
-## 15.3 Table segments
+
+## 16.3 Table segments
 
 id INTEGER PRIMARY KEY
 
@@ -549,7 +623,8 @@ engine_used TEXT
 
 last_modified DATETIME
 
-## 15.4 Table glossary
+
+## 16.4 Table glossary
 
 id INTEGER PRIMARY KEY
 
@@ -571,7 +646,8 @@ source TEXT  -- 'manual', 'ai_generated', 'validated'
 
 created_at DATETIME
 
-## 15.5 Table dictionary
+
+## 16.5 Table dictionary
 
 id INTEGER PRIMARY KEY
 
@@ -583,7 +659,8 @@ lang TEXT  -- 'zh', 'ja', 'ko', etc.
 
 definitions TEXT  -- JSON {"en": "...", "fr": "..."}
 
-## 15.6 Table translation_memory
+
+## 16.6 Table translation_memory
 
 id INTEGER PRIMARY KEY
 
@@ -599,7 +676,8 @@ project_id INTEGER
 
 created_at DATETIME
 
-# 16. Phases de développement
+
+# 17. Phases de développement
 
 ## Phase 1 – Fondations (4-6 semaines)
 
@@ -636,11 +714,14 @@ created_at DATETIME
 - Packaging en exécutable (PyInstaller)
 - Tests complets, corrections de bugs
 - Documentation utilisateur
-# 17. Annexes
 
-## 17.1 Exemple de glossaire xianxia par défaut
+# 18. Annexes
 
-## 17.2 Exemple de prompt Glossary AI (genre SF)
+
+## 18.1 Exemple de glossaire xianxia par défaut
+
+
+## 18.2 Exemple de prompt Glossary AI (genre SF)
 
 Voici un exemple de prompt utilisé par le module Glossary AI pour un roman de science-fiction :
 
@@ -668,7 +749,8 @@ catégorie, et une courte note de contexte.
 
 Réponds en JSON."
 
-## 17.3 Ressources et références
+
+## 18.3 Ressources et références
 
 - NLLB-200 : https://github.com/facebookresearch/fairseq/tree/nllb
 - ctranslate2 : https://github.com/OpenNMT/CTranslate2
