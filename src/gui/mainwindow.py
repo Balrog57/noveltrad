@@ -73,7 +73,20 @@ class MainWindow(QMainWindow):
                 widget.segment.save()
                 self.status_bar.showMessage(f"Segment {self.current_segment_index} saved.")
                 self.update_footer_stats()
+                self.update_current_chapter_progress()
                 break
+
+    def update_current_chapter_progress(self):
+        """Update the progress bar for the current chapter in the sidebar."""
+        if not hasattr(self, 'current_chapter_id') or not self.current_chapter_id:
+            return
+            
+        chapter = Chapter.get_by_id(self.current_chapter_id)
+        total = chapter.segments.count()
+        translated = chapter.segments.where(Segment.status != 'untranslated').count()
+        
+        progress = int((translated / total) * 100) if total > 0 else 0
+        self.sidebar.update_item_progress(self.current_chapter_id, progress)
         
     def apply_theme(self):
         import json
@@ -310,6 +323,7 @@ class MainWindow(QMainWindow):
         gloss_box.addLayout(gloss_head)
         
         self.glossary_list = QListWidget()
+        self.glossary_list.setObjectName("GlossaryList")
         self.glossary_list.setFixedHeight(150)
         gloss_box.addWidget(self.glossary_list)
         right_layout.addLayout(gloss_box)
@@ -543,13 +557,43 @@ class MainWindow(QMainWindow):
     def on_segment_card_clicked(self, segment_id):
         self.current_segment_index = segment_id
         
+        active_card = None
         for i in range(self.cards_layout.count() - 1):
             widget = self.cards_layout.itemAt(i).widget()
             if isinstance(widget, SegmentCard):
-                widget.set_active(widget.segment_id == segment_id)
+                is_active = (widget.segment_id == segment_id)
+                widget.set_active(is_active)
+                if is_active:
+                    active_card = widget
+                    
+        if active_card:
+            self.status_bar.showMessage(f"Selected Segment {segment_id}")
+            self.ai_text.setText("Click 'Regenerate' to get AI suggestion for this segment.")
+            
+            # Auto-Glossary detection for current segment
+            self.update_glossary_for_segment(active_card.segment.source_text)
+
+    def update_glossary_for_segment(self, text):
+        """Find and highlight glossary terms in the given text."""
+        self.glossary_list.clear()
+        if not self.project_manager.current_project:
+            return
+            
+        project = self.project_manager.current_project
+        terms = GlossaryTerm.select().where(GlossaryTerm.project == project)
+        
+        found = 0
+        for term in terms:
+            if term.source_term.lower() in text.lower():
+                item = QListWidgetItem(f"{term.source_term} → {term.target_term}")
+                # Color coding based on category/auto-gen?
+                if term.is_auto_generated:
+                    item.setForeground(Qt.GlobalColor.gray)
+                self.glossary_list.addItem(item)
+                found += 1
                 
-        self.status_bar.showMessage(f"Selected Segment {segment_id}")
-        self.ai_text.setText("Click 'Regenerate' to get AI suggestion for this segment.\n(Model: Gemma-2B)")
+        if found == 0:
+            self.glossary_list.addItem("No matches for this segment.")
 
     def auto_translate_current(self):
         if self.current_segment_index == -1: return

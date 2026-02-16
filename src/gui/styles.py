@@ -143,6 +143,19 @@ QFrame#SidebarItem[active="true"] {
     border-left: 3px solid #0d7ff2;
 }
 
+QListWidget#GlossaryList::item {
+    background-color: rgba(22, 22, 22, 0.3);
+    border: 1px solid #333333;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    padding: 12px;
+}
+
+QListWidget#GlossaryList::item:hover {
+    background-color: rgba(22, 22, 22, 0.6);
+    border-color: #475569;
+}
+
 /* ComboBox/Inputs */
 QComboBox {
     background-color: #1e293b;

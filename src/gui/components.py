@@ -227,3 +227,9 @@ class Sidebar(QWidget):
             item.set_active(item.item_id == item_id)
         self.itemClicked.emit(item_id)
 
+    def update_item_progress(self, item_id, progress):
+        for item in self.items:
+            if item.item_id == item_id:
+                item.update_progress(progress)
+                break
+
