@@ -246,7 +246,17 @@ class LLMEngine(TranslationEngine):
             return json.dumps([])
             
         existing_list = existing_terms[:50] if isinstance(existing_terms, list) else []
-        existing_str = ", ".join([f"{e.get('source', e.get('source_term', ''))}:{e.get('target', e.get('target_term', ''))}" for e in existing_list])
+        def get_term_str(e):
+            if isinstance(e, str): return e
+            if hasattr(e, 'source_term') and hasattr(e, 'target_term'):
+                return f"{e.source_term}:{e.target_term}"
+            if isinstance(e, dict):
+                src = e.get('source', e.get('source_term', ''))
+                tgt = e.get('target', e.get('target_term', ''))
+                return f"{src}:{tgt}"
+            return str(e)
+            
+        existing_str = ", ".join([get_term_str(e) for e in existing_list])
         
         src_code = get_language_code(src_lang)
         tgt_code = get_language_code(tgt_lang)
@@ -286,24 +296,37 @@ class LLMEngine(TranslationEngine):
     def _extract_json(self, content):
         """Helper to extract JSON from LLM response."""
         if not content:
-            import json
             return json.dumps([])
-        import json
-        import re
-        content = content.strip()
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-        
-        # Simple extraction if still contains text around it
-        json_match = re.search(r'\[\s*\{.*\}\s*\]', content, re.DOTALL)
-        if json_match:
-            content = json_match.group()
             
+        content = content.strip()
+        
+        # Try to find JSON array or object
+        import re
+        # Look for [ { ... } ] or { ... }
+        match = re.search(r'\[\s*\{.*\}\s*\]', content, re.DOTALL)
+        if not match:
+            match = re.search(r'\{.*\}', content, re.DOTALL)
+            
+        if match:
+            json_str = match.group()
+            try:
+                parsed = json.loads(json_str)
+                # Ensure it's a list for glossary/chapters
+                if isinstance(parsed, dict):
+                    parsed = [parsed]
+                return json.dumps(parsed, ensure_ascii=False)
+            except:
+                pass
+        
+        # Fallback: try to find anything that looks like JSON if the regex failed or parsing failed
         try:
-            # Validate if it's correct JSON
-            parsed = json.loads(content)
+            # Clean common markdown/babble
+            clean = content
+            if "```json" in clean: clean = clean.split("```json")[-1].split("```")[0]
+            elif "```" in clean: clean = clean.split("```")[-1].split("```")[0]
+            
+            parsed = json.loads(clean.strip())
+            if isinstance(parsed, dict): parsed = [parsed]
             return json.dumps(parsed, ensure_ascii=False)
         except:
             return json.dumps([])

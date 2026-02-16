@@ -67,8 +67,7 @@ class SegmentCard(QFrame):
         self.source_edit.setReadOnly(True)
         self.source_edit.setObjectName("SourceText")
         self.source_edit.setFrameShape(QFrame.Shape.NoFrame)
-        self.source_edit.setMinimumHeight(80)
-        self.source_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.source_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.source_edit.installEventFilter(self)
         
         # Target Text
@@ -76,8 +75,7 @@ class SegmentCard(QFrame):
         self.target_edit.setPlaceholderText("Click to start translating...")
         self.target_edit.setObjectName("TargetText")
         self.target_edit.setFrameShape(QFrame.Shape.NoFrame)
-        self.target_edit.setMinimumHeight(80)
-        self.target_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.target_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.target_edit.textChanged.connect(self.on_text_changed)
         self.target_edit.installEventFilter(self)
         
@@ -185,7 +183,6 @@ class SidebarItem(QFrame):
         title_row = QHBoxLayout()
         self.title_lbl = QLabel(title)
         self.title_lbl.setObjectName("SidebarTitle")
-        self.title_lbl.setStyleSheet("border: none; background: transparent;") # Reset potential inheritance
         title_row.addWidget(self.title_lbl)
         
         if progress > 0 or is_active:
@@ -193,7 +190,6 @@ class SidebarItem(QFrame):
             prog_text = f"{progress}%"
             prog_lbl = QLabel(prog_text)
             prog_lbl.setObjectName("SidebarProgress")
-            prog_lbl.setStyleSheet("border: none; background: transparent;")
             title_row.addWidget(prog_lbl)
             
         layout.addLayout(title_row)
