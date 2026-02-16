@@ -18,6 +18,7 @@ class SegmentCard(QFrame):
         # Style
         self.setObjectName("SegmentCard")
         self.setProperty("active", False)
+        self.layout_mode = "horizontal"  # horizontal (side-by-side) or vertical (stacked)
         
         self.init_ui()
         
@@ -42,41 +43,19 @@ class SegmentCard(QFrame):
         header_layout.addWidget(self.status_badge)
         main_layout.addLayout(header_layout)
         
-        # Text areas (50/50 Split)
-        text_layout = QHBoxLayout()
-        text_layout.setSpacing(0) # No spacing, use border-r
-        text_layout.setContentsMargins(0, 0, 0, 0)
+        # Text areas
+        self.text_layout_container = QFrame()
+        self.text_layout_container.setLayout(QVBoxLayout())
+        self.text_layout_container.layout().setContentsMargins(0, 0, 0, 0)
+        self.text_layout_container.layout().setSpacing(0)
         
-        # Source (Left)
-        source_container = QFrame()
-        source_container.setObjectName("SourceContainer")
-        source_container.setStyleSheet("border-right: 1px solid #404040; padding: 12px;")
-        source_layout = QVBoxLayout(source_container)
+        self._setup_text_areas()
+        self._apply_layout_mode()
         
-        self.source_edit = QTextEdit(self.segment.source_text)
-        self.source_edit.setObjectName("SourceText")
-        self.source_edit.setReadOnly(True)
-        self.source_edit.setFrameShape(QFrame.Shape.NoFrame)
-        self.source_edit.installEventFilter(self)
-        source_layout.addWidget(self.source_edit)
+        main_layout.addWidget(self.text_layout_container)
         
-        # Target (Right)
-        target_container = QFrame()
-        target_container.setObjectName("TargetContainer")
-        target_container.setStyleSheet("padding: 12px;")
-        target_layout = QVBoxLayout(target_container)
-        
-        self.target_edit = QTextEdit(self.segment.target_text or "")
-        self.target_edit.setObjectName("TargetText")
-        self.target_edit.setPlaceholderText("Click to start translating...")
-        self.target_edit.setFrameShape(QFrame.Shape.NoFrame)
-        self.target_edit.textChanged.connect(self.on_text_changed)
-        self.target_edit.installEventFilter(self)
-        target_layout.addWidget(self.target_edit)
-        
-        text_layout.addWidget(source_container, 1)
-        text_layout.addWidget(target_container, 1)
-        main_layout.addLayout(text_layout)
+        # Apply Status Color Border
+        self.update_status_style()
         
         # Footer Action (Visible only when active)
         self.footer = QFrame()
@@ -115,6 +94,79 @@ class SegmentCard(QFrame):
         self.clicked.emit(self.segment_id)
         super().mousePressEvent(event)
 
+    def _setup_text_areas(self):
+        # Source
+        self.source_container = QFrame()
+        self.source_container.setObjectName("SourceContainer")
+        self._source_layout = QVBoxLayout(self.source_container)
+        self.source_edit = QTextEdit(self.segment.source_text)
+        self.source_edit.setObjectName("SourceText")
+        self.source_edit.setReadOnly(True)
+        self.source_edit.setFrameShape(QFrame.Shape.NoFrame)
+        self.source_edit.installEventFilter(self)
+        self._source_layout.addWidget(self.source_edit)
+        
+        # Target
+        self.target_container = QFrame()
+        self.target_container.setObjectName("TargetContainer")
+        self._target_layout = QVBoxLayout(self.target_container)
+        self.target_edit = QTextEdit(self.segment.target_text or "")
+        self.target_edit.setObjectName("TargetText")
+        self.target_edit.setPlaceholderText("Click to start translating...")
+        self.target_edit.setFrameShape(QFrame.Shape.NoFrame)
+        self.target_edit.textChanged.connect(self.on_text_changed)
+        self.target_edit.installEventFilter(self)
+        self._target_layout.addWidget(self.target_edit)
+
+    def _apply_layout_mode(self):
+        # Clear existing layout
+        layout = self.text_layout_container.layout()
+        if layout:
+            QWidget().setLayout(layout) # Trick to delete layout
+            
+        if self.layout_mode == "horizontal":
+            layout = QHBoxLayout(self.text_layout_container)
+            self.source_container.setStyleSheet("border-right: 1px solid #404040; padding: 12px;")
+            self.target_container.setStyleSheet("padding: 12px;")
+        else:
+            layout = QVBoxLayout(self.text_layout_container)
+            self.source_container.setStyleSheet("border-bottom: 1px solid #404040; padding: 12px;")
+            self.target_container.setStyleSheet("padding: 12px;")
+            
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        layout.addWidget(self.source_container, 1)
+        layout.addWidget(self.target_container, 1)
+
+    def set_layout_mode(self, mode):
+        """Set layout mode: 'horizontal' or 'vertical'."""
+        if mode not in ["horizontal", "vertical"]: return
+        self.layout_mode = mode
+        self._apply_layout_mode()
+
+    def update_status_style(self):
+        """Review status color and apply to card border."""
+        color = self.get_status_color(self.segment.status)
+        # Update badge
+        self.status_badge.setText(self.segment.status.upper() if self.segment.status else "UNTRANSLATED")
+        self.status_badge.setStyleSheet(f"font-size: 9px; font-weight: 800; color: {color}; padding: 2px 6px; border: 1px solid {color}; border-radius: 4px;")
+        
+        # Update card border (Left thick border)
+        base_style = """
+            QFrame#SegmentCard {
+                background-color: #262626;
+                border-radius: 8px;
+                border-left: 4px solid %s;
+            }
+            QFrame#SegmentCard[active="true"] {
+                background-color: #333333;
+                border: 1px solid #3b82f6;
+                border-left: 4px solid #3b82f6;
+            }
+        """ % color
+        self.setStyleSheet(base_style)
+
     def set_active(self, active):
         if self.is_active == active: return
         self.is_active = active
@@ -127,6 +179,16 @@ class SegmentCard(QFrame):
         
         if active:
             self.target_edit.setFocus()
+            # Active overrides status color with selection color
+            self.setStyleSheet("""
+                QFrame#SegmentCard {
+                    background-color: #333333;
+                    border: 1px solid #3b82f6;
+                    border-left: 4px solid #3b82f6;
+                }
+            """)
+        else:
+            self.update_status_style() # Revert to status color
 
     def on_text_changed(self):
         self.textChanged.emit(self.segment_id, self.target_edit.toPlainText())

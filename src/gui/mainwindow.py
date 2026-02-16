@@ -20,6 +20,7 @@ from src.core.language_manager import LanguageManager
 from src.gui.alignment_dialog import AlignmentDialog
 from src.gui.qa_dialog import QADialog
 from src.gui.chat_widget import ChatWidget
+from src.gui.custom_instructions_dialog import CustomInstructionsDialog
 from src.core.concordancer import Concordancer
 
 class MainWindow(QMainWindow):
@@ -33,6 +34,7 @@ class MainWindow(QMainWindow):
         # Use factory to get default engine, or None if failed
         self.llm_engine = get_engine_instance('LLM') or None
         self.current_segment_index = -1
+        self.current_layout_mode = "horizontal"
         
         # Apply Styles (load from config)
         self.apply_theme()
@@ -235,6 +237,8 @@ class MainWindow(QMainWindow):
         
         self.btn_align = create_header_btn("compare_arrows", "Alignement (TAO)", self.show_alignment_dialog)
         self.btn_qa = create_header_btn("verified", "QA Check", self.show_qa_dialog)
+        self.btn_layout = create_header_btn("view_column", "Basculer Vue (H/V)", self.toggle_layout_mode)
+        self.btn_instruct = create_header_btn("assignment", "Instructions IA", self.show_custom_instructions_dialog)
         
         header_layout.addWidget(self.btn_new)
         header_layout.addWidget(self.btn_open)
@@ -242,6 +246,8 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.btn_export)
         header_layout.addWidget(self.btn_align)
         header_layout.addWidget(self.btn_qa)
+        header_layout.addWidget(self.btn_layout)
+        header_layout.addWidget(self.btn_instruct)
         header_layout.addWidget(sep2)
         header_layout.addWidget(self.btn_settings)
         
@@ -594,7 +600,9 @@ class MainWindow(QMainWindow):
              segments = self.project_manager.get_segments(chapter_id)
              for seg in segments: 
                 card = SegmentCard(seg)
+                card.set_layout_mode(self.current_layout_mode)
                 card.clicked.connect(self.on_segment_card_clicked)
+                card.textChanged.connect(self.on_segment_text_changed)
                 card.lookupWord.connect(self.on_word_lookup)
                 self.cards_layout.addWidget(card)
         
@@ -602,6 +610,20 @@ class MainWindow(QMainWindow):
             
         self.load_glossary()
         self.update_footer_stats()
+
+    def on_segment_text_changed(self, segment_id, new_text):
+        """Auto-save segment text changes."""
+        try:
+            segment = Segment.get_by_id(segment_id)
+            segment.target_text = new_text
+            # Simple status update logic
+            if not segment.status or segment.status == 'untranslated':
+                 if new_text.strip():
+                     segment.status = 'translated'
+            
+            segment.save()
+        except:
+            pass
 
     def update_footer_stats(self):
         """Update Footer with project statistics and progress."""
@@ -1700,4 +1722,38 @@ class MainWindow(QMainWindow):
                 self.conc_results.addItem(item)
         else:
             self.conc_results.addItem("Aucun résultat trouvé.")
+
+    def show_custom_instructions_dialog(self):
+        """Open dialog to edit custom AI instructions."""
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Erreur", "Aucun projet ouvert.")
+            return
+
+        current_instructions = self.project_manager.current_project.custom_instructions
+        dialog = CustomInstructionsDialog(self, current_instructions)
+        if dialog.exec():
+            new_instructions = dialog.get_instructions()
+            self.project_manager.current_project.custom_instructions = new_instructions
+            self.project_manager.current_project.save()
+            QMessageBox.information(self, "Succès", "Instructions enregistrées.")
+
+    def toggle_layout_mode(self):
+        """Toggle between horizontal and vertical layout for segments."""
+        if self.current_layout_mode == "horizontal":
+            self.current_layout_mode = "vertical"
+            self.btn_layout.setToolTip("Vue : Verticale (cliquer pour changer)")
+        else:
+            self.current_layout_mode = "horizontal"
+            self.btn_layout.setToolTip("Vue : Horizontale (cliquer pour changer)")
+            
+        # Update visible cards
+        # iterate self.cards_layout
+        layout = self.cards_layout
+        if layout:
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget():
+                    widget = item.widget()
+                    if isinstance(widget, SegmentCard):
+                        widget.set_layout_mode(self.current_layout_mode)
 
