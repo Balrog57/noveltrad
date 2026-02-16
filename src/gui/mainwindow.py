@@ -487,9 +487,6 @@ class MainWindow(QMainWindow):
                 self.sidebar.on_item_clicked(chapter_id)
         
         self.current_chapter_id = chapter_id
-            else:
-                 # Should not happen given new logic, but handle empty project
-                 pass
 
         if chapter_id:
              segments = self.project_manager.get_segments(chapter_id)
