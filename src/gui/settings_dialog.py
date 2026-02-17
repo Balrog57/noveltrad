@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QComboBox, QCheckBox, QTabWidget, QWidget, QFormLayout, QFileDialog)
+from src.gui.shortcut_config_dialog import ShortcutConfigDialog
 from PyQt6.QtCore import Qt
 import os
 import json
@@ -36,6 +37,11 @@ class SettingsDialog(QDialog):
         self.tools_tab = QWidget()
         self.tabs.addTab(self.tools_tab, "Language Store")
         self.init_tools_tab()
+        
+        # Shortcuts Tab
+        self.shortcuts_tab = QWidget()
+        self.tabs.addTab(self.shortcuts_tab, "Shortcuts")
+        self.init_shortcuts_tab()
         
         # Buttons
         btns = QHBoxLayout()
@@ -100,7 +106,32 @@ class SettingsDialog(QDialog):
         btn_store.clicked.connect(self.open_store)
         layout.addWidget(btn_store)
         
+    def init_shortcuts_tab(self):
+        layout = QVBoxLayout(self.shortcuts_tab)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        label = QLabel("Configurez vos raccourcis clavier pour une productivité maximale.")
+        label.setWordWrap(True)
+        label.setStyleSheet("color: #94a3b8; font-style: italic; margin-bottom: 20px;")
+        layout.addWidget(label)
+        
+        btn_shortcuts = QPushButton("Modifier les Raccourcis...")
+        btn_shortcuts.setMinimumHeight(50)
+        btn_shortcuts.setStyleSheet("background-color: #3b82f6; color: white; font-weight: bold;")
+        btn_shortcuts.clicked.connect(self.open_shortcuts_config)
+        layout.addWidget(btn_shortcuts)
+        
         layout.addStretch()
+
+    def open_shortcuts_config(self):
+        if self.parent() and hasattr(self.parent(), 'shortcut_manager'):
+            dialog = ShortcutConfigDialog(self.parent().shortcut_manager, self)
+            if dialog.exec():
+                # Trigger shortcut refresh in main window
+                if hasattr(self.parent(), 'setup_shortcuts'):
+                    self.parent().setup_shortcuts()
+        else:
+            QMessageBox.warning(self, "Erreur", "Manager de raccourcis non trouvé.")
 
     def open_store(self):
         self.accept()
@@ -112,7 +143,7 @@ class SettingsDialog(QDialog):
         layout = QFormLayout(self.appearance_tab)
         
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Dark (Default)", "Light", "High Contrast"])
+        self.theme_combo.addItems(["Dark", "Light", "High Contrast", "Deuteranopia", "Protanopia", "Tritanopia"])
         layout.addRow("Theme:", self.theme_combo)
         
         self.font_size = QComboBox()

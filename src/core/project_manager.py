@@ -463,15 +463,20 @@ class ProjectManager:
         if not self.current_project:
             return 0
             
-        # 1. Collect first 10k characters or so to detect chapters
+        # 1. Collect first 15k characters or so to detect chapters
         segments = Segment.select().where(Segment.project == self.current_project).order_by(Segment.index)
+        sample_segments = list(segments[:500]) # Sample first 500 segments
         sample_text = ""
-        for s in segments[:500]: # Sample first 500 segments
+        for s in sample_segments: 
             sample_text += f"[{s.index}] {s.source_text}\n"
             if len(sample_text) > 15000: break
             
         # 2. Detect chapters via LLM
-        chapter_list_json = llm_engine.detect_chapters(sample_text)
+        chapter_list_json = llm_engine.detect_chapters(
+            sample_text, 
+            src_lang=self.current_project.source_language, 
+            tgt_lang=self.current_project.target_language
+        )
         try:
             import json
             chapter_list = json.loads(chapter_list_json)
@@ -483,25 +488,45 @@ class ProjectManager:
             
         # 3. Create new chapters and reassign segments
         count = 0
+        from difflib import SequenceMatcher
+        
         with self.db.atomic():
             # Get existing chapters to delete later or keep? 
             # We'll reassign everything to new chapters.
             # We assume order is correct in chapter_list.
             
             boundaries = [] # list of (start_index, title)
+            
             for ch_data in chapter_list:
                 title = ch_data.get('title', "Untitled Chapter")
-                start_line = ch_data.get('start_line', "").lower()
+                start_line = ch_data.get('start_line', "").lower().strip()
                 
-                # Find start index
-                found_idx = -1
-                if start_line:
-                    for s in segments:
-                        if start_line in s.source_text.lower():
-                            found_idx = s.index
-                            break
-                if found_idx != -1:
-                    boundaries.append((found_idx, title))
+                if not start_line: continue
+                
+                # Find start index with Fuzzy Matching
+                best_match_idx = -1
+                best_ratio = 0.0
+                
+                # Search in our sample segments first (optimization)
+                # LLM usually returns lines from the sample text we gave it
+                for s in sample_segments:
+                    source_lower = s.source_text.lower()
+                    
+                    # Direct check
+                    if start_line in source_lower:
+                        # Prefer shorter segments for precise match if possible, or first occurrence
+                        best_match_idx = s.index
+                        best_ratio = 1.0
+                        break
+                        
+                    # Fuzzy check
+                    ratio = SequenceMatcher(None, start_line, source_lower).ratio()
+                    if ratio > best_ratio and ratio > 0.65: # 65% threshold
+                        best_ratio = ratio
+                        best_match_idx = s.index
+                        
+                if best_match_idx != -1:
+                    boundaries.append((best_match_idx, title))
 
             if not boundaries:
                 return 0

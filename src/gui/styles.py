@@ -186,9 +186,55 @@ QComboBox {
 LIGHT_THEME = """
 /* Light Theme - NovelTrad */
 QWidget {
-    background-color: #f8fafc;
+    background-color: #f1f5f9;
     color: #1e293b;
     font-family: 'Inter', 'Segoe UI', sans-serif;
 }
-/* ... existing light theme or simplified ... */
+QFrame#Header, QFrame#Footer, QFrame#Sidebar, QFrame#RightPanel {
+    background-color: #ffffff;
+    border-color: #e2e8f0;
+}
+QFrame#SegmentCard {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+}
+QFrame#SegmentCard[active="true"] {
+    background-color: #f8fafc;
+    border: 2px solid #3b82f6;
+}
+QTextEdit#SourceText { color: #64748b; }
+QTextEdit#TargetText { color: #1e293b; }
+"""
+
+# --- ACCESSIBILITY THEMES ---
+
+# Deuteranopia (Green-blind) - Uses Blue/Yellow palette
+DEUTERANOPIA_THEME = DARK_THEME.replace("#0d7ff2", "#0072B2").replace("#3b82f6", "#56B4E9").replace("#22c55e", "#F0E442")
+
+# Protanopia (Red-blind) - Similar to Deuteranopia
+PROTANOPIA_THEME = DARK_THEME.replace("#0d7ff2", "#005a94").replace("#3b82f6", "#56B4E9").replace("#ef4444", "#CC79A7")
+
+# Tritanopia (Blue-blind) - Uses Red/Cyan palette
+TRITANOPIA_THEME = DARK_THEME.replace("#0d7ff2", "#D55E00").replace("#3b82f6", "#E69F00").replace("#22c55e", "#009E73")
+
+# High Contrast
+HIGH_CONTRAST_THEME = """
+QWidget {
+    background-color: #000000;
+    color: #FFFFFF;
+    font-family: 'Segoe UI', sans-serif;
+}
+QFrame { border: 2px solid #FFFFFF; }
+QPushButton {
+    background-color: #000000;
+    color: #FFFFFF;
+    border: 2px solid #FFFFFF;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #FFFFFF;
+    color: #000000;
+}
+QTextEdit#SourceText { color: #FFFF00; }
+QTextEdit#TargetText { color: #FFFFFF; }
 """

@@ -381,7 +381,7 @@ class LLMEngine(TranslationEngine):
             print(f"Refine Error: {e}")
             return translated_text
             
-    def detect_chapters(self, text):
+    def detect_chapters(self, text, src_lang="en", tgt_lang="fr"):
         """Structure AI - detect chapter boundaries in raw text."""
         if not self.client:
             import json
@@ -389,12 +389,13 @@ class LLMEngine(TranslationEngine):
             
         system_prompt = "Identify starting lines of chapters. Return JSON list: [{{'title': '...', 'start_line': '...'}}]"
         
-        # We use en-fr as dummy codes if we don't know the project context here, 
-        # but usually it's better than nothing.
+        src_code = get_language_code(src_lang)
+        tgt_code = get_language_code(tgt_lang)
+
         is_translategemma = "translategemma" in self.model.lower()
         if is_translategemma:
             # Conservative slice for 8k context window (Instructions ~500, Text 4000, Buffer 3600)
-            raw_prompt = f"[[TASK: CHAPTER DETECTION]]\n{system_prompt}\n\n[source_lang_code: zh, target_lang_code: fr]\n\n{text[:4000]}"
+            raw_prompt = f"[[TASK: CHAPTER DETECTION]]\n{system_prompt}\n\n[source_lang_code: {src_code}, target_lang_code: {tgt_code}]\n\n{text[:4000]}"
             try:
                 response = self.client.completions.create(
                     model=self.model,

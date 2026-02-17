@@ -1,7 +1,8 @@
 from PyQt6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, 
                              QPushButton, QWidget, QSizePolicy)
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QIcon, QPixmap, QFont
+from src.utils.tag_utils import validate_tags
 import os
 
 class SegmentCard(QFrame):
@@ -42,6 +43,13 @@ class SegmentCard(QFrame):
         header_layout.addStretch()
         header_layout.addWidget(self.status_badge)
         main_layout.addLayout(header_layout)
+        
+        # Tag Warning Label
+        self.tag_warning_label = QLabel()
+        self.tag_warning_label.setStyleSheet("color: #ef4444; font-size: 10px; font-weight: 600; background-color: #450a0a; border: 1px solid #991b1b; border-radius: 4px; padding: 4px 8px;")
+        self.tag_warning_label.setWordWrap(True)
+        self.tag_warning_label.setVisible(False)
+        main_layout.addWidget(self.tag_warning_label)
         
         # Text areas
         self.text_layout_container = QFrame()
@@ -117,6 +125,9 @@ class SegmentCard(QFrame):
         self.target_edit.textChanged.connect(self.on_text_changed)
         self.target_edit.installEventFilter(self)
         self._target_layout.addWidget(self.target_edit)
+        
+        # Initial validation
+        self.perform_tag_validation(self.segment.target_text or "")
 
     def _apply_layout_mode(self):
         # Clear existing layout
@@ -191,7 +202,24 @@ class SegmentCard(QFrame):
             self.update_status_style() # Revert to status color
 
     def on_text_changed(self):
-        self.textChanged.emit(self.segment_id, self.target_edit.toPlainText())
+        text = self.target_edit.toPlainText()
+        self.textChanged.emit(self.segment_id, text)
+        self.perform_tag_validation(text)
+
+    def perform_tag_validation(self, target_text):
+        """Validates tags and updates the warning label."""
+        is_valid, missing, extra = validate_tags(self.segment.source_text, target_text)
+        if not is_valid:
+            msg = "<b>Tag Alert:</b>"
+            if missing:
+                msg += f" Missing {', '.join(missing)}"
+            if extra:
+                if missing: msg += " |"
+                msg += f" Extra {', '.join(extra)}"
+            self.tag_warning_label.setText(msg)
+            self.tag_warning_label.setVisible(True)
+        else:
+            self.tag_warning_label.setVisible(False)
 
 class SidebarItem(QFrame):
     clicked = pyqtSignal(int)

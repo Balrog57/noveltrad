@@ -52,6 +52,7 @@ class GlossaryTerm(BaseModel):
     notes = TextField(null=True)
     case_sensitive = BooleanField(default=True)
     source = CharField(default='manual') # manual, ai_generated, validated
+    feedback_history = TextField(null=True) # JSON list of feedback/corrections
     created_at = DateTimeField(default=datetime.datetime.now)
 
 class GlobalDictionaryTerm(BaseModel):
@@ -73,6 +74,8 @@ class TranslationMemory(BaseModel):
     source_text = TextField()
     target_text = TextField()
     project = ForeignKeyField(Project, backref='translation_memory', null=True)
+    tmx_id = CharField(null=True)  # UUID for TMX export
+    metadata = TextField(null=True)  # JSON metadata (chapter, genre, engine, etc.)
     created_at = DateTimeField(default=datetime.datetime.now)
     
     class Meta:
@@ -94,7 +97,10 @@ def init_db(db_path):
         ('glossaryterm', 'notes', 'TEXT'),
         ('glossaryterm', 'case_sensitive', 'INTEGER DEFAULT 1'),
         ('glossaryterm', 'source', "VARCHAR(255) DEFAULT 'manual'"),
-        ('glossaryterm', 'created_at', 'DATETIME')
+        ('glossaryterm', 'feedback_history', 'TEXT'),
+        ('glossaryterm', 'created_at', 'DATETIME'),
+        ('translationmemory', 'tmx_id', 'VARCHAR(255)'),
+        ('translationmemory', 'metadata', 'TEXT')
     ]
     
     for table, col, type_def in migrations:

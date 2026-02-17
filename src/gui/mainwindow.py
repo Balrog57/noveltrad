@@ -24,6 +24,11 @@ from src.gui.custom_instructions_dialog import CustomInstructionsDialog
 from src.core.concordancer import Concordancer
 from src.gui.glossary_editor_dialog import GlossaryEditorDialog
 from src.gui.statistics_dialog import StatisticsDialog
+from src.gui.batch_translation_dialog import BatchTranslationDialog
+from src.core.backup_manager import BackupManager
+from src.core.shortcut_manager import ShortcutManager
+from src.utils.connectivity_manager import ConnectivityManager
+from PyQt6.QtCore import Qt, QSize, QTimer
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -37,34 +42,56 @@ class MainWindow(QMainWindow):
         self.llm_engine = get_engine_instance('LLM') or None
         self.current_segment_index = -1
         self.current_layout_mode = "horizontal"
+        self.backup_manager = None
+        
+        # Setup Auto-Snapshot Timer (15 minutes)
+        self.backup_timer = QTimer(self)
+        self.backup_timer.timeout.connect(self.auto_snapshot)
+        self.backup_timer.start(15 * 60 * 1000)
+        
+        # Shortcut Manager
+        self.shortcut_manager = ShortcutManager()
+        
+        # Connectivity Manager (Offline Rescue Mode)
+        self.connectivity_manager = ConnectivityManager(parent=self)
+        self.connectivity_manager.status_changed.connect(self.update_connectivity_ui)
         
         # Apply Styles (load from config)
         self.apply_theme()
         
         self.init_ui()
         self.setup_shortcuts()
+
+    def auto_snapshot(self):
+        """Triggered by timer, creates an automatic backup snaphot."""
+        if self.backup_manager:
+            path = self.backup_manager.create_snapshot(label="auto")
+            if path:
+                self.status_bar.showMessage(f"Auto-snapshot created: {os.path.basename(path)}", 5000)
         
     def setup_shortcuts(self):
-        """Set up keyboard shortcuts."""
+        """Set up keyboard shortcuts using ShortcutManager."""
         from PyQt6.QtGui import QShortcut, QKeySequence
-        from PyQt6.QtCore import Qt
         
-        shortcuts = [
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_N, self.new_project_dialog),
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_O, self.open_project_dialog),
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_S, self.save_current_segment),
-            (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier | Qt.Key.Key_C, self.batch_translate),
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_F, self.show_search_replace),
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_G, self.scan_chapter_glossary),
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_R, self.auto_translate_current),
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_E, self.editor_ai_refine),
-            (Qt.KeyboardModifier.ControlModifier | Qt.Key.Key_Comma, self.show_settings),
-            (Qt.Key.Key_F5, self.show_statistics),
+        # Mapping of shortcut names to methods
+        mappings = [
+            ("new_project", self.new_project_dialog),
+            ("open_project", self.open_project_dialog),
+            ("save_segment", self.save_current_segment),
+            ("batch_translate", self.batch_translate),
+            ("search_replace", self.show_search_replace),
+            ("glossary_scan", self.scan_chapter_glossary),
+            ("auto_translate", self.auto_translate_current),
+            ("ai_refine", self.editor_ai_refine),
+            ("settings", self.show_settings),
+            ("statistics", self.show_statistics),
+            ("backups", self.show_backup_dialog),
+            ("qa_check", self.show_qa_dialog)
         ]
         
-        for key, slot in shortcuts:
-            shortcut = QShortcut(self)
-            shortcut.setKey(QKeySequence(key))
+        for name, slot in mappings:
+            sequence = self.shortcut_manager.get(name)
+            shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.activated.connect(slot)
 
     def save_current_segment(self):
@@ -217,6 +244,7 @@ class MainWindow(QMainWindow):
         self.btn_new = create_header_btn("add_circle", "New Project", self.new_project_dialog)
         self.btn_open = create_header_btn("folder_open", "Open Existing Project (.ntrad)", self.open_project_dialog)
         self.btn_save = create_header_btn("save", "Save (Ctrl+S)", self.save_current_segment)
+        self.btn_backups = create_header_btn("history", "Snapshots (Backups)", self.show_backup_dialog)
         self.btn_export = create_header_btn("file_download", "Export", self.export_project_dialog)
         
         sep2 = QFrame()
@@ -231,16 +259,19 @@ class MainWindow(QMainWindow):
         self.btn_layout = create_header_btn("view_column", "Basculer Vue (H/V)", self.toggle_layout_mode)
         self.btn_layout = create_header_btn("view_column", "Basculer Vue (H/V)", self.toggle_layout_mode)
         self.btn_instruct = create_header_btn("assignment", "Instructions IA", self.show_custom_instructions_dialog)
+        self.btn_batch = create_header_btn("library_books", "Batch Translate", self.batch_translate)
         self.btn_stats = create_header_btn("analytics", "Statistiques & Coûts", self.show_statistics_dialog)
         
         header_layout.addWidget(self.btn_new)
         header_layout.addWidget(self.btn_open)
         header_layout.addWidget(self.btn_save)
+        header_layout.addWidget(self.btn_backups)
         header_layout.addWidget(self.btn_export)
         header_layout.addWidget(self.btn_align)
         header_layout.addWidget(self.btn_qa)
         header_layout.addWidget(self.btn_layout)
         header_layout.addWidget(self.btn_instruct)
+        header_layout.addWidget(self.btn_batch)
         header_layout.addWidget(self.btn_stats)
         header_layout.addWidget(sep2)
         header_layout.addWidget(self.btn_settings)
@@ -274,6 +305,16 @@ class MainWindow(QMainWindow):
         add_chapter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_chapter_btn.clicked.connect(self.import_chapter_dialog)
         chapters_header.addWidget(add_chapter_btn)
+
+        # Auto-Structure Button (AI)
+        self.auto_struct_btn = QPushButton()
+        self.auto_struct_btn.setObjectName("IconButton")
+        self.auto_struct_btn.setIcon(self.colorize_icon("auto_fix_high", "#cbd5e1"))
+        self.auto_struct_btn.setIconSize(QSize(16, 16))
+        self.auto_struct_btn.setToolTip("Auto-Structure (AI Detect Chapters)")
+        self.auto_struct_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.auto_struct_btn.clicked.connect(self.run_structure_ai)
+        chapters_header.addWidget(self.auto_struct_btn)
         
         sidebar_layout.addLayout(chapters_header)
         
@@ -357,6 +398,15 @@ class MainWindow(QMainWindow):
         gloss_head.addWidget(gloss_title)
         gloss_head.addStretch()
         
+        # AI Scan Button
+        self.scan_glossary_btn = QPushButton()
+        self.scan_glossary_btn.setIcon(self.colorize_icon("manage_search", "#94a3b8"))
+        self.scan_glossary_btn.setFixedSize(24, 24)
+        self.scan_glossary_btn.setToolTip("Scan Chapter for Terms (AI)")
+        self.scan_glossary_btn.setStyleSheet("border: none;")
+        self.scan_glossary_btn.clicked.connect(self.scan_chapter_glossary)
+        gloss_head.addWidget(self.scan_glossary_btn)
+
         self.btn_manage_glossary = QPushButton()
         self.btn_manage_glossary.setIcon(self.colorize_icon("settings", "#94a3b8")) # Using settings icon for management
         self.btn_manage_glossary.setFixedSize(24, 24)
@@ -456,13 +506,13 @@ class MainWindow(QMainWindow):
         footer_layout.setSpacing(16)
         
         # Status
-        status_point = QWidget()
-        status_point.setFixedSize(8, 8)
-        status_point.setStyleSheet("background-color: #22c55e; border-radius: 4px;")
-        status_label = QLabel("SYSTEM READY")
-        status_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #94a3b8;")
-        footer_layout.addWidget(status_point)
-        footer_layout.addWidget(status_label)
+        self.connectivity_point = QWidget()
+        self.connectivity_point.setFixedSize(8, 8)
+        self.connectivity_point.setStyleSheet("background-color: #22c55e; border-radius: 4px;")
+        self.connectivity_label = QLabel("ONLINE")
+        self.connectivity_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #94a3b8;")
+        footer_layout.addWidget(self.connectivity_point)
+        footer_layout.addWidget(self.connectivity_label)
         
         footer_layout.addWidget(self.create_separator())
         
@@ -938,6 +988,49 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to scan glossary: {str(e)}")
             self.status_bar.showMessage("Glossary scan failed.")
             
+    def run_structure_ai(self):
+        """Run Structure AI to auto-detect chapters."""
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Error", "No project loaded.")
+            return
+
+        if not self.llm_engine or not self.llm_engine.is_available():
+            QMessageBox.warning(self, "Error", "LLM engine not available for Structure AI.\nPlease configure it in Settings.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Auto-Structure Project",
+            "This will analyze the project text (first ~15k chars) to detect chapter boundaries using AI.\n\n"
+            "Existing chapters might be reorganized. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            self.status_bar.showMessage("AI Auto-Structure in progress... This may take a moment.")
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            QApplication.processEvents()
+            
+            count = self.project_manager.auto_structure_project(self.llm_engine)
+            
+            QApplication.restoreOverrideCursor()
+            
+            if count > 0:
+                self.load_chapters()
+                self.load_segments()
+                self.status_bar.showMessage(f"Structure AI: {count} chapters created.")
+                QMessageBox.information(self, "Success", f"Structure AI successfully detected and created {count} chapters.")
+            else:
+                self.status_bar.showMessage("Structure AI: No chapters detected.")
+                QMessageBox.information(self, "Result", "Structure AI could not detect clear chapter boundaries.")
+                
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"Structure AI failed: {str(e)}")
+            self.status_bar.showMessage("Structure AI failed.")
+
     def glossary_context_menu(self, pos):
         pass
 
@@ -1293,6 +1386,9 @@ class MainWindow(QMainWindow):
                     return
 
             self.project_manager.create_project(name, db_path, source_file, src_lang, tgt_lang, genre, custom_instructions)
+            self.backup_manager = BackupManager(db_path)
+            self.backup_manager.create_snapshot(label="init") # Initial snapshot
+            
             self.load_chapters()
             self.load_segments()
             self.status_bar.showMessage(f"Project '{name}' created successfully")
@@ -1368,6 +1464,8 @@ class MainWindow(QMainWindow):
     def load_project(self, fname):
         try:
             self.project_manager.load_project(fname)
+            self.backup_manager = BackupManager(fname)
+            self.backup_manager.create_snapshot(label="load") # Snapshot on load
             
             # Update Header
             if self.project_manager.current_project:
@@ -1691,13 +1789,47 @@ class MainWindow(QMainWindow):
             if self.language_manager.nllb:
                  return self.language_manager.nllb
         
+        # Offline Rescue Mode logic
+        is_online = self.connectivity_manager.is_online if self.connectivity_manager else True
+        if not is_online:
+            # If we are offline and using an online engine (like default LLM usually is), 
+            # try to switch to a local one
+            if self.language_manager.argos:
+                return self.language_manager.argos
+            if self.language_manager.nllb:
+                return self.language_manager.nllb
+        
         # Fallback to LLM
         return self.llm_engine
+
+    def update_connectivity_ui(self, is_online):
+        """Updates the footer status based on internet connectivity."""
+        if is_online:
+            self.connectivity_point.setStyleSheet("background-color: #22c55e; border-radius: 4px;")
+            self.connectivity_label.setText("ONLINE")
+        else:
+            self.connectivity_point.setStyleSheet("background-color: #ef4444; border-radius: 4px;")
+            self.connectivity_label.setText("OFFLINE (RESCUE MODE)")
+            self.status_bar.showMessage("Connexion perdue. Passage en mode secours (moteurs locaux).", 5000)
 
     def show_alignment_dialog(self):
         """Open the alignment tool dialog."""
         dialog = AlignmentDialog(self, project_manager=self.project_manager)
         dialog.exec()
+
+    def show_backup_dialog(self):
+        """Open the snapshot management dialog."""
+        if not self.backup_manager:
+            QMessageBox.warning(self, "Snapshots", "Veuillez d'abord ouvrir un projet.")
+            return
+            
+        from src.gui.backup_dialog import BackupDialog
+        dialog = BackupDialog(self.backup_manager, self)
+        if dialog.exec():
+            # If restoration succeeded
+            self.load_chapters()
+            self.load_segments()
+            self.status_bar.showMessage("Version du projet restaurée.")
 
     def show_qa_dialog(self):
         """Open the QA Check dialog for current project segments."""
@@ -1774,6 +1906,60 @@ class MainWindow(QMainWindow):
                 item = layout.itemAt(i)
                 if item and item.widget():
                     widget = item.widget()
+                    from src.gui.segment_card import SegmentCard
                     if isinstance(widget, SegmentCard):
                         widget.set_layout_mode(self.current_layout_mode)
+
+    def batch_translate(self):
+        """Open Batch Translation Dialog."""
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Error", "No active project.")
+            return
+
+        # Prepare engines
+        # We might have LLM, NLLB, etc.
+        # For now, list available ones.
+        engines = []
+        if self.llm_engine: engines.append(self.llm_engine)
+        
+        # Check other engines if lazy loaded or instantiated
+        # self.nllb_engine?
+        nllb = get_engine_instance('NLLB')
+        if nllb and nllb.is_available(): engines.append(nllb)
+        
+        argos = get_engine_instance('Argos')
+        if argos and argos.is_available(): engines.append(argos)
+
+        dialog = BatchTranslationDialog(self.project_manager, engines, self)
+        if hasattr(self, 'current_chapter_id') and self.current_chapter_id:
+            dialog.set_current_chapter(self.current_chapter_id)
+            
+        dialog.exec()
+        
+        # Reload after batch
+        if hasattr(self, 'current_chapter_id') and self.current_chapter_id:
+            self.load_segments(self.current_chapter_id)
+        self.update_footer_stats()
+
+    def apply_theme(self):
+        """Apply the selected theme from configuration."""
+        from src.core.config_manager import ConfigManager
+        from src.gui.styles import (DARK_THEME, LIGHT_THEME, HIGH_CONTRAST_THEME, 
+                                     DEUTERANOPIA_THEME, PROTANOPIA_THEME, TRITANOPIA_THEME)
+        
+        cfg = ConfigManager()
+        theme = cfg.get("theme", "Dark")
+        
+        # Mapping
+        themes = {
+            "Dark": DARK_THEME,
+            "Light": LIGHT_THEME,
+            "High Contrast": HIGH_CONTRAST_THEME,
+            "Deuteranopia": DEUTERANOPIA_THEME,
+            "Protanopia": PROTANOPIA_THEME,
+            "Tritanopia": TRITANOPIA_THEME
+        }
+        
+        style = themes.get(theme, DARK_THEME)
+        self.setStyleSheet(style)
 
