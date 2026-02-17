@@ -163,6 +163,33 @@ Handlers]    Traduction]    AI]          DB]
 
 PDF/TXT]     Web|IA LLM]
 
+## 3.3 Stratégie de migration des données
+
+- Garantir la **compatibilité ascendante** des projets entre versions de l'application.
+- Chaque mise à jour du schéma de base de données inclut un script de migration automatique.
+- Le fichier `project.json` contient un numéro de version de schéma (`schema_version`).
+- Au chargement d'un projet ancien, migration transparente vers le format courant avec sauvegarde de l'ancien état.
+
+## 3.4 Chargement paresseux (Lazy Loading)
+
+- Pour les très gros romans (> 500 000 mots), les chapitres ne sont pas tous chargés en mémoire simultanément.
+- **Chargement à la demande** : seuls le chapitre courant et les chapitres adjacents sont chargés.
+- Pagination des segments dans la vue segmentée pour éviter les pics de mémoire.
+- Indexation efficace des positions de chapitres dans le fichier source pour un accès rapide.
+
+## 3.5 Architecture plugin/modulaire
+
+- Système de plugins permettant à la communauté d'ajouter des moteurs de traduction, des formats de fichiers ou des outils sans modifier le cœur de l'application.
+- Interface `Plugin` avec points d'extension définis : `TranslationEngine`, `FormatHandler`, `QACheck`, `GlossarySource`.
+- Chargement dynamique des plugins depuis un répertoire dédié.
+- Priorité **Moyenne** (v2+).
+
+## 3.6 Internationalisation de l'interface (i18n)
+
+- Préparer l'infrastructure d'internationalisation dès la v1 en externalisant toutes les chaînes de caractères dans des fichiers de traduction (`.ts` / `.qm` via Qt Linguist ou équivalent).
+- Interface par défaut en français.
+- Faciliter l'ajout d'autres langues d'interface sans refonte (anglais, chinois, japonais, etc.) en v2.
+
 # 4. Interface utilisateur
 
 ## 4.1 Fenêtre principale
@@ -197,6 +224,23 @@ Panneau inférieur
 - Onglet IA : interface de chat contextuel avec le modèle IA configuré
 - Onglet Commentaires/Notes : notes du traducteur par paragraphe
 ## 4.2 Modes d’affichage
+
+## 4.3 Aperçu en temps réel du rendu
+
+- Mini-panneau de **prévisualisation du rendu EPUB/DOCX** du chapitre traduit.
+- Affichage en lecture seule simulant le résultat final (avec formatage, mise en page, polices).
+- Activable/désactivable pour ne pas surcharger l’interface.
+
+## 4.4 Raccourcis personnalisables
+
+- L’utilisateur peut **redéfinir toutes les combinaisons de touches** depuis les Paramètres.
+- Export/Import des mappings de raccourcis (fichier JSON) pour partage entre postes.
+
+## 4.5 Thèmes et accessibilité
+
+- **Thèmes de coloration syntaxique** pour la vue segmentée.
+- Options d’accessibilité pour **daltoniens** : palette de couleurs alternatives pour les statuts de segments (au lieu de rouge/orange/vert/bleu).
+- Choix de la taille de police et de l’espacement des lignes.
 
 # 5. Moteurs de traduction
 
@@ -308,7 +352,15 @@ Le Glossary AI ne se limite pas à une analyse initiale. Il s’enrichit au fil 
 - Les termes existants sont renforcés par de nouveaux contextes d’utilisation
 - L’utilisateur peut activer/désactiver la génération automatique à chaque chapitre
 - Les termes générés par l’IA sont marqués comme « auto-générés » et ceux validés par l’utilisateur comme « validés »
-## 7.4 Application du glossaire à la traduction
+
+## 7.4 Glossary AI avec feedback loop
+
+- Lorsque l’utilisateur **corrige une proposition IA** (terme source ou traduction), la correction est mémorisée.
+- Le prompt de génération des prochaines extractions est automatiquement enrichi avec les corrections passées (apprentissage contextuel local).
+- Objectif : réduire progressivement le nombre de corrections manuelles nécessaires au fil du projet.
+- Les corrections sont stockées dans la table `glossary` avec un champ `feedback_history` (JSON).
+
+## 7.5 Application du glossaire à la traduction
 
 Le glossaire (qu’il soit généré par IA ou manuel) est utilisé de deux manières complémentaires :
 
@@ -458,8 +510,15 @@ Inspiré de la fonctionnalité Editor AI d’AI Novel Translation :
 - Stockage automatique des paires source/cible validées
 - Recherche de correspondances floues (fuzzy matching) pour les nouveaux segments
 - Affichage des correspondances avec pourcentage de similarité
-- Import/export au format TMX
+- Import/export au format TMX (voir section 12.10 pour les spécifications TMX détaillées)
 - Mémoire globale et mémoire par projet
+
+### 12.4.1 Recherche sémantique dans la TM
+
+- Utilisation d'**embeddings** (modèle léger local, ex. `sentence-transformers`) pour trouver des segments similaires même sans correspondance lexicale exacte.
+- Complémentaire à la recherche fuzzy classique (basée sur la distance d'édition).
+- Permet de retrouver des paraphrases, reformulations ou structures syntaxiques différentes exprimant la même idée.
+- Indexation vectorielle locale (ex. FAISS ou SQLite-VSS) pour des performances optimales.
 ## 12.5 Rechercher et remplacer
 
 - Recherche dans le texte source et/ou cible
@@ -493,6 +552,91 @@ Inspiré de la fonctionnalité Editor AI d’AI Novel Translation :
     - Termes du glossaire non respectés (si forcé).
     - Segments vides ou non traduits.
     - Ponctuation finale différente de la source.
+- **Validation des balises en temps réel** : alerte immédiate si une balise `<b0>` est supprimée ou mal placée dans le segment cible (sans attendre l'export).
+
+### 12.9.1 Export de rapports QA
+
+- Génération d'un rapport QA exportable en **PDF ou HTML**.
+- Le rapport liste toutes les incohérences détectées : termes du glossaire non respectés, balises manquantes, segments vides, incohérences numériques.
+- Destiné à la **relecture finale** avant export du document traduit.
+- Possibilité de filtrer le rapport par chapitre, par type d'erreur ou par sévérité.
+
+## 12.10 Support TMX détaillé
+
+### 12.10.1 Spécification TMX cible
+
+- **Format** : TMX 1.4b (version la plus largement supportée)
+- **Encodage** : UTF-8 obligatoire
+- **Attributs requis** : `srclang`, `tgtlang`, `creationdate`, `datatype="plaintext"`
+- **Compatibilité** : OmegaT, SDL Trados, memoQ, Wordfast, Virtaal
+
+### 12.10.2 Structure d'une entrée TMX NovelTrad
+
+```xml
+<tu tuid="segment_12345" creationdate="20260217T103000Z">
+  <tuv xml:lang="eng-Latn">
+    <seg>He stepped into the cultivation chamber.</seg>
+  </tuv>
+  <tuv xml:lang="fra-Latn">
+    <seg>Il entra dans la chambre de cultivation.</seg>
+  </tuv>
+  <prop type="x-noveltrad:chapter">chapitre_007</prop>
+  <prop type="x-noveltrad:genre">xianxia</prop>
+  <prop type="x-noveltrad:engine">nllb-1.3b</prop>
+</tu>
+```
+
+> 💡 Les propriétés personnalisées (`x-noveltrad:*`) permettent de conserver des métadonnées utiles sans rompre la compatibilité TMX.
+
+### 12.10.3 Fonctionnalités TMX
+
+| Fonctionnalité | Description | Priorité |
+|---------------|-----------|----------|
+| **Export TMX complet** | Tous les segments validés du projet | Haute |
+| **Export TMX sélectif** | Par chapitre, par statut, par date | Moyenne |
+| **Import TMX avec fusion** | Fusion intelligente avec la TM existante (éviter les doublons) | Haute |
+| **Gestion des conflits** | Alerte si un segment importé diffère d'un segment local | Moyenne |
+| **Prévisualisation avant import** | Aperçu des segments à importer + statistiques | Moyenne |
+| **TMX "global" vs "projet"** | Base globale partagée + base spécifique au projet | Moyenne |
+
+### 12.10.4 Comportement lors de l'import TMX
+
+1. Détection automatique des langues source/cible depuis l'en-tête TMX.
+2. Option : "Écraser les segments existants" / "Conserver les plus récents" / "Fusionner".
+3. Application automatique du glossaire sur les segments importés (optionnel).
+4. Journal d'import : nombre de segments importés, ignorés, en conflit.
+
+### 12.10.5 Tests de compatibilité TMX
+
+- [ ] Export TMX depuis NovelTrad → Import dans OmegaT
+- [ ] Export TMX depuis OmegaT → Import dans NovelTrad
+- [ ] Vérification de la préservation des balises `<b0>`, `<i1>` dans les segments TMX
+- [ ] Gestion des segments multilingues (>2 langues dans un même TU)
+
+## 12.11 Écosystème & Collaboration
+
+### 12.11.1 Export/Import de projet
+
+- Format `.noveltrad` compressé (ZIP) contenant : source, cible, glossaire, TM (au format TMX), notes et `project.json`.
+- Permet la **collaboration asynchrone** entre traducteurs (échange de projets complets).
+
+### 12.11.2 Support de formats complémentaires (v2+)
+
+- **SRT/VTT** (sous-titres) : pour la traduction de sous-titres.
+- **Markdown** : pour la traduction de documentation technique.
+- **Scripts de jeu vidéo** : comme extension future.
+
+### 12.11.3 Synchronisation cloud chiffrée (optionnel, v2+)
+
+- Synchronisation via **WebDAV/Nextcloud** ou stockage chiffré local avant upload.
+- Réservé aux utilisateurs avancés, entièrement optionnel.
+- Chiffrement AES-256 côté client avant tout envoi.
+
+## 12.12 Benchmarks de performance par moteur
+
+- Mesurer et afficher les **temps de traduction par moteur** (NLLB, Argos, LLM local, LLM en ligne) pour aider l'utilisateur à choisir.
+- Tableau comparatif accessible depuis les Statistiques du projet (section 12.6).
+- Inclure : temps moyen par segment, qualité perçue (score BLEU si applicable), coût estimé.
 
 # 13. Alignement et Segmentation (Spécifique TAO)
 
@@ -521,6 +665,12 @@ Cette section détaille les fonctionnalités indispensables pour qualifier l'out
     * Interface visuelle de correction pour l'utilisateur (fusionner/diviser des segments, corriger les correspondances).
     * Export du résultat en TMX pour l'intégrer au projet.
 
+### 13.3.1 Alignement semi-automatique avec ancres
+
+- Utilisation des **numéros de chapitre**, **titres**, ou **balises HTML** comme points d'ancrage pour améliorer la précision de l'alignement automatique.
+- Les ancres fixent des correspondances certaines, et l'algorithme aligne les segments intermédiaires.
+- Réduction significative du travail de correction manuelle pour les longs romans.
+
 
 # 14. Exigences non fonctionnelles
 
@@ -540,18 +690,41 @@ Cette section détaille les fonctionnalités indispensables pour qualifier l'out
 - Systèmes d’exploitation : Windows 10/11, macOS 12+, Linux (Ubuntu 22.04+)
 - Python 3.10 ou supérieur
 - Support GPU optionnel (CUDA pour NVIDIA, accélération Metal pour macOS)
-
 - Fonctionnement complet hors ligne (sauf services web et IA en ligne)
+- **Interopérabilité** : Import/Export TMX 1.4b compatible avec OmegaT, Trados, memoQ (voir section 12.10)
 ## 14.3 Utilisabilité
 
-- Interface entièrement en français (internationalisation possible en v2)
+- Interface entièrement en français (internationalisation préparée dès v1, voir section 3.6)
 - Thème clair et sombre
 - Polices configurables pour toutes les langues
 - Sauvegarde automatique régulière (configurable)
 - Annulation multi-niveaux (Ctrl+Z)
-
 - Assistant de premier lancement pour configurer les modèles et télécharger les dictionnaires
-## 14.4 Sécurité et données
+
+## 14.4 Robustesse et gestion des erreurs
+
+### 14.4.1 Gestion des erreurs détaillée
+
+- **Timeouts IA** : message clair avec option de relance ou changement de moteur.
+- **Échecs de téléchargement de modèles** : reprise automatique, indication de la progression, option de téléchargement partiel.
+- **Corruption de fichiers EPUB/DOCX** : détection à l'import avec message explicite et proposition de réparation si possible.
+- Tous les messages d'erreur doivent être **compréhensibles** par un utilisateur non-technique et proposer une action corrective.
+
+### 14.4.2 Sauvegardes automatiques versionnées
+
+- **Snapshots de projet** automatiques (par défaut toutes les 15 minutes, configurable).
+- Conservation des N derniers snapshots (par défaut 10).
+- Restauration ponctuelle : l'utilisateur peut revenir à n'importe quel snapshot.
+- Stockage compressé pour minimiser l'espace disque.
+
+### 14.4.3 Mode "Secours" hors ligne total
+
+- Même sans modèles IA téléchargés, l'application doit rester pleinement fonctionnelle pour :
+    - L'édition manuelle des segments.
+    - L'import/export de fichiers.
+    - La gestion des glossaires et mémoires de traduction.
+    - L'export basique (TXT, EPUB, DOCX).
+## 14.5 Sécurité et données
 
 - Toutes les données restent en local (aucun envoi à des serveurs tiers sauf activation explicite d’un service en ligne)
 - Clés API stockées de manière sécurisée (keyring ou chiffrement local)
@@ -674,6 +847,10 @@ target_lang TEXT
 
 project_id INTEGER
 
+tmx_id TEXT  -- Identifiant unique pour l'export TMX (UUID)
+
+metadata TEXT  -- JSON stockant chapitre, genre, moteur utilisé (pour enrichir l'export TMX)
+
 created_at DATETIME
 
 
@@ -711,9 +888,29 @@ created_at DATETIME
 - Thème sombre
 - Statistiques du projet et estimation de coûts
 - Assistant de premier lancement
+- Sauvegardes automatiques versionnées (snapshots)
+- Gestion des erreurs robuste (timeouts, corruption, messages clairs)
+- Mode "Secours" hors ligne total
+- Validation des balises en temps réel
+- Export de rapports QA (PDF/HTML)
+- Benchmarks de performance par moteur
+- Raccourcis personnalisables
+- Thèmes d'accessibilité (daltoniens)
 - Packaging en exécutable (PyInstaller)
 - Tests complets, corrections de bugs
+- **Tests automatisés sur corpus de référence** : jeu de tests avec romans échantillons (xianxia, SF, etc.) pour valider la préservation du formatage et la cohérence glossaire
 - Documentation utilisateur
+- **Documentation développeur + hooks API** : faciliter les contributions externes et l'intégration de nouveaux moteurs
+
+## Phase 5 – Évolutions v2 (post-lancement)
+
+- Architecture plugin/modulaire (section 3.5)
+- Internationalisation complète de l'interface (section 3.6)
+- Recherche sémantique dans la TM via embeddings (section 12.4.1)
+- Support de formats complémentaires : SRT/VTT, Markdown, scripts jeu vidéo (section 12.11.2)
+- Synchronisation cloud chiffrée optionnelle (section 12.11.3)
+- Aperçu en temps réel du rendu EPUB/DOCX (section 4.3)
+- OCR intégré pour images de texte
 
 # 18. Annexes
 
