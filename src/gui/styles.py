@@ -238,3 +238,45 @@ QPushButton:hover {
 QTextEdit#SourceText { color: #FFFF00; }
 QTextEdit#TargetText { color: #FFFFFF; }
 """
+
+
+# Daltonian-friendly color schemes for accessibility (Section 4.5)
+DALTONIAN_PROTANOPIA_THEME = """
+/* Protanopia-friendly theme (red-blind) */
+QWidget { background-color: #1a1a1a; color: #e0e0e0; }
+QFrame#SegmentCard { background-color: #252525; border: 1px solid #404040; border-radius: 8px; }
+QFrame#SegmentCard[status="untranslated"] { border-left: 4px solid #9966cc; }
+QFrame#SegmentCard[status="machine"] { border-left: 4px solid #6699cc; }
+QFrame#SegmentCard[status="validated"] { border-left: 4px solid #66cc99; }
+QFrame#SegmentCard[status="ai_refined"] { border-left: 4px solid #cccc66; }
+"""
+
+DALTONIAN_DEUTERANOPIA_THEME = """
+/* Deuteranopia-friendly theme (green-blind) */
+QWidget { background-color: #1a1a1a; color: #e0e0e0; }
+QFrame#SegmentCard { background-color: #252525; border: 1px solid #404040; border-radius: 8px; }
+QFrame#SegmentCard[status="untranslated"] { border-left: 4px solid #cc6699; }
+QFrame#SegmentCard[status="machine"] { border-left: 4px solid #9966cc; }
+QFrame#SegmentCard[status="validated"] { border-left: 4px solid #cc9966; }
+QFrame#SegmentCard[status="ai_refined"] { border-left: 4px solid #66cc99; }
+"""
+
+DALTONIAN_TRITANOPIA_THEME = """
+/* Tritanopia-friendly theme (blue-blind) */
+QWidget { background-color: #1a1a1a; color: #e0e0e0; }
+QFrame#SegmentCard { background-color: #252525; border: 1px solid #404040; border-radius: 8px; }
+QFrame#SegmentCard[status="untranslated"] { border-left: 4px solid #999966; }
+QFrame#SegmentCard[status="machine"] { border-left: 4px solid #669999; }
+QFrame#SegmentCard[status="validated"] { border-left: 4px solid #996699; }
+QFrame#SegmentCard[status="ai_refined"] { border-left: 4px solid #699966; }
+"""
+
+ACCESSIBILITY_THEMES = {
+    'protanopia': DALTONIAN_PROTANOPIA_THEME,
+    'deuteranopia': DALTONIAN_DEUTERANOPIA_THEME,
+    'tritanopia': DALTONIAN_TRITANOPIA_THEME,
+}
+
+def get_accessibility_theme(theme_name):
+    """Get accessibility theme by name."""
+    return ACCESSIBILITY_THEMES.get(theme_name, DARK_THEME)
