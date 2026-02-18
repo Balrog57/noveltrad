@@ -171,12 +171,124 @@ class MainWindow(QMainWindow):
         return QIcon(pixmap)
 
     def init_ui(self):
+        self.create_menu_bar()
+
         # Central Widget & Main Layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+        
+    def create_menu_bar(self):
+        menu_bar = self.menuBar()
+        menu_bar.setStyleSheet("""
+            QMenuBar {
+                background-color: #1e1e1e;
+                color: #e2e8f0;
+                border-bottom: 1px solid #333333;
+            }
+            QMenuBar::item {
+                background-color: transparent;
+                padding: 8px 12px;
+            }
+            QMenuBar::item:selected {
+                background-color: #333333;
+            }
+            QMenu {
+                background-color: #1e1e1e;
+                color: #e2e8f0;
+                border: 1px solid #333333;
+            }
+            QMenu::item {
+                padding: 6px 24px 6px 12px;
+            }
+            QMenu::item:selected {
+                background-color: #0d7ff2;
+                color: white;
+            }
+        """)
+        
+        # File Menu
+        file_menu = menu_bar.addMenu("&File")
+        
+        new_action = QAction(self.colorize_icon("add_circle", "#e2e8f0"), "&New Project", self)
+        new_action.setShortcut("Ctrl+N")
+        new_action.triggered.connect(self.new_project_dialog)
+        file_menu.addAction(new_action)
+        
+        open_action = QAction(self.colorize_icon("folder_open", "#e2e8f0"), "&Open Project...", self)
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self.open_project_dialog)
+        file_menu.addAction(open_action)
+
+        save_action = QAction(self.colorize_icon("save", "#e2e8f0"), "&Save Segment", self)
+        save_action.setShortcut("Ctrl+S")
+        save_action.triggered.connect(self.save_current_segment)
+        file_menu.addAction(save_action)
+
+        file_menu.addSeparator()
+
+        import_tmx_action = QAction("Import TMX Memory...", self)
+        import_tmx_action.triggered.connect(self.import_tmx_dialog)
+        file_menu.addAction(import_tmx_action)
+        
+        export_tmx_action = QAction("Export TMX Memory...", self)
+        export_tmx_action.triggered.connect(self.export_tmx_dialog)
+        file_menu.addAction(export_tmx_action)
+
+        file_menu.addSeparator()
+        
+        export_action = QAction(self.colorize_icon("file_download", "#e2e8f0"), "&Export Translations...", self)
+        export_action.triggered.connect(self.export_project_dialog)
+        file_menu.addAction(export_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction("&Exit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # Edit Menu
+        edit_menu = menu_bar.addMenu("&Edit")
+        
+        find_action = QAction(self.colorize_icon("search", "#e2e8f0"), "&Find and Replace", self)
+        find_action.setShortcut("Ctrl+F")
+        find_action.triggered.connect(self.show_search_replace)
+        edit_menu.addAction(find_action)
+        
+        edit_menu.addSeparator()
+        
+        settings_action = QAction(self.colorize_icon("settings", "#e2e8f0"), "&Settings", self)
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self.show_settings)
+        edit_menu.addAction(settings_action)
+
+        # Tools Menu
+        tools_menu = menu_bar.addMenu("&Tools")
+        
+        batch_action = QAction(self.colorize_icon("library_books", "#e2e8f0"), "&Batch Translate...", self)
+        batch_action.triggered.connect(self.batch_translate)
+        tools_menu.addAction(batch_action)
+        
+        stats_action = QAction(self.colorize_icon("analytics", "#e2e8f0"), "&Project Statistics...", self)
+        stats_action.triggered.connect(self.show_statistics_dialog)
+        tools_menu.addAction(stats_action)
+        
+        tools_menu.addSeparator()
+        
+        glossary_action = QAction(self.colorize_icon("menu_book", "#e2e8f0"), "&Manage Glossary...", self)
+        glossary_action.triggered.connect(self.open_glossary_manager)
+        tools_menu.addAction(glossary_action)
+        
+        qa_action = QAction(self.colorize_icon("verified", "#e2e8f0"), "&Run QA Check...", self)
+        qa_action.triggered.connect(self.show_qa_dialog)
+        tools_menu.addAction(qa_action)
+        
+        align_action = QAction(self.colorize_icon("compare_arrows", "#e2e8f0"), "&Alignment Tool...", self)
+        align_action.triggered.connect(self.show_alignment_dialog)
+        tools_menu.addAction(align_action)
         
 
 

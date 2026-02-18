@@ -11,6 +11,10 @@ A high-performance desktop application for novel translation, featuring AI-power
 - **TranslateGemma Optimization**: Specialized engine for `translategemma-12b-it` using the Completion API to bypass LM Studio Jinja2 template errors. Optimized for NVIDIA RTX GPUs (e.g., RTX 5070 Ti) with a recommended 8192 context window.
 - **Glossary Management**: Create and manage project-specific glossaries.
 - **Offline Capable**: Core features work offline; AI features require internet if using cloud API or can run locally with LM Studio.
+- **TMX Support**: Import and Export industry-standard Translation Memories.
+- **Quality Assurance**: Automated checks and Alignment Tool.
+
+For detailed usage instructions, please refer to the [User Guide](docs/user_guide.md).
 
 ## Installation (Development)
 
@@ -27,6 +31,10 @@ A high-performance desktop application for novel translation, featuring AI-power
 4. **Run the Application**:
    ```powershell
    python src/main_qt.py
+   ```
+5. **Run Tests**:
+   ```powershell
+   python -m pytest tests/
    ```
 
 ## Building Executable

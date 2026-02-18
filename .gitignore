@@ -15,3 +15,8 @@ venv/
 *.log
 tests/*.ntrad
 tests/*.txt
+
+# Build Artifacts
+build/
+dist/
+*.spec
