@@ -1,9 +1,18 @@
 {
-  "backup_enabled": true,
-  "backup_interval": "Every 5 mins",
-  "llm_url": "http://localhost:1234/v1",
-  "llm_key": "",
-  "llm_model": "nikolaykozloff/translategemma-12b-it",
-  "theme": "Dark (Default)",
-  "font_size": "Medium"
+    "first_run": false,
+    "theme": "dark",
+    "workspace_dir": "C:\\Users\\Marc\\Documents\\NovelTradProjects",
+    "api_keys": {
+        "openai": "",
+        "gemini": "",
+        "anthropic": ""
+    },
+    "llm_provider": "gemini",
+    "target_language": "fr",
+    "backup_enabled": true,
+    "backup_interval": "Every 5 mins",
+    "llm_url": "http://localhost:1234/v1",
+    "llm_key": "",
+    "llm_model": "nikolaykozloff/translategemma-12b-it",
+    "font_size": "Medium"
 }

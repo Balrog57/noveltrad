@@ -180,6 +180,8 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
+        self.setup_workspace(main_layout)
+        
     def create_menu_bar(self):
         menu_bar = self.menuBar()
         menu_bar.setStyleSheet("""
@@ -210,88 +212,93 @@ class MainWindow(QMainWindow):
         """)
         
         # File Menu
-        file_menu = menu_bar.addMenu("&File")
+        file_menu = menu_bar.addMenu("&Fichier")
         
-        new_action = QAction(self.colorize_icon("add_circle", "#e2e8f0"), "&New Project", self)
+        new_action = QAction(self.colorize_icon("add_circle", "#e2e8f0"), "&Nouveau Projet", self)
         new_action.setShortcut("Ctrl+N")
         new_action.triggered.connect(self.new_project_dialog)
         file_menu.addAction(new_action)
         
-        open_action = QAction(self.colorize_icon("folder_open", "#e2e8f0"), "&Open Project...", self)
+        open_action = QAction(self.colorize_icon("folder_open", "#e2e8f0"), "&Ouvrir Projet...", self)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.open_project_dialog)
         file_menu.addAction(open_action)
 
-        save_action = QAction(self.colorize_icon("save", "#e2e8f0"), "&Save Segment", self)
+        save_action = QAction(self.colorize_icon("save", "#e2e8f0"), "&Sauvegarder Segment", self)
         save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self.save_current_segment)
         file_menu.addAction(save_action)
 
         file_menu.addSeparator()
 
-        import_tmx_action = QAction("Import TMX Memory...", self)
+        import_tmx_action = QAction("Importer Mémoire TMX...", self)
         import_tmx_action.triggered.connect(self.import_tmx_dialog)
         file_menu.addAction(import_tmx_action)
         
-        export_tmx_action = QAction("Export TMX Memory...", self)
+        export_tmx_action = QAction("Exporter Mémoire TMX...", self)
         export_tmx_action.triggered.connect(self.export_tmx_dialog)
         file_menu.addAction(export_tmx_action)
 
         file_menu.addSeparator()
         
-        export_action = QAction(self.colorize_icon("file_download", "#e2e8f0"), "&Export Translations...", self)
+        export_action = QAction(self.colorize_icon("file_download", "#e2e8f0"), "&Exporter Traductions...", self)
         export_action.triggered.connect(self.export_project_dialog)
         file_menu.addAction(export_action)
         
         file_menu.addSeparator()
         
-        exit_action = QAction("&Exit", self)
+        exit_action = QAction("&Quitter", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
         # Edit Menu
-        edit_menu = menu_bar.addMenu("&Edit")
+        edit_menu = menu_bar.addMenu("&Édition")
         
-        find_action = QAction(self.colorize_icon("search", "#e2e8f0"), "&Find and Replace", self)
+        find_action = QAction(self.colorize_icon("search", "#e2e8f0"), "&Rechercher et Remplacer", self)
         find_action.setShortcut("Ctrl+F")
         find_action.triggered.connect(self.show_search_replace)
         edit_menu.addAction(find_action)
         
         edit_menu.addSeparator()
         
-        settings_action = QAction(self.colorize_icon("settings", "#e2e8f0"), "&Settings", self)
+        settings_action = QAction(self.colorize_icon("settings", "#e2e8f0"), "&Paramètres", self)
         settings_action.setShortcut("Ctrl+,")
         settings_action.triggered.connect(self.show_settings)
         edit_menu.addAction(settings_action)
 
         # Tools Menu
-        tools_menu = menu_bar.addMenu("&Tools")
+        tools_menu = menu_bar.addMenu("&Outils")
         
-        batch_action = QAction(self.colorize_icon("library_books", "#e2e8f0"), "&Batch Translate...", self)
+        batch_action = QAction(self.colorize_icon("library_books", "#e2e8f0"), "&Traduction par Lot...", self)
         batch_action.triggered.connect(self.batch_translate)
         tools_menu.addAction(batch_action)
         
-        stats_action = QAction(self.colorize_icon("analytics", "#e2e8f0"), "&Project Statistics...", self)
+        stats_action = QAction(self.colorize_icon("analytics", "#e2e8f0"), "&Statistiques du Projet...", self)
         stats_action.triggered.connect(self.show_statistics_dialog)
         tools_menu.addAction(stats_action)
         
         tools_menu.addSeparator()
         
-        glossary_action = QAction(self.colorize_icon("menu_book", "#e2e8f0"), "&Manage Glossary...", self)
+        glossary_action = QAction(self.colorize_icon("menu_book", "#e2e8f0"), "&Gérer Glossaire...", self)
         glossary_action.triggered.connect(self.open_glossary_manager)
         tools_menu.addAction(glossary_action)
         
-        qa_action = QAction(self.colorize_icon("verified", "#e2e8f0"), "&Run QA Check...", self)
+        qa_action = QAction(self.colorize_icon("verified", "#e2e8f0"), "&Vérification Qualité (QA)...", self)
         qa_action.triggered.connect(self.show_qa_dialog)
         tools_menu.addAction(qa_action)
         
-        align_action = QAction(self.colorize_icon("compare_arrows", "#e2e8f0"), "&Alignment Tool...", self)
+        align_action = QAction(self.colorize_icon("compare_arrows", "#e2e8f0"), "&Outil d'Alignement...", self)
         align_action.triggered.connect(self.show_alignment_dialog)
         tools_menu.addAction(align_action)
+
+        backup_action = QAction(self.colorize_icon("history", "#e2e8f0"), "&Historique / Sauvegardes...", self)
+        backup_action.triggered.connect(self.show_backup_dialog)
+        tools_menu.addAction(backup_action)
         
 
 
+    def setup_workspace(self, main_layout):
         # 1. Header Area
         self.header = QFrame()
         self.header.setObjectName("Header")
@@ -308,14 +315,15 @@ class MainWindow(QMainWindow):
         logo_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         title_container = QVBoxLayout()
+        # Logo Title Tweak: Tighter spacing to match logo height
         title_container.setSpacing(0)
-        title_container.setContentsMargins(0, 4, 0, 4)
+        title_container.setContentsMargins(0, 0, 0, 0)
         
         main_title = QLabel("NovelTrad")
-        main_title.setStyleSheet("font-size: 18px; font-weight: 800; color: white;")
+        main_title.setStyleSheet("font-size: 15px; font-weight: 800; color: white; line-height: 14px; margin-bottom: 0px;") 
         
         premium_label = QLabel("PREMIUM")
-        premium_label.setStyleSheet("color: #0d7ff2; font-size: 9px; font-weight: 700; letter-spacing: 2px;")
+        premium_label.setStyleSheet("color: #0d7ff2; font-size: 8px; font-weight: 700; letter-spacing: 1px; margin-top: 0px; line-height: 8px;")
         
         title_container.addWidget(main_title)
         title_container.addWidget(premium_label)
@@ -329,12 +337,16 @@ class MainWindow(QMainWindow):
         sep1.setStyleSheet("background-color: #333333;")
         header_layout.addWidget(sep1)
         
-        # Project Info
+        header_layout.addWidget(sep1)
+        
+        # Project Info - Centered
+        header_layout.addStretch()
+        
         project_info = QHBoxLayout()
         project_info.setSpacing(8)
-        project_label = QLabel("Project:")
+        project_label = QLabel("Projet :")
         project_label.setObjectName("ProjectTitle")
-        self.project_name_label = QLabel("No Project Loaded")
+        self.project_name_label = QLabel("Aucun Projet Chargé")
         self.project_name_label.setObjectName("ProjectName")
         project_info.addWidget(project_label)
         project_info.addWidget(self.project_name_label)
@@ -353,40 +365,14 @@ class MainWindow(QMainWindow):
             btn.clicked.connect(callback)
             return btn
 
-        self.btn_new = create_header_btn("add_circle", "New Project", self.new_project_dialog)
-        self.btn_open = create_header_btn("folder_open", "Open Existing Project (.ntrad)", self.open_project_dialog)
-        self.btn_save = create_header_btn("save", "Save (Ctrl+S)", self.save_current_segment)
-        self.btn_backups = create_header_btn("history", "Snapshots (Backups)", self.show_backup_dialog)
-        self.btn_export = create_header_btn("file_download", "Export", self.export_project_dialog)
-        
-        sep2 = QFrame()
-        sep2.setFixedWidth(1)
-        sep2.setFixedHeight(24)
-        sep2.setStyleSheet("background-color: #333333;")
-        
-        self.btn_settings = create_header_btn("settings", "Settings (Ctrl+,)", self.show_settings)
-        
-        self.btn_align = create_header_btn("compare_arrows", "Alignement (TAO)", self.show_alignment_dialog)
-        self.btn_qa = create_header_btn("verified", "QA Check", self.show_qa_dialog)
-        self.btn_layout = create_header_btn("view_column", "Basculer Vue (H/V)", self.toggle_layout_mode)
-        self.btn_layout = create_header_btn("view_column", "Basculer Vue (H/V)", self.toggle_layout_mode)
-        self.btn_instruct = create_header_btn("assignment", "Instructions IA", self.show_custom_instructions_dialog)
-        self.btn_batch = create_header_btn("library_books", "Batch Translate", self.batch_translate)
-        self.btn_stats = create_header_btn("analytics", "Statistiques & Coûts", self.show_statistics_dialog)
+        self.btn_new = create_header_btn("add_circle", "Nouveau Projet", self.new_project_dialog)
+        self.btn_open = create_header_btn("folder_open", "Ouvrir Projet (.ntrad)", self.open_project_dialog)
+        self.btn_save = create_header_btn("save", "Sauvegarder (Ctrl+S)", self.save_current_segment)
+        # Redundant buttons removed as per user request (moved to Menu Bar)
         
         header_layout.addWidget(self.btn_new)
         header_layout.addWidget(self.btn_open)
         header_layout.addWidget(self.btn_save)
-        header_layout.addWidget(self.btn_backups)
-        header_layout.addWidget(self.btn_export)
-        header_layout.addWidget(self.btn_align)
-        header_layout.addWidget(self.btn_qa)
-        header_layout.addWidget(self.btn_layout)
-        header_layout.addWidget(self.btn_instruct)
-        header_layout.addWidget(self.btn_batch)
-        header_layout.addWidget(self.btn_stats)
-        header_layout.addWidget(sep2)
-        header_layout.addWidget(self.btn_settings)
         
         main_layout.addWidget(self.header)
         
@@ -403,7 +389,8 @@ class MainWindow(QMainWindow):
         
         chapters_header = QHBoxLayout()
         chapters_header.setContentsMargins(16, 8, 16, 8)
-        ch_label = QLabel("CHAPTERS")
+        chapters_header.setContentsMargins(16, 8, 16, 8)
+        ch_label = QLabel("CHAPITRES")
         ch_label.setObjectName("SidebarTitle")
         chapters_header.addWidget(ch_label)
         chapters_header.addStretch()
@@ -411,9 +398,11 @@ class MainWindow(QMainWindow):
         # Add Chapter Button
         add_chapter_btn = QPushButton()
         add_chapter_btn.setObjectName("IconButton")
-        add_chapter_btn.setIcon(self.colorize_icon("add_circle", "#cbd5e1"))
+        add_chapter_btn = QPushButton()
+        add_chapter_btn.setObjectName("IconButton")
+        add_chapter_btn.setIcon(self.colorize_icon("add", "#cbd5e1")) # Usage of 'add' for plus symbol
         add_chapter_btn.setIconSize(QSize(16, 16))
-        add_chapter_btn.setToolTip("Import Chapter from File")
+        add_chapter_btn.setToolTip("Importer un Chapitre")
         add_chapter_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_chapter_btn.clicked.connect(self.import_chapter_dialog)
         chapters_header.addWidget(add_chapter_btn)
@@ -423,7 +412,7 @@ class MainWindow(QMainWindow):
         self.auto_struct_btn.setObjectName("IconButton")
         self.auto_struct_btn.setIcon(self.colorize_icon("auto_fix_high", "#cbd5e1"))
         self.auto_struct_btn.setIconSize(QSize(16, 16))
-        self.auto_struct_btn.setToolTip("Auto-Structure (AI Detect Chapters)")
+        self.auto_struct_btn.setToolTip("Structure Auto (IA)")
         self.auto_struct_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.auto_struct_btn.clicked.connect(self.run_structure_ai)
         chapters_header.addWidget(self.auto_struct_btn)
@@ -467,29 +456,18 @@ class MainWindow(QMainWindow):
         dict_head = QHBoxLayout()
         dict_icon = QLabel()
         dict_icon.setPixmap(self.colorize_icon("search", "#ffffff").pixmap(16, 16))
-        dict_title = QLabel("DICTIONARY")
+        dict_title = QLabel("DICTIONNAIRE")
         dict_title.setObjectName("SidebarTitle")
         dict_head.addWidget(dict_icon)
         dict_head.addWidget(dict_title)
         dict_head.addStretch()
         dict_box.addLayout(dict_head)
         
-        dict_controls = QHBoxLayout()
-        self.dict_src_lang = QComboBox()
-        self.dict_tgt_lang = QComboBox()
-        # Populate with some defaults
-        for lang in ["Chinese", "English", "French", "Japanese"]:
-            self.dict_src_lang.addItem(lang)
-            self.dict_tgt_lang.addItem(lang)
-        self.dict_src_lang.setCurrentText("Chinese")
-        self.dict_tgt_lang.setCurrentText("French")
-        
-        dict_controls.addWidget(self.dict_src_lang)
-        dict_controls.addWidget(self.dict_tgt_lang)
-        dict_box.addLayout(dict_controls)
+        # Language selection now handled by footer global selectors
+        # dict_controls removed as per user request
         
         self.dict_input = QLineEdit()
-        self.dict_input.setPlaceholderText("Search word...")
+        self.dict_input.setPlaceholderText("Rechercher un mot...")
         self.dict_input.returnPressed.connect(self.on_dictionary_search)
         dict_box.addWidget(self.dict_input)
         
@@ -504,7 +482,7 @@ class MainWindow(QMainWindow):
         gloss_head = QHBoxLayout()
         gloss_icon = QLabel()
         gloss_icon.setPixmap(self.colorize_icon("menu_book", "#ffffff").pixmap(16, 16))
-        gloss_title = QLabel("GLOSSARY MATCHES")
+        gloss_title = QLabel("GLOSSAIRE")
         gloss_title.setObjectName("SidebarTitle")
         gloss_head.addWidget(gloss_icon)
         gloss_head.addWidget(gloss_title)
@@ -514,7 +492,7 @@ class MainWindow(QMainWindow):
         self.scan_glossary_btn = QPushButton()
         self.scan_glossary_btn.setIcon(self.colorize_icon("manage_search", "#94a3b8"))
         self.scan_glossary_btn.setFixedSize(24, 24)
-        self.scan_glossary_btn.setToolTip("Scan Chapter for Terms (AI)")
+        self.scan_glossary_btn.setToolTip("Scanner Chapitre pour Termes (IA)")
         self.scan_glossary_btn.setStyleSheet("border: none;")
         self.scan_glossary_btn.clicked.connect(self.scan_chapter_glossary)
         gloss_head.addWidget(self.scan_glossary_btn)
@@ -522,7 +500,7 @@ class MainWindow(QMainWindow):
         self.btn_manage_glossary = QPushButton()
         self.btn_manage_glossary.setIcon(self.colorize_icon("settings", "#94a3b8")) # Using settings icon for management
         self.btn_manage_glossary.setFixedSize(24, 24)
-        self.btn_manage_glossary.setToolTip("Manage Glossary")
+        self.btn_manage_glossary.setToolTip("Gérer Glossaire")
         self.btn_manage_glossary.setStyleSheet("border: none;")
         self.btn_manage_glossary.clicked.connect(self.open_glossary_manager)
         gloss_head.addWidget(self.btn_manage_glossary)
@@ -539,7 +517,7 @@ class MainWindow(QMainWindow):
         ai_head = QHBoxLayout()
         ai_icon = QLabel()
         ai_icon.setPixmap(self.colorize_icon("psychology", "#ffffff").pixmap(16, 16))
-        ai_box_title = QLabel("AI SUGGESTIONS")
+        ai_box_title = QLabel("SUGGESTIONS IA")
         ai_box_title.setObjectName("SidebarTitle")
         ai_head.addWidget(ai_icon)
         ai_head.addWidget(ai_box_title)
@@ -548,14 +526,14 @@ class MainWindow(QMainWindow):
         
         self.ai_card = QFrame()
         self.ai_card.setObjectName("ToolSection")
-        self.ai_text = QLabel("Select a segment...")
+        self.ai_text = QLabel("Sélectionnez un segment...")
         self.ai_text.setWordWrap(True)
         self.ai_text.setStyleSheet("color: #94a3b8; font-style: italic; min-height: 60px;")
         ai_card_layout = QVBoxLayout(self.ai_card)
         ai_card_layout.addWidget(self.ai_text)
         ai_box.addWidget(self.ai_card)
         
-        self.btn_regen = QPushButton("Regenerate Suggestion")
+        self.btn_regen = QPushButton("Régénérer Suggestion")
         self.btn_regen.setObjectName("PrimaryButton")
         self.btn_regen.setIcon(self.colorize_icon("bolt", "#ffffff"))
         self.btn_regen.clicked.connect(self.auto_translate_current)
@@ -567,7 +545,7 @@ class MainWindow(QMainWindow):
         conc_head = QHBoxLayout()
         conc_icon = QLabel()
         conc_icon.setPixmap(self.colorize_icon("search", "#ffffff").pixmap(16, 16))
-        conc_title = QLabel("CONCORDANCER")
+        conc_title = QLabel("CONCORDANCIER")
         conc_title.setObjectName("SidebarTitle")
         conc_head.addWidget(conc_icon)
         conc_head.addWidget(conc_title)
@@ -575,7 +553,7 @@ class MainWindow(QMainWindow):
         conc_box.addLayout(conc_head)
         
         self.conc_input = QLineEdit()
-        self.conc_input.setPlaceholderText("Search in TM & project...")
+        self.conc_input.setPlaceholderText("Rechercher dans TM & projet...")
         self.conc_input.returnPressed.connect(self.search_concordancer)
         conc_box.addWidget(self.conc_input)
         
@@ -588,7 +566,7 @@ class MainWindow(QMainWindow):
         chat_head = QHBoxLayout()
         chat_icon = QLabel()
         chat_icon.setPixmap(self.colorize_icon("psychology", "#ffffff").pixmap(16, 16))
-        chat_title = QLabel("AI CHAT")
+        chat_title = QLabel("CHAT IA")
         chat_title.setObjectName("SidebarTitle")
         chat_head.addWidget(chat_icon)
         chat_head.addWidget(chat_title)
@@ -621,7 +599,7 @@ class MainWindow(QMainWindow):
         self.connectivity_point = QWidget()
         self.connectivity_point.setFixedSize(8, 8)
         self.connectivity_point.setStyleSheet("background-color: #22c55e; border-radius: 4px;")
-        self.connectivity_label = QLabel("ONLINE")
+        self.connectivity_label = QLabel("EN LIGNE")
         self.connectivity_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #94a3b8;")
         footer_layout.addWidget(self.connectivity_point)
         footer_layout.addWidget(self.connectivity_label)
@@ -638,9 +616,9 @@ class MainWindow(QMainWindow):
         self.target_lang_combo.setMinimumWidth(120)
         self.target_lang_combo.currentIndexChanged.connect(lambda: self.on_language_changed('target'))
         
-        footer_layout.addWidget(QLabel("Source:"))
+        footer_layout.addWidget(QLabel("Source :"))
         footer_layout.addWidget(self.source_lang_combo)
-        footer_layout.addWidget(QLabel("Target:"))
+        footer_layout.addWidget(QLabel("Cible :"))
         footer_layout.addWidget(self.target_lang_combo)
         
         self.load_languages_into_footer()
@@ -651,7 +629,7 @@ class MainWindow(QMainWindow):
         progress_info = QVBoxLayout()
         progress_info.setSpacing(2)
         progress_head = QHBoxLayout()
-        progress_head.addWidget(QLabel("OVERALL PROGRESS"))
+        progress_head.addWidget(QLabel("PROGRESSION"))
         self.progress_pct = QLabel("0%")
         progress_head.addWidget(self.progress_pct)
         progress_head.itemAt(0).widget().setStyleSheet("font-size: 8px; font-weight: 800; color: #64748b;")
@@ -685,7 +663,7 @@ class MainWindow(QMainWindow):
         # Auto-saved
         save_icon = QLabel()
         save_icon.setPixmap(self.colorize_icon("cloud_done", "#64748b").pixmap(12, 12))
-        save_label = QLabel("AUTO-SAVED")
+        save_label = QLabel("AUTO-SAUVEGARDÉ")
         save_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748b;")
         footer_layout.addWidget(save_icon)
         footer_layout.addWidget(save_label)
@@ -745,7 +723,7 @@ class MainWindow(QMainWindow):
         # Add stretch back at the end after adding items? Or add items then add stretch.
         
         if not self.project_manager.current_project:
-             self.project_name_label.setText("No Project Loaded")
+             self.project_name_label.setText("Aucun Projet Chargé")
              return
              
         self.project_name_label.setText(self.project_manager.current_project.name)
@@ -804,8 +782,8 @@ class MainWindow(QMainWindow):
         source_words = sum(len(s.source_text.split()) for s in segments)
         target_words = sum(len(s.target_text.split()) if s.target_text else 0 for s in segments)
         
-        self.segments_count.setText(f"Segments: {translated} / {total}")
-        self.words_count.setText(f"Words: {target_words} / {source_words}")
+        self.segments_count.setText(f"Segments : {translated} / {total}")
+        self.words_count.setText(f"Mots : {target_words} / {source_words}")
         
         progress = int((translated / total) * 100) if total > 0 else 0
         
@@ -819,8 +797,8 @@ class MainWindow(QMainWindow):
         fill_width = int((progress / 100.0) * 200)
         self.progress_fill.setFixedWidth(fill_width)
         
-        self.segments_count.setText(f"Segments: {translated} / {total}")
-        self.words_count.setText(f"Words: {target_words:,} / {source_words:,}")
+        self.segments_count.setText(f"Segments : {translated} / {total}")
+        self.words_count.setText(f"Mots : {target_words:,} / {source_words:,}")
 
 
     def on_segment_card_clicked(self, segment_id):
@@ -836,8 +814,8 @@ class MainWindow(QMainWindow):
                     active_card = widget
                     
         if active_card:
-            self.status_bar.showMessage(f"Selected Segment {segment_id}")
-            self.ai_text.setText("Click 'Regenerate' to get AI suggestion for this segment.")
+            self.status_bar.showMessage(f"Segment {segment_id} sélectionné")
+            self.ai_text.setText("Cliquez sur 'Régénérer Suggestion' pour obtenir une traduction IA.")
             
             # Auto-Glossary detection for current segment
             self.update_glossary_for_segment(active_card.segment.source_text)
@@ -862,7 +840,7 @@ class MainWindow(QMainWindow):
                 found += 1
                 
         if found == 0:
-            self.glossary_list.addItem("No matches for this segment.")
+            self.glossary_list.addItem("Aucune correspondance pour ce segment.")
 
     def auto_translate_current(self):
         if self.current_segment_index == -1: return
@@ -877,7 +855,7 @@ class MainWindow(QMainWindow):
         if not active_card: return
         
         try:
-            self.status_bar.showMessage("Generating AI suggestion...")
+            self.status_bar.showMessage("Génération de la suggestion IA...")
             QApplication.processEvents()
             
             p = self.project_manager.current_project
@@ -905,16 +883,16 @@ class MainWindow(QMainWindow):
             active_card.segment.status = 'translated'
             active_card.segment.save()
             
-            self.status_bar.showMessage("Translated and Saved.")
+            self.status_bar.showMessage("Traduit et Sauvegardé.")
         except Exception as e:
-            self.ai_text.setText(f"Error: {e}")
+            self.ai_text.setText(f"Erreur : {e}")
 
     def on_word_lookup(self, word):
         """Handle word lookup from hover tooltip."""
         from src.core.dictionary_manager import DictionaryManager
         
-        src_lang = self.dict_src_lang.currentText()
-        tgt_lang = self.dict_tgt_lang.currentText()
+        src_lang = self.source_lang_combo.currentText()
+        tgt_lang = self.target_lang_combo.currentText()
         
         dm = DictionaryManager()
         results = dm.search(src_lang, tgt_lang, word)
@@ -938,11 +916,11 @@ class MainWindow(QMainWindow):
     def editor_ai_refine(self):
         """Refine/Edit AI - improve machine translation."""
         if self.current_segment_index == -1:
-            QMessageBox.warning(self, "Error", "No segment selected.")
+            QMessageBox.warning(self, "Erreur", "Aucun segment sélectionné.")
             return
             
         if not self.llm_engine or not self.llm_engine.is_available():
-            QMessageBox.warning(self, "Error", "LLM engine not available.")
+            QMessageBox.warning(self, "Erreur", "Moteur IA non disponible.")
             return
         
         active_card = None
@@ -958,11 +936,11 @@ class MainWindow(QMainWindow):
         translated_text = active_card.target_edit.toPlainText()
         
         if not translated_text:
-            QMessageBox.warning(self, "Error", "No translation to refine. Translate first.")
+            QMessageBox.warning(self, "Erreur", "Aucune traduction à affiner. Traduisez d'abord.")
             return
         
         try:
-            self.status_bar.showMessage("Refining translation with AI...")
+            self.status_bar.showMessage("Affinement de la traduction avec l'IA...")
             QApplication.processEvents()
             
             p = self.project_manager.current_project
@@ -988,25 +966,25 @@ class MainWindow(QMainWindow):
             active_card.segment.status = 'ai_refined'
             active_card.segment.save()
             
-            self.status_bar.showMessage("Translation refined and saved.")
+            self.status_bar.showMessage("Traduction affinée et sauvegardée.")
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Refinement failed: {e}")
+            QMessageBox.critical(self, "Erreur", f"L'affinement a échoué : {e}")
 
     def add_glossary_term(self):
         if not self.project_manager.current_project: return
         
         dialog = QDialog(self)
-        dialog.setWindowTitle("Add Term")
+        dialog.setWindowTitle("Ajouter un Terme")
         layout = QFormLayout(dialog)
         
         src_input = QLineEdit()
         tgt_input = QLineEdit()
-        layout.addRow("Source:", src_input)
-        layout.addRow("Target:", tgt_input)
+        layout.addRow("Source :", src_input)
+        layout.addRow("Cible :", tgt_input)
         
         btns = QHBoxLayout()
-        ok_btn = QPushButton("Add")
+        ok_btn = QPushButton("Ajouter")
         ok_btn.clicked.connect(dialog.accept)
         btns.addWidget(ok_btn)
         layout.addRow(btns)
@@ -1035,15 +1013,15 @@ class MainWindow(QMainWindow):
     def scan_chapter_glossary(self):
         """Scans the current chapter for glossary terms using AI."""
         if not self.project_manager.current_project or not getattr(self, 'current_chapter_id', None):
-            QMessageBox.warning(self, "Error", "No active chapter to scan.")
+            QMessageBox.warning(self, "Erreur", "Aucun chapitre actif à scanner.")
             return
             
         if not self.llm_engine or not self.llm_engine.is_available():
-            QMessageBox.warning(self, "Error", "LLM engine not available. Please configure in Settings.")
+            QMessageBox.warning(self, "Erreur", "Moteur IA non disponible. Veuillez le configurer dans les paramètres.")
             return
             
         try:
-            self.status_bar.showMessage("AI scanning chapter for terms...")
+            self.status_bar.showMessage("L'IA scanne le chapitre pour trouver des termes...")
             QApplication.processEvents()
             
             project = self.project_manager.current_project
@@ -1051,7 +1029,7 @@ class MainWindow(QMainWindow):
             segments = Segment.select().where(Segment.chapter == self.current_chapter_id)
             
             if not segments.exists():
-                QMessageBox.warning(self, "Error", "No segments in this chapter.")
+                QMessageBox.warning(self, "Erreur", "Aucun segment dans ce chapitre.")
                 return
             
             # Combine text from first 200 segments
@@ -1093,27 +1071,27 @@ class MainWindow(QMainWindow):
                         existing_sources.add(source) # Avoid duplicates in same batch
             
             self.load_glossary()
-            self.status_bar.showMessage(f"AI Scan: {added_count} new terms added.")
-            QMessageBox.information(self, "AI Scan Result", f"AI detected and added {added_count} new terms to the glossary.")
+            self.status_bar.showMessage(f"Scan IA : {added_count} nouveaux termes ajoutés.")
+            QMessageBox.information(self, "Résultat Scan IA", f"L'IA a détecté et ajouté {added_count} nouveaux termes au glossaire.")
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to scan glossary: {str(e)}")
-            self.status_bar.showMessage("Glossary scan failed.")
+            QMessageBox.critical(self, "Erreur", f"Échec du scan du glossaire : {str(e)}")
+            self.status_bar.showMessage("Échec du scan glossaire.")
             
     def run_structure_ai(self):
         """Run Structure AI to auto-detect chapters."""
         if not self.project_manager.current_project:
-            QMessageBox.warning(self, "Error", "No project loaded.")
+            QMessageBox.warning(self, "Erreur", "Aucun projet chargé.")
             return
 
         if not self.llm_engine or not self.llm_engine.is_available():
-            QMessageBox.warning(self, "Error", "LLM engine not available for Structure AI.\nPlease configure it in Settings.")
+            QMessageBox.warning(self, "Erreur", "Moteur IA non disponible pour la Structure Auto.\nVeuillez le configurer dans les paramètres.")
             return
 
         reply = QMessageBox.question(
-            self, "Auto-Structure Project",
-            "This will analyze the project text (first ~15k chars) to detect chapter boundaries using AI.\n\n"
-            "Existing chapters might be reorganized. Continue?",
+            self, "Structure Auto du Projet",
+            "Ceci va analyser le texte du projet (premiers ~15k caractères) pour détecter les limites de chapitres via l'IA.\n\n"
+            "Les chapitres existants pourraient être réorganisés. Continuer ?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
@@ -1154,8 +1132,8 @@ class MainWindow(QMainWindow):
         if not query:
             return
             
-        src_lang = self.dict_src_lang.currentText()
-        tgt_lang = self.dict_tgt_lang.currentText()
+        src_lang = self.source_lang_combo.currentText()
+        tgt_lang = self.target_lang_combo.currentText()
         
         dm = DictionaryManager()
         results = dm.search_bidirectional(query, src_lang, tgt_lang)
@@ -1175,24 +1153,24 @@ class MainWindow(QMainWindow):
         from src.core.dictionary_manager import DictionaryManager
         
         fname, _ = QFileDialog.getOpenFileName(
-            self, "Import Dictionary", "", 
-            "Dictionary Files (*.csv *.txt);;All Files (*)"
+            self, "Importer Dictionnaire", "", 
+            "Fichiers Dictionnaire (*.csv *.txt);;Tous les fichiers (*)"
         )
         
         if not fname:
             return
             
-        src_lang = self.dict_src_lang.currentText()
-        tgt_lang = self.dict_tgt_lang.currentText()
+        src_lang = self.source_lang_combo.currentText()
+        tgt_lang = self.target_lang_combo.currentText()
         
         dm = DictionaryManager()
         count, errors = dm.import_csv(fname, src_lang, tgt_lang)
         
         QMessageBox.information(
-            self, "Import Complete", 
-            f"Imported {count} terms.\nErrors: {errors}"
+            self, "Import Terminé", 
+            f"Importé {count} termes.\nErreurs : {errors}"
         )
-        self.status_bar.showMessage(f"Dictionary import complete: {count} terms.")
+        self.status_bar.showMessage(f"Import du dictionnaire terminé : {count} termes.")
 
     def open_glossary_manager(self):
         """Open the comprehensive glossary editor."""
@@ -1215,7 +1193,7 @@ class MainWindow(QMainWindow):
     def batch_translate(self):
         """Translate all untranslated segments in the current chapter"""
         if not self.project_manager.current_project:
-            QMessageBox.warning(self, "Error", "No active project.")
+            QMessageBox.warning(self, "Erreur", "Aucun projet actif.")
             return
             
         engine = self.get_current_translation_engine()
@@ -1226,15 +1204,15 @@ class MainWindow(QMainWindow):
         # Get current chapter or all segments
         chapters = self.project_manager.get_chapters()
         if not chapters:
-            QMessageBox.warning(self, "Error", "No chapters found.")
+            QMessageBox.warning(self, "Erreur", "Aucun chapitre trouvé.")
             return
             
         # Ask user which chapter to translate
         chapter_names = [ch.title for ch in chapters]
         
         reply = QMessageBox.question(
-            self, "Batch Translate",
-            f"Translate all untranslated segments?\n\nThis will translate using the LLM engine.\n\nChapter: {chapter_names[0]} (or current)",
+            self, "Traduction par Lot",
+            f"Traduire tous les segments non traduits ?\n\nCeci utilisera le moteur configuré.\n\nChapitre : {chapter_names[0]} (ou actif)",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
@@ -1247,11 +1225,11 @@ class MainWindow(QMainWindow):
             untranslated = [s for s in segments if not s.target_text or s.status == 'untranslated']
             
             if not untranslated:
-                QMessageBox.information(self, "Info", "All segments already translated!")
+                QMessageBox.information(self, "Info", "Tous les segments sont déjà traduits !")
                 return
                 
             total = len(untranslated)
-            self.status_bar.showMessage(f"Translating {total} segments...")
+            self.status_bar.showMessage(f"Traduction de {total} segments en cours...")
             
             # Get glossary terms for this project
             project = self.project_manager.current_project
@@ -1286,22 +1264,22 @@ class MainWindow(QMainWindow):
                     
             # Refresh display
             self.load_segments()
-            self.status_bar.showMessage(f"Translation complete: {translated_count} segments translated.")
+            self.status_bar.showMessage(f"Traduction terminée : {translated_count} segments traduits.")
             QMessageBox.information(
-                self, "Batch Translate Complete",
-                f"Translated {translated_count} segments."
+                self, "Traduction par Lot Terminée",
+                f"Traduit {translated_count} segments."
             )
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Batch translation failed: {str(e)}")
-            self.status_bar.showMessage("Batch translation failed.")
+            QMessageBox.critical(self, "Erreur", f"La traduction par lot a échoué : {str(e)}")
+            self.status_bar.showMessage("Échec de la traduction par lot.")
 
     def show_settings(self):
         from src.gui.settings_dialog import SettingsDialog
         dialog = SettingsDialog(self)
         if dialog.exec():
             self.apply_theme()
-            self.status_bar.showMessage("Settings saved and theme applied.", 3000)
+            self.status_bar.showMessage("Paramètres sauvegardés et thème appliqué.", 3000)
 
     def show_language_store(self):
         from src.gui.language_store import LanguageStore
@@ -1310,73 +1288,73 @@ class MainWindow(QMainWindow):
 
     def export_project_dialog(self):
         if not self.project_manager.current_project:
-            QMessageBox.warning(self, "Error", "No active project to export.")
+            QMessageBox.warning(self, "Erreur", "Aucun projet actif à exporter.")
             return
             
         source_path = self.project_manager.current_project.file_path
         _, ext = os.path.splitext(source_path)
         
-        fname, _ = QFileDialog.getSaveFileName(self, "Export Translated File", f"translated_output{ext}", f"Supported Files (*{ext})")
+        fname, _ = QFileDialog.getSaveFileName(self, "Exporter Fichier Traduit", f"translated_output{ext}", f"Fichiers Supportés (*{ext})")
         if fname:
             try:
-                self.status_bar.showMessage(f"Exporting to {fname}...")
+                self.status_bar.showMessage(f"Export vers {fname}...")
                 QApplication.processEvents()
                 self.project_manager.export_project(fname)
-                self.status_bar.showMessage("Export complete.")
-                QMessageBox.information(self, "Success", "File exported successfully.")
+                self.status_bar.showMessage("Export terminé.")
+                QMessageBox.information(self, "Succès", "Fichier exporté avec succès.")
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to export: {str(e)}")
+                QMessageBox.critical(self, "Erreur", f"Échec de l'export : {str(e)}")
 
     def export_tmx_dialog(self):
         if not self.project_manager.current_project:
-            QMessageBox.warning(self, "Error", "No active project.")
+            QMessageBox.warning(self, "Erreur", "Aucun projet actif.")
             return
             
-        fname, _ = QFileDialog.getSaveFileName(self, "Export TMX Memory", "project_memory.tmx", "TMX Files (*.tmx)")
+        fname, _ = QFileDialog.getSaveFileName(self, "Exporter Mémoire TMX", "project_memory.tmx", "Fichiers TMX (*.tmx)")
         if fname:
             try:
                 if self.project_manager.export_project_tmx(fname):
-                    self.status_bar.showMessage(f"TMX exported to {fname}")
-                    QMessageBox.information(self, "Success", "TMX exported successfully.")
+                    self.status_bar.showMessage(f"TMX exporté vers {fname}")
+                    QMessageBox.information(self, "Succès", "TMX exporté avec succès.")
                 else:
-                    QMessageBox.critical(self, "Error", "Failed to export TMX.")
+                    QMessageBox.critical(self, "Erreur", "Échec de l'export TMX.")
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"TMX Export failed: {e}")
+                QMessageBox.critical(self, "Erreur", f"Échec Export TMX : {e}")
 
     def import_tmx_dialog(self):
         if not self.project_manager.current_project:
-            QMessageBox.warning(self, "Error", "No active project.")
+            QMessageBox.warning(self, "Erreur", "Aucun projet actif.")
             return
             
-        fname, _ = QFileDialog.getOpenFileName(self, "Import TMX Memory", "", "TMX Files (*.tmx)")
+        fname, _ = QFileDialog.getOpenFileName(self, "Importer Mémoire TMX", "", "Fichiers TMX (*.tmx)")
         if fname:
             try:
                 count = self.project_manager.import_project_tmx(fname)
                 self.load_segments()
-                self.status_bar.showMessage(f"TMX imported: {count} segments updated.")
-                QMessageBox.information(self, "Success", f"TMX imported successfully. {count} segments were updated.")
+                self.status_bar.showMessage(f"TMX importé : {count} segments mis à jour.")
+                QMessageBox.information(self, "Succès", f"TMX importé avec succès. {count} segments mis à jour.")
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"TMX Import failed: {e}")
+                QMessageBox.critical(self, "Erreur", f"Échec Import TMX : {e}")
 
     def new_project_dialog(self):
         dialog = QDialog(self)
-        dialog.setWindowTitle("New Project")
+        dialog.setWindowTitle("Nouveau Projet")
         dialog.setMinimumWidth(500)
         layout = QFormLayout(dialog)
         
         name_input = QLineEdit()
-        name_input.setPlaceholderText("Enter project name...")
+        name_input.setPlaceholderText("Nom du projet...")
         
         file_container = QWidget()
         file_layout = QHBoxLayout(file_container)
         file_layout.setContentsMargins(0, 0, 0, 0)
-        file_btn = QPushButton("Select File...")
-        folder_btn = QPushButton("Select Folder...")
+        file_btn = QPushButton("Sélectionner Fichier...")
+        folder_btn = QPushButton("Sélectionner Dossier...")
         file_layout.addWidget(file_btn)
         file_layout.addWidget(folder_btn)
         
         self.selected_path = None
-        path_label = QLabel("No file or folder selected")
+        path_label = QLabel("Aucun fichier ou dossier sélectionné")
         path_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
         
         # Languages
@@ -1391,7 +1369,7 @@ class MainWindow(QMainWindow):
         
         swap_btn = QPushButton("⇄")
         swap_btn.setFixedSize(30, 30)
-        swap_btn.setToolTip("Swap languages")
+        swap_btn.setToolTip("Échanger langues")
         
         def swap_langs():
             src = src_lang_combo.currentText()
@@ -1413,42 +1391,42 @@ class MainWindow(QMainWindow):
         genre_combo.setCurrentText('general')
         
         instructions_input = QTextEdit()
-        instructions_input.setPlaceholderText("Optional: Custom translation instructions (tone, style, etc.)")
+        instructions_input.setPlaceholderText("Optionnel : Instructions personnalisées pour la traduction (ton, style, etc.)")
         instructions_input.setMinimumHeight(80)
         
         def select_file():
-            fname, _ = QFileDialog.getOpenFileName(self, "Open File", "", "Supported Files (*.epub *.docx *.txt);;All Files (*)")
+            fname, _ = QFileDialog.getOpenFileName(self, "Ouvrir Fichier", "", "Fichiers Supportés (*.epub *.docx *.txt);;Tous les fichiers (*)")
             if fname:
                 self.selected_path = fname
-                path_label.setText(f"File: {os.path.basename(fname)}")
+                path_label.setText(f"Fichier : {os.path.basename(fname)}")
                 if not name_input.text():
                     name_input.setText(os.path.splitext(os.path.basename(fname))[0])
         
         def select_folder():
-            dir_path = QFileDialog.getExistingDirectory(self, "Select Folder Containing Chapters (.txt)")
+            dir_path = QFileDialog.getExistingDirectory(self, "Sélectionner Dossier de Chapitres (.txt)")
             if dir_path:
                 self.selected_path = dir_path
-                path_label.setText(f"Folder: {os.path.basename(dir_path)}")
+                path_label.setText(f"Dossier : {os.path.basename(dir_path)}")
                 if not name_input.text():
                     name_input.setText(os.path.basename(dir_path))
         
         file_btn.clicked.connect(select_file)
         folder_btn.clicked.connect(select_folder)
         
-        layout.addRow("Project Name:", name_input)
-        layout.addRow("Source:", file_container)
+        layout.addRow("Nom du Projet :", name_input)
+        layout.addRow("Source :", file_container)
         layout.addRow("", path_label)
-        layout.addRow("Languages:", lang_container)
-        layout.addRow("Genre:", genre_combo)
-        layout.addRow("Instructions:", instructions_input)
+        layout.addRow("Langues :", lang_container)
+        layout.addRow("Genre :", genre_combo)
+        layout.addRow("Instructions :", instructions_input)
         
         buttons = QHBoxLayout()
-        create_btn = QPushButton("Create Project")
+        create_btn = QPushButton("Créer Projet")
         create_btn.setProperty("primary", True)
         create_btn.clicked.connect(dialog.accept)
         create_btn.setMinimumHeight(40)
         
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton("Annuler")
         cancel_btn.clicked.connect(dialog.reject)
         cancel_btn.setMinimumHeight(40)
         
@@ -1458,7 +1436,7 @@ class MainWindow(QMainWindow):
         
         if dialog.exec() == QDialog.DialogCode.Accepted:
             if not name_input.text() or not self.selected_path:
-                QMessageBox.warning(self, "Error", "Please fill all fields")
+                QMessageBox.warning(self, "Erreur", "Veuillez remplir tous les champs")
                 return
             self.create_project(
                 name_input.text(), 
