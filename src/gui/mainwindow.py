@@ -255,6 +255,17 @@ class MainWindow(QMainWindow):
         # Edit Menu
         edit_menu = menu_bar.addMenu("&Édition")
         
+        # Undo/Redo
+        undo_action = QAction("&Annuler", self)
+        undo_action.setShortcut("Ctrl+Z")
+        edit_menu.addAction(undo_action)
+        
+        redo_action = QAction("&Rétablir", self)
+        redo_action.setShortcut("Ctrl+Y")
+        edit_menu.addAction(redo_action)
+        
+        edit_menu.addSeparator()
+        
         find_action = QAction(self.colorize_icon("search", "#e2e8f0"), "&Rechercher et Remplacer", self)
         find_action.setShortcut("Ctrl+F")
         find_action.triggered.connect(self.show_search_replace)
@@ -266,6 +277,64 @@ class MainWindow(QMainWindow):
         settings_action.setShortcut("Ctrl+,")
         settings_action.triggered.connect(self.show_settings)
         edit_menu.addAction(settings_action)
+
+        # Translation Menu
+        translation_menu = menu_bar.addMenu("&Traduction")
+        
+        translate_segment_action = QAction(self.colorize_icon("translate", "#e2e8f0"), "Traduire le &paragraphe", self)
+        translate_segment_action.setShortcut("Ctrl+Enter")
+        translation_menu.addAction(translate_segment_action)
+        
+        translate_selection_action = QAction("Traduire la &sélection", self)
+        translation_menu.addAction(translate_selection_action)
+        
+        translate_chapter_action = QAction("Traduire le &chapitre", self)
+        translate_chapter_action.setShortcut("Ctrl+Shift+T")
+        translation_menu.addAction(translate_chapter_action)
+        
+        translation_menu.addSeparator()
+        
+        batch_translate_action = QAction(self.colorize_icon("library_books", "#e2e8f0"), "Traduction par &lot (batch)...", self)
+        batch_translate_action.triggered.connect(self.batch_translate)
+        translation_menu.addAction(batch_translate_action)
+        
+        translation_menu.addSeparator()
+        
+        choose_engine_action = QAction("&Choisir le moteur de traduction...", self)
+        translation_menu.addAction(choose_engine_action)
+
+        # Dictionary Menu
+        dictionary_menu = menu_bar.addMenu("&Dictionnaire")
+        
+        search_dict_action = QAction(self.colorize_icon("search", "#e2e8f0"), "&Rechercher un mot...", self)
+        search_dict_action.setShortcut("Ctrl+D")
+        dictionary_menu.addAction(search_dict_action)
+        
+        dictionary_menu.addSeparator()
+        
+        configure_dict_action = QAction("&Configurer les dictionnaires...", self)
+        dictionary_menu.addAction(configure_dict_action)
+
+        # IA Menu
+        ia_menu = menu_bar.addMenu("&IA")
+        
+        configure_models_action = QAction(self.colorize_icon("settings", "#e2e8f0"), "Configurer les &modèles...", self)
+        ia_menu.addAction(configure_models_action)
+        
+        ia_menu.addSeparator()
+        
+        editor_ai_action = QAction(self.colorize_icon("auto_fix", "#e2e8f0"), "&Editor AI - Raffiner la traduction", self)
+        editor_ai_action.setShortcut("Ctrl+Shift+R")
+        editor_ai_action.triggered.connect(self.editor_ai_refine)
+        ia_menu.addAction(editor_ai_action)
+        
+        chat_context_action = QAction(self.colorize_icon("chat", "#e2e8f0"), "Chat &contextuel IA...", self)
+        ia_menu.addAction(chat_context_action)
+        
+        ia_menu.addSeparator()
+        
+        glossary_ai_action = QAction(self.colorize_icon("auto_awesome", "#e2e8f0"), "Glossary &AI - Générer glossaire...", self)
+        ia_menu.addAction(glossary_ai_action)
 
         # Tools Menu
         tools_menu = menu_bar.addMenu("&Outils")
@@ -296,6 +365,17 @@ class MainWindow(QMainWindow):
         backup_action.triggered.connect(self.show_backup_dialog)
         tools_menu.addAction(backup_action)
         
+        # Help Menu
+        help_menu = menu_bar.addMenu("&Aide")
+        
+        documentation_action = QAction(self.colorize_icon("menu_book", "#e2e8f0"), "&Documentation", self)
+        documentation_action.setShortcut("F1")
+        help_menu.addAction(documentation_action)
+        
+        help_menu.addSeparator()
+        
+        about_action = QAction(self.colorize_icon("info", "#e2e8f0"), "À &propos de NovelTrad...", self)
+        help_menu.addAction(about_action)
 
 
     def setup_workspace(self, main_layout):
@@ -1336,7 +1416,8 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Échec Import TMX : {e}")
 
-    def new_project_dialog(self):
+    # NOTE: Using new_project_dialog from new_project_dialog.py below
+    def _old_new_project_dialog(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Nouveau Projet")
         dialog.setMinimumWidth(500)
