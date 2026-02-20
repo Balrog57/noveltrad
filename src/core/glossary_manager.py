@@ -51,7 +51,8 @@ class GlossaryManager:
             if term.variants:
                 try:
                     candidates.extend(json.loads(term.variants))
-                except: pass
+                except (json.JSONDecodeError, ValueError):
+                    pass  # Invalid JSON in variants, skip
             
             for cand in candidates:
                 if not cand: continue
@@ -95,7 +96,8 @@ class GlossaryManager:
                         notes = row[3] if len(row) > 3 else None
                         try:
                             priority = int(row[4]) if len(row) > 4 else 10
-                        except: priority = 10
+                        except (ValueError, TypeError):
+                            priority = 10  # Default priority on parse error
                         
                         self.add_term(source, target, category, notes, priority)
                         count += 1

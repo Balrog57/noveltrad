@@ -323,5 +323,5 @@ class DictionaryManager:
              # Insert many
              with db.atomic():
                  GlobalDictionaryTerm.insert_many(data).on_conflict_ignore().execute()
-        except:
-             pass
+        except Exception as e:
+             pass  # Log error in production

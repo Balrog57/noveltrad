@@ -31,7 +31,7 @@ class ConfigManager:
         try:
             with open(self.CONFIG_FILE, 'r', encoding='utf-8') as f:
                 return {**self.DEFAULT_CONFIG, **json.load(f)}
-        except:
+        except (json.JSONDecodeError, IOError, OSError):
             return self.DEFAULT_CONFIG.copy()
 
     def save_config(self):
