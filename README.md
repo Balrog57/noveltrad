@@ -1,69 +1,81 @@
 # NovelTrad Desktop
 
-[🇫🇷 Version Française](README.fr.md)
+Application de bureau haute performance pour la traduction de romans, avec suggestions alimentées par l'IA et gestion complète des glossaires.
 
-A high-performance desktop application for novel translation, featuring AI-powered suggestions (LLM) and comprehensive glossary management. Replicating the "Stitch" design philosophy for a premium user experience.
+## Fonctionnalités
 
-## Features
+- **Application de bureau native**: Développée avec PyQt6 pour la vitesse et l'intégration système.
+- **Interface inspirée de Stitch**: Thème sombre moderne, navigation latérale, et éditeur de segments par cartes.
+- **Support des formats**: EPUB, DOCX, TXT.
+- **Intégration IA**: Support d'OpenAI, TranslateGemma (via LM Studio), Argos, et NLLB.
+- **Optimisation TranslateGemme**: Moteur spécialisé pour `translategemma-12b-it` utilisant l'API Completion pour éviter les erreurs de template Jinja2 de LM Studio. Optimisé pour les GPU NVIDIA RTX (ex: RTX 5070 Ti) avec une fenêtre de contexte recommandée de 8192.
+- **Gestion des glossaires**: Créer et gérer des glossaires spécifiques au projet.
+- **Hors ligne**: Les fonctionnalités principales fonctionnent hors ligne ; les fonctionnalités IA nécessitent internet si utilisation d'API cloud ou peuvent fonctionner localement avec LM Studio.
+- **Support TMX**: Import et export de mémoires de traduction au standard industriel.
+- **Assurance qualité**: Vérifications automatiques et outil d'alignement.
 
-- **Native Desktop App**: Built with PyQt6 for speed and OS integration.
-- **Stitch-Inspired UI**: Modern dark theme, sidebar navigation, and card-based segment editor.
-- **Format Support**: EPUB, DOCX, TXT.
-- **AI Integration**: Support for OpenAI, TranslateGemma (via LM Studio), Argos, and NLLB.
-- **TranslateGemma Optimization**: Specialized engine for `translategemma-12b-it` using the Completion API to bypass LM Studio Jinja2 template errors. Optimized for NVIDIA RTX GPUs (e.g., RTX 5070 Ti) with a recommended 8192 context window.
-- **Glossary Management**: Create and manage project-specific glossaries.
-- **Offline Capable**: Core features work offline; AI features require internet if using cloud API or can run locally with LM Studio.
-- **TMX Support**: Import and Export industry-standard Translation Memories.
-- **Quality Assurance**: Automated checks and Alignment Tool.
+Pour des instructions d'utilisation détaillées, consultez le [Guide Utilisateur](docs/user_guide.md).
 
-For detailed usage instructions, please refer to the [User Guide](docs/user_guide.md).
+## Installation (Développement)
 
-## Installation (Development)
-
-1. **Clone the repository**
-2. **Create a Virtual Environment**:
+1. **Cloner le dépôt**
+2. **Créer un environnement virtuel**:
    ```powershell
    python -m venv venv
    .\venv\Scripts\Activate
    ```
-3. **Install Dependencies**:
+3. **Installer les dépendances**:
    ```powershell
    pip install -r requirements.txt
    ```
-4. **Run the Application**:
+4. **Lancer l'application**:
    ```powershell
    python src/main_qt.py
    ```
-5. **Run Tests**:
+5. **Lancer les tests**:
    ```powershell
    python -m pytest tests/
    ```
 
-## Building Executable
+## Créer l'exécutable
 
-To create a standalone `.exe` file:
+Pour créer un fichier `.exe` autonome:
 
-1. Run the build script:
+1. Exécuter le script de build:
    ```powershell
    .\Build-NovelTrad-Qt.bat
    ```
-   This will generate `dist/NovelTrad/NovelTrad.exe`.
+   Cela générera `dist/NovelTrad/NovelTrad.exe`.
 
-## Creating Installer
+## Créer l'installateur
 
-To create a distributable setup file:
+Pour créer un fichier d'installation:
 
-1. Install [Inno Setup](https://jrsoftware.org/isdl.php).
-2. Right-click `NovelTrad.iss` and choose "Compile".
-   OR run:
+1. Installer [Inno Setup](https://jrsoftware.org/isdl.php).
+2. Faire un clic droit sur `NovelTrad.iss` et choisir "Compile".
+   OU exécuter:
    ```powershell
    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" NovelTrad.iss
    ```
-   This will create `Output/NovelTrad_Setup.exe`.
+   Cela créera `Output/NovelTrad_Setup.exe`.
 
-## Project Structure
+## Structure du projet
 
-- `src/gui/`: Main UI logic (`mainwindow.py`, `components.py`, `styles.py`).
-- `src/core/`: Database models (`database.py`) and project logic (`project_manager.py`).
-- `src/engines/`: Translation engine interfaces (`llm_engine.py`, etc.).
-- `src/formats/`: File parsers.
+- `src/gui/`: Logique principale de l'interface (`mainwindow.py`, `components.py`, `styles.py`).
+- `src/core/`: Modèles de base de données (`database.py`) et logique du projet (`project_manager.py`).
+- `src/engines/`: Interfaces des moteurs de traduction (`llm_engine.py`, etc.).
+- `src/formats/`: Parseurs de fichiers.
+
+## Fonctionnalités TAO
+
+NovelTrad est un outil TAO (Traduction Assistée par Ordinateur) complet:
+
+- **Mémoire de traduction (TM)**: Réutilisation de traductions existantes
+- **Glossaires**: Gestion de la terminologie cohérente
+- **Concordancier**: Recherche contextuelle dans les TM
+- **Alignement**: Création de TM à partir de bitextes
+- **QA Check**: Validation automatique avant export
+
+## License
+
+Voir le fichier LICENSE pour les détails.
