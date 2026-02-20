@@ -1,5 +1,7 @@
 # NovelTrad Desktop
 
+[🇫🇷 Version Française](README.fr.md)
+
 A high-performance desktop application for novel translation, featuring AI-powered suggestions (LLM) and comprehensive glossary management. Replicating the "Stitch" design philosophy for a premium user experience.
 
 ## Features
