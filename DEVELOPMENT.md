@@ -1,7 +1,3 @@
----
-trigger: always_on
----
-
 # Directives de Développement - NovelTrad
 
 ## 🛠 Environnement & Commandes
@@ -16,7 +12,7 @@ trigger: always_on
 ## 🏗 Architecture & Bibliothèques
 
 - **Interface** : PyQt6
-- **Fichiers TMX/XLIFF** : `xml.etree.ElementTree` (stdlib) - voir `src/formats/`
+- **Fichiers TMX/XLIFF** : `xml.etree.ElementTree` (stdlib) - see `src/formats/`
 - **Encodage** : TOUJOURS `encoding='utf-8'` lors de l'ouverture des fichiers
 - **Segmentation** : `pygrammalecte` (intégré) pour grammaire, `nltk` pour sentences
 - **Base de données** : `peewee` (SQLite)
@@ -48,7 +44,7 @@ Ne JAMAIS modifier les balises internes des segments XML (ex: `<bpt>`, `<ept>`, 
 Ne pas échapper les entités HTML deux fois. Utiliser `html.unescape()` une seule fois avant le traitement.
 
 ### Règle #3 : TMX Volumineux
-Lors du chargement d'une mémoire de traduction (TMX) volumineuse, utiliser un parser itératif (voir `xml.etree.ElementTree.iterparse`) pour éviter de saturer la RAM.
+Lors du chargement d'une mémoire de traduction (TMX) volumineuse, utiliser un parser itératif ( voir `xml.etree.ElementTree.iterparse`) pour éviter de saturer la RAM.
 
 ### Règle #4 : Encodage Fichiers
 TOUJOURS spécifier `encoding='utf-8'` lors de l'ouverture de fichiers texte. Ne jamais relyer sur l'encodage par défaut du système.
