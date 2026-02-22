@@ -35,8 +35,9 @@ class SegmentCard(QFrame):
         id_label = QLabel(f"SEGMENT #{self.segment_id}")
         id_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px;")
         
-        self.status_badge = QLabel(self.segment.status.upper() if self.segment.status else "UNTRANSLATED")
-        status_color = self.get_status_color(self.segment.status)
+        status = self.segment.get_status()
+        self.status_badge = QLabel(status.get_label().upper())
+        status_color = status.get_color().name()
         self.status_badge.setStyleSheet(f"font-size: 9px; font-weight: 800; color: {status_color}; padding: 2px 6px; border: 1px solid {status_color}; border-radius: 4px;")
         
         header_layout.addWidget(id_label)
@@ -84,14 +85,10 @@ class SegmentCard(QFrame):
         footer_layout.addWidget(help_text)
         main_layout.addWidget(self.footer)
 
-    def get_status_color(self, status):
-        colors = {
-            'translated': '#3b82f6',
-            'ai_refined': '#8b5cf6',
-            'validated': '#22c55e',
-            'machine': '#f59e0b'
-        }
-        return colors.get(status, '#ef4444')
+    def get_status_color(self, status_str):
+        # We can keep this if needed by other components, but segment uses segment.get_status().get_color()
+        from src.core.segment_status import SegmentStatus
+        return SegmentStatus.from_string(status_str).get_color().name()
 
     def eventFilter(self, obj, event):
         if event.type() == event.Type.MouseButtonPress:
@@ -158,9 +155,10 @@ class SegmentCard(QFrame):
 
     def update_status_style(self):
         """Review status color and apply to card border."""
-        color = self.get_status_color(self.segment.status)
+        status = self.segment.get_status()
+        color = status.get_color().name()
         # Update badge
-        self.status_badge.setText(self.segment.status.upper() if self.segment.status else "UNTRANSLATED")
+        self.status_badge.setText(status.get_label().upper())
         self.status_badge.setStyleSheet(f"font-size: 9px; font-weight: 800; color: {color}; padding: 2px 6px; border: 1px solid {color}; border-radius: 4px;")
         
         # Update card border (Left thick border)

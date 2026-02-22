@@ -1,0 +1,87 @@
+....F.F...                                                               [100%]
+================================== FAILURES ===================================
+___________________________ test_project_lifecycle ____________________________
+
+tmp_path = WindowsPath('C:/Users/Marc/AppData/Local/Temp/pytest-of-Marc/pytest-23/test_project_lifecycle0')
+
+    def test_project_lifecycle(tmp_path):
+        # 1. Setup
+        pm = ProjectManager()
+        db_path = tmp_path / "test_project.ntrad"
+        src_file = tmp_path / "chapter1.txt"
+        src_file.write_text("Hello world.\nThis is a test.", encoding="utf-8")
+    
+        # 2. Create Project
+        project = pm.create_project(
+            name="Test Project",
+            db_path=str(db_path),
+            source_file=str(src_file),
+            source_lang="en",
+            target_lang="fr"
+        )
+    
+        assert project.name == "Test Project"
+        assert os.path.exists(str(db_path))
+    
+        # 3. Verify Import
+        segments = pm.get_segments()
+        assert len(segments) == 2
+        assert segments[0].source_text == "Hello world."
+    
+        # 4. Translate a segment
+        pm.save_translation(segments[0].id, "Bonjour le monde.")
+    
+        # 5. Verify Database Update
+        updated_seg = Segment.get_by_id(segments[0].id)
+        assert updated_seg.target_text == "Bonjour le monde."
+>       assert updated_seg.status == "translated"
+E       AssertionError: assert 'validated' == 'translated'
+E         
+E         - translated
+E         + validated
+
+tests\test_integration.py:36: AssertionError
+_____________________________ test_tmx_roundtrip ______________________________
+
+tmp_path = WindowsPath('C:/Users/Marc/AppData/Local/Temp/pytest-of-Marc/pytest-23/test_tmx_roundtrip0')
+
+    def test_tmx_roundtrip(tmp_path):
+        # 1. Create Project and Translate
+        pm = ProjectManager()
+        db_path = tmp_path / "roundtrip.ntrad"
+        src_file = tmp_path / "roundtrip.txt"
+        src_file.write_text("Roundtrip test.", encoding="utf-8")
+    
+        pm.create_project("Roundtrip", str(db_path), str(src_file), "en", "fr")
+        seg = pm.get_segments()[0]
+        pm.save_translation(seg.id, "Test aller-retour.")
+    
+        # 2. Export TMX (Project segments)
+        tmx_path = tmp_path / "project.tmx"
+        pm.export_project_tmx(str(tmx_path))
+    
+        pm.close_project()
+    
+        # 3. New Project with same source
+        db_path_2 = tmp_path / "roundtrip_2.ntrad"
+        pm_2 = ProjectManager()
+        pm_2.create_project("Roundtrip 2", str(db_path_2), str(src_file), "en", "fr")
+    
+        # 4. Import TMX (Apply to segments)
+        count = pm_2.import_project_tmx(str(tmx_path))
+    
+        # 5. Verify Auto-Translation
+        assert count == 1
+        seg_2 = pm_2.get_segments()[0]
+        assert seg_2.target_text == "Test aller-retour."
+>       assert seg_2.status == "translated"
+E       AssertionError: assert 'validated' == 'translated'
+E         
+E         - translated
+E         + validated
+
+tests\test_integration.py:136: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_integration.py::test_project_lifecycle - AssertionError: as...
+FAILED tests/test_integration.py::test_tmx_roundtrip - AssertionError: assert...
+2 failed, 8 passed in 0.66s

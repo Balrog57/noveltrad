@@ -104,7 +104,7 @@ class MainWindow(QMainWindow):
                 text = widget.target_edit.toPlainText()
                 widget.segment.target_text = text
                 if text:
-                    widget.segment.status = 'translated'
+                    widget.segment.set_status(SegmentStatus.VALIDATED)
                     # Add to Translation Memory
                     self.project_manager.add_to_tm(widget.segment.source_text, text)
                 widget.segment.save()
@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
             
         chapter = Chapter.get_by_id(self.current_chapter_id)
         total = chapter.segments.count()
-        translated = chapter.segments.where(Segment.status != 'untranslated').count()
+        translated = chapter.segments.where(Segment.status != SegmentStatus.UNTRANSLATED.value).count()
         
         progress = int((translated / total) * 100) if total > 0 else 0
         self.sidebar.update_item_progress(self.current_chapter_id, progress)
@@ -767,7 +767,7 @@ class MainWindow(QMainWindow):
             # Calculate progress? For now 0
             # Ideally: count(segments where status='translated') / count(segments)
             total = chapter.segments.count()
-            translated = chapter.segments.where(Segment.status == 'translated').count()
+            translated = chapter.segments.where(Segment.status != SegmentStatus.UNTRANSLATED.value).count()
             progress = int((translated / total) * 100) if total > 0 else 0
             
             self.sidebar.add_item(chapter.id, chapter.title, progress)
@@ -839,9 +839,9 @@ class MainWindow(QMainWindow):
             segment = Segment.get_by_id(segment_id)
             segment.target_text = new_text
             # Simple status update logic
-            if not segment.status or segment.status == 'untranslated':
+            if not segment.status or segment.status == SegmentStatus.UNTRANSLATED.value:
                  if new_text.strip():
-                     segment.status = 'translated'
+                     segment.set_status(SegmentStatus.VALIDATED)
             
             segment.save()
         except:
@@ -856,7 +856,7 @@ class MainWindow(QMainWindow):
         segments = list(self.project_manager.get_segments())
         
         total = len(segments)
-        translated = sum(1 for s in segments if s.status and s.status != 'untranslated')
+        translated = sum(1 for s in segments if s.status and s.status != SegmentStatus.UNTRANSLATED.value)
         
         # Word counts
         source_words = sum(len(s.source_text.split()) for s in segments)
@@ -960,7 +960,7 @@ class MainWindow(QMainWindow):
             self.ai_text.setText(trans)
             
             active_card.segment.target_text = trans
-            active_card.segment.status = 'translated'
+            active_card.segment.set_status(SegmentStatus.VALIDATED)
             active_card.segment.save()
             
             self.status_bar.showMessage("Traduit et Sauvegardé.")
@@ -1302,7 +1302,7 @@ class MainWindow(QMainWindow):
         try:
             # Get segments without translation
             segments = self.project_manager.get_segments()
-            untranslated = [s for s in segments if not s.target_text or s.status == 'untranslated']
+            untranslated = [s for s in segments if not s.target_text or s.status == SegmentStatus.UNTRANSLATED.value]
             
             if not untranslated:
                 QMessageBox.information(self, "Info", "Tous les segments sont déjà traduits !")
@@ -1822,10 +1822,10 @@ class MainWindow(QMainWindow):
         segments = self.project_manager.get_segments()
         
         total_segments = len(segments)
-        untranslated = sum(1 for s in segments if not s.target_text or s.status == 'untranslated')
-        machine = sum(1 for s in segments if s.status == 'translated')
-        ai_refined = sum(1 for s in segments if s.status == 'ai_refined')
-        validated = sum(1 for s in segments if s.status == 'validated')
+        untranslated = sum(1 for s in segments if not s.target_text or s.status == SegmentStatus.UNTRANSLATED.value)
+        machine = sum(1 for s in segments if s.status == SegmentStatus.MACHINE.value)
+        ai_refined = sum(1 for s in segments if s.status == SegmentStatus.AI_REFINED.value)
+        validated = sum(1 for s in segments if s.status == SegmentStatus.VALIDATED.value)
         
         source_words = sum(len(s.source_text.split()) for s in segments)
         target_words = sum(len(s.target_text.split()) if s.target_text else 0 for s in segments)

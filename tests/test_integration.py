@@ -33,7 +33,7 @@ def test_project_lifecycle(tmp_path):
     # 5. Verify Database Update
     updated_seg = Segment.get_by_id(segments[0].id)
     assert updated_seg.target_text == "Bonjour le monde."
-    assert updated_seg.status == "translated"
+    assert updated_seg.status == "validated"
     
     # 6. Export Project
     export_path = tmp_path / "export.txt"
@@ -133,4 +133,4 @@ def test_tmx_roundtrip(tmp_path):
     assert count == 1
     seg_2 = pm_2.get_segments()[0]
     assert seg_2.target_text == "Test aller-retour."
-    assert seg_2.status == "translated"
+    assert seg_2.status == "validated"

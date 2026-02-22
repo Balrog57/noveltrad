@@ -1,6 +1,7 @@
 from peewee import Model, SqliteDatabase, CharField, TextField, IntegerField, BooleanField, DateTimeField, ForeignKeyField
 import datetime
 import os
+from src.core.segment_status import SegmentStatus
 
 db = SqliteDatabase(None)  # Placeholder, will be initialized at runtime
 
@@ -33,8 +34,15 @@ class Segment(BaseModel):
     index = IntegerField()
     source_text = TextField()
     target_text = TextField(null=True)
-    status = CharField(default='untranslated') # untranslated, translated, validated
+    status = CharField(default=SegmentStatus.UNTRANSLATED.value) 
     metadata = TextField(null=True) # JSON string for format-specific data (node_index, etc.)
+    
+    def set_status(self, new_status: SegmentStatus):
+        self.status = new_status.value
+        self.save()
+        
+    def get_status(self) -> SegmentStatus:
+        return SegmentStatus.from_string(self.status)
     
     class Meta:
         order_by = ('index',)

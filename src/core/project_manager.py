@@ -4,6 +4,7 @@ from src.formats.epub_handler import EpubHandler
 from src.formats.docx_handler import DocxHandler
 from src.formats.pdf_handler import PdfHandler
 from src.core.tmx_handler import TMXHandler
+from src.core.segment_status import SegmentStatus
 import os
 import json
 
@@ -207,8 +208,7 @@ class ProjectManager:
     def save_translation(self, segment_id, target_text):
         segment = Segment.get_by_id(segment_id)
         segment.target_text = target_text
-        segment.status = 'translated'
-        segment.save()
+        segment.set_status(SegmentStatus.VALIDATED)
 
     def export_project(self, output_path):
         """Exports the current project to the target format."""
@@ -402,8 +402,7 @@ class ProjectManager:
             for seg in segments:
                 if seg.source_text in tm_dict:
                     seg.target_text = tm_dict[seg.source_text]
-                    seg.status = 'translated'
-                    seg.save()
+                    seg.set_status(SegmentStatus.VALIDATED)
                     count += 1
         return count
 

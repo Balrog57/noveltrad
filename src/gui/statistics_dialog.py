@@ -60,11 +60,12 @@ class StatisticsDialog(QDialog):
         
         from PyQt6.QtWidgets import QGridLayout # Local import fix if needed, but I used it above.
         from src.core.database import Segment
+        from src.core.segment_status import SegmentStatus
         
         segments = list(Segment.select().where(Segment.project == self.project))
         
         total_segs = len(segments)
-        translated_segs = sum(1 for s in segments if s.status in ['translated', 'ai_refined', 'validated'])
+        translated_segs = sum(1 for s in segments if s.status in [SegmentStatus.MACHINE.value, SegmentStatus.AI_REFINED.value, SegmentStatus.VALIDATED.value])
         
         total_chars = sum(len(s.source_text) for s in segments if s.source_text)
         total_words = sum(len(s.source_text.split()) for s in segments if s.source_text)
