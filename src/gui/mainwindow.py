@@ -2,10 +2,10 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QPushButton, QTableWidget, QTableWidgetItem, QSplitter, 
                              QListWidget, QTextEdit, QLabel, QFileDialog, QDockWidget, QTabWidget, QMenu,
                              QStatusBar, QToolBar, QMessageBox, QDialog, QFormLayout, QLineEdit, QComboBox, QListWidgetItem,
-                             QScrollArea, QFrame, QGridLayout, QCheckBox)
+                             QScrollArea, QFrame, QGridLayout, QCheckBox, QProgressDialog)
 from src.gui.components import SegmentCard, Sidebar
 from src.gui.settings_dialog import SettingsDialog
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QColor, QPixmap
 import os
 import sys
@@ -30,6 +30,29 @@ from src.core.shortcut_manager import ShortcutManager
 from src.utils.connectivity_manager import ConnectivityManager
 from src.gui.fuzzy_match_viewer import FuzzyMatchViewer
 from PyQt6.QtCore import Qt, QSize, QTimer
+
+class AutoStructureWorker(QThread):
+    progress_update = pyqtSignal(int, str)
+    finished = pyqtSignal(int)
+    error = pyqtSignal(str)
+
+    def __init__(self, project_manager, llm_engine):
+        super().__init__()
+        self.project_manager = project_manager
+        self.llm_engine = llm_engine
+
+    def run(self):
+        try:
+            count = self.project_manager.auto_structure_project(
+                self.llm_engine,
+                progress_callback=self._emit_progress
+            )
+            self.finished.emit(count)
+        except Exception as e:
+            self.error.emit(str(e))
+            
+    def _emit_progress(self, val, msg):
+        self.progress_update.emit(val, msg)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -1188,7 +1211,7 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Échec du scan glossaire.")
             
     def run_structure_ai(self):
-        """Run Structure AI to auto-detect chapters."""
+        """Run Structure AI to auto-detect chapters using a background worker."""
         if not self.project_manager.current_project:
             QMessageBox.warning(self, "Erreur", "Aucun projet chargé.")
             return
@@ -1199,36 +1222,48 @@ class MainWindow(QMainWindow):
 
         reply = QMessageBox.question(
             self, "Structure Auto du Projet",
-            "Ceci va analyser le texte du projet (premiers ~15k caractères) pour détecter les limites de chapitres via l'IA.\n\n"
-            "Les chapitres existants pourraient être réorganisés. Continuer ?",
+            "Ceci va analyser le texte complet du projet pour détecter les limites de chapitres via l'IA.\n"
+            "Cette opération peut prendre plusieurs minutes selon la taille du livre.\n\n"
+            "Les chapitres existants seront écrasés. Voulez-vous continuer ?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        try:
-            self.status_bar.showMessage("AI Auto-Structure in progress... This may take a moment.")
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            QApplication.processEvents()
+        self.progress_dialog = QProgressDialog("Analyse de la structure...", "Annuler", 0, 100, self)
+        self.progress_dialog.setWindowTitle("Structure AI")
+        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setCancelButton(None) # Can't safely cancel database atomic block yet
+        
+        self.structure_worker = AutoStructureWorker(self.project_manager, self.llm_engine)
+        self.structure_worker.progress_update.connect(self._on_structure_progress)
+        self.structure_worker.finished.connect(self._on_structure_finished)
+        self.structure_worker.error.connect(self._on_structure_error)
+        
+        self.structure_worker.start()
+        
+    def _on_structure_progress(self, val, msg):
+        self.progress_dialog.setValue(val)
+        self.progress_dialog.setLabelText(msg)
+        
+    def _on_structure_finished(self, count):
+        self.progress_dialog.close()
+        
+        if count > 0:
+            self.load_chapters()
+            self.load_segments()
+            self.status_bar.showMessage(f"Structure AI : {count} chapitres créés.")
+            QMessageBox.information(self, "Succès", f"Structure AI a détecté et créé {count} chapitres.\nVous pouvez maintenant utiliser la traduction par lot.")
+        else:
+            self.status_bar.showMessage("Structure AI : Aucun nouveau chapitre détecté.")
+            QMessageBox.information(self, "Résultat", "Structure AI n'a pas pu détecter de nouvelles limites de chapitres claires.")
             
-            count = self.project_manager.auto_structure_project(self.llm_engine)
-            
-            QApplication.restoreOverrideCursor()
-            
-            if count > 0:
-                self.load_chapters()
-                self.load_segments()
-                self.status_bar.showMessage(f"Structure AI: {count} chapters created.")
-                QMessageBox.information(self, "Success", f"Structure AI successfully detected and created {count} chapters.")
-            else:
-                self.status_bar.showMessage("Structure AI: No chapters detected.")
-                QMessageBox.information(self, "Result", "Structure AI could not detect clear chapter boundaries.")
-                
-        except Exception as e:
-            QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Error", f"Structure AI failed: {str(e)}")
-            self.status_bar.showMessage("Structure AI failed.")
+    def _on_structure_error(self, err_msg):
+        self.progress_dialog.close()
+        QMessageBox.critical(self, "Erreur", f"Échec de Structure AI : {err_msg}")
+        self.status_bar.showMessage("Structure AI a échoué.")
 
     def glossary_context_menu(self, pos):
         pass

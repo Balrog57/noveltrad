@@ -443,63 +443,92 @@ class ProjectManager:
         """Deprecated: Finds potential translation matches in the TM."""
         return self.search_translation_memory(text, threshold=int(threshold * 100))
 
-    def auto_structure_project(self, llm_engine):
+    def auto_structure_project(self, llm_engine, progress_callback=None):
         """Structure AI - split segments into chapters based on LLM detection."""
         if not self.current_project:
             return 0
             
-        # 1. Collect first 15k characters or so to detect chapters
-        segments = Segment.select().where(Segment.project == self.current_project).order_by(Segment.index)
-        sample_segments = list(segments[:500]) # Sample first 500 segments
-        sample_text = ""
-        for s in sample_segments: 
-            sample_text += f"[{s.index}] {s.source_text}\n"
-            if len(sample_text) > 15000: break
+        if progress_callback:
+            progress_callback(5, "Collecting segments...")
             
-        # 2. Detect chapters via LLM
-        chapter_list_json = llm_engine.detect_chapters(
-            sample_text, 
-            src_lang=self.current_project.source_language, 
-            tgt_lang=self.current_project.target_language
-        )
-        try:
-            import json
-            chapter_list = json.loads(chapter_list_json)
-        except:
+        segments = list(Segment.select().where(Segment.project == self.current_project).order_by(Segment.index))
+        if not segments:
             return 0
             
-        if not chapter_list:
+        # 1. Chunk segments to avoid exceeding context limits
+        chunks = []
+        current_chunk_text = ""
+        current_chunk_segments = []
+        
+        for s in segments:
+            line_len = len(s.source_text) + 20 # approx overhead
+            if len(current_chunk_text) + line_len > 15000:
+                chunks.append((current_chunk_text, current_chunk_segments))
+                current_chunk_text = ""
+                current_chunk_segments = []
+            
+            current_chunk_text += f"[{s.index}] {s.source_text}\n"
+            current_chunk_segments.append(s)
+            
+        if current_chunk_text:
+            chunks.append((current_chunk_text, current_chunk_segments))
+            
+        all_chapter_data = []
+        
+        # 2. Detect chapters via LLM for each chunk
+        for i, (chunk_text, chunk_segs) in enumerate(chunks):
+            if progress_callback:
+                progress = 10 + int(80 * (i / len(chunks))) # range 10-90%
+                progress_callback(progress, f"Detecting chapters (chunk {i+1}/{len(chunks)})...")
+                
+            chapter_list_json = llm_engine.detect_chapters(
+                chunk_text, 
+                src_lang=self.current_project.source_language, 
+                tgt_lang=self.current_project.target_language
+            )
+            
+            try:
+                import json
+                chapter_list = json.loads(chapter_list_json)
+                if isinstance(chapter_list, list):
+                    # Keep track of which chunk these belong to to restrict our search space
+                    for ch in chapter_list:
+                        ch['_chunk_segments'] = chunk_segs
+                    all_chapter_data.extend(chapter_list)
+            except Exception as e:
+                print(f"Error parsing chapter json for chunk {i}: {e}")
+                
+        if not all_chapter_data:
             return 0
+            
+        if progress_callback:
+            progress_callback(92, "Aligning boundaries...")
             
         # 3. Create new chapters and reassign segments
         count = 0
         from difflib import SequenceMatcher
         
         with self.db.atomic():
-            # Get existing chapters to delete later or keep? 
-            # We'll reassign everything to new chapters.
-            # We assume order is correct in chapter_list.
             
             boundaries = [] # list of (start_index, title)
             
-            for ch_data in chapter_list:
+            for ch_data in all_chapter_data:
                 title = ch_data.get('title', "Untitled Chapter")
                 start_line = ch_data.get('start_line', "").lower().strip()
+                chunk_segs = ch_data.get('_chunk_segments', [])
                 
-                if not start_line: continue
+                if not start_line or not chunk_segs:
+                    continue
                 
-                # Find start index with Fuzzy Matching
+                # Find start index with Fuzzy Matching within the specific chunk
                 best_match_idx = -1
                 best_ratio = 0.0
                 
-                # Search in our sample segments first (optimization)
-                # LLM usually returns lines from the sample text we gave it
-                for s in sample_segments:
+                for s in chunk_segs:
                     source_lower = s.source_text.lower()
                     
                     # Direct check
                     if start_line in source_lower:
-                        # Prefer shorter segments for precise match if possible, or first occurrence
                         best_match_idx = s.index
                         best_ratio = 1.0
                         break
@@ -511,13 +540,29 @@ class ProjectManager:
                         best_match_idx = s.index
                         
                 if best_match_idx != -1:
-                    boundaries.append((best_match_idx, title))
+                    # check if we already have a boundary very close (e.g., within 5 segments)
+                    # to prevent duplicate boundaries from overlap or LLM hallucination
+                    is_duplicate = any(abs(b[0] - best_match_idx) < 5 for b in boundaries)
+                    if not is_duplicate:
+                        boundaries.append((best_match_idx, title))
 
             if not boundaries:
                 return 0
 
             # Sort boundaries just in case
             boundaries.sort()
+            
+            # Ensure the first boundary starts at segment index 0 if not already
+            if boundaries[0][0] > 0:
+                 # If the first chapter detected doesn't start at 0, prepend a 'Prologue' or start one
+                 # Or just adjust the first boundary to cover the start
+                 boundaries.insert(0, (0, "Prologue" if boundaries[0][0] > 10 else boundaries[0][1]))
+
+            if progress_callback:
+                progress_callback(95, "Creating chapters in database...")
+
+            # Clean up old chapters
+            Chapter.delete().where(Chapter.project == self.current_project).execute()
 
             # Create chapters and update segments
             for i, (start_idx, title) in enumerate(boundaries):
@@ -536,6 +581,9 @@ class ProjectManager:
                     (Segment.index < end_idx)
                 ).execute()
                 count += 1
+                
+            if progress_callback:
+                progress_callback(100, "Done.")
                 
         return count
 
