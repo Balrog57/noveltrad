@@ -1,4 +1,5 @@
 from src.engines.translation_engine import TranslationEngine
+from src.core.glossary_applier import GlossaryApplier
 import ctranslate2
 import transformers
 import os
@@ -28,7 +29,7 @@ class NLLBEngine(TranslationEngine):
             print(f"Failed to load NLLB model: {e}")
             return False
 
-    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None):
+    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None, **kwargs):
         if not self.translator or not self.tokenizer:
             return f"[NLLB Not Loaded] {text}"
 
@@ -47,9 +48,15 @@ class NLLBEngine(TranslationEngine):
         )
         
         target = results[0].hypotheses[0]
-        return self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(target))
+        translation = self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(target))
+        
+        if glossary_terms:
+            applier = GlossaryApplier(glossary_terms)
+            translation = applier.apply(translation)
+            
+        return translation
 
-    def translate_batch(self, texts, src_lang, tgt_lang):
+    def translate_batch(self, texts, src_lang, tgt_lang, glossary_terms=None, **kwargs):
         if not self.translator or not self.tokenizer:
             return [f"[NLLB Not Loaded] {t}" for t in texts]
 
@@ -67,6 +74,10 @@ class NLLBEngine(TranslationEngine):
         for result in results:
             target = result.hypotheses[0]
             translations.append(self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(target)))
+            
+        if glossary_terms:
+            applier = GlossaryApplier(glossary_terms)
+            translations = applier.apply_batch(translations)
             
         return translations
 

@@ -18,12 +18,17 @@ class GlossaryApplier:
         result = applier.apply(translated_text)
     """
     
-    def __init__(self, glossary: List[Dict]):
+    def __init__(self, glossary):
         """
         Args:
-            glossary: Liste de {source, target, variants?}
+            glossary: Liste de {source, target, variants?} ou Dictionnaire {source: target}
         """
-        self.glossary = glossary
+        if isinstance(glossary, dict):
+            self.glossary = [{"source": k, "target": v} for k, v in glossary.items()]
+        else:
+            self.glossary = glossary or []
+        
+        # Trier par longueur (plus long d'abord) pour éviter les remplacements partiels
         # Trier par longueur (plus long d'abord) pour éviter les remplacements partiels
         self.glossary_sorted = sorted(
             glossary, 
@@ -121,8 +126,11 @@ class GlossaryMatcher:
         found = matcher.find_in(text)
     """
     
-    def __init__(self, glossary: List[Dict]):
-        self.glossary = glossary
+    def __init__(self, glossary):
+        if isinstance(glossary, dict):
+            self.glossary = [{"source": k, "target": v} for k, v in glossary.items()]
+        else:
+            self.glossary = glossary or []
         
     def find_in(
         self, 
@@ -166,7 +174,7 @@ class NMTGlossaryPipeline:
         result = pipeline.translate(text)
     """
     
-    def __init__(self, nmt_engine, glossary: List[Dict]):
+    def __init__(self, nmt_engine, glossary):
         self.nmt_engine = nmt_engine
         self.applier = GlossaryApplier(glossary)
         

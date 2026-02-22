@@ -1,4 +1,5 @@
 from src.engines.translation_engine import TranslationEngine
+from src.core.glossary_applier import GlossaryApplier
 import argostranslate.package
 import argostranslate.translate
 import os
@@ -33,35 +34,27 @@ class ArgosEngine(TranslationEngine):
             
         return True
 
-    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None):
+    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None, **kwargs):
         try:
             # Argos translate expects ISO codes
             translation = argostranslate.translate.translate(text, src_lang, tgt_lang)
             
-            # Basic glossary support (post-processing)
+            # Post-processing glossary application
             if glossary_terms:
-                for src_term, tgt_term in glossary_terms.items():
-                    # Simple replacement - sensitive to substrings!
-                    # Should ideally use regex with boundaries or token replacement
-                    if src_term in translation:
-                        # This is very risky for replacement in target if src_term is English word in French text? 
-                        # Valid glossary usually maps Source -> Target. 
-                        # But translation is already done. We want to replace Target -> FixedTarget?
-                        # Or SourceTerm -> TargetTerm enforced?
-                        # Usually glossary in NMT is applied during translation or via placeholder.
-                        # Post-processing replacement handles 'Target -> FixedTarget' fixup?
-                        # No, glossary_terms usually meant {source_term: target_term}.
-                        # If we have strict mapping, we might replace occurences of target_term with correct one?
-                        # OR if translation failed to use target_term.
-                        pass
+                applier = GlossaryApplier(glossary_terms)
+                translation = applier.apply(translation)
                         
             return translation
         except Exception as e:
             print(f"Argos Translation Error: {e}")
             return text
 
-    def translate_batch(self, texts, src_lang, tgt_lang):
-        return [self.translate(t, src_lang, tgt_lang) for t in texts]
+    def translate_batch(self, texts, src_lang, tgt_lang, glossary_terms=None, **kwargs):
+        translations = [self.translate(t, src_lang, tgt_lang) for t in texts]
+        if glossary_terms:
+            applier = GlossaryApplier(glossary_terms)
+            translations = applier.apply_batch(translations)
+        return translations
 
     def get_supported_languages(self):
         """Returns all languages that COULD be installed/supported."""

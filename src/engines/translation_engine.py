@@ -16,7 +16,7 @@ class TranslationEngine(ABC):
         pass
 
     @abstractmethod
-    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None):
+    def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None, **kwargs):
         """
         Traduit le texte source vers la langue cible.
         
@@ -26,6 +26,7 @@ class TranslationEngine(ABC):
             tgt_lang (str): Code langue cible (ex: 'fr')
             context (str, optional): Contexte lexical ou narratif
             glossary_terms (dict, optional): Dictionnaire de termes forcés {source: target}
+            **kwargs: Arguments additionnels spécifiques au moteur (ex: genre, custom_instructions)
             
         Returns:
             str: Texte traduit
@@ -33,7 +34,7 @@ class TranslationEngine(ABC):
         pass
 
     @abstractmethod
-    def translate_batch(self, texts, src_lang, tgt_lang):
+    def translate_batch(self, texts, src_lang, tgt_lang, glossary_terms=None, **kwargs):
         """
         Traduit une liste de textes.
         
@@ -41,6 +42,8 @@ class TranslationEngine(ABC):
             texts (list[str]): Liste de textes à traduire
             src_lang (str): Code langue source
             tgt_lang (str): Code langue cible
+            glossary_terms (dict, optional): Dictionnaire de termes forcés {source: target}
+            **kwargs: Arguments additionnels spécifiques au moteur
             
         Returns:
             list[str]: Liste des traductions

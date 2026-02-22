@@ -43,11 +43,18 @@ class BatchWorker(QObject):
 
             self.log.emit(f"Starting batch translation for {total} segments...")
             
-            # 2. Process
+            # 2. Fetch Glossary Terms
+            from src.core.database import GlossaryTerm
+            glossary_terms = {}
+            if self.pm.current_project:
+                terms = GlossaryTerm.select().where(GlossaryTerm.project == self.pm.current_project)
+                for term in terms:
+                    glossary_terms[term.source_term] = term.target_term
+            
+            # 3. Process
             # Determine batch size for engine?
             # Creating a simple batch loop for now. 
             # If engine supports batching, we should use it. 
-            # Checking engine capability:
             supports_batch = hasattr(self.engine, 'translate_batch')
             batch_size = 10 if supports_batch else 1
             
@@ -62,7 +69,8 @@ class BatchWorker(QObject):
                         translations = self.engine.translate_batch(
                             texts, 
                             src_lang=self.pm.current_project.source_language,
-                            tgt_lang=self.pm.current_project.target_language
+                            tgt_lang=self.pm.current_project.target_language,
+                            glossary_terms=glossary_terms
                         )
                     else:
                         translations = []
@@ -70,7 +78,8 @@ class BatchWorker(QObject):
                              t = self.engine.translate(
                                  text,
                                  src_lang=self.pm.current_project.source_language,
-                                 tgt_lang=self.pm.current_project.target_language
+                                 tgt_lang=self.pm.current_project.target_language,
+                                 glossary_terms=glossary_terms
                              )
                              translations.append(t)
                     
