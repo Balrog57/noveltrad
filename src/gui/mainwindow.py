@@ -28,6 +28,7 @@ from src.gui.batch_translation_dialog import BatchTranslationDialog
 from src.core.backup_manager import BackupManager
 from src.core.shortcut_manager import ShortcutManager
 from src.utils.connectivity_manager import ConnectivityManager
+from src.gui.fuzzy_match_viewer import FuzzyMatchViewer
 from PyQt6.QtCore import Qt, QSize, QTimer
 
 class MainWindow(QMainWindow):
@@ -111,6 +112,24 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(f"Segment {self.current_segment_index} saved.")
                 self.update_footer_stats()
                 self.update_current_chapter_progress()
+                break
+
+    def apply_translation_match(self, match_data):
+        """Apply a fuzzy translation match to the active segment."""
+        if getattr(self, 'current_segment_index', None) is None:
+            return
+            
+        target_text = match_data.get('target', '')
+        if not target_text:
+            return
+            
+        # Find active card and update its text
+        for i in range(self.cards_layout.count() - 1):
+            widget = self.cards_layout.itemAt(i).widget()
+            if isinstance(widget, SegmentCard) and widget.segment_id == self.current_segment_index:
+                widget.target_edit.setPlainText(target_text)
+                self.save_current_segment()
+                self.status_bar.showMessage("Traduction de la mémoire sélectionnée et sauvegardée.", 3000)
                 break
 
     def update_current_chapter_progress(self):
@@ -592,6 +611,12 @@ class MainWindow(QMainWindow):
         gloss_box.addWidget(self.glossary_list)
         right_layout.addLayout(gloss_box)
         
+        # Fuzzy Match Viewer
+        self.fuzzy_viewer = FuzzyMatchViewer()
+        self.fuzzy_viewer.applyMatch.connect(self.apply_translation_match)
+        self.fuzzy_viewer.setFixedHeight(180)
+        right_layout.addWidget(self.fuzzy_viewer)
+        
         # AI Suggestions
         ai_box = QVBoxLayout()
         ai_head = QHBoxLayout()
@@ -899,6 +924,10 @@ class MainWindow(QMainWindow):
             
             # Auto-Glossary detection for current segment
             self.update_glossary_for_segment(active_card.segment.source_text)
+            
+            # Fetch and display TM matches
+            matches = self.project_manager.search_translation_memory(active_card.segment.source_text)
+            self.fuzzy_viewer.set_matches(matches)
 
     def update_glossary_for_segment(self, text):
         """Find and highlight glossary terms in the given text."""

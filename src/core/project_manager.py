@@ -252,21 +252,34 @@ class ProjectManager:
             target_text=target_text
         )
 
-    def search_translation_memory(self, text, source_lang=None, target_lang=None, threshold=60):
+    def search_translation_memory(self, text, source_lang=None, target_lang=None, threshold=60, limit=10):
         """Search TM for similar segments using fuzzy matching."""
-        if not self.current_project:
+        if not self.current_project or not text:
             return []
         src = source_lang or self.current_project.source_language
         tgt = target_lang or self.current_project.target_language
         
-        results = TranslationMemory.select().where(
+        query = TranslationMemory.select().where(
             (TranslationMemory.source_lang == src) &
             (TranslationMemory.target_lang == tgt)
+            # Only match the current project. Wait, the original code didn't filter by project in search_translation_memory! 
+            # TM usually spans the project. Project filtering wasn't there originally but it's okay.
         )
         
+        words = [w for w in text.split() if len(w) > 3]
+        if words:
+            import operator
+            from functools import reduce
+            # Limit to top 5 longest words to prevent massive query, cast a wide net
+            longest_words = sorted(words, key=len, reverse=True)[:5]
+            conditions = [TranslationMemory.source_text.contains(w) for w in longest_words]
+            query = query.where(reduce(operator.or_, conditions))
+        
+        from difflib import SequenceMatcher
         matches = []
-        for tm in results:
-            similarity = self._calculate_similarity(text, tm.source_text)
+        for tm in query:
+            ratio = SequenceMatcher(None, text, tm.source_text).ratio()
+            similarity = int(ratio * 100)
             if similarity >= threshold:
                 matches.append({
                     'source': tm.source_text,
@@ -274,10 +287,10 @@ class ProjectManager:
                     'similarity': similarity
                 })
         
-        return sorted(matches, key=lambda x: x['similarity'], reverse=True)[:10]
+        return sorted(matches, key=lambda x: x['similarity'], reverse=True)[:limit]
 
     def _calculate_similarity(self, s1, s2):
-        """Calculate simple similarity percentage between two strings."""
+        """Calculate simple similarity percentage between two strings. (Deprecated)"""
         if not s1 or not s2:
             return 0
         s1, s2 = s1.lower(), s2.lower()
@@ -427,35 +440,8 @@ class ProjectManager:
             )
 
     def get_fuzzy_matches(self, text, threshold=0.6):
-        """Finds potential translation matches in the TM."""
-        if not self.current_project or not text:
-            return []
-            
-        # For performance, we first filter by segments containing at least one long word from the text
-        words = [w for w in text.split() if len(w) > 3]
-        if not words:
-            return []
-            
-        # SQL search for performance
-        candidates = TranslationMemory.select().where(
-            (TranslationMemory.source_lang == self.current_project.source_language) &
-            (TranslationMemory.source_text.contains(words[0]))
-        ).limit(20)
-        
-        from difflib import SequenceMatcher
-        results = []
-        for cand in candidates:
-            ratio = SequenceMatcher(None, text, cand.source_text).ratio()
-            if ratio >= threshold:
-                results.append({
-                    'source': cand.source_text,
-                    'target': cand.target_text,
-                    'similarity': int(ratio * 100)
-                })
-        
-        # Sort by similarity
-        results.sort(key=lambda x: x['similarity'], reverse=True)
-        return results
+        """Deprecated: Finds potential translation matches in the TM."""
+        return self.search_translation_memory(text, threshold=int(threshold * 100))
 
     def auto_structure_project(self, llm_engine):
         """Structure AI - split segments into chapters based on LLM detection."""
