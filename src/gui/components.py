@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, 
                              QPushButton, QWidget, QSizePolicy)
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QIcon, QPixmap, QFont
 from src.utils.tag_utils import validate_tags
+from src.core.grammar_checker import GrammarChecker
 import os
 
 class SegmentCard(QFrame):
@@ -20,6 +21,13 @@ class SegmentCard(QFrame):
         self.setObjectName("SegmentCard")
         self.setProperty("active", False)
         self.layout_mode = "horizontal"  # horizontal (side-by-side) or vertical (stacked)
+        
+        # Grammar Check Logic
+        self.grammar_checker = GrammarChecker()
+        self.grammar_enabled = True
+        self.grammar_timer = QTimer(self)
+        self.grammar_timer.setSingleShot(True)
+        self.grammar_timer.timeout.connect(self.check_grammar_realtime)
         
         self.init_ui()
         
@@ -51,6 +59,13 @@ class SegmentCard(QFrame):
         self.tag_warning_label.setWordWrap(True)
         self.tag_warning_label.setVisible(False)
         main_layout.addWidget(self.tag_warning_label)
+        
+        # Grammar Warning Label
+        self.grammar_warning_label = QLabel()
+        self.grammar_warning_label.setStyleSheet("color: #3b82f6; font-size: 10px; font-weight: 600; background-color: #1e1b4b; border: 1px solid #1e3a8a; border-radius: 4px; padding: 4px 8px;")
+        self.grammar_warning_label.setWordWrap(True)
+        self.grammar_warning_label.setVisible(False)
+        main_layout.addWidget(self.grammar_warning_label)
         
         # Text areas
         self.text_layout_container = QFrame()
@@ -203,6 +218,9 @@ class SegmentCard(QFrame):
         text = self.target_edit.toPlainText()
         self.textChanged.emit(self.segment_id, text)
         self.perform_tag_validation(text)
+        
+        # Restart grammar debounce timer (1.5s)
+        self.grammar_timer.start(1500)
 
     def perform_tag_validation(self, target_text):
         """Validates tags and updates the warning label."""
@@ -218,6 +236,39 @@ class SegmentCard(QFrame):
             self.tag_warning_label.setVisible(True)
         else:
             self.tag_warning_label.setVisible(False)
+
+    def set_grammar_enabled(self, enabled):
+        """Enable or disable real-time grammar checking."""
+        self.grammar_enabled = enabled
+        if not enabled:
+            self.grammar_warning_label.setVisible(False)
+            self.grammar_timer.stop()
+
+    def check_grammar_realtime(self):
+        """Perform real-time grammar check (debounced)."""
+        if not self.grammar_enabled:
+            return
+            
+        text = self.target_edit.toPlainText()
+        if not text or len(text) < 3:
+            self.grammar_warning_label.setVisible(False)
+            return
+            
+        # For now, assume Target Language = French if not specified
+        # In the future, we should get this from Project context via higher component
+        lang = "fr" 
+        
+        issues = self.grammar_checker.check(text, lang)
+        if issues:
+            # Show first issue for simplicity in real-time
+            issue = issues[0]
+            msg = f"<b>Grammar:</b> {issue.message}"
+            if issue.suggestions:
+                msg += f" (Suggestions: {', '.join(issue.suggestions[:3])})"
+            self.grammar_warning_label.setText(msg)
+            self.grammar_warning_label.setVisible(True)
+        else:
+            self.grammar_warning_label.setVisible(False)
 
 class SidebarItem(QFrame):
     clicked = pyqtSignal(int)

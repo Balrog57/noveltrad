@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
         self.current_segment_index = -1
         self.current_layout_mode = "horizontal"
         self.backup_manager = None
+        self.realtime_grammar_enabled = True # Default
         
         # Setup Auto-Snapshot Timer (15 minutes)
         self.backup_timer = QTimer(self)
@@ -398,6 +399,14 @@ class MainWindow(QMainWindow):
         qa_action = QAction(self.colorize_icon("verified", "#e2e8f0"), "&Vérification Qualité (QA)...", self)
         qa_action.triggered.connect(self.show_qa_dialog)
         tools_menu.addAction(qa_action)
+        
+        tools_menu.addSeparator()
+        
+        self.grammar_toggle_action = QAction("Vérification Grammaticale &en temps réel", self)
+        self.grammar_toggle_action.setCheckable(True)
+        self.grammar_toggle_action.setChecked(self.realtime_grammar_enabled)
+        self.grammar_toggle_action.triggered.connect(self.toggle_realtime_grammar)
+        tools_menu.addAction(self.grammar_toggle_action)
         
         align_action = QAction(self.colorize_icon("compare_arrows", "#e2e8f0"), "&Outil d'Alignement...", self)
         align_action.triggered.connect(self.show_alignment_dialog)
@@ -871,6 +880,7 @@ class MainWindow(QMainWindow):
              for seg in segments: 
                 card = SegmentCard(seg)
                 card.set_layout_mode(self.current_layout_mode)
+                card.set_grammar_enabled(self.realtime_grammar_enabled)
                 card.clicked.connect(self.on_segment_card_clicked)
                 card.textChanged.connect(self.on_segment_text_changed)
                 card.lookupWord.connect(self.on_word_lookup)
@@ -1420,10 +1430,37 @@ class MainWindow(QMainWindow):
 
     def show_settings(self):
         from src.gui.settings_dialog import SettingsDialog
+        from src.core.config_manager import ConfigManager
         dialog = SettingsDialog(self)
         if dialog.exec():
+            # Refresh settings
+            cfg = ConfigManager()
+            # Note: SettingsDialog currently writes directly to config.json
+            # We should probably reload ConfigManager
+            cfg.config = cfg.load_config()
+            self.realtime_grammar_enabled = cfg.get("grammar_enabled", True)
+            self.grammar_toggle_action.setChecked(self.realtime_grammar_enabled)
+            self.update_all_cards_grammar()
+            
             self.apply_theme()
-            self.status_bar.showMessage("Paramètres sauvegardés et thème appliqué.", 3000)
+            self.status_bar.showMessage("Paramètres sauvegardés.", 3000)
+
+    def toggle_realtime_grammar(self, checked):
+        """Toggle grammar checking via menu."""
+        from src.core.config_manager import ConfigManager
+        self.realtime_grammar_enabled = checked
+        ConfigManager().set("grammar_enabled", checked)
+        self.update_all_cards_grammar()
+        self.status_bar.showMessage(f"Vérification grammaire : {'Activée' if checked else 'Désactivée'}", 3000)
+
+    def update_all_cards_grammar(self):
+        """Propagate grammar toggle to all cards."""
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
+                if isinstance(widget, SegmentCard):
+                    widget.set_grammar_enabled(self.realtime_grammar_enabled)
 
     def show_language_store(self):
         from src.gui.language_store import LanguageStore
@@ -1438,7 +1475,18 @@ class MainWindow(QMainWindow):
         source_path = self.project_manager.current_project.file_path
         _, ext = os.path.splitext(source_path)
         
-        fname, _ = QFileDialog.getSaveFileName(self, "Exporter Fichier Traduit", f"translated_output{ext}", f"Fichiers Supportés (*{ext})")
+        filters = f"Format Original (*{ext});;Fichier PDF (*.pdf)"
+        if ext.lower() == ".pdf":
+            filters = "Fichier PDF (*.pdf)"
+            
+        fname, selected_filter = QFileDialog.getSaveFileName(self, "Exporter Fichier Traduit", f"translated_output{ext}", filters)
+        
+        # Ensure the extension matches the selected filter if the user didn't type it
+        if fname:
+            if "PDF" in selected_filter and not fname.lower().endswith(".pdf"):
+                fname = os.path.splitext(fname)[0] + ".pdf"
+            elif "Original" in selected_filter and not fname.lower().endswith(ext.lower()):
+                fname = os.path.splitext(fname)[0] + ext
         if fname:
             try:
                 self.status_bar.showMessage(f"Export vers {fname}...")

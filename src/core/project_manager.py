@@ -215,7 +215,7 @@ class ProjectManager:
         if not self.current_project or not self.current_project.file_path:
             raise ValueError("No active project or source file missing")
             
-        _, ext = os.path.splitext(self.current_project.file_path)
+        _, ext = os.path.splitext(output_path)
         handler = self.handlers.get(ext.lower())
         
         if not handler:

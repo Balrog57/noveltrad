@@ -5,8 +5,9 @@ Conforme au cahier des charges §12.9.
 """
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 from src.core.tag_manager import TagManager
+from src.core.grammar_checker import GrammarChecker, GrammarIssue
 
 
 @dataclass
@@ -15,7 +16,7 @@ class QAIssue:
     segment_id: int
     segment_index: int
     issue_type: str       # 'missing_tag', 'number_mismatch', 'glossary_violation',
-                          # 'empty_translation', 'punctuation_mismatch'
+                          # 'empty_translation', 'punctuation_mismatch', 'grammar_error'
     severity: str         # 'error', 'warning', 'info'
     message: str
     source_text: str
@@ -34,10 +35,12 @@ class QAChecker:
 
     def __init__(self):
         self.tag_manager = TagManager()
+        self.grammar_checker = GrammarChecker()
 
     def run_checks(self, segments, glossary_terms=None, check_tags=True,
                    check_numbers=True, check_glossary=True,
-                   check_empty=True, check_punctuation=True):
+                   check_empty=True, check_punctuation=True,
+                   check_grammar=True, lang_code='fr'):
         """
         Run all QA checks on a list of segments.
 
@@ -81,6 +84,9 @@ class QAChecker:
 
             if check_punctuation:
                 issues.extend(self._check_punctuation(seg_id, seg_idx, source, target))
+
+            if check_grammar:
+                issues.extend(self._check_grammar(seg_id, seg_idx, source, target, lang_code))
 
         return issues
 
@@ -200,6 +206,23 @@ class QAChecker:
                     source_text=source,
                     target_text=target,
                 ))
+        return issues
+
+    def _check_grammar(self, seg_id, seg_idx, source, target, lang_code):
+        """Check for grammar and spelling issues."""
+        issues = []
+        grammar_issues = self.grammar_checker.check(target, lang_code)
+        
+        for gi in grammar_issues:
+            issues.append(QAIssue(
+                segment_id=seg_id,
+                segment_index=seg_idx,
+                issue_type='grammar_error',
+                severity='warning' if gi.category == 'grammar' else 'info',
+                message=gi.message,
+                source_text=source,
+                target_text=target,
+            ))
         return issues
 
     def get_summary(self, issues):

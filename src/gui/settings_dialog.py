@@ -69,8 +69,11 @@ class SettingsDialog(QDialog):
     def init_general_tab(self):
         layout = QFormLayout(self.general_tab)
         
-        self.backup_check = QCheckBox("Enable Automatic Backups")
+        self.backup_check = QCheckBox("Activer les sauvegardes automatiques")
         layout.addRow(self.backup_check)
+        
+        self.grammar_check = QCheckBox("Activer la vérification grammaticale en temps réel")
+        layout.addRow(self.grammar_check)
         
         self.backup_interval = QComboBox()
         self.backup_interval.addItems(["Every 5 mins", "Every 15 mins", "Every hour"])
@@ -160,6 +163,7 @@ class SettingsDialog(QDialog):
                 
                 # General
                 self.backup_check.setChecked(config.get('backup_enabled', False))
+                self.grammar_check.setChecked(config.get('grammar_enabled', True))
                 interval = config.get('backup_interval', 'Every 15 mins')
                 self.backup_interval.setCurrentText(interval)
                 
@@ -182,6 +186,7 @@ class SettingsDialog(QDialog):
         
         config = {
             'backup_enabled': self.backup_check.isChecked(),
+            'grammar_enabled': self.grammar_check.isChecked(),
             'backup_interval': self.backup_interval.currentText(),
             'llm_url': self.llm_url.text(),
             'llm_key': self.llm_key.text(),
