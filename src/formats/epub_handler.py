@@ -1,11 +1,16 @@
 from src.formats.format_handler import FormatHandler
 import ebooklib
 from ebooklib import epub
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup
 import os
-import copy
+import json
+from src.core.tag_manager import TagManager
 
 class EpubHandler(FormatHandler):
+    def __init__(self):
+        super().__init__()
+        self.tag_manager = TagManager()
+
     def read(self, file_path):
         book = epub.read_epub(file_path)
         segments = []
@@ -25,18 +30,23 @@ class EpubHandler(FormatHandler):
             if not soup.find('body'):
                 continue
 
-            # We will use a simple specialized walker
-            text_nodes = self._get_translatable_text_nodes(soup)
+            # We will use a simple specialized walker focusing on block elements
+            block_nodes = self._get_translatable_blocks(soup)
             
-            for i, node in enumerate(text_nodes):
-                text = node.string.strip()
-                if text:
+            for i, node in enumerate(block_nodes):
+                # Extract the inner HTML to keep inline tags like <b>, <i>, etc.
+                inner_html = "".join([str(child) for child in node.contents]).strip()
+                if inner_html:
+                    # Use TagManager to process inline tags into placeholders
+                    clean_text, tags_map = self.tag_manager.extract_tags(inner_html)
+                    
                     segments.append({
                         'index': global_index,
-                        'source_text': text,
+                        'source_text': clean_text,
                         'metadata': {
                             'item_name': item.get_name(),
-                            'node_index': i  # The Nth text node in this item
+                            'node_index': i,  # The Nth block node in this item
+                            'tags_map': tags_map  # Dictionary mapping placeholder -> original tag
                         }
                     })
                     global_index += 1
@@ -59,11 +69,22 @@ class EpubHandler(FormatHandler):
             meta = seg.get('metadata')
             if not meta: continue
             
+            # In DB contexts, metadata string might be evaluated or parsed, ensure dict
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except:
+                    pass
+                    
             item_name = meta.get('item_name')
             if item_name not in segments_by_item:
                 segments_by_item[item_name] = {}
             
-            segments_by_item[item_name][meta['node_index']] = seg['target_text']
+            # Store the text and the tags_map so we can reconstruct
+            segments_by_item[item_name][meta['node_index']] = {
+                'text': seg['target_text'],
+                'tags_map': meta.get('tags_map', {})
+            }
 
         # 3. Iterate and replace
         for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
@@ -72,16 +93,24 @@ class EpubHandler(FormatHandler):
                 content = item.get_content()
                 soup = BeautifulSoup(content, 'html.parser')
                 
-                text_nodes = self._get_translatable_text_nodes(soup)
+                block_nodes = self._get_translatable_blocks(soup)
                 item_translations = segments_by_item[item_name]
                 
                 modified = False
-                for i, node in enumerate(text_nodes):
+                for i, node in enumerate(block_nodes):
                     if i in item_translations:
-                        # Replace the string content
-                        # We use .replace_with to ensure we keep the tree valid
-                        new_text = item_translations[i]
-                        node.replace_with(new_text)
+                        # Restore original tags in the translated text
+                        translated_clean = item_translations[i]['text']
+                        tags_map = item_translations[i]['tags_map']
+                        restored_html = self.tag_manager.restore_tags(translated_clean, tags_map)
+                        
+                        # Replace the block's inner HTML with the restored HTML
+                        # Create a new BeautifulSoup object from the restored HTML to parse it properly
+                        new_content_soup = BeautifulSoup(restored_html, 'html.parser')
+                        node.clear()  # Remove old contents
+                        # IMPORTANT: wrap in list() because .append removes from the original tree
+                        for child in list(new_content_soup.contents):
+                            node.append(child)
                         modified = True
                 
                 if modified:
@@ -92,33 +121,71 @@ class EpubHandler(FormatHandler):
         # 4. Write new EPUB
         epub.write_epub(file_path, book, {})
 
-    def _get_translatable_text_nodes(self, soup):
+    def _get_translatable_blocks(self, soup):
         """
-        Returns a list of NavigableStrings that are children of standard formatting tags.
-        We skip pure whitespace or script/style tags.
+        Returns a list of BeautifulSoup block elements that contain translatable text.
+        Instead of navigating to the deepest NavigableString, we treat blocks (p, h1, div, li)
+        as a single unit containing inline formatting.
         """
         nodes = []
-        # invalid tags to skip content from
-        blacklist = ['script', 'style', 'code', 'pre']
+        # Elements to extract as whole blocks
+        block_tags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'div', 'td', 'th', 'blockquote']
+        # Elements to totally ignore 
+        blacklist = ['script', 'style', 'code', 'pre', 'head', 'meta', 'link', 'nav']
         
-        def walker(element):
-            if element.name in blacklist:
+        # We find all block tags, but we must ensure we don't grab nested blocks multiple times.
+        # A simple approach: grab block_tags that don't contain other block_tags.
+        for tag_name in block_tags:
+            for element in soup.find_all(tag_name):
+                # Check if it has any block_tags as descendants
+                has_inner_blocks = False
+                for inner_tag_name in block_tags:
+                    if element.find(inner_tag_name):
+                        has_inner_blocks = True
+                        break
+                        
+                # Skip if it's inside a blacklist
+                is_blacklisted = False
+                for parentLine in element.parents:
+                    if parentLine.name in blacklist:
+                        is_blacklisted = True
+                        break
+                        
+                if not has_inner_blocks and not is_blacklisted:
+                    # Verify it actually has some text inside
+                    if element.get_text(strip=True):
+                        nodes.append(element)
+                        
+        # The list might not be in the document order. Fix it using .sourceline if available, 
+        # or just find all and filter.
+        
+        # Better approach for order: walk the tree.
+        ordered_nodes = []
+        def block_walker(element):
+            if hasattr(element, 'name') and element.name in blacklist:
                 return
+            
+            if hasattr(element, 'name') and element.name in block_tags:
+                has_inner_blocks = False
+                for inner_tag_name in block_tags:
+                    if element.find(inner_tag_name):
+                        has_inner_blocks = True
+                        break
                 
-            # If it's a NavigableString and not just whitespace
-            if isinstance(element, NavigableString):
-                if element.strip():
-                    nodes.append(element)
-            elif hasattr(element, 'children'):
+                if not has_inner_blocks and element.get_text(strip=True):
+                    ordered_nodes.append(element)
+                    return # Don't traverse inside this block
+            
+            if hasattr(element, 'children'):
                 for child in element.children:
-                    walker(child)
+                    block_walker(child)
                     
         if soup.body:
-            walker(soup.body)
+            block_walker(soup.body)
         else:
-            walker(soup)
+            block_walker(soup)
             
-        return nodes
+        return ordered_nodes
 
     def get_supported_extensions(self):
         return ['.epub']

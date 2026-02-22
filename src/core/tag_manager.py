@@ -93,13 +93,18 @@ class TagManager:
             if tag_name not in counter:
                 counter[tag_name] = 0
 
-            idx = counter[tag_name]
-
             if is_closing:
+                # Use the previous index for the closing tag
+                # (assuming well-formed XML/HTML where closing matches last opened)
+                # Ensure we don't go below 0
+                idx = max(0, counter[tag_name] - 1)
                 placeholder = f'</{tag_name}{idx}>'
             elif is_self_closing:
+                idx = counter[tag_name]
                 placeholder = f'<{tag_name}{idx}/>'
+                counter[tag_name] += 1
             else:
+                idx = counter[tag_name]
                 placeholder = f'<{tag_name}{idx}>'
                 counter[tag_name] += 1
 
