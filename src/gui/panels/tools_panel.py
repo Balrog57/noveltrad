@@ -102,8 +102,15 @@ class ToolsPanel(QFrame):
         scroll.setWidget(tools_container)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         
-        self.stack.addWidget(scroll)
+        # 6. Chat Widget
+        from src.gui.chat_widget import ChatWidget
+        self.main_window.chat_widget = ChatWidget()
+        
+        self.stack.addWidget(scroll)      # Index 0
+        self.stack.addWidget(self.main_window.chat_widget) # Index 1
+        
         layout.addWidget(self.stack)
+        self.stack.setCurrentIndex(0) # Default to Tools
 
     def create_tool_box(self, title, icon_name):
         box = QFrame()

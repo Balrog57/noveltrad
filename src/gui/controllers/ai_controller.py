@@ -37,9 +37,13 @@ class AIController:
             QMessageBox.critical(self.main_window, "Erreur AI", f"Échec du raffinement : {e}")
 
     def show_chat(self):
-        """Show the AI chat panel."""
-        self.main_window.tools_panel.right_stack.setCurrentIndex(0) # Assuming chat is in ToolsPanel
-        self.main_window.tools_panel.chat_widget.setFocus()
+        """Show the AI chat panel or toggle back to tools."""
+        current_idx = self.main_window.tools_panel.stack.currentIndex()
+        if current_idx == 1:
+            self.main_window.tools_panel.stack.setCurrentIndex(0)
+        else:
+            self.main_window.tools_panel.stack.setCurrentIndex(1)
+            self.main_window.chat_widget.input_field.setFocus()
 
     def run_glossary_ai(self):
         """Scan chapter segments for potential glossary terms using AI."""

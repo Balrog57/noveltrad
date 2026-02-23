@@ -45,6 +45,10 @@ Le projet suit une structure modulaire :
 - **CAUSE** : Le panneau tentait d'accéder à des objets `QAction` supprimés de `MainWindow` au profit de méthodes de contrôleur.
 - **SOLUTION** : Connecter directement les signaux `clicked` des boutons du header aux méthodes `self.main_window.editor_ctrl.undo`.
 
+#### ERREUR : `AttributeError: 'ToolsPanel' object has no attribute 'right_stack'`
+- **CAUSE** : `AIController` tentait d'accéder à un membre `right_stack` inexistant lors de l'ouverture du chat.
+- **SOLUTION** : Renommer l'accès en `self.main_window.tools_panel.stack` et intégrer le `ChatWidget` dans le `QStackedWidget` du `ToolsPanel`.
+
 ---
 
 ## 📝 Usage du Répertoire
