@@ -70,6 +70,11 @@ class TranslationEngine(ABC):
         """Retourne True si le moteur est prêt à être utilisé."""
         pass
 
+    @abstractmethod
+    def supports_tags(self):
+        """Retourne True si le moteur gère nativement les balises XML/HTML."""
+        pass
+
     def get_available_models(self):
         """Retourne la liste des modèles disponibles au téléchargement."""
         return []

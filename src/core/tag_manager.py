@@ -194,6 +194,58 @@ class TagManager:
                 tags.append(match.group(0))
         return tags
 
+    def protect_tags_for_nmt(self, text):
+        """
+        Extract pseudo-tags (like <r0>, <b>) from text and replace them with
+        NMT-safe placeholders (like ❬0❬)
+        
+        Args:
+            text: Text containing tags.
+            
+        Returns:
+            tuple: (safe_text, nmt_tags_map)
+        """
+        if not text:
+            return '', {}
+            
+        nmt_tags_map = {}
+        counter = 0
+        
+        def replace_with_safe(match):
+            nonlocal counter
+            tag = match.group(0)
+            # Use a distinctive rare character sequence NMT is unlikely to break
+            safe_placeholder = f"___{counter}___"
+            nmt_tags_map[safe_placeholder] = tag
+            counter += 1
+            return safe_placeholder
+            
+        safe_text = re.sub(r'<[^>]+>', replace_with_safe, text)
+        return safe_text, nmt_tags_map
+
+    def restore_tags_from_nmt(self, translated_text, nmt_tags_map):
+        """
+        Restore original tags from NMT-safe placeholders in translated text.
+        
+        Args:
+            translated_text: NMT output containing ❬n❬
+            nmt_tags_map: map of placeholders to original tags
+            
+        Returns:
+            str: Restored text
+        """
+        if not translated_text or not nmt_tags_map:
+            return translated_text or ''
+            
+        result = translated_text
+        for placeholder, original in nmt_tags_map.items():
+            # NMT might add spaces around the number: e.g. "___ 0 ___"
+            idx = placeholder.strip('_')
+            pattern = re.compile(rf'___\s*{idx}\s*___')
+            result = pattern.sub(original, result)
+            
+        return result
+
     def strip_tags(self, text):
         """
         Remove all HTML/XML tags from text, leaving only the text content.

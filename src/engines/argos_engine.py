@@ -1,8 +1,15 @@
 from src.engines.translation_engine import TranslationEngine
 from src.core.glossary_applier import GlossaryApplier
-import argostranslate.package
-import argostranslate.translate
+from src.core.tag_manager import TagManager
 import os
+
+try:
+    import argostranslate.package
+    import argostranslate.translate
+    ARGOS_AVAILABLE = True
+except Exception as e:
+    print(f"ArgosTranslate not available or crashed on import: {e}")
+    ARGOS_AVAILABLE = False
 
 class ArgosEngine(TranslationEngine):
     def __init__(self):
@@ -13,7 +20,10 @@ class ArgosEngine(TranslationEngine):
         return "Argos Translate"
 
     def is_available(self):
-        return True 
+        return ARGOS_AVAILABLE 
+
+    def supports_tags(self):
+        return False
 
     def load_model(self, model_path="auto", device="cpu"):
         """
@@ -21,6 +31,8 @@ class ArgosEngine(TranslationEngine):
         model_path is ignored as Argos manages models globally.
         device sets ARGOS_DEVICE_TYPE.
         """
+        if not ARGOS_AVAILABLE: return False
+        
         if device == "cuda":
             os.environ["ARGOS_DEVICE_TYPE"] = "cuda"
         else:
@@ -35,9 +47,18 @@ class ArgosEngine(TranslationEngine):
         return True
 
     def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None, **kwargs):
+        if not ARGOS_AVAILABLE:
+            return text
+            
         try:
+            tm = TagManager()
+            safe_text, tags_map = tm.protect_tags_for_nmt(text)
+            
             # Argos translate expects ISO codes
-            translation = argostranslate.translate.translate(text, src_lang, tgt_lang)
+            translation = argostranslate.translate.translate(safe_text, src_lang, tgt_lang)
+            
+            # Restore tags
+            translation = tm.restore_tags_from_nmt(translation, tags_map)
             
             # Post-processing glossary application
             if glossary_terms:
@@ -50,14 +71,17 @@ class ArgosEngine(TranslationEngine):
             return text
 
     def translate_batch(self, texts, src_lang, tgt_lang, glossary_terms=None, **kwargs):
-        translations = [self.translate(t, src_lang, tgt_lang) for t in texts]
-        if glossary_terms:
-            applier = GlossaryApplier(glossary_terms)
-            translations = applier.apply_batch(translations)
+        if not ARGOS_AVAILABLE:
+            return texts
+            
+        translations = []
+        for text in texts:
+            translations.append(self.translate(text, src_lang, tgt_lang, glossary_terms=glossary_terms, **kwargs))
         return translations
 
     def get_supported_languages(self):
         """Returns all languages that COULD be installed/supported."""
+        if not ARGOS_AVAILABLE: return []
         try:
             packages = self.get_available_models()
             codes = set()
@@ -70,6 +94,7 @@ class ArgosEngine(TranslationEngine):
 
     def get_installed_languages(self):
         """Returns only currently installed language codes."""
+        if not ARGOS_AVAILABLE: return []
         try:
             languages = argostranslate.translate.get_installed_languages()
             return [lang.code for lang in languages]
@@ -78,6 +103,7 @@ class ArgosEngine(TranslationEngine):
 
     def get_available_models(self):
         """Returns list of available language pairs' packages."""
+        if not ARGOS_AVAILABLE: return []
         try:
             argostranslate.package.update_package_index()
             available_packages = argostranslate.package.get_available_packages()
@@ -98,6 +124,7 @@ class ArgosEngine(TranslationEngine):
 
     def install_model(self, model_id, callback=None):
         """Install an Argos package by ID (format: from-to)."""
+        if not ARGOS_AVAILABLE: return False
         try:
             from_code, to_code = model_id.split('-')
             argostranslate.package.update_package_index()

@@ -56,9 +56,9 @@ class GrammarChecker:
             
         try:
             import language_tool_python
-            # Note: language-tool-python requires Java to be installed on the system.
-            # It will download the LT server on first use if not present.
-            self.lt_tool = language_tool_python.LanguageTool(lang_code)
+            # The user explicitly requested to use the online API for LanguageTool 
+            # to avoid downloading the heavy local Java server (~200MB)
+            self.lt_tool = language_tool_python.LanguageToolPublicAPI(lang_code)
             return self.lt_tool
         except Exception as e:
             print(f"LanguageTool initialization failed for {lang_code}: {e}")

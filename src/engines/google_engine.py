@@ -1,6 +1,7 @@
 import logging
 from src.engines.translation_engine import TranslationEngine
 from src.core.glossary_applier import GlossaryApplier
+from src.core.tag_manager import TagManager
 
 try:
     from deep_translator import GoogleTranslator
@@ -14,22 +15,33 @@ class GoogleEngine(TranslationEngine):
         super().__init__()
         self._name = "Google Translate (Web)"
 
+    def supports_tags(self):
+        return False
+        
     def load_model(self, model_path=None, device="cpu"):
         # No model to load for web API
         return True
 
     def translate(self, text, src_lang, tgt_lang, context=None, glossary_terms=None, **kwargs):
         if not HAS_DEEP_TRANSLATOR: 
+            import logging
             logging.error("deep-translator not installed.")
             return text
         if not text: return ""
 
         try:
+            tm = TagManager()
+            safe_text, tags_map = tm.protect_tags_for_nmt(text)
+            
             # Handle 'auto' source
             src = src_lang if src_lang and src_lang != 'auto' else 'auto'
-            # GoogleTranslator expects standard codes (en, fr, etc.)
+            # GoogleTranslator expects standard codes
+            from deep_translator import GoogleTranslator
             translator = GoogleTranslator(source=src, target=tgt_lang)
-            translation = translator.translate(text)
+            translation = translator.translate(safe_text)
+            
+            # Restore tags
+            translation = tm.restore_tags_from_nmt(translation, tags_map)
             
             if glossary_terms:
                 applier = GlossaryApplier(glossary_terms)
@@ -37,29 +49,19 @@ class GoogleEngine(TranslationEngine):
                 
             return translation
         except Exception as e:
+            import logging
             logging.error(f"Google Translate Error: {e}")
             return text
-
     def translate_batch(self, texts, src_lang, tgt_lang, glossary_terms=None, **kwargs):
         if not HAS_DEEP_TRANSLATOR: return texts
         if not texts: return []
         
         if isinstance(texts, str): texts = [texts]
         
-        try:
-            src = src_lang if src_lang and src_lang != 'auto' else 'auto'
-            translator = GoogleTranslator(source=src, target=tgt_lang)
-            translations = translator.translate_batch(texts)
-            
-            if glossary_terms:
-                applier = GlossaryApplier(glossary_terms)
-                translations = applier.apply_batch(translations)
-                
-            return translations
-        except Exception as e:
-            logging.error(f"Google Batch Translate Error: {e}")
-            return texts
-
+        translations = []
+        for text in texts:
+            translations.append(self.translate(text, src_lang, tgt_lang, context=None, glossary_terms=glossary_terms, **kwargs))
+        return translations
     def get_supported_languages(self):
         if not HAS_DEEP_TRANSLATOR: return []
         try:

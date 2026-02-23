@@ -1,8 +1,10 @@
-from src.engines.translation_engine import TranslationEngine
-from src.core.glossary_applier import GlossaryApplier
 import ctranslate2
 import transformers
 import os
+from src.engines.translation_engine import TranslationEngine
+from src.core.glossary_applier import GlossaryApplier
+from src.core.tag_manager import TagManager
+
 
 class NLLBEngine(TranslationEngine):
     def __init__(self, model_path=None):
@@ -14,6 +16,10 @@ class NLLBEngine(TranslationEngine):
         if not os.path.exists(model_path):
             print(f"NLLB model path not found: {model_path}")
             return False
+            
+    def supports_tags(self):
+        return False
+        
             
         try:
             self.model_path = model_path
@@ -33,14 +39,13 @@ class NLLBEngine(TranslationEngine):
         if not self.translator or not self.tokenizer:
             return f"[NLLB Not Loaded] {text}"
 
-        # NLLB requires language codes like 'fra_Latn', 'eng_Latn'.
-        # We need a mapping or assume src_lang/tgt_lang are already correct codes.
-        # For this implementation, we assume the UI passes correct NLLB codes or we map simple ones.
-        
+        tm = TagManager()
+        safe_text, tags_map = tm.protect_tags_for_nmt(text)
+
         src_code = self.map_lang_code(src_lang)
         tgt_code = self.map_lang_code(tgt_lang)
 
-        source = self.tokenizer.convert_ids_to_tokens(self.tokenizer.encode(text))
+        source = self.tokenizer.convert_ids_to_tokens(self.tokenizer.encode(safe_text))
         
         results = self.translator.translate_batch(
             [source],
@@ -49,6 +54,9 @@ class NLLBEngine(TranslationEngine):
         
         target = results[0].hypotheses[0]
         translation = self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(target))
+        
+        # Restore tags
+        translation = tm.restore_tags_from_nmt(translation, tags_map)
         
         if glossary_terms:
             applier = GlossaryApplier(glossary_terms)
@@ -59,26 +67,10 @@ class NLLBEngine(TranslationEngine):
     def translate_batch(self, texts, src_lang, tgt_lang, glossary_terms=None, **kwargs):
         if not self.translator or not self.tokenizer:
             return [f"[NLLB Not Loaded] {t}" for t in texts]
-
-        src_code = self.map_lang_code(src_lang)
-        tgt_code = self.map_lang_code(tgt_lang)
-
-        sources = [self.tokenizer.convert_ids_to_tokens(self.tokenizer.encode(text)) for text in texts]
-        
-        results = self.translator.translate_batch(
-            sources,
-            target_prefix=[tgt_code]
-        )
-        
+            
         translations = []
-        for result in results:
-            target = result.hypotheses[0]
-            translations.append(self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(target)))
-            
-        if glossary_terms:
-            applier = GlossaryApplier(glossary_terms)
-            translations = applier.apply_batch(translations)
-            
+        for text in texts:
+            translations.append(self.translate(text, src_lang, tgt_lang, glossary_terms=glossary_terms, **kwargs))
         return translations
 
     def map_lang_code(self, lang):

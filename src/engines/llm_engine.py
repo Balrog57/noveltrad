@@ -119,6 +119,10 @@ class LLMEngine(TranslationEngine):
         self.base_url = base_url
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
+    def supports_tags(self):
+        return True
+
+
     def load_model(self, model_path, device="cpu"):
         self.model = model_path
         return True
