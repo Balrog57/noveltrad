@@ -9,6 +9,8 @@ class ShortcutManager:
     DEFAULT_SHORTCUTS = {
         "new_project": "Ctrl+N",
         "open_project": "Ctrl+O",
+        "undo": "Ctrl+Z",
+        "redo": "Ctrl+Y",
         "save_segment": "Ctrl+S",
         "batch_translate": "Ctrl+Shift+C",
         "search_replace": "Ctrl+F",

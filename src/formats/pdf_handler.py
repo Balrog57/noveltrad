@@ -26,43 +26,65 @@ class PdfHandler(FormatHandler):
         return segments
 
     def write(self, file_path, segments, original_file_path=None):
-        # Create a new PDF or modify existing?
-        # Since PDF editing is complex to preserve layout while changing text length,
-        # we act as "Simple Export" here: Create a new PDF with standard simple layout.
-        
+        """
+        Export translated segments to PDF.
+        Attempts to preserve a clean layout with proper wrapping.
+        """
         doc = fitz.open()
         
-        # Simple text placement constants
-        margin = 50
-        fontsize = 11
-        lineheight = 14
-        width = 595 - 2*margin # A4 width approx
-        height = 842 - 2*margin # A4 height approx
+        margin = 72 # 1 inch
+        page_width = 595
+        page_height = 842
+        width = page_width - 2*margin
+        height = page_height - 2*margin
         
-        current_page = doc.new_page()
+        fontsize = 12
+        line_height = 1.5 * fontsize
+        
+        page = doc.new_page()
         y = margin
         
-        # Create a font
-        font = fitz.Font("helv")
+        # We use insert_htmlbox if available for better wrapping, 
+        # but fitz.TextWriter or simple text wrapping is more portable.
         
         for seg in segments:
             text = seg.get('target_text', '')
             if not text:
                 continue
                 
-            # We add text line by line or block by block
-            # This is very basic and won't handle complex formatting
-            # TODO: Improve with better text wrapping logic
-            
-            # Simple text insertion
-            rc = current_page.insert_text((margin, y), text, fontsize=fontsize, fontname="helv")
-            y += lineheight * (text.count('\n') + 1.5) # Estimate height
-            
-            if y > height:
-                current_page = doc.new_page()
-                y = margin
-
+            # Split into paragraphs if any
+            paragraphs = text.split('\n')
+            for para in paragraphs:
+                if not para.strip():
+                    y += line_height * 0.5
+                    continue
+                
+                # Use TextWriter for auto-wrapping
+                tw = fitz.TextWriter(page.rect)
+                # We need to compute wrapping or use a high-level API
+                # fitz.Page.insert_textbox is good for wrapping
+                
+                rect = fitz.Rect(margin, y, margin + width, page_height - margin)
+                
+                # insert_textbox returns the height used or -1 if overflow
+                # We'll use a loop to handle overflows
+                while True:
+                    rc = page.insert_textbox(rect, para, fontsize=fontsize, fontname="helv", align=fitz.TEXT_ALIGN_JUSTIFY)
+                    if rc < 0: # Overflow
+                        page = doc.new_page()
+                        y = margin
+                        rect = fitz.Rect(margin, y, margin + width, page_height - margin)
+                        continue
+                    else:
+                        y += rc + line_height
+                        break
+                
+                if y > page_height - margin:
+                    page = doc.new_page()
+                    y = margin
+        
         doc.save(file_path)
+        doc.close()
     
     def get_supported_extensions(self):
         return ['.pdf']

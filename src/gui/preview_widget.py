@@ -6,7 +6,8 @@ Conforms to §4.3 of the specification.
 import os
 from typing import Optional
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtWidgets import QDockWidget
 
 
 class PreviewWidget(QWebEngineView):
@@ -134,8 +135,6 @@ class PreviewDockWidget:
         
     def create_dock(self):
         """Create the preview dock widget."""
-        from PyQt6.QtWidgets import QDockWidget
-        from PyQt6.QtCore import Qt
         
         self.preview_widget = PreviewWidget()
         

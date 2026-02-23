@@ -114,11 +114,18 @@ class BatchTranslator:
             
             # Traduire le segment
             try:
+                kwargs = {
+                    "src_lang": src_lang,
+                    "tgt_lang": tgt_lang,
+                    "glossary_terms": self.glossary
+                }
+                if hasattr(self.chapter, 'project') and self.chapter.project:
+                    kwargs["custom_instructions"] = self.chapter.project.custom_instructions
+                    kwargs["genre"] = self.chapter.project.genre
+
                 translated = await self.engine.translate(
                     segment.source_text,
-                    src_lang=src_lang,
-                    tgt_lang=tgt_lang,
-                    glossary=self.glossary
+                    **kwargs
                 )
                 
                 segment.target_text = translated

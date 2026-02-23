@@ -12,6 +12,8 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 
 from src.core.qa_checker import QAChecker
+import fitz  # PyMuPDF
+import os
 
 
 class QADialog(QDialog):
@@ -88,10 +90,15 @@ class QADialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
-        self.export_btn = QPushButton("Exporter le rapport (HTML)")
+        self.export_btn = QPushButton("Exporter HTML")
         self.export_btn.clicked.connect(self._export_html)
-        self.export_btn.setEnabled(False) # Wait for run_qa
+        self.export_btn.setEnabled(False) 
         btn_layout.addWidget(self.export_btn)
+        
+        self.export_pdf_btn = QPushButton("Exporter PDF")
+        self.export_pdf_btn.clicked.connect(self._export_pdf)
+        self.export_pdf_btn.setEnabled(False)
+        btn_layout.addWidget(self.export_pdf_btn)
         
         close_btn = QPushButton("Fermer")
         close_btn.clicked.connect(self.close)
@@ -112,7 +119,9 @@ class QADialog(QDialog):
 
         self._update_table()
         summary = self.qa_checker.get_summary(self.issues)
-        self.export_btn.setEnabled(len(self.issues) > 0)
+        has_issues = len(self.issues) > 0
+        self.export_btn.setEnabled(has_issues)
+        self.export_pdf_btn.setEnabled(has_issues)
         self.summary_label.setText(
             f"✅ {summary['total']} problème(s) trouvé(s) — "
             f"🔴 {summary['by_severity'].get('error', 0)} erreur(s), "
@@ -284,3 +293,95 @@ class QADialog(QDialog):
 </html>
 """
         return html
+    def _export_pdf(self):
+        """Export the current QA issues as a PDF report."""
+        if not self.issues:
+            return
+
+        from PyQt6.QtWidgets import QFileDialog
+
+        fname, _ = QFileDialog.getSaveFileName(
+            self, "Exporter le rapport QA (PDF)", 
+            "rapport_qa.pdf", 
+            "Fichiers PDF (*.pdf)"
+        )
+        
+        if fname:
+            try:
+                self._generate_pdf_report(fname)
+                QMessageBox.information(self, "Export", f"Rapport PDF exporté avec succès :\n{os.path.basename(fname)}")
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur", f"Erreur lors de l'export PDF : {str(e)}")
+
+    def _generate_pdf_report(self, output_path):
+        """Generate a PDF report using PyMuPDF."""
+        doc = fitz.open()
+        
+        # Style constants
+        margin = 50
+        width = 595 - 2*margin
+        height = 842 - 2*margin
+        
+        page = doc.new_page()
+        y = margin
+        
+        # Title
+        page.insert_text((margin, y), "Rapport d'Assurance Qualité NovelTrad", fontsize=18, fontname="helv-bold", color=(0.17, 0.24, 0.31))
+        y += 40
+        
+        # Summary
+        summary = self.qa_checker.get_summary(self.issues)
+        page.insert_text((margin, y), f"Total problèmes : {summary['total']}", fontsize=12, fontname="helv-bold")
+        y += 20
+        page.insert_text((margin, y), f"Erreurs : {summary['by_severity'].get('error', 0)} | Avertissements : {summary['by_severity'].get('warning', 0)} | Infos : {summary['by_severity'].get('info', 0)}", fontsize=10)
+        y += 40
+        
+        # Table Header
+        headers = ["Seg #", "Type", "Sév.", "Message"]
+        col_widths = [40, 100, 50, 300]
+        curr_x = margin
+        for i, h in enumerate(headers):
+            page.insert_text((curr_x, y), h, fontsize=10, fontname="helv-bold")
+            curr_x += col_widths[i]
+        
+        y += 5
+        page.draw_line((margin, y), (margin + sum(col_widths), y), color=(0.5, 0.5, 0.5), width=0.5)
+        y += 15
+        
+        severity_colors = {
+            'error': (0.9, 0.2, 0.2),
+            'warning': (0.9, 0.6, 0.1),
+            'info': (0.2, 0.5, 0.9),
+        }
+        
+        for issue in self.issues:
+            if y > height - 60: # Page break
+                page = doc.new_page()
+                y = margin
+                # Redraw Header on new page
+                curr_x = margin
+                for i, h in enumerate(headers):
+                    page.insert_text((curr_x, y), h, fontsize=10, fontname="helv-bold")
+                    curr_x += col_widths[i]
+                y += 20
+            
+            curr_x = margin
+            page.insert_text((curr_x, y), str(issue.segment_index + 1), fontsize=9)
+            curr_x += col_widths[0]
+            
+            page.insert_text((curr_x, y), issue.issue_type, fontsize=9)
+            curr_x += col_widths[1]
+            
+            sev_color = severity_colors.get(issue.severity, (0, 0, 0))
+            page.insert_text((curr_x, y), issue.severity.upper(), fontsize=9, color=sev_color, fontname="helv-bold")
+            curr_x += col_widths[2]
+            
+            # Wrap message if too long
+            msg = issue.message
+            if len(msg) > 65: msg = msg[:62] + "..."
+            page.insert_text((curr_x, y), msg, fontsize=9)
+            
+            y += 18
+            
+        doc.save(output_path)
+        doc.close()

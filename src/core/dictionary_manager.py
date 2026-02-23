@@ -15,6 +15,10 @@ class DictionaryManager:
         if not term:
             return []
             
+        from src.core.database import db
+        if not db or db.database is None:
+            return []
+            
         query = GlobalDictionaryTerm.select().where(
             (GlobalDictionaryTerm.source_term.contains(term)) | 
             (GlobalDictionaryTerm.target_term.contains(term))
@@ -39,6 +43,24 @@ class DictionaryManager:
             })
             
         return results
+
+    @staticmethod
+    def has_language(lang_code: str) -> bool:
+        """
+        Check if the local dictionary has any entries for a given language code.
+        """
+        from src.core.database import db
+        if not db or db.database is None:
+            return False
+            
+        try:
+            return GlobalDictionaryTerm.select().where(
+                (GlobalDictionaryTerm.source_lang == lang_code) | 
+                (GlobalDictionaryTerm.target_lang == lang_code)
+            ).exists()
+        except Exception as e:
+            # Silent failure for has_language if DB is busy/uninitialized
+            return False
 
     @staticmethod
     def add_term(source_term: str, target_term: str, src_lang: str = 'auto', tgt_lang: str = 'auto', context: str = None) -> bool:
