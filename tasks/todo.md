@@ -1,23 +1,22 @@
 # Planification et Suivi - Refactorisation MainWindow
 
 ## Objectifs de la Session
-- [x] Audit de l'architecture GUI actuelle
-- [x] Modularisation de `MainWindow.py` (Phase 0)
-    - [x] Extraction des contrôleurs (`Project`, `AI`, `TM`)
-    - [x] Création des panneaux (`Header`, `Footer`, `Tools`)
-    - [x] Routage complet des menus
-    - [x] Nettoyage massif de `MainWindow.py` (Gain de 50% en lisibilité)
-- [ ] Phase 1 : Migration de la gestion des chapitres et segments
+- [x] Phase 0 : Audit de l'architecture GUI actuelle et Modularisation Initiale
+- [x] Phase 1 : Migration de la gestion des chapitres et segments (`EditorController`)
+- [x] Phase 2 : Migration de la logique Outils (`ToolsController`)
+- [x] Phase 3 : Validation et Audit Final (Tests pytest)
+- [x] Phase 4 : Vérification du Lancement (Smoke Test et corrections UI)
 
 ## Implémentation
-- Étape 1 : Création de `src/gui/controllers/`
-- Étape 2 : Création de `src/gui/panels/`
-- Étape 3 : Injection de la nouvelle structure dans `MainWindow.init_ui()` et `MainWindow.setup_workspace()`
-- Étape 4 : Routage des menus vers les contrôleurs
-- Étape 5 : Suppression chirurgicale du code mort
+- [x] Étape 1 : Création de `src/gui/controllers/` et `src/gui/panels/`
+- [x] Étape 2 : Injection de la nouvelle structure dans `MainWindow`
+- [x] Étape 3 : Routage des menus et raccourcis
+- [x] Étape 4 : Suppression chirurgicale du code mort (~1300 lignes retirées)
+- [x] Étape 5 : Validation du lancement avec installation de `PyQt6-WebEngine`
 
 ## Révision
 - [x] Code modulaire (Panels + Controllers)
-- [x] MainWindow réduit de 2149 lignes à ~1000 lignes
+- [x] MainWindow réduit de 2149 lignes à ~740 lignes
 - [x] Menus fonctionnels via contrôleurs
-- [x] Absence de code legacy `setup_workspace_legacy`
+- [x] Smoke test réussi : Application stable et modulaire
+- [x] Dépendances corrigées (`PyQt6-WebEngine`)

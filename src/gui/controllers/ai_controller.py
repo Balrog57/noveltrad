@@ -2,7 +2,6 @@ import os
 import json
 from PyQt6.QtWidgets import QMessageBox, QApplication
 from src.gui.batch_translation_dialog import BatchTranslationDialog
-from src.gui.models_config_dialog import ModelsConfigDialog
 
 class AIController:
     def __init__(self, main_window):
@@ -80,8 +79,3 @@ class AIController:
         if dialog.exec():
             # Logic logic moved from batch_translate in MainWindow
             self.main_window.statusBar().showMessage("Traduction par lot lancée...")
-
-    def show_models_config(self):
-        """Open AI models configuration dialog."""
-        dialog = ModelsConfigDialog(self.main_window)
-        dialog.exec()

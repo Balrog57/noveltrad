@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
 from src.gui.components import SegmentCard, Sidebar
 from src.gui.settings_dialog import SettingsDialog
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
-from PyQt6.QtGui import QAction, QIcon, QColor, QPixmap
+from PyQt6.QtGui import QAction, QIcon, QColor, QPixmap, QFont
 import os
 import sys
 
@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from src.core.project_manager import ProjectManager
 from src.engines import get_engine_instance, list_engines
-from src.core.database import Segment, GlossaryTerm, Chapter
+from src.core.database import Segment, GlossaryTerm, Chapter, SegmentStatus
 from src.core.language_manager import LanguageManager
 from src.gui.alignment_dialog import AlignmentDialog
 from src.gui.qa_dialog import QADialog
@@ -33,6 +33,9 @@ from src.utils.connectivity_manager import ConnectivityManager
 from src.gui.fuzzy_match_viewer import FuzzyMatchViewer
 from src.gui.preview_widget import create_preview_panel
 
+from src.gui.controllers.project_controller import ProjectController
+from src.gui.controllers.ai_controller import AIController
+from src.gui.controllers.tm_controller import TMController
 from src.gui.controllers.editor_controller import EditorController
 from src.gui.controllers.tools_controller import ToolsController
 from src.gui.panels.header_panel import HeaderPanel
@@ -120,6 +123,7 @@ class MainWindow(QMainWindow):
             shortcut.activated.connect(slot)
 
 
+    
     def update_current_chapter_progress(self):
         """Update the progress bar for the current chapter in the sidebar."""
         if not hasattr(self, 'current_chapter_id') or not self.current_chapter_id:
@@ -131,39 +135,6 @@ class MainWindow(QMainWindow):
         
         progress = int((translated / total) * 100) if total > 0 else 0
         self.sidebar.update_item_progress(self.current_chapter_id, progress)
-        
-        from src.core.config_manager import ConfigManager
-        
-        config = ConfigManager()
-        theme = config.get("theme", "dark")
-        font_size_name = config.get("font_size", "Medium")
-        
-        # Apply Font Size
-        size_map = {
-            "Small": 12,
-            "Medium": 14,
-            "Large": 16
-        }
-        # Set global font
-        if font_size_name == "Large":
-            point_size = 16
-        elif font_size_name == "Small":
-            point_size = 12
-        else:
-            point_size = 14
-            
-        # Security: Never less than 1
-        point_size = max(1, point_size)
-            
-        self.setFont(QFont("Inter", point_size))
-        
-        # Load Stylesheet
-        from src.gui.styles import DARK_THEME, LIGHT_THEME
-        # Support both 'dark' (ConfigManager) and 'Dark (Default)' (Legacy)
-        if hasattr(theme, 'lower') and 'dark' in theme.lower():
-            self.setStyleSheet(DARK_THEME)
-        else:
-            self.setStyleSheet(LIGHT_THEME)
         
     def colorize_icon(self, icon_name, color="#e2e8f0"):
         border_color = color
@@ -269,7 +240,7 @@ class MainWindow(QMainWindow):
         
         find_action = QAction(self.colorize_icon("search", "#e2e8f0"), "&Rechercher et Remplacer", self)
         find_action.setShortcut("Ctrl+F")
-        find_action.triggered.connect(self.show_search_replace)
+        find_action.triggered.connect(self.tools_ctrl.show_search_replace)
         edit_menu.addAction(find_action)
         
         edit_menu.addSeparator()
@@ -290,13 +261,14 @@ class MainWindow(QMainWindow):
         
         translate_segment_action = QAction(self.colorize_icon("translate", "#e2e8f0"), "Traduire le &paragraphe", self)
         translate_segment_action.setShortcut("Ctrl+Enter")
-        translation_menu.addAction(translate_segment_action)
+        translate_segment_action.triggered.connect(self.editor_ctrl.auto_translate_current)
         
         translate_selection_action = QAction("Traduire la &sélection", self)
         translation_menu.addAction(translate_selection_action)
         
         translate_chapter_action = QAction("Traduire le &chapitre", self)
         translate_chapter_action.setShortcut("Ctrl+Shift+T")
+        translate_chapter_action.triggered.connect(self.ai_ctrl.batch_translate)
         translation_menu.addAction(translate_chapter_action)
         
         translation_menu.addSeparator()
@@ -310,6 +282,7 @@ class MainWindow(QMainWindow):
         
         search_dict_action = QAction(self.colorize_icon("search", "#e2e8f0"), "&Rechercher un mot...", self)
         search_dict_action.setShortcut("Ctrl+D")
+        search_dict_action.triggered.connect(self.tools_ctrl.search_dictionary)
         dictionary_menu.addAction(search_dict_action)
         
         dictionary_menu.addSeparator()
@@ -533,9 +506,6 @@ class MainWindow(QMainWindow):
         source_words = sum(len(s.source_text.split()) for s in segments)
         target_words = sum(len(s.target_text.split()) if s.target_text else 0 for s in segments)
         
-        self.segments_count.setText(f"Segments : {translated} / {total}")
-        self.words_count.setText(f"Mots : {target_words} / {source_words}")
-        
         progress = int((translated / total) * 100) if total > 0 else 0
         
         # Update UI
@@ -597,8 +567,6 @@ class MainWindow(QMainWindow):
         
         self.source_lang_combo.clear()
         self.target_lang_combo.clear()
-        
-        icon_path_check = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "resources", "icons", "check_circle.svg")
         
         for lang in languages:
             if not lang['installed']:
@@ -669,17 +637,15 @@ class MainWindow(QMainWindow):
         else:
             self.connectivity_point.setStyleSheet("background-color: #ef4444; border-radius: 4px;")
             self.connectivity_label.setText("OFFLINE (RESCUE MODE)")
-        dialog = AlignmentDialog(self, project_manager=self.project_manager)
-        dialog.exec()
 
-    def show_qa_dialog(self):
-        """Open the QA Check dialog for current project segments."""
+    def show_custom_instructions_dialog(self):
         """Open dialog to edit custom AI instructions."""
         if not self.project_manager.current_project:
             QMessageBox.warning(self, "Erreur", "Aucun projet ouvert.")
             return
 
         current_instructions = self.project_manager.current_project.custom_instructions
+        from src.gui.custom_instructions_dialog import CustomInstructionsDialog
         dialog = CustomInstructionsDialog(self, current_instructions)
         if dialog.exec():
             new_instructions = dialog.get_instructions()
@@ -751,7 +717,9 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Moteur actif : {choice}", 3000)
 
     def show_dict_config(self):
-        QMessageBox.information(self, "Dictionnaire", "La configuration des dictionnaires se fait via les Paramètres (Ctrl+,).")
+        self.show_settings()
+
+    def show_models_config(self):
         self.show_settings()
 
     def refresh_preview(self):

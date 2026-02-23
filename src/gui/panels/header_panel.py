@@ -59,9 +59,9 @@ class HeaderPanel(QFrame):
         layout.addStretch()
         
         # Actions
-        self.btn_undo = self.create_header_btn("undo", "Annuler (Ctrl+Z)", self.main_window.undo_action)
-        self.btn_redo = self.create_header_btn("redo", "Rétablir (Ctrl+Y)", self.main_window.redo_action)
-        self.btn_save = self.create_header_btn("save", "Valider et Sauvegarder Segment (Ctrl+S)", self.main_window.save_current_segment)
+        self.btn_undo = self.create_header_btn("undo", "Annuler (Ctrl+Z)", self.main_window.editor_ctrl.undo)
+        self.btn_redo = self.create_header_btn("redo", "Rétablir (Ctrl+Y)", self.main_window.editor_ctrl.redo)
+        self.btn_save = self.create_header_btn("save", "Valider et Sauvegarder Segment (Ctrl+S)", self.main_window.editor_ctrl.save_active_segment)
         
         layout.addWidget(self.btn_undo)
         layout.addWidget(self.btn_redo)

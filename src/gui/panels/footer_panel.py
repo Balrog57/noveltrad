@@ -26,18 +26,18 @@ class FooterPanel(QFrame):
         layout.addWidget(self.main_window.create_separator())
         
         # Language Selectors
-        self.source_lang_combo = QComboBox()
-        self.source_lang_combo.setMinimumWidth(120)
-        self.source_lang_combo.currentIndexChanged.connect(lambda: self.main_window.on_language_changed('source'))
+        self.main_window.source_lang_combo = QComboBox()
+        self.main_window.source_lang_combo.setMinimumWidth(120)
+        self.main_window.source_lang_combo.currentIndexChanged.connect(lambda: self.main_window.on_language_changed('source'))
         
-        self.target_lang_combo = QComboBox()
-        self.target_lang_combo.setMinimumWidth(120)
-        self.target_lang_combo.currentIndexChanged.connect(lambda: self.main_window.on_language_changed('target'))
+        self.main_window.target_lang_combo = QComboBox()
+        self.main_window.target_lang_combo.setMinimumWidth(120)
+        self.main_window.target_lang_combo.currentIndexChanged.connect(lambda: self.main_window.on_language_changed('target'))
         
         layout.addWidget(QLabel("Source :"))
-        layout.addWidget(self.source_lang_combo)
+        layout.addWidget(self.main_window.source_lang_combo)
         layout.addWidget(QLabel("Cible :"))
-        layout.addWidget(self.target_lang_combo)
+        layout.addWidget(self.main_window.target_lang_combo)
         
         layout.addStretch()
         

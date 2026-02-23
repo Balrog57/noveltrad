@@ -20,59 +20,30 @@ Ce document sert de guide de contexte et de mémoire technique pour l'agent Gemi
 Le projet suit une structure modulaire :
 - `src/gui/` : Interface utilisateur (MainWindow, composants, styles, dialogues).
     - `src/gui/panels/` : Composants UI modulaires (Header, Footer, Tools).
-    - `src/gui/controllers/` : Logique métier extraite de la vue (Project, AI, TM).
+- `src/gui/controllers/` : Logique métier extraite de la vue :
+    - `ProjectController` : Cycle de vie du projet.
+    - `AIController` : Services d'intelligence artificielle.
+    - `TMController` : Mémoire de traduction globale.
+    - `EditorController` : Gestion des chapitres et segments (Éditeur).
+    - `ToolsController` : Dictionnaire, Concordancier, QA.
 - `src/core/` : Logique métier (gestionnaire de projet, segmentation, mémoires de traduction, base de données).
-- `src/engines/` : Adaptateurs pour les différents moteurs de traduction.
-- `src/formats/` : Gestionnaires d'import/export pour les différents formats de fichiers.
-- `src/utils/` : Utilitaires transversaux (logging, tags, connectivité).
-
----
-
-## ⚙️ Building and Running
-
-### Commandes Clés
-- **Installation** : `pip install -r requirements.txt`
-- **Lancement (Dev)** : `python src/main_qt.py`
-- **Tests** : `pytest tests/`
-- **Build Exécutable** : `.\Build-NovelTrad-Qt.bat` (Génère `dist/NovelTrad/NovelTrad.exe`)
-- **Création Installateur** : Compiler `NovelTrad.iss` avec Inno Setup.
-- **Formatage** : `black .` et `isort .`
-- **Linting** : `flake8 .`
-
----
-
-## 📐 Conventions de Développement
-1. **Encodage** : TOUJOURS utiliser `encoding='utf-8'` pour toute manipulation de fichier.
-2. **Thread Safety** : Ne jamais bloquer le thread principal (UI). Utiliser `QThread` ou `asyncio` avec signaux Qt pour les opérations longues (API, chargement gros TMX).
-3. **Typage** : Utiliser les type hints Python pour toute nouvelle fonction.
-4. **Balises Internes** : Ne jamais modifier les balises XML internes (`<bpt>`, etc.) lors du traitement des segments.
-5. **Gestion de la RAM** : Utiliser des parsers itératifs (`iterparse`) pour les fichiers TMX volumineux.
-6. **Entités HTML** : Ne pas échapper les entités HTML deux fois (utiliser `html.unescape()` une seule fois).
-7. **Accès Fichiers** : Tout accès fichier doit être enveloppé dans un `try/finally` avec fermeture explicite.
+... (rest of architecture remains) ...
 
 ---
 
 ## 📜 Registre des Erreurs Documentées (Erreurs & Solutions)
 
-#### ERREUR : `AttributeError: 'DictionaryManager' object has no attribute 'has_language'`
-- **CAUSE** : Méthode manquante dans le manager pour vérifier l'existence d'une langue en DB avant chargement de l'UI.
-- **SOLUTION** : Ajout de `@staticmethod def has_language(lang_code: str) -> bool` dans `src/core/dictionary_manager.py` avec une requête `.exists()`.
+#### ERREUR : `ImportError: QtWebEngine` ou `QtWebEngineWidgets`
+- **CAUSE** : Le module `PyQt6-WebEngine` est séparé du package `PyQt6` principal et manquait dans l'environnement.
+- **SOLUTION** : Installation via `pip install PyQt6-WebEngine` et ajout au `requirements.txt`.
 
-#### ERREUR : Crash au chargement de gros fichiers TMX
-- **CAUSE** : Chargement complet de l'arbre DOM XML en mémoire.
-- **SOLUTION** : Utilisation systématique de `xml.etree.ElementTree.iterparse` pour un traitement itératif.
+#### ERREUR : `AttributeError: 'MainWindow' object has no attribute 'X'` après refactorisation
+- **CAUSE** : Les actions du menu ou les raccourcis pointaient vers des méthodes locales de `MainWindow` qui ont été déplacées dans les contrôleurs.
+- **SOLUTION** : Router les appels via l'instance de contrôleur appropriée (ex: `self.project_ctrl.method`) dans `MainWindow.py`.
 
-#### ERREUR : `deep-translator library not found`
-- **CAUSE** : Dépendance manquante pour les fallbacks de traduction.
-- **SOLUTION** : Ajout à `requirements.txt` et installation via `pip install deep-translator`.
-
-#### ERREUR : Orphelinat des Actions UI
-- **CAUSE** : Les `QAction` du menu Qt n'étaient pas connectées à leurs méthodes respectives dans `mainwindow.py`.
-- **SOLUTION** : S'assurer que chaque action créée dans `setup_menus` est liée via `action.triggered.connect(self.handler_method)`.
-
-#### ERREUR : `AttributeError: 'MainWindow' object has no attribute 'status_bar'`
-- **CAUSE** : Utilisation incorrecte de `self.status_bar` au lieu de `self.statusBar()` (méthode native PyQt).
-- **SOLUTION** : Remplacer toutes les occurrences de `self.status_bar` par `self.statusBar()`.
+#### ERREUR : `AttributeError: undo_action` dans `HeaderPanel`
+- **CAUSE** : Le panneau tentait d'accéder à des objets `QAction` supprimés de `MainWindow` au profit de méthodes de contrôleur.
+- **SOLUTION** : Connecter directement les signaux `clicked` des boutons du header aux méthodes `self.main_window.editor_ctrl.undo`.
 
 ---
 

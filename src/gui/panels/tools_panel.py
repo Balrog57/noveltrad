@@ -31,7 +31,7 @@ class ToolsPanel(QFrame):
         self.btn_chat.setIcon(self.main_window.colorize_icon("forum", "#0d7ff2"))
         self.btn_chat.setToolTip("Ouvrir le Chat IA")
         self.btn_chat.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_chat.clicked.connect(self.main_window.show_chat)
+        self.btn_chat.clicked.connect(self.main_window.ai_ctrl.show_chat)
         tools_header_layout.addWidget(self.btn_chat)
         
         layout.addWidget(tools_header)
@@ -66,7 +66,7 @@ class ToolsPanel(QFrame):
         
         # 3. Fuzzy Matches (TM)
         fuzzy_box = self.create_tool_box("MÉMOIRE DE TRADUCTION", "history")
-        from src.gui.components import FuzzyMatchViewer
+        from src.gui.fuzzy_match_viewer import FuzzyMatchViewer
         self.main_window.fuzzy_viewer = FuzzyMatchViewer()
         self.main_window.fuzzy_viewer.applyMatch.connect(self.main_window.editor_ctrl.apply_translation_match)
         fuzzy_box.layout().addWidget(self.main_window.fuzzy_viewer)
