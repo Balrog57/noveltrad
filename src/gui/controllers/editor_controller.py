@@ -88,7 +88,7 @@ class EditorController:
                 card.set_grammar_enabled(self.main_window.realtime_grammar_enabled)
                 card.clicked.connect(self.handle_segment_click)
                 card.textChanged.connect(self.handle_text_change)
-                card.lookupWord.connect(self.main_window.on_word_lookup)
+                card.lookupWord.connect(self.main_window.tools_ctrl.on_word_lookup)
                 self.main_window.cards_layout.addWidget(card)
         
         self.main_window.cards_layout.addStretch()
@@ -351,5 +351,9 @@ class EditorController:
 
     def _on_structure_error(self, err_msg):
         self.progress_dialog.close()
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.critical(self.main_window, "Erreur Structure AI", f"Une erreur est survenue : {err_msg}")
+    def set_source_tooltips(self, text):
+        """Sets the tooltip for all source edit fields in the cards layout."""
+        for i in range(self.main_window.cards_layout.count() - 1):
+            widget = self.main_window.cards_layout.itemAt(i).widget()
+            if isinstance(widget, SegmentCard):
+                widget.source_edit.setToolTip(text)

@@ -34,6 +34,7 @@ from src.gui.fuzzy_match_viewer import FuzzyMatchViewer
 from src.gui.preview_widget import create_preview_panel
 
 from src.gui.controllers.editor_controller import EditorController
+from src.gui.controllers.tools_controller import ToolsController
 from src.gui.panels.header_panel import HeaderPanel
 from src.gui.panels.footer_panel import FooterPanel
 from src.gui.panels.tools_panel import ToolsPanel
@@ -79,6 +80,7 @@ class MainWindow(QMainWindow):
         self.ai_ctrl = AIController(self)
         self.tm_ctrl = TMController(self)
         self.editor_ctrl = EditorController(self)
+        self.tools_ctrl = ToolsController(self)
 
         self.init_ui()
         self.setup_shortcuts()
@@ -102,14 +104,14 @@ class MainWindow(QMainWindow):
             ("redo", self.editor_ctrl.redo),
             ("save_segment", self.editor_ctrl.save_active_segment),
             ("batch_translate", self.ai_ctrl.batch_translate),
-            ("search_replace", self.show_search_replace),
+            ("search_replace", self.tools_ctrl.show_search_replace),
             ("glossary_scan", self.ai_ctrl.run_glossary_ai),
-            ("auto_translate", self.auto_translate_current),
+            ("auto_translate", self.editor_ctrl.auto_translate_current),
             ("ai_refine", self.ai_ctrl.editor_ai_refine),
             ("settings", self.show_settings),
-            ("statistics", self.project_ctrl.show_statistics),
+            ("statistics", self.tools_ctrl.show_statistics),
             ("backups", self.project_ctrl.show_backup_dialog),
-            ("qa_check", self.show_qa_dialog)
+            ("qa_check", self.tools_ctrl.run_qa_check)
         ]
         
         for name, slot in mappings:
@@ -361,17 +363,17 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(batch_action)
         
         stats_action = QAction(self.colorize_icon("analytics", "#e2e8f0"), "&Statistiques du Projet...", self)
-        stats_action.triggered.connect(self.project_ctrl.show_statistics)
+        stats_action.triggered.connect(self.tools_ctrl.show_statistics)
         tools_menu.addAction(stats_action)
         
         tools_menu.addSeparator()
         
         glossary_action = QAction(self.colorize_icon("menu_book", "#e2e8f0"), "&Gérer Glossaire...", self)
-        glossary_action.triggered.connect(self.open_glossary_manager)
+        glossary_action.triggered.connect(self.tools_ctrl.open_glossary_manager)
         tools_menu.addAction(glossary_action)
         
         qa_action = QAction(self.colorize_icon("verified", "#e2e8f0"), "&Vérification Qualité (QA)...", self)
-        qa_action.triggered.connect(self.show_qa_dialog)
+        qa_action.triggered.connect(self.tools_ctrl.run_qa_check)
         tools_menu.addAction(qa_action)
         
         tools_menu.addSeparator()
@@ -383,11 +385,11 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.grammar_toggle_action)
         
         align_action = QAction(self.colorize_icon("compare_arrows", "#e2e8f0"), "&Outil d'Alignement...", self)
-        align_action.triggered.connect(self.show_alignment_dialog)
+        align_action.triggered.connect(self.tools_ctrl.open_alignment_tool)
         tools_menu.addAction(align_action)
 
         backup_action = QAction(self.colorize_icon("history", "#e2e8f0"), "&Historique / Sauvegardes...", self)
-        backup_action.triggered.connect(self.show_backup_dialog)
+        backup_action.triggered.connect(self.project_ctrl.show_backup_dialog)
         tools_menu.addAction(backup_action)
         
         # View Menu
@@ -548,113 +550,6 @@ class MainWindow(QMainWindow):
         
         self.segments_count.setText(f"Segments : {translated} / {total}")
         self.words_count.setText(f"Mots : {target_words:,} / {source_words:,}")
-
-
-
-
-
-    def on_word_lookup(self, word):
-        """Handle word lookup from hover tooltip."""
-        from src.core.dictionary_manager import DictionaryManager
-        
-        src_lang = self.source_lang_combo.currentText()
-        tgt_lang = self.target_lang_combo.currentText()
-        
-        dm = DictionaryManager()
-        results = dm.search(src_lang, tgt_lang, word)
-        
-        if results:
-            result = results[0]
-            tooltip_text = f"{result.source_term} → {result.target_term}"
-            if result.context:
-                tooltip_text += f"\n[{result.context}]"
-            
-            for i in range(self.cards_layout.count() - 1):
-                widget = self.cards_layout.itemAt(i).widget()
-                if isinstance(widget, SegmentCard):
-                    widget.source_edit.setToolTip(tooltip_text)
-        else:
-            for i in range(self.cards_layout.count() - 1):
-                widget = self.cards_layout.itemAt(i).widget()
-                if isinstance(widget, SegmentCard):
-                    widget.source_edit.setToolTip("")
-    
-
-           
-
-    def glossary_context_menu(self, pos):
-        pass
-
-    def on_dictionary_search(self):
-        """Search the dictionary for the entered query"""
-        from src.core.dictionary_manager import DictionaryManager
-        
-        query = self.dict_input.text().strip()
-        if not query:
-            return
-            
-        src_lang = self.source_lang_combo.currentText()
-        tgt_lang = self.target_lang_combo.currentText()
-        
-        self.dict_results.clear()
-        results = DictionaryManager.search_term(query, src_lang, tgt_lang)
-        
-        if not results:
-            self.dict_results.addItem("Aucun résultat.")
-            return
-            
-        for r in results:
-            text = f"[{r['source_lang']}->{r['target_lang']}] {r['source_term']} ➔ {r['target_term']}"
-            if r.get('context'):
-                text += f"\n   [{r['context']}]"
-            item = QListWidgetItem(text)
-            self.dict_results.addItem(item)
-            
-        self.statusBar().showMessage(f"Found {len(results)} dictionary entries.")
-        
-    def import_dictionary(self):
-        """Import dictionary from JSON file"""
-        from src.core.dictionary_manager import DictionaryManager
-        
-        fname, _ = QFileDialog.getOpenFileName(
-            self, "Importer Dictionnaire", "", 
-            "Fichiers Dictionnaire (*.json);;Tous les fichiers (*)"
-        )
-        
-        if not fname:
-            return
-            
-        src_lang = self.source_lang_combo.currentText()
-        tgt_lang = self.target_lang_combo.currentText()
-        
-        count = DictionaryManager.import_from_json(fname, src_lang, tgt_lang)
-        
-        QMessageBox.information(
-            self, "Import Terminé", 
-            f"Importé {count} termes."
-        )
-        self.statusBar().showMessage(f"Import du dictionnaire terminé : {count} termes.")
-
-
-    def open_glossary_manager(self):
-        """Open the comprehensive glossary editor."""
-        if not self.project_manager.current_project: return
-        
-        dialog = GlossaryEditorDialog(self, self.project_manager.current_project)
-        dialog.exec()
-        # Refresh glossary list in main window
-        self.load_glossary()
-
-    def show_statistics_dialog(self):
-        """Show project statistics and cost estimation."""
-        if not self.project_manager.current_project:
-            QMessageBox.warning(self, "Infos", "Aucun projet ouvert.")
-            return
-            
-        dialog = StatisticsDialog(self.project_manager.current_project, self)
-        dialog.exec()
-
-
     def show_settings(self):
         from src.gui.settings_dialog import SettingsDialog
         from src.core.config_manager import ConfigManager
@@ -693,44 +588,6 @@ class MainWindow(QMainWindow):
         from src.gui.language_store import LanguageStore
         dialog = LanguageStore(self)
         dialog.exec()
-
-
-    # NOTE: Using new_project_dialog from new_project_dialog.py below
-
-
-    def auto_structure_chapters(self):
-        """Invoke Structure AI via ProjectManager."""
-        if not self.project_manager.current_project:
-            return
-            
-        if not self.llm_engine or not self.llm_engine.is_available():
-            QMessageBox.warning(self, "Error", "LLM engine not available for Structure AI.")
-            return
-
-        reply = QMessageBox.question(
-            self, "Structure AI",
-            "This will use AI to detect chapters in your project and re-organize segments. Are you sure?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                self.statusBar().showMessage("AI is detecting chapters...")
-                QApplication.processEvents()
-                
-                count = self.project_manager.auto_structure_project(self.llm_engine)
-                
-                if count > 0:
-                    QMessageBox.information(self, "Success", f"Detected and created {count} new chapters.")
-                    self.load_chapters()
-                    self.load_segments() # Reload view
-                else:
-                    QMessageBox.warning(self, "Structure AI", "No new chapters detected or an error occurred.")
-                    
-                self.statusBar().showMessage("Structure AI complete.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Structure AI failed: {str(e)}")
-                self.statusBar().showMessage("Structure AI error.")
 
     def load_languages_into_footer(self):
         languages = self.language_manager.get_supported_languages()
@@ -812,31 +669,11 @@ class MainWindow(QMainWindow):
         else:
             self.connectivity_point.setStyleSheet("background-color: #ef4444; border-radius: 4px;")
             self.connectivity_label.setText("OFFLINE (RESCUE MODE)")
-            self.statusBar().showMessage("Connexion perdue. Passage en mode secours (moteurs locaux).", 5000)
-
-    def show_alignment_dialog(self):
-        """Open the alignment tool dialog."""
         dialog = AlignmentDialog(self, project_manager=self.project_manager)
         dialog.exec()
 
     def show_qa_dialog(self):
         """Open the QA Check dialog for current project segments."""
-        if not self.project_manager.current_project:
-            QMessageBox.warning(self, "Erreur", "Aucun projet ouvert.")
-            return
-
-        segments = list(self.project_manager.get_segments())
-        glossary_terms = list(
-            GlossaryTerm.select().where(
-                GlossaryTerm.project == self.project_manager.current_project
-            )
-        )
-
-        dialog = QADialog(self, segments=segments, glossary_terms=glossary_terms)
-        dialog.navigate_to_segment.connect(self.on_segment_card_clicked)
-        dialog.exec()
-
-    def show_custom_instructions_dialog(self):
         """Open dialog to edit custom AI instructions."""
         if not self.project_manager.current_project:
             QMessageBox.warning(self, "Erreur", "Aucun projet ouvert.")
@@ -916,15 +753,6 @@ class MainWindow(QMainWindow):
     def show_dict_config(self):
         QMessageBox.information(self, "Dictionnaire", "La configuration des dictionnaires se fait via les Paramètres (Ctrl+,).")
         self.show_settings()
-
-    def show_search_replace(self):
-        """Open the Search and Replace dialog."""
-        if not self.project_manager.current_project:
-            QMessageBox.warning(self, "Erreur", "Veuillez d'abord ouvrir un projet.")
-            return
-            
-        dialog = SearchReplaceDialog(self, self.project_manager)
-        dialog.show() # Non-modal to allow interacting with the main window
 
     def refresh_preview(self):
         """Update the real-time preview with current chapter text."""

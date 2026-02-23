@@ -42,18 +42,3 @@ class TMController:
                     QMessageBox.critical(self.main_window, "Erreur", "Échec de l'export TMX.")
             except Exception as e:
                 QMessageBox.critical(self.main_window, "Erreur", f"Échec Export TMX : {e}")
-
-    def search_concordancer(self):
-        query = self.main_window.conc_input.text().strip()
-        if not query: return
-        self.main_window.conc_results.clear()
-        concordancer = Concordancer()
-        segments = list(self.project_manager.get_segments()) if self.project_manager.current_project else []
-        results = concordancer.search(query, segments=segments, tm_entries=[])
-        if results:
-            for r in results:
-                text = f"[{r.match_type}] {r.source_text[:60]}..."
-                if r.target_text: text += f"\n→ {r.target_text[:60]}..."
-                self.main_window.conc_results.addItem(QListWidgetItem(text))
-        else:
-            self.main_window.conc_results.addItem("Aucun résultat trouvé.")
