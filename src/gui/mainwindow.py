@@ -22,6 +22,7 @@ from src.gui.qa_dialog import QADialog
 from src.gui.chat_widget import ChatWidget
 from src.gui.custom_instructions_dialog import CustomInstructionsDialog
 from src.core.concordancer import Concordancer
+from src.core.dictionary_manager import DictionaryManager
 from src.gui.glossary_editor_dialog import GlossaryEditorDialog
 from src.gui.statistics_dialog import StatisticsDialog
 from src.gui.batch_translation_dialog import BatchTranslationDialog
@@ -320,6 +321,12 @@ class MainWindow(QMainWindow):
         settings_action.setShortcut("Ctrl+,")
         settings_action.triggered.connect(self.show_settings)
         edit_menu.addAction(settings_action)
+
+        edit_menu.addSeparator()
+        
+        custom_inst_action = QAction(self.colorize_icon("psychology", "#e2e8f0"), "&Instructions IA Projet", self)
+        custom_inst_action.triggered.connect(self.show_custom_instructions_dialog)
+        edit_menu.addAction(custom_inst_action)
 
         # Translation Menu
         translation_menu = menu_bar.addMenu("&Traduction")
@@ -1289,26 +1296,29 @@ class MainWindow(QMainWindow):
         src_lang = self.source_lang_combo.currentText()
         tgt_lang = self.target_lang_combo.currentText()
         
-        dm = DictionaryManager()
-        results = dm.search_bidirectional(query, src_lang, tgt_lang)
-        
         self.dict_results.clear()
+        results = DictionaryManager.search_term(query, src_lang, tgt_lang)
+        
+        if not results:
+            self.dict_results.addItem("Aucun résultat.")
+            return
+            
         for r in results:
-            text = f"{r.source_term} → {r.target_term}"
-            if r.context:
-                text += f"\n   [{r.context}]"
+            text = f"[{r['source_lang']}->{r['target_lang']}] {r['source_term']} ➔ {r['target_term']}"
+            if r.get('context'):
+                text += f"\n   [{r['context']}]"
             item = QListWidgetItem(text)
             self.dict_results.addItem(item)
             
         self.status_bar.showMessage(f"Found {len(results)} dictionary entries.")
         
     def import_dictionary(self):
-        """Import dictionary from CSV file"""
+        """Import dictionary from JSON file"""
         from src.core.dictionary_manager import DictionaryManager
         
         fname, _ = QFileDialog.getOpenFileName(
             self, "Importer Dictionnaire", "", 
-            "Fichiers Dictionnaire (*.csv *.txt);;Tous les fichiers (*)"
+            "Fichiers Dictionnaire (*.json);;Tous les fichiers (*)"
         )
         
         if not fname:
@@ -1317,14 +1327,43 @@ class MainWindow(QMainWindow):
         src_lang = self.source_lang_combo.currentText()
         tgt_lang = self.target_lang_combo.currentText()
         
-        dm = DictionaryManager()
-        count, errors = dm.import_csv(fname, src_lang, tgt_lang)
+        count = DictionaryManager.import_from_json(fname, src_lang, tgt_lang)
         
         QMessageBox.information(
             self, "Import Terminé", 
-            f"Importé {count} termes.\nErreurs : {errors}"
+            f"Importé {count} termes."
         )
         self.status_bar.showMessage(f"Import du dictionnaire terminé : {count} termes.")
+
+    def search_concordancer(self):
+        """Search the active project segments and translation memory."""
+        query = self.conc_input.text().strip()
+        self.conc_results.clear()
+        
+        if not query:
+            return
+            
+        concordancer = Concordancer()
+        segments = self.project_manager.get_segments() if self.project_manager.current_project else []
+        
+        from src.core.database import TranslationMemory
+        tm_entries = []
+        if self.project_manager.current_project:
+            # We fetch all TM entries for this project
+            tm_entries = list(TranslationMemory.select().where(TranslationMemory.project == self.project_manager.current_project))
+            
+        results = concordancer.search(query, segments=segments, tm_entries=tm_entries, max_results=30)
+        
+        if not results:
+            self.conc_results.addItem("Aucun résultat.")
+            return
+            
+        for r in results:
+            text = f"[{r.origin.upper()}] {r.source_text} ➔ {r.target_text}\n   Score: {r.score:.2f} ({r.match_type})"
+            item = QListWidgetItem(text)
+            self.conc_results.addItem(item)
+            
+        self.status_bar.showMessage(f"Concordancier : {len(results)} résultats trouvés.")
 
     def open_glossary_manager(self):
         """Open the comprehensive glossary editor."""
@@ -1776,153 +1815,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "No active project.")
             return
             
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Search & Replace")
-        dialog.resize(500, 200)
-        layout = QFormLayout(dialog)
-        
-        search_input = QLineEdit()
-        search_input.setPlaceholderText("Text to find...")
-        
-        replace_input = QLineEdit()
-        replace_input.setPlaceholderText("Replace with...")
-        
-        use_regex = QCheckBox("Use Regular Expressions")
-        case_sensitive = QCheckBox("Case Sensitive")
-        case_sensitive.setChecked(True)
-        
-        layout.addRow("Search:", search_input)
-        layout.addRow("Replace:", replace_input)
-        layout.addRow(use_regex)
-        layout.addRow(case_sensitive)
-        
-        result_label = QLabel("Will search in all segments")
-        layout.addRow(result_label)
-        
-        buttons = QHBoxLayout()
-        
-        find_btn = QPushButton("Find Next")
-        find_btn.clicked.connect(lambda: self._find_text(search_input, use_regex.isChecked(), case_sensitive.isChecked()))
-        
-        replace_btn = QPushButton("Replace")
-        replace_btn.clicked.connect(lambda: self._replace_text(search_input, replace_input, use_regex.isChecked(), case_sensitive.isChecked()))
-        
-        replace_all_btn = QPushButton("Replace All")
-        replace_all_btn.clicked.connect(lambda: self._replace_all_text(search_input, replace_input, use_regex.isChecked(), case_sensitive.isChecked()))
-        
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(dialog.accept)
-        
-        buttons.addWidget(find_btn)
-        buttons.addWidget(replace_btn)
-        buttons.addWidget(replace_all_btn)
-        buttons.addWidget(close_btn)
-        
-        layout.addRow(buttons)
-        dialog.exec()
-
-    def _find_text(self, search_input, use_regex, case_sensitive):
-        """Find text in segments."""
-        import re
-        
-        search_text = search_input.text()
-        if not search_text:
-            return
-            
-        segments = self.project_manager.get_segments()
-        pattern_flags = 0 if case_sensitive else re.IGNORECASE
-        
-        try:
-            if use_regex:
-                pattern = re.compile(search_text, pattern_flags)
-            else:
-                pattern = re.compile(re.escape(search_text), pattern_flags)
-        except re.error as e:
-            QMessageBox.warning(self, "Invalid Regex", str(e))
-            return
-            
-        for seg in segments:
-            if seg.target_text and pattern.search(seg.target_text):
-                self.load_segments(seg.chapter_id)
-                self.current_segment_index = seg.index
-                for i in range(self.cards_layout.count() - 1):
-                    widget = self.cards_layout.itemAt(i).widget()
-                    if isinstance(widget, SegmentCard) and widget.segment_id == seg.index:
-                        widget.set_active(True)
-                        widget.target_edit.setFocus()
-                        break
-                self.status_bar.showMessage(f"Found at segment {seg.index}")
-                return
-                
-        QMessageBox.information(self, "Not Found", "Text not found in any segment.")
-
-    def _replace_text(self, search_input, replace_input, use_regex, case_sensitive):
-        """Replace first occurrence."""
-        import re
-        
-        search_text = search_input.text()
-        replace_text = replace_input.text()
-        
-        if not search_text:
-            return
-            
-        segments = self.project_manager.get_segments()
-        pattern_flags = 0 if case_sensitive else re.IGNORECASE
-        
-        try:
-            if use_regex:
-                pattern = re.compile(search_text, pattern_flags)
-            else:
-                pattern = re.compile(re.escape(search_text), pattern_flags)
-        except re.error as e:
-            QMessageBox.warning(self, "Invalid Regex", str(e))
-            return
-            
-        for seg in segments:
-            if seg.target_text:
-                new_text = pattern.sub(replace_text, seg.target_text)
-                if new_text != seg.target_text:
-                    seg.target_text = new_text
-                    seg.save()
-                    self.status_bar.showMessage(f"Replaced in segment {seg.index}")
-                    self.load_segments(seg.chapter_id)
-                    return
-                    
-        QMessageBox.information(self, "Not Found", "Text not found.")
-
-    def _replace_all_text(self, search_input, replace_input, use_regex, case_sensitive):
-        """Replace all occurrences."""
-        import re
-        
-        search_text = search_input.text()
-        replace_text = replace_input.text()
-        
-        if not search_text:
-            return
-            
-        segments = self.project_manager.get_segments()
-        pattern_flags = 0 if case_sensitive else re.IGNORECASE
-        
-        try:
-            if use_regex:
-                pattern = re.compile(search_text, pattern_flags)
-            else:
-                pattern = re.compile(re.escape(search_text), pattern_flags)
-        except re.error as e:
-            QMessageBox.warning(self, "Invalid Regex", str(e))
-            return
-        
-        count = 0
-        for seg in segments:
-            if seg.target_text:
-                new_text = pattern.sub(replace_text, seg.target_text)
-                if new_text != seg.target_text:
-                    seg.target_text = new_text
-                    seg.save()
-                    count += 1
-        
-        self.load_segments()
-        QMessageBox.information(self, "Replace Complete", f"Replaced in {count} segments.")
+        from src.gui.search_replace_dialog import SearchReplaceDialog
+        dialog = SearchReplaceDialog(self, self.project_manager)
+        dialog.show()
 
     def show_statistics(self):
         """Show project statistics."""

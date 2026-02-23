@@ -70,7 +70,8 @@ class BatchWorker(QObject):
                             texts, 
                             src_lang=self.pm.current_project.source_language,
                             tgt_lang=self.pm.current_project.target_language,
-                            glossary_terms=glossary_terms
+                            glossary_terms=glossary_terms,
+                            custom_instructions=self.pm.current_project.custom_instructions
                         )
                     else:
                         translations = []
@@ -79,7 +80,8 @@ class BatchWorker(QObject):
                                  text,
                                  src_lang=self.pm.current_project.source_language,
                                  tgt_lang=self.pm.current_project.target_language,
-                                 glossary_terms=glossary_terms
+                                 glossary_terms=glossary_terms,
+                                 custom_instructions=self.pm.current_project.custom_instructions
                              )
                              translations.append(t)
                     
