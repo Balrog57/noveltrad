@@ -75,6 +75,7 @@ dist/
 .agents/
 .gemini/
 tasks/
+OmegaT_Doc/
 .env
 .venv/
 env/
