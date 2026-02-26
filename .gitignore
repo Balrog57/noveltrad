@@ -74,6 +74,7 @@ dist/
 
 .agents/
 .gemini/
+tasks/
 .env
 .venv/
 env/
