@@ -29,3 +29,7 @@ black
 flake8
 
 deep-translator>=1.11.0
+
+# Pydantic+Watchdog for v3.0
+pydantic>=2.0.0
+watchdog>=3.0.0

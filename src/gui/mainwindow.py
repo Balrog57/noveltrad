@@ -244,8 +244,12 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(find_action)
         
         edit_menu.addSeparator()
+
+        project_settings_action = QAction(self.colorize_icon("settings", "#e2e8f0"), "Paramètres du &Projet...", self)
+        project_settings_action.triggered.connect(self.show_project_settings)
+        edit_menu.addAction(project_settings_action)
         
-        settings_action = QAction(self.colorize_icon("settings", "#e2e8f0"), "&Paramètres", self)
+        settings_action = QAction(self.colorize_icon("settings", "#e2e8f0"), "Paramètres &Généraux...", self)
         settings_action.setShortcut("Ctrl+,")
         settings_action.triggered.connect(self.show_settings)
         edit_menu.addAction(settings_action)
@@ -536,6 +540,17 @@ class MainWindow(QMainWindow):
             
             self.apply_theme()
             self.statusBar().showMessage("Paramètres sauvegardés.", 3000)
+
+    def show_project_settings(self):
+        if not self.project_manager.current_project:
+            QMessageBox.warning(self, "Erreur", "Aucun projet ouvert.")
+            return
+            
+        from src.gui.project_settings_dialog import ProjectSettingsDialog
+        dialog = ProjectSettingsDialog(self, self.project_manager)
+        if dialog.exec():
+            # The dialog auto-reloads backup integration
+            self.statusBar().showMessage("Paramètres du projet sauvegardés.", 3000)
 
     def toggle_realtime_grammar(self, checked):
         """Toggle grammar checking via menu."""

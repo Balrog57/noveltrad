@@ -42,9 +42,19 @@ class ProjectController:
         
         if fname:
             try:
+                if hasattr(self.main_window, 'backup_manager') and self.main_window.backup_manager:
+                    self.main_window.backup_manager.stop_auto_backup()
+
                 self.project_manager.load_project(fname)
                 self.main_window.backup_manager = BackupManager(fname)
                 self.main_window.backup_manager.create_snapshot(label="load")
+                
+                # Check for project configuration and start auto-backup
+                if hasattr(self.project_manager, 'project_config') and self.project_manager.project_config:
+                    if self.project_manager.project_config.backup.enabled:
+                        self.main_window.backup_manager.start_auto_backup(
+                            interval_minutes=self.project_manager.project_config.backup.interval_minutes
+                        )
                 
                 self.main_window.load_chapters()
                 self.main_window.load_segments()

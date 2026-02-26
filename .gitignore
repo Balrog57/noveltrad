@@ -1,22 +1,82 @@
-# Python
+# NovelTrad OmegaT-compliant Project - .gitignore
+# Generated for v1.1 project structure
+
+# ============================================
+# Project-Specific Files (Never Commit)
+# ============================================
+
+# Project metadata
+project.json
+
+# Translation Memory (may contain sensitive data)
+project_save.tmx
+project_save.tmx.bak
+project_save.tmx.timestamp.bak
+tm/**/*.tmx
+
+# User-specific UILayout
+uiLayout.xml
+
+# Last position marker
+last_entry.properties
+
+# ============================================
+# Backup & Snapshots (Local Only)
+# ============================================
+
+# Automatic backups
+backup/
+snapshots/
+!snapshots/.gitkeep
+
+# ============================================
+# Temporary & Cache Files
+# ============================================
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.cache/
 __pycache__/
-*.py[cod]
-*$py.class
-venv/
-.env
-.venv
+.pytest_cache/
 
-# IDE
-.idea/
+# ============================================
+# IDE & Editor Files
+# ============================================
+
 .vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
 
-# Project
-*.ntrad
+# ============================================
+# Log Files
+# ============================================
+
 *.log
-tests/*.ntrad
-tests/*.txt
+logs/
 
-# Build Artifacts
+# ============================================
+# build_script.py & Deployment
+# ============================================
+
 build/
 dist/
 *.spec
+
+# ============================================
+# AI Agents & Virtual Environments
+# ============================================
+
+.agents/
+.gemini/
+.env
+.venv/
+env/
+venv/
+.noveltrad/
+*.ntrad

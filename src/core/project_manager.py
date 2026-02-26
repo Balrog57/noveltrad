@@ -23,6 +23,53 @@ class ProjectManager:
         """Creates a new project database (file or directory)."""
         self.db = init_db(db_path)
         
+        # Determine the project directory (which contains the db_path)
+        project_dir = os.path.dirname(os.path.abspath(db_path))
+        noveltrad_dir = os.path.join(project_dir, ".noveltrad")
+        
+        # 1. Create .noveltrad directory structure
+        directories_to_create = [
+            noveltrad_dir,
+            os.path.join(noveltrad_dir, "tm", "enforce"),
+            os.path.join(noveltrad_dir, "tm", "auto"),
+            os.path.join(noveltrad_dir, "tm", "mt"),
+            os.path.join(noveltrad_dir, "tm", "penalty-030"),
+            os.path.join(noveltrad_dir, "tmx2source"),
+            os.path.join(noveltrad_dir, ".repositories", "git"),
+            os.path.join(noveltrad_dir, ".repositories", "svn"),
+        ]
+        
+        for directory in directories_to_create:
+            os.makedirs(directory, exist_ok=True)
+            
+        # 2. Create project.json
+        from src.core.project_schema import ProjectSchema, Genre
+        import re
+        
+        genre_enum = Genre.GENERAL
+        if hasattr(Genre, str(genre).upper()):
+             genre_enum = Genre[str(genre).upper()]
+        elif genre.lower() == 'science fiction':
+             genre_enum = Genre.SCIENCE_FICTION
+             
+        # Sanitize internal name (no spaces, pure alphanumeric + hyphen/underscore)
+        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+        
+        project_data = ProjectSchema(
+            name=safe_name,
+            title=name,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            genres=[genre_enum],
+        )
+        with open(os.path.join(noveltrad_dir, "project.json"), "w", encoding="utf-8") as f:
+            f.write(project_data.model_dump_json(indent=2))
+            
+        # 3. Create initial project_save.tmx
+        tmx_path = os.path.join(noveltrad_dir, "project_save.tmx")
+        if not os.path.exists(tmx_path):
+            TMXHandler.create_empty_tmx_v3(tmx_path, source_lang, target_lang, project_data.schema_version)
+            
         # Create Project Record
         self.current_project = Project.create(
             name=name,
@@ -181,6 +228,21 @@ class ProjectManager:
             
         self.db = init_db(db_path)
         self.current_project = Project.select().first()
+        
+        # Load and validate project.json
+        project_dir = os.path.dirname(os.path.abspath(db_path))
+        json_path = os.path.join(project_dir, ".noveltrad", "project.json")
+        self.project_config = None
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                from src.core.project_schema import ProjectManagerSchema, ProjectSchema
+                migrated_data = ProjectManagerSchema.migrate_v2_to_v3(data)
+                self.project_config = ProjectSchema(**migrated_data)
+            except Exception as e:
+                print(f"Error loading project.json: {e}")
+                
         return self.current_project
 
     def add_segment(self, source_text, index):

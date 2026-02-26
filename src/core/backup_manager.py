@@ -2,6 +2,23 @@ import os
 import shutil
 import datetime
 import glob
+import time
+import threading
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+class DBChangeHandler(FileSystemEventHandler):
+    def __init__(self, backup_manager, interval_minutes):
+        self.backup_manager = backup_manager
+        self.interval_seconds = interval_minutes * 60
+        self.last_backup_time = time.time()
+
+    def on_modified(self, event):
+        if os.path.abspath(event.src_path) == os.path.abspath(self.backup_manager.project_db_path):
+            current_time = time.time()
+            if current_time - self.last_backup_time >= self.interval_seconds:
+                self.backup_manager.create_snapshot(label="auto")
+                self.last_backup_time = current_time
 
 class BackupManager:
     """Handles automatic versioned snapshots for NovelTrad projects."""
@@ -9,8 +26,29 @@ class BackupManager:
     def __init__(self, project_db_path, max_backups=10):
         self.project_db_path = project_db_path
         self.max_backups = max_backups
-        self.project_dir = os.path.dirname(project_db_path)
+        self.project_dir = os.path.dirname(os.path.abspath(project_db_path))
         self.backup_dir = os.path.join(self.project_dir, ".snapshots")
+        self.observer = None
+
+    def start_auto_backup(self, interval_minutes=3):
+        """Starts a background watchdog to monitor DB changes and auto-backup."""
+        if self.observer is not None:
+            return
+            
+        if not os.path.exists(self.project_dir):
+            return
+
+        self.observer = Observer()
+        handler = DBChangeHandler(self, interval_minutes)
+        self.observer.schedule(handler, path=self.project_dir, recursive=False)
+        self.observer.start()
+
+    def stop_auto_backup(self):
+        """Stops the background auto-backup watchdog."""
+        if self.observer is not None:
+            self.observer.stop()
+            self.observer.join()
+            self.observer = None
 
     def create_snapshot(self, label=None):
         """

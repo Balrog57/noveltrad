@@ -7,17 +7,30 @@ class TMXHandler:
     def export_tmx(segments, source_lang, target_lang, output_path):
         """
         Exports a list of segment objects (with source_text and target_text) to a TMX file.
+        Maintains legacy compat.
+        """
+        return TMXHandler.export_tmx_v3(segments, source_lang, target_lang, output_path)
+
+    @staticmethod
+    def export_tmx_v3(segments, source_lang, target_lang, output_path, include_status=True, include_metadata=True, custom_props=None):
+        """
+        Exports to TMX 1.4b with custom NovelTrad properties.
         """
         tmx = ET.Element('tmx', version='1.4')
         header = ET.SubElement(tmx, 'header', {
             'creationtool': 'NovelTrad',
-            'creationtoolversion': '1.0',
+            'creationtoolversion': '1.1',
             'datatype': 'PlainText',
             'segtype': 'sentence',
             'adminlang': 'en',
             'srclang': source_lang,
             'o-tmf': 'NovelTradDB'
         })
+        
+        if custom_props:
+            for k, v in custom_props.items():
+                prop = ET.SubElement(header, 'prop', {'type': f'x-noveltrad:{k}'})
+                prop.text = str(v)
         
         body = ET.SubElement(tmx, 'body')
         
@@ -27,6 +40,16 @@ class TMXHandler:
                 
             tu = ET.SubElement(body, 'tu')
             
+            # Status property
+            if include_status and hasattr(seg, 'status') and seg.status:
+                prop = ET.SubElement(tu, 'prop', {'type': 'x-noveltrad:status'})
+                prop.text = str(seg.status.name if hasattr(seg.status, 'name') else seg.status)
+                
+            # Tu timestamp
+            if hasattr(seg, 'last_modified') and seg.last_modified:
+                modification_date = seg.last_modified.strftime("%Y%m%dT%H%M%SZ")
+                tu.set('changedate', modification_date)
+
             # Source
             tuv_src = ET.SubElement(tu, 'tuv', {'xml:lang': source_lang})
             seg_src = ET.SubElement(tuv_src, 'seg')
@@ -38,12 +61,20 @@ class TMXHandler:
             seg_tgt.text = seg.target_text
             
         tree = ET.ElementTree(tmx)
-        # Use indent if available (Python 3.9+)
         if hasattr(ET, 'indent'):
             ET.indent(tree, space="  ", level=0)
             
         tree.write(output_path, encoding='utf-8', xml_declaration=True)
         return True
+
+    @staticmethod
+    def create_empty_tmx_v3(output_path, source_lang, target_lang, schema_version="3.0.0"):
+        """Creates an empty project TM."""
+        custom_props = {
+            'schema_version': schema_version,
+            'project_path': os.path.dirname(os.path.abspath(output_path))
+        }
+        return TMXHandler.export_tmx_v3([], source_lang, target_lang, output_path, custom_props=custom_props)
 
     @staticmethod
     def import_tmx(file_path):
