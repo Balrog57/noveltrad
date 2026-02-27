@@ -13,7 +13,7 @@ try:
         QPushButton, QComboBox, QCheckBox, QTabWidget, QWidget, 
         QFormLayout, QFileDialog, QSpinBox, QDoubleSpinBox, 
         QTextEdit, QGroupBox, QTreeWidget, QTreeWidgetItem, QStyledItemDelegate,
-        QStyleOptionViewItem, QStyle
+        QStyleOptionViewItem, QStyle, QApplication
     )
     from PyQt6.QtCore import Qt, QMargins, QModelIndex
     from PyQt6.QtGui import QPalette, QColor
@@ -86,8 +86,11 @@ if QT_AVAILABLE:
             self.layout.addWidget(self.tabs)
             
             self._init_metadata_tab()
+            self._init_segmentation_tab()
             self._init_tm_tab()
+            self._init_glossary_tab()
             self._init_backup_tab()
+            self._init_sync_tab()
             self._init_accessibility_tab()
             
             buttons = QHBoxLayout()
@@ -381,6 +384,62 @@ if QT_AVAILABLE:
             layout.addWidget(colorblind_group)
             
             layout.addStretch()
+
+        def _init_segmentation_tab(self) -> None:
+            self.segmentation_tab = QWidget()
+            self.tabs.addTab(self.segmentation_tab, "Segmentation")
+            layout = QVBoxLayout(self.segmentation_tab)
+            layout.setSpacing(15)
+            
+            form = QFormLayout()
+            self.cmb_segmentation_rule = QComboBox()
+            self.cmb_segmentation_rule.addItems(["sentence", "paragraph"])
+            form.addRow("Segmentation Rule", self.cmb_segmentation_rule)
+            
+            self.txt_local_rules = QLineEdit()
+            self.txt_local_rules.setPlaceholderText("Path to local rules file (e.g., rules/segmentation.conf)")
+            form.addRow("Local Rules File", self.txt_local_rules)
+            layout.addLayout(form)
+            layout.addStretch()
+
+        def _init_glossary_tab(self) -> None:
+            self.glossary_tab = QWidget()
+            self.tabs.addTab(self.glossary_tab, "Glossary")
+            layout = QVBoxLayout(self.glossary_tab)
+            layout.setSpacing(15)
+            
+            form = QFormLayout()
+            self.chk_glossary_auto_gen = QCheckBox("Enable auto-generation")
+            form.addRow("", self.chk_glossary_auto_gen)
+            
+            self.txt_prompt_template = QTextEdit()
+            self.txt_prompt_template.setPlaceholderText("Prompt template for Glossary AI")
+            form.addRow("Prompt Template", self.txt_prompt_template)
+            
+            self.chk_feedback_loop = QCheckBox("Enable feedback loop")
+            form.addRow("", self.chk_feedback_loop)
+            layout.addLayout(form)
+            layout.addStretch()
+
+        def _init_sync_tab(self) -> None:
+            self.sync_tab = QWidget()
+            self.tabs.addTab(self.sync_tab, "Sync")
+            layout = QVBoxLayout(self.sync_tab)
+            layout.setSpacing(15)
+            
+            form = QFormLayout()
+            self.cmb_vcs_type = QComboBox()
+            self.cmb_vcs_type.addItems(["None", "Git", "SVN"])
+            form.addRow("VCS Type", self.cmb_vcs_type)
+            
+            self.txt_remote_url = QLineEdit()
+            self.txt_remote_url.setPlaceholderText("Remote URL (e.g., https://github.com/user/repo.git)")
+            form.addRow("Remote URL", self.txt_remote_url)
+            
+            self.btn_sync_now = QPushButton("Sync Now")
+            form.addRow("", self.btn_sync_now)
+            layout.addLayout(form)
+            layout.addStretch()
         
         def _load_settings(self) -> None:
             """Load current settings into UI."""
@@ -417,6 +476,19 @@ if QT_AVAILABLE:
                 accessibility.get('colorblind_mode', 'none').replace('_', ' ').title()
             )
             self.chk_screen_reader.setChecked(accessibility.get('screen_reader', False))
+
+            seg = data.get('segmentation', {})
+            self.cmb_segmentation_rule.setCurrentText(seg.get('type', 'sentence'))
+            self.txt_local_rules.setText(seg.get('local_rules_file', ''))
+
+            gloss = data.get('glossary', {})
+            self.chk_glossary_auto_gen.setChecked(gloss.get('auto_generate', False))
+            self.txt_prompt_template.setPlainText(gloss.get('prompt_template', ''))
+            self.chk_feedback_loop.setChecked(gloss.get('feedback_loop', False))
+
+            sync = data.get('sync', {})
+            self.cmb_vcs_type.setCurrentText(sync.get('vcs_type', 'None'))
+            self.txt_remote_url.setText(sync.get('remote_url', ''))
         
         def save_and_close(self) -> None:
             """Save settings and close dialog."""
@@ -459,6 +531,22 @@ if QT_AVAILABLE:
                 'large_text': self.chk_large_text.isChecked(),
                 'colorblind_mode': self.cmb_colorblind_mode.currentText().lower().replace(' ', '_'),
                 'screen_reader': self.chk_screen_reader.isChecked(),
+            }
+
+            data['segmentation'] = {
+                'type': self.cmb_segmentation_rule.currentText(),
+                'local_rules_file': self.txt_local_rules.text().strip(),
+            }
+            
+            data['glossary'] = {
+                'auto_generate': self.chk_glossary_auto_gen.isChecked(),
+                'prompt_template': self.txt_prompt_template.toPlainText().strip(),
+                'feedback_loop': self.chk_feedback_loop.isChecked(),
+            }
+            
+            data['sync'] = {
+                'vcs_type': self.cmb_vcs_type.currentText(),
+                'remote_url': self.txt_remote_url.text().strip(),
             }
         
         def get_data(self) -> Dict[str, Any]:

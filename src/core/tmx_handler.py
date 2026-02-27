@@ -97,3 +97,57 @@ class TMXHandler:
         except Exception as e:
             print(f"Error reading TMX: {e}")
             return []
+
+    @staticmethod
+    def import_tmx_v3(file_path, project, strategy="update_if_empty"):
+        """
+        Imports a TMX 1.4b file into the given project, handling custom properties.
+        Strategy can be 'update_if_empty' or 'overwrite'.
+        """
+        try:
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            
+            count = 0
+            for tu in root.findall('.//tu'):
+                props = {}
+                for prop in tu.findall('prop'):
+                    if 'type' in prop.attrib:
+                        props[prop.attrib['type']] = prop.text
+                        
+                tuvs = tu.findall('tuv')
+                if len(tuvs) >= 2:
+                    src_text = tuvs[0].find('seg').text or ""
+                    tgt_text = tuvs[1].find('seg').text or ""
+                    
+                    if src_text and tgt_text:
+                        # Map string status back to integer if needed
+                        from src.core.segment_status import SegmentStatus
+                        status_val = SegmentStatus.TRANSLATED.value
+                        if 'x-noveltrad:status' in props:
+                            try:
+                                status_str = props['x-noveltrad:status']
+                                status_val = SegmentStatus.from_string(status_str).value
+                            except:
+                                pass
+                                
+                        from src.core.database import Segment
+                        matches = Segment.select().where(
+                            (Segment.project == project) & 
+                            (Segment.source_text == src_text)
+                        )
+                        for seg in matches:
+                            if strategy == "update_if_empty" and not seg.target_text:
+                                seg.target_text = tgt_text
+                                seg.status = status_val
+                                seg.save()
+                                count += 1
+                            elif strategy == "overwrite":
+                                seg.target_text = tgt_text
+                                seg.status = status_val
+                                seg.save()
+                                count += 1
+            return count
+        except Exception as e:
+            print(f"Error importing TMX v3: {e}")
+            return 0

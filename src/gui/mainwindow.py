@@ -65,7 +65,7 @@ class MainWindow(QMainWindow):
         self.backup_timer.start(15 * 60 * 1000)
         
         # Shortcut Manager
-        self.shortcut_manager = ShortcutManager()
+        self.shortcut_manager = ShortcutManager(self)
         
         # Connectivity Manager (Offline Rescue Mode)
         self.connectivity_manager = ConnectivityManager(parent=self)
@@ -97,7 +97,6 @@ class MainWindow(QMainWindow):
         
     def setup_shortcuts(self):
         """Set up keyboard shortcuts using ShortcutManager."""
-        from PyQt6.QtGui import QShortcut, QKeySequence
         
         # Mapping of shortcut names to methods
         mappings = [
@@ -118,9 +117,7 @@ class MainWindow(QMainWindow):
         ]
         
         for name, slot in mappings:
-            sequence = self.shortcut_manager.get(name)
-            shortcut = QShortcut(QKeySequence(sequence), self)
-            shortcut.activated.connect(slot)
+            self.shortcut_manager.register_shortcut(name, None, slot)
 
 
     
@@ -254,6 +251,10 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self.show_settings)
         edit_menu.addAction(settings_action)
 
+        shortcuts_action = QAction(self.colorize_icon("keyboard", "#e2e8f0"), "Raccourcis &Clavier...", self)
+        shortcuts_action.triggered.connect(self.show_shortcuts_config)
+        edit_menu.addAction(shortcuts_action)
+
         edit_menu.addSeparator()
         
         custom_inst_action = QAction(self.colorize_icon("psychology", "#e2e8f0"), "&Instructions IA Projet", self)
@@ -386,8 +387,9 @@ class MainWindow(QMainWindow):
         # Help Menu
         help_menu = menu_bar.addMenu("&Aide")
         
-        documentation_action = QAction(self.colorize_icon("menu_book", "#e2e8f0"), "&Documentation", self)
+        documentation_action = QAction(self.colorize_icon("menu_book", "#e2e8f0"), "&Aide Raccourcis Clavier", self)
         documentation_action.setShortcut("F1")
+        documentation_action.triggered.connect(self.show_shortcuts_help)
         help_menu.addAction(documentation_action)
         
         help_menu.addSeparator()
@@ -756,5 +758,15 @@ class MainWindow(QMainWindow):
             full_text += text + " "
             
         self.preview_panel.update(full_text, chapter.title)
+
+    def show_shortcuts_config(self):
+        from src.gui.dialogs.shortcut_config_dialog import ShortcutConfigDialog
+        dialog = ShortcutConfigDialog(self.shortcut_manager, self)
+        dialog.exec()
+
+    def show_shortcuts_help(self):
+        from src.gui.dialogs.shortcut_help_dialog import ShortcutHelpDialog
+        dialog = ShortcutHelpDialog(self.shortcut_manager, self)
+        dialog.exec()
 
 
