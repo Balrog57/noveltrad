@@ -89,6 +89,8 @@ class EditorController:
                 card.clicked.connect(self.handle_segment_click)
                 card.textChanged.connect(self.handle_text_change)
                 card.lookupWord.connect(self.main_window.tools_ctrl.on_word_lookup)
+                card.forceTranslation.connect(self.handle_force_translation)
+                card.machineTranslation.connect(self.handle_machine_translation)
                 self.main_window.cards_layout.addWidget(card)
         
         self.main_window.cards_layout.addStretch()
@@ -213,6 +215,39 @@ class EditorController:
                 self.save_active_segment()
                 self.main_window.statusBar().showMessage("Traduction de la mémoire sélectionnée et sauvegardée.", 3000)
                 break
+
+    def handle_force_translation(self, segment_id):
+        segment = Segment.get_by_id(segment_id)
+        enforce_match = self.project_manager.enforce_tm.enforce_translation(segment.source_text)
+        if enforce_match:
+             self.project_manager.enforce_tm.force_replace(segment, enforce_match)
+             for i in range(self.main_window.cards_layout.count() - 1):
+                 widget = self.main_window.cards_layout.itemAt(i).widget()
+                 if isinstance(widget, SegmentCard) and widget.segment_id == segment_id:
+                     widget.target_edit.setPlainText(enforce_match)
+                     widget.update_status_style()
+                     break
+             self.main_window.statusBar().showMessage(f"Segment {segment_id} forcé depuis TM Enforce.")
+        else:
+             self.main_window.statusBar().showMessage(f"Aucune correspondance Enforce TM pour ce segment.", 3000)
+
+    def handle_machine_translation(self, segment_id):
+        segment = Segment.get_by_id(segment_id)
+        suggestions = self.project_manager.mt_manager.get_mt_suggestions(segment.source_text)
+        if suggestions:
+             best_match = suggestions[0]
+             self.project_manager.mt_manager.mark_as_mt(segment, best_match)
+             for i in range(self.main_window.cards_layout.count() - 1):
+                 widget = self.main_window.cards_layout.itemAt(i).widget()
+                 if isinstance(widget, SegmentCard) and widget.segment_id == segment_id:
+                     widget.target_edit.setPlainText(best_match['target'])
+                     widget.status_badge.setText(f"MT: {best_match['score']}%")
+                     widget.status_badge.setStyleSheet("font-size: 9px; font-weight: 800; color: #ff6b6b; border: 1px solid #ff6b6b; padding: 2px 6px; border-radius: 4px;")
+                     widget.setStyleSheet(widget.styleSheet() + " QFrame#SegmentCard { border-left: 4px solid #ff6b6b; }")
+                     break
+             self.main_window.statusBar().showMessage(f"Suggestion Machine appliquée (Score: {best_match['score']}%).")
+        else:
+             self.main_window.statusBar().showMessage("Aucune suggestion Machine Translation trouvée.", 3000)
 
     def auto_translate_current(self):
         """Translate the active segment using the current AI engine."""

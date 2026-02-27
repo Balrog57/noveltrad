@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, 
-                             QPushButton, QWidget, QSizePolicy)
+                             QPushButton, QWidget, QSizePolicy, QMenu)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QIcon, QPixmap, QFont
+from PyQt6.QtGui import QIcon, QPixmap, QFont, QAction
 from src.utils.tag_utils import validate_tags
 from src.core.grammar_checker import GrammarChecker
 import os
@@ -10,6 +10,8 @@ class SegmentCard(QFrame):
     clicked = pyqtSignal(int)      # Signal to notify selection
     textChanged = pyqtSignal(int, str) # Signal to auto-save
     lookupWord = pyqtSignal(str)   # Signal to lookup word in dictionary
+    forceTranslation = pyqtSignal(int) # Signal to execute Enforce TM
+    machineTranslation = pyqtSignal(int) # Signal to execute MT suggestions
 
     def __init__(self, segment, parent=None):
         super().__init__(parent)
@@ -111,8 +113,28 @@ class SegmentCard(QFrame):
         return super().eventFilter(obj, event)
 
     def mousePressEvent(self, event):
-        self.clicked.emit(self.segment_id)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.segment_id)
         super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        
+        force_action = menu.addAction("Forcer translation (Enforce TM)")
+        mt_action = menu.addAction("Suggestions Machine (MT)")
+        
+        # Set colors for actions
+        force_action.setStyleSheet("color: #ef4444; font-weight: bold;") 
+        mt_action.setStyleSheet("color: #f59e0b;")
+
+        action = menu.exec(event.globalPos())
+        
+        if action == force_action:
+            self.forceTranslation.emit(self.segment_id)
+        elif action == mt_action:
+            self.machineTranslation.emit(self.segment_id)
+        
+        super().contextMenuEvent(event)
 
     def _setup_text_areas(self):
         # Source

@@ -5,6 +5,9 @@ from src.formats.docx_handler import DocxHandler
 from src.formats.pdf_handler import PdfHandler
 from src.core.tmx_handler import TMXHandler
 from src.core.segment_status import SegmentStatus
+from src.core.auto_tm_manager import AutoTMManager
+from src.core.enforce_tm_manager import EnforceTMManager
+from src.core.mt_manager import MTManager
 import os
 import json
 
@@ -18,6 +21,9 @@ class ProjectManager:
             '.docx': DocxHandler(),
             '.pdf': PdfHandler()
         }
+        self.auto_tm = AutoTMManager()
+        self.enforce_tm = EnforceTMManager()
+        self.mt_manager = MTManager()
 
     def create_project(self, name, db_path, source_file, source_lang='en', target_lang='fr', genre='general', custom_instructions=None):
         """Creates a new project database (file or directory)."""
@@ -171,11 +177,28 @@ class ProjectManager:
                              )
                         chapter = default_chapter
 
+                    src_text = data['source_text']
+                    tgt_text = None
+                    status = SegmentStatus.UNTRANSLATED.value
+                    
+                    # Apply Translation Memories automatically
+                    enforce_match = self.enforce_tm.enforce_translation(src_text)
+                    if enforce_match:
+                        tgt_text = enforce_match
+                        status = SegmentStatus.VERIFIED.value
+                    else:
+                        auto_match = self.auto_tm.search_exact_match(src_text)
+                        if auto_match:
+                            tgt_text = auto_match
+                            status = SegmentStatus.TRANSLATED.value
+
                     Segment.create(
                         project=self.current_project,
                         chapter=chapter,
                         index=data['index'],
-                        source_text=data['source_text'],
+                        source_text=src_text,
+                        target_text=tgt_text,
+                        status=status,
                         metadata=json.dumps(meta) if meta else None
                     )
 
@@ -212,11 +235,27 @@ class ProjectManager:
         
         with self.db.atomic():
             for data in segments_data:
+                src_text = data['source_text']
+                tgt_text = None
+                status = SegmentStatus.UNTRANSLATED.value
+                
+                enforce_match = self.enforce_tm.enforce_translation(src_text)
+                if enforce_match:
+                    tgt_text = enforce_match
+                    status = SegmentStatus.VERIFIED.value
+                else:
+                    auto_match = self.auto_tm.search_exact_match(src_text)
+                    if auto_match:
+                        tgt_text = auto_match
+                        status = SegmentStatus.TRANSLATED.value
+
                 Segment.create(
                     project=self.current_project,
                     chapter=new_chapter,
                     index=data['index'],
-                    source_text=data['source_text'],
+                    source_text=src_text,
+                    target_text=tgt_text,
+                    status=status,
                     metadata=json.dumps(data.get('metadata')) if data.get('metadata') else None
                 )
         return new_chapter
@@ -242,6 +281,11 @@ class ProjectManager:
                 self.project_config = ProjectSchema(**migrated_data)
             except Exception as e:
                 print(f"Error loading project.json: {e}")
+                
+        # Load TM Managers data
+        self.auto_tm.load_tmx_files(project_dir)
+        self.enforce_tm.load_tmx_files(project_dir)
+        self.mt_manager.load_tmx_files(project_dir)
                 
         return self.current_project
 
