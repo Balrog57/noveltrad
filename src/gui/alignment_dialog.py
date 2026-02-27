@@ -131,6 +131,11 @@ class AlignmentDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
         self.table.setStyleSheet("alternate-background-color: #2a2a2a; background-color: #202020;")
+        
+        # Context Menu
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
+        
         layout.addWidget(self.table, 1)
 
         # Footer
@@ -353,3 +358,50 @@ class AlignmentDialog(QDialog):
                  count += 1
                  
         QMessageBox.information(self, "Succès", f"{count} paires ajoutées au projet.")
+
+    def _show_context_menu(self, position):
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu()
+        
+        action_split = menu.addAction("Séparer le segment au curseur")
+        action_split.triggered.connect(self._split_segment)
+        
+        action_merge = menu.addAction("Fusionner avec le segment sélectionné/suivant")
+        action_merge.triggered.connect(self._merge_segments)
+        
+        menu.addSeparator()
+        
+        action_mark = menu.addAction("Marquer comme paire valide")
+        action_mark.triggered.connect(self._mark_as_pair)
+        
+        action_unmark = menu.addAction("Démarquer")
+        action_unmark.triggered.connect(self._unmark_segments)
+        
+        menu.addSeparator()
+        
+        action_export = menu.addAction("Exporter TMX aligné...")
+        action_export.triggered.connect(self._export_tmx)
+        
+        menu.exec(self.table.viewport().mapToGlobal(position))
+        
+    def _mark_as_pair(self):
+        # Set confidence to 1.0 (100%) and color green
+        rows = sorted(set(idx.row() for idx in self.table.selectedIndexes()))
+        for r in rows:
+            self.pairs[r].confidence = 1.0
+            self.table.item(r, 1).setBackground(QColor("#064e3b")) # Dark green
+            self.table.item(r, 2).setBackground(QColor("#064e3b"))
+            
+        self._update_footer_conf()
+
+    def _unmark_segments(self):
+        # Reset confidence to 0.5 (50%) and clear background
+        rows = sorted(set(idx.row() for idx in self.table.selectedIndexes()))
+        # Get palette window color or clear background
+        from PyQt6.QtGui import QBrush
+        for r in rows:
+            self.pairs[r].confidence = 0.5
+            self.table.item(r, 1).setBackground(QBrush()) # Default
+            self.table.item(r, 2).setBackground(QBrush())
+            
+        self._update_footer_conf()
