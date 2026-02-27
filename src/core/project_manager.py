@@ -8,6 +8,7 @@ from src.core.segment_status import SegmentStatus
 from src.core.auto_tm_manager import AutoTMManager
 from src.core.enforce_tm_manager import EnforceTMManager
 from src.core.mt_manager import MTManager
+from src.core.last_entry_manager import LastEntryManager
 import os
 import json
 
@@ -24,6 +25,7 @@ class ProjectManager:
         self.auto_tm = AutoTMManager()
         self.enforce_tm = EnforceTMManager()
         self.mt_manager = MTManager()
+        self.last_entry = None
 
     def create_project(self, name, db_path, source_file, source_lang='en', target_lang='fr', genre='general', custom_instructions=None):
         """Creates a new project database (file or directory)."""
@@ -129,6 +131,9 @@ class ProjectManager:
             # Import Segments
             segments_data = handler.read(source_file)
             self.import_segments(segments_data)
+        
+        self.last_entry = LastEntryManager(noveltrad_dir)
+        self.last_entry.set_last_project(db_path)
         
         return self.current_project
 
@@ -286,6 +291,9 @@ class ProjectManager:
         self.auto_tm.load_tmx_files(project_dir)
         self.enforce_tm.load_tmx_files(project_dir)
         self.mt_manager.load_tmx_files(project_dir)
+        
+        self.last_entry = LastEntryManager(os.path.join(project_dir, ".noveltrad"))
+        self.last_entry.set_last_project(db_path)
                 
         return self.current_project
 

@@ -71,11 +71,25 @@ class EditorController:
              
         self.main_window.project_name_label.setText(self.project_manager.current_project.name)
         
-        # If no chapter_id, pick first chapter
+        # If no chapter_id, pick first chapter or restore session
         if not chapter_id:
             chapters = self.project_manager.get_chapters()
             if chapters:
                 chapter_id = chapters[0].id
+                last_seg_id = None
+                
+                # Check LastEntryManager to restore session
+                if getattr(self.project_manager, 'last_entry', None):
+                    for chap in chapters:
+                        saved_seg = self.project_manager.last_entry.get_last_segment(chap.title)
+                        if saved_seg is not None:
+                            chapter_id = chap.id
+                            last_seg_id = saved_seg
+                            break
+                            
+                    if last_seg_id is not None:
+                        self.main_window.statusBar().showMessage(f"Session restaurée: segment #{last_seg_id}")
+                
                 self.main_window.sidebar.on_item_clicked(chapter_id)
         
         self.main_window.current_chapter_id = chapter_id
@@ -115,6 +129,11 @@ class EditorController:
         if active_card:
             self.main_window.statusBar().showMessage(f"Segment {segment_id} sélectionné")
             self.main_window.tools_panel.ai_text.setText("Cliquez sur 'Régénérer Suggestion' pour obtenir une traduction IA.")
+            
+            # Update last_entry.properties
+            if getattr(self.project_manager, 'last_entry', None):
+                if active_card.segment.chapter:
+                    self.project_manager.last_entry.update_last_segment(active_card.segment.chapter.title, segment_id)
             
             # Auto-Glossary detection
             self.update_glossary_for_segment(active_card.segment.source_text)
