@@ -59,6 +59,16 @@ class HeaderPanel(QFrame):
         layout.addStretch()
         
         # Actions
+        self.btn_ref_toggle = QPushButton("▼ Reference below")
+        self.btn_ref_toggle.setCheckable(True)
+        self.btn_ref_toggle.setChecked(True)
+        self.btn_ref_toggle.setStyleSheet("""
+            QPushButton { background-color: transparent; color: #94a3b8; font-size: 11px; font-weight: bold; border-radius: 4px; padding: 4px 8px; }
+            QPushButton:checked { color: #f59e0b; background-color: #333333; }
+        """)
+        self.btn_ref_toggle.clicked.connect(self.main_window.editor_ctrl.toggle_reference_mode)
+        layout.addWidget(self.btn_ref_toggle)
+
         self.btn_undo = self.create_header_btn("undo", "Annuler (Ctrl+Z)", self.main_window.editor_ctrl.undo)
         self.btn_redo = self.create_header_btn("redo", "Rétablir (Ctrl+Y)", self.main_window.editor_ctrl.redo)
         self.btn_save = self.create_header_btn("save", "Valider et Sauvegarder Segment (Ctrl+S)", self.main_window.editor_ctrl.save_active_segment)

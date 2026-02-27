@@ -9,6 +9,8 @@ from src.core.auto_tm_manager import AutoTMManager
 from src.core.enforce_tm_manager import EnforceTMManager
 from src.core.mt_manager import MTManager
 from src.core.last_entry_manager import LastEntryManager
+from src.core.vcs_manager import VCSManager
+from src.core.tmx2source_manager import Tmx2SourceManager
 import os
 import json
 
@@ -26,6 +28,8 @@ class ProjectManager:
         self.enforce_tm = EnforceTMManager()
         self.mt_manager = MTManager()
         self.last_entry = None
+        self.vcs_manager = None
+        self.tmx2source = Tmx2SourceManager()
 
     def create_project(self, name, db_path, source_file, source_lang='en', target_lang='fr', genre='general', custom_instructions=None):
         """Creates a new project database (file or directory)."""
@@ -42,7 +46,7 @@ class ProjectManager:
             os.path.join(noveltrad_dir, "tm", "auto"),
             os.path.join(noveltrad_dir, "tm", "mt"),
             os.path.join(noveltrad_dir, "tm", "penalty-030"),
-            os.path.join(noveltrad_dir, "tmx2source"),
+            os.path.join(noveltrad_dir, "tm", "reference"),
             os.path.join(noveltrad_dir, ".repositories", "git"),
             os.path.join(noveltrad_dir, ".repositories", "svn"),
         ]
@@ -134,6 +138,8 @@ class ProjectManager:
         
         self.last_entry = LastEntryManager(noveltrad_dir)
         self.last_entry.set_last_project(db_path)
+        
+        self.vcs_manager = VCSManager(project_dir)
         
         return self.current_project
 
@@ -292,8 +298,16 @@ class ProjectManager:
         self.enforce_tm.load_tmx_files(project_dir)
         self.mt_manager.load_tmx_files(project_dir)
         
-        self.last_entry = LastEntryManager(os.path.join(project_dir, ".noveltrad"))
+        from glob import glob
+        ref_files = glob(os.path.join(project_dir, ".noveltrad", "tm", "reference", "*.tmx"))
+        if ref_files:
+            self.tmx2source.load_reference_tmx(ref_files[0])
+            
+        noveltrad_dir = os.path.join(project_dir, ".noveltrad")
+        self.last_entry = LastEntryManager(noveltrad_dir)
         self.last_entry.set_last_project(db_path)
+        
+        self.vcs_manager = VCSManager(project_dir)
                 
         return self.current_project
 

@@ -148,6 +148,13 @@ class SegmentCard(QFrame):
         self.source_edit.installEventFilter(self)
         self._source_layout.addWidget(self.source_edit)
         
+        # Reference Text (Third Language) - Hidden by default
+        self.reference_display = QLabel("")
+        self.reference_display.setWordWrap(True)
+        self.reference_display.setStyleSheet("color: #64748b; font-size: 11px; font-style: italic; margin-left: 5px; margin-top: 5px;")
+        self.reference_display.hide()
+        self._source_layout.addWidget(self.reference_display)
+        
         # Target
         self.target_container = QFrame()
         self.target_container.setObjectName("TargetContainer")
@@ -189,6 +196,14 @@ class SegmentCard(QFrame):
         if mode not in ["horizontal", "vertical"]: return
         self.layout_mode = mode
         self._apply_layout_mode()
+
+    def set_reference_text(self, text: str):
+        """Displays a third language translation as reference."""
+        if text:
+            self.reference_display.setText(f"📘 Réf: {text}")
+            self.reference_display.show()
+        else:
+            self.reference_display.hide()
 
     def update_status_style(self):
         """Review status color and apply to card border."""

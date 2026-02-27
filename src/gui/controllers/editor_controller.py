@@ -105,6 +105,13 @@ class EditorController:
                 card.lookupWord.connect(self.main_window.tools_ctrl.on_word_lookup)
                 card.forceTranslation.connect(self.handle_force_translation)
                 card.machineTranslation.connect(self.handle_machine_translation)
+                
+                # Check for reference text from tmx2source
+                if getattr(self.project_manager, 'tmx2source', None) and self.project_manager.tmx2source.current_mode == "reference_below":
+                    ref_text = self.project_manager.tmx2source.get_reference_text(seg.source_text)
+                    if ref_text:
+                        card.set_reference_text(ref_text)
+                        
                 self.main_window.cards_layout.addWidget(card)
         
         self.main_window.cards_layout.addStretch()
@@ -411,3 +418,10 @@ class EditorController:
             widget = self.main_window.cards_layout.itemAt(i).widget()
             if isinstance(widget, SegmentCard):
                 widget.source_edit.setToolTip(text)
+
+    def toggle_reference_mode(self, checked):
+        """Toggles the display of the 3rd language reference."""
+        if getattr(self.project_manager, 'tmx2source', None):
+            self.project_manager.tmx2source.display_mode("reference_below" if checked else "normal")
+            if getattr(self.main_window, 'current_chapter_id', None):
+                self.load_segments(self.main_window.current_chapter_id)
