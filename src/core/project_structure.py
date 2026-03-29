@@ -162,7 +162,6 @@ class ProjectStructure:
             "*~",
             ".cache/",
             "__pycache__/",
-            ".pytest_cache/",
             "",
             "# ============================================",
             "# IDE & Editor Files",

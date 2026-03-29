@@ -1,7 +1,0 @@
-__init__
-core
-engines
-formats
-gui
-main_qt
-utils

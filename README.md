@@ -32,11 +32,6 @@ Pour des instructions d'utilisation détaillées, consultez le [Guide Utilisateu
    ```powershell
    python src/main_qt.py
    ```
-5. **Lancer les tests**:
-   ```powershell
-   python -m pytest tests/
-   ```
-
 ## Créer l'exécutable
 
 Pour créer un fichier `.exe` autonome:

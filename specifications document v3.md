@@ -2535,7 +2535,7 @@ class FormatHandlerPlugin(Plugin):
 - **Status** : En développement
 - **Source** : https://github.com/user/noveltrad
 
-**Contact** : marc@example.com
+**Contact** : opensource@example.com
 
 **Licence** : CC-BY-SA-4.0
 
