@@ -17,6 +17,16 @@ try:
 except ImportError:
     pass
 
+ARGOS_AVAILABLE = False
+try:
+    # Attempt to import argostranslate
+    import argostranslate.package
+    import argostranslate.translate
+    ARGOS_AVAILABLE = True
+except (ImportError, Exception):
+    # Silently fail, we already handle ARGOS_AVAILABLE=False
+    pass
+
 from PyQt6.QtWidgets import QApplication
 from src.gui.mainwindow import MainWindow
 from src.core.config_manager import ConfigManager
@@ -33,7 +43,15 @@ def main():
             
     window = MainWindow()
     window.show()
+    window.raise_()
+    window.activateWindow()
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        print(f"CRITICAL ERROR: {e}")
+        traceback.print_exc()
+        sys.exit(1)

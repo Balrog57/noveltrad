@@ -40,6 +40,14 @@ class LanguageManager:
         # 4. Filter Candidates (Intersection)
         final_supported = []
         
+        # Optimization: Fetch indices/installed once
+        installed_langs = []
+        if self.argos:
+            try:
+                installed_langs = self.argos.get_installed_languages()
+            except:
+                pass
+
         for code in candidates:
             # Check Argos
             if self.argos and code not in argos_supported:
@@ -52,30 +60,12 @@ class LanguageManager:
                     continue
             
             # Check installation status
-            is_installed = False
-            
-            # Check Argos
-            argos_installed = False
-            if self.argos:
-                # We need to check if we have a pair involving this code
-                # simpler: check if it is in get_installed_languages
-                try:
-                    installed_langs = self.argos.get_installed_languages() # Use new method
-                    if code in installed_langs:
-                        argos_installed = True
-                except:
-                    pass
-            else:
-                # If argos is missing, we can't be "fully" installed, or we ignore it?
-                # We'll treat as "installed" if we have dictionary?
-                pass
+            argos_installed = code in installed_langs
                 
             # Check Dictionary
-            # We can check if we have terms
             dict_installed = self.dict_manager.has_language(code)
             
-            if (self.argos and argos_installed) or (not self.argos and dict_installed):
-                is_installed = True
+            is_installed = (self.argos and argos_installed) or (not self.argos and dict_installed)
             
             # Add to result
             final_supported.append({

@@ -3,13 +3,14 @@ from src.core.glossary_applier import GlossaryApplier
 from src.core.tag_manager import TagManager
 import os
 
+ARGOS_AVAILABLE = False
 try:
     import argostranslate.package
     import argostranslate.translate
     ARGOS_AVAILABLE = True
-except Exception as e:
-    print(f"ArgosTranslate not available or crashed on import: {e}")
-    ARGOS_AVAILABLE = False
+except (ImportError, Exception):
+    # Silently fail, handled via ARGOS_AVAILABLE flag
+    pass
 
 class ArgosEngine(TranslationEngine):
     def __init__(self):

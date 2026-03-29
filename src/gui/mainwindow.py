@@ -180,10 +180,6 @@ class MainWindow(QMainWindow):
             QMenu::item {
                 padding: 6px 24px 6px 12px;
             }
-            QMenu::item:selected {
-                background-color: #0d7ff2;
-                color: white;
-            }
         """)
         
         # File Menu
