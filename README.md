@@ -1,76 +1,86 @@
 # NovelTrad Desktop
 
-Application de bureau haute performance pour la traduction de romans, avec suggestions alimentées par l'IA et gestion complète des glossaires.
+Application de bureau pour la traduction assistée par ordinateur de romans et web novels, avec moteurs de traduction multiples, glossaires, mémoires de traduction et outils de QA.
 
 ## Fonctionnalités
 
-- **Application de bureau native**: Développée avec PyQt6 pour la vitesse et l'intégration système.
-- **Interface inspirée de Stitch**: Thème sombre moderne, navigation latérale, et éditeur de segments par cartes.
-- **Support des formats**: EPUB, DOCX, TXT.
-- **Intégration IA**: Support d'OpenAI, TranslateGemma (via LM Studio), Argos, et NLLB.
-- **Optimisation TranslateGemme**: Moteur spécialisé pour `translategemma-12b-it` utilisant l'API Completion pour éviter les erreurs de template Jinja2 de LM Studio. Optimisé pour les GPU NVIDIA RTX (ex: RTX 5070 Ti) avec une fenêtre de contexte recommandée de 8192.
-- **Gestion des glossaires**: Créer et gérer des glossaires spécifiques au projet.
-- **Hors ligne**: Les fonctionnalités principales fonctionnent hors ligne ; les fonctionnalités IA nécessitent internet si utilisation d'API cloud ou peuvent fonctionner localement avec LM Studio.
-- **Support TMX**: Import et export de mémoires de traduction au standard industriel.
-- **Assurance qualité**: Vérifications automatiques et outil d'alignement.
+- Application de bureau native en PyQt6.
+- Support des formats EPUB, DOCX et TXT.
+- Intégration de moteurs OpenAI-compatible, LM Studio, Argos et NLLB.
+- Gestion de glossaires projet et de mémoires de traduction TMX.
+- Outils d'alignement, concordancier et vérification qualité.
+- Fonctionnement principal hors ligne, avec options IA locales ou cloud.
 
 Pour des instructions d'utilisation détaillées, consultez le [Guide Utilisateur](docs/user_guide.md).
 
+## Dépôt public et références locales
+
+- Le dépôt GitHub public contient le code source, la documentation du projet et les ressources de l'application.
+- `OmegaT_Doc/` sert de référence locale pour l'étude d'OmegaT, la rédaction du cahier des charges et le développement de NovelTrad.
+- `OmegaT_Doc/` est volontairement ignoré par Git et ne doit pas être publié sur GitHub.
+- `config.json`, les environnements virtuels, les caches et les autres fichiers générés restent locaux à la machine.
+- La validation automatique du dépôt public repose actuellement sur une vérification de compilation de `src/` dans la CI.
+
 ## Installation (Développement)
 
-1. **Cloner le dépôt**
-2. **Créer un environnement virtuel**:
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate
-   ```
-3. **Installer les dépendances**:
-   ```powershell
-   pip install -r requirements.txt
-   ```
-4. **Lancer l'application**:
-   ```powershell
-   python src/main_qt.py
-   ```
+1. Cloner le dépôt.
+2. Créer un environnement virtuel :
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate
+```
+
+3. Installer les dépendances :
+
+```powershell
+pip install -r requirements.txt
+```
+
+4. Lancer l'application :
+
+```powershell
+python src/main_qt.py
+```
+
 ## Créer l'exécutable
 
-Pour créer un fichier `.exe` autonome:
+Pour créer un fichier `.exe` autonome :
 
-1. Exécuter le script de build:
-   ```powershell
-   .\Build-NovelTrad-Qt.bat
-   ```
-   Cela générera `dist/NovelTrad/NovelTrad.exe`.
+```powershell
+.\Build-NovelTrad-Qt.bat
+```
+
+Cela génère `dist/NovelTrad/NovelTrad.exe`.
 
 ## Créer l'installateur
 
-Pour créer un fichier d'installation:
-
 1. Installer [Inno Setup](https://jrsoftware.org/isdl.php).
-2. Faire un clic droit sur `NovelTrad.iss` et choisir "Compile".
-   OU exécuter:
-   ```powershell
-   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" NovelTrad.iss
-   ```
-   Cela créera `Output/NovelTrad_Setup.exe`.
+2. Compiler `NovelTrad.iss`.
+
+```powershell
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" NovelTrad.iss
+```
+
+Cela crée `Output/NovelTrad_Setup.exe`.
 
 ## Structure du projet
 
-- `src/gui/`: Logique principale de l'interface (`mainwindow.py`, `components.py`, `styles.py`).
-- `src/core/`: Modèles de base de données (`database.py`) et logique du projet (`project_manager.py`).
-- `src/engines/`: Interfaces des moteurs de traduction (`llm_engine.py`, etc.).
-- `src/formats/`: Parseurs de fichiers.
+- `src/gui/` : interface principale.
+- `src/core/` : logique métier, projet, QA, TM et sauvegardes.
+- `src/engines/` : moteurs de traduction.
+- `src/formats/` : import/export des formats de documents.
+- `resources/` : icônes et ressources UI.
+- `docs/` : documentation utilisateur.
 
 ## Fonctionnalités TAO
 
-NovelTrad est un outil TAO (Traduction Assistée par Ordinateur) complet:
+- Mémoire de traduction (TM) avec import/export TMX.
+- Glossaires projet et terminologie cohérente.
+- Concordancier pour la recherche contextuelle.
+- Alignement pour créer de la TM à partir de bitextes.
+- QA Check pour la validation avant export.
 
-- **Mémoire de traduction (TM)**: Réutilisation de traductions existantes
-- **Glossaires**: Gestion de la terminologie cohérente
-- **Concordancier**: Recherche contextuelle dans les TM
-- **Alignement**: Création de TM à partir de bitextes
-- **QA Check**: Validation automatique avant export
+## Licence
 
-## License
-
-Voir le fichier LICENSE pour les détails.
+Voir le fichier `LICENSE` pour les détails.

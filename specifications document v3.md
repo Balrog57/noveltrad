@@ -4,6 +4,7 @@
 # pour Romans et Web Novels
 # Xianxia • Science-Fiction • Fantasy • Romance • Tous genres
 # Version 3.0
+# Dernière mise à jour dépôt public : 29 mars 2026
 
 # Date : 26 février 2026
 
@@ -14,6 +15,15 @@
 # - WCAG 2.1 (accessibilité web)
 
 # SPDX-License-Identifier: CC-BY-SA-4.0
+
+---
+
+# Politique de dépôt public
+
+- Le dépôt GitHub public doit contenir uniquement le code source, la documentation produit, les ressources de l'application et les fichiers nécessaires au build.
+- `OmegaT_Doc/` est une base documentaire locale utilisée comme référence pour l'analyse d'OmegaT, le cahier des charges et le développement de NovelTrad.
+- `OmegaT_Doc/` ne doit jamais être versionné ni publié sur GitHub.
+- `config.json`, les environnements virtuels, les caches, les sorties de build et les autres fichiers spécifiques à la machine doivent rester locaux et ignorés par Git.
 
 ---
 
@@ -2533,7 +2543,8 @@ class FormatHandlerPlugin(Plugin):
 - **Date** : 26 février 2026
 - **Version** : 1.1-pre-alpha
 - **Status** : En développement
-- **Source** : https://github.com/user/noveltrad
+- **Source** : https://github.com/Balrog57/noveltrad
+- **Mise à jour dépôt public** : 29 mars 2026
 
 **Contact** : opensource@example.com
 
