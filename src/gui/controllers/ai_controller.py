@@ -1,6 +1,7 @@
 import os
 import json
 from PyQt6.QtWidgets import QMessageBox, QApplication
+from src.core.segment_status import SegmentStatus
 from src.gui.batch_translation_dialog import BatchTranslationDialog
 
 class AIController:
@@ -14,10 +15,10 @@ class AIController:
             QMessageBox.warning(self.main_window, "Avertissement", "Sélectionnez un segment à raffiner.")
             return
             
-        card = self.main_window.current_card
+        card = self.main_window.get_active_segment_card()
         if not card: return
         
-        source = card.source_text.text()
+        source = card.source_edit.toPlainText()
         current_trans = card.target_edit.toPlainText()
         
         if not self.main_window.llm_engine:
@@ -32,7 +33,11 @@ class AIController:
             refined = self.main_window.llm_engine.translate(prompt) # Using translate as generic call
             
             card.target_edit.setPlainText(refined)
+            card.segment.target_text = refined
+            card.segment.set_status(SegmentStatus.AI_REFINED)
             self.main_window.statusBar().showMessage("Raffinement terminé.")
+            self.main_window.update_footer_stats()
+            self.main_window.refresh_preview()
         except Exception as e:
             QMessageBox.critical(self.main_window, "Erreur AI", f"Échec du raffinement : {e}")
 
@@ -60,7 +65,7 @@ class AIController:
             QApplication.processEvents()
             
             # Implementation logic moved from scan_chapter_glossary
-            segments = self.project_manager.get_chapter_segments(self.project_manager.current_chapter_id)
+            segments = self.project_manager.get_segments(self.project_manager.current_chapter_id)
             text_sample = "\n".join([s.source_text for s in segments[:20]]) # Scan first 20 segments
             
             prompt = f"Extract key terms and names from this text for a glossary. Return JSON list: {text_sample}"

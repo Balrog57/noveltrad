@@ -42,12 +42,12 @@ class AutoTMManager:
         match = self.search_exact_match(segment.source_text)
         if match:
             # Do not overwrite if already translated
-            from src.core.database import SegmentStatus
-            if segment.status in [SegmentStatus.TRANSLATED.value, SegmentStatus.VERIFIED.value]:
+            from src.core.segment_status import SegmentStatus
+            if segment.status in [SegmentStatus.MACHINE.value, SegmentStatus.AI_REFINED.value, SegmentStatus.VALIDATED.value]:
                 return False
                 
             segment.target_text = match
-            segment.status = SegmentStatus.TRANSLATED.value # Could be a specific AUTO status later
+            segment.status = SegmentStatus.MACHINE.value
             segment.save()
             return True
         return False

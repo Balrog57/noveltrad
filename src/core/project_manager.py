@@ -196,12 +196,12 @@ class ProjectManager:
                     enforce_match = self.enforce_tm.enforce_translation(src_text)
                     if enforce_match:
                         tgt_text = enforce_match
-                        status = SegmentStatus.VERIFIED.value
+                        status = SegmentStatus.VALIDATED.value
                     else:
                         auto_match = self.auto_tm.search_exact_match(src_text)
                         if auto_match:
                             tgt_text = auto_match
-                            status = SegmentStatus.TRANSLATED.value
+                            status = SegmentStatus.MACHINE.value
 
                     Segment.create(
                         project=self.current_project,
@@ -253,12 +253,12 @@ class ProjectManager:
                 enforce_match = self.enforce_tm.enforce_translation(src_text)
                 if enforce_match:
                     tgt_text = enforce_match
-                    status = SegmentStatus.VERIFIED.value
+                    status = SegmentStatus.VALIDATED.value
                 else:
                     auto_match = self.auto_tm.search_exact_match(src_text)
                     if auto_match:
                         tgt_text = auto_match
-                        status = SegmentStatus.TRANSLATED.value
+                        status = SegmentStatus.MACHINE.value
 
                 Segment.create(
                     project=self.current_project,
@@ -326,7 +326,11 @@ class ProjectManager:
             return []
         if chapter_id:
              return list(Segment.select().where((Segment.project == self.current_project) & (Segment.chapter_id == chapter_id)).order_by(Segment.index))
-        return list(self.current_project.all_segments)
+        return list(Segment.select().where(Segment.project == self.current_project).order_by(Segment.chapter, Segment.index))
+
+    def get_chapter_segments(self, chapter_id):
+        """Compatibility alias for callers using the older API name."""
+        return self.get_segments(chapter_id)
 
     def get_chapters(self):
         if not self.current_project:
@@ -714,5 +718,3 @@ class ProjectManager:
                 progress_callback(100, "Done.")
                 
         return count
-
-

@@ -1,4 +1,5 @@
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtWidgets import QApplication, QListWidgetItem, QPushButton
 from src.core.database import Segment, Chapter, SegmentStatus
 from src.gui.components import SegmentCard
 
@@ -59,6 +60,10 @@ class EditorController:
 
     def load_segments(self, chapter_id=None):
         """Loads segment cards for the given chapter into the scroll area."""
+        self.main_window.current_card = None
+        self.main_window.current_segment_index = -1
+        last_seg_id = None
+
         # Clear existing cards
         while self.main_window.cards_layout.count():
             item = self.main_window.cards_layout.takeAt(0)
@@ -90,7 +95,7 @@ class EditorController:
                     if last_seg_id is not None:
                         self.main_window.statusBar().showMessage(f"Session restaurée: segment #{last_seg_id}")
                 
-                self.main_window.sidebar.on_item_clicked(chapter_id)
+                self.main_window.sidebar.set_active_item(chapter_id)
         
         self.main_window.current_chapter_id = chapter_id
 
@@ -115,10 +120,21 @@ class EditorController:
                 self.main_window.cards_layout.addWidget(card)
         
         self.main_window.cards_layout.addStretch()
+
+        if last_seg_id is not None:
+            self.on_segment_card_clicked(last_seg_id)
             
         self.main_window.load_glossary()
         self.main_window.update_footer_stats()
         self.main_window.refresh_preview()
+
+    def get_segment_card(self, segment_id):
+        """Return the visible card matching the given segment id."""
+        for i in range(self.main_window.cards_layout.count() - 1):
+            widget = self.main_window.cards_layout.itemAt(i).widget()
+            if isinstance(widget, SegmentCard) and widget.segment_id == segment_id:
+                return widget
+        return None
 
     def handle_segment_click(self, segment_id):
         """Handles single click on a segment card."""
@@ -133,6 +149,8 @@ class EditorController:
                 if is_active:
                     active_card = widget
                     
+        self.main_window.current_card = active_card
+
         if active_card:
             self.main_window.statusBar().showMessage(f"Segment {segment_id} sélectionné")
             self.main_window.tools_panel.ai_text.setText("Cliquez sur 'Régénérer Suggestion' pour obtenir une traduction IA.")
@@ -148,6 +166,20 @@ class EditorController:
             # TM searches
             matches = self.project_manager.search_translation_memory(active_card.segment.source_text)
             self.main_window.tools_panel.fuzzy_viewer.set_matches(matches)
+
+    def on_segment_card_clicked(self, segment_id):
+        """Navigate to a specific segment id and select its card."""
+        try:
+            segment = Segment.get_by_id(segment_id)
+        except Segment.DoesNotExist:
+            return
+
+        if segment.chapter_id and segment.chapter_id != getattr(self.main_window, 'current_chapter_id', None):
+            self.load_segments(segment.chapter_id)
+
+        card = self.get_segment_card(segment_id)
+        if card:
+            self.handle_segment_click(segment_id)
 
     def update_glossary_for_segment(self, text):
         """Find and highlight glossary terms in the given text."""
@@ -412,6 +444,9 @@ class EditorController:
 
     def _on_structure_error(self, err_msg):
         self.progress_dialog.close()
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.critical(self.main_window, "Structure AI", f"Échec de l'analyse : {err_msg}")
+
     def set_source_tooltips(self, text):
         """Sets the tooltip for all source edit fields in the cards layout."""
         for i in range(self.main_window.cards_layout.count() - 1):

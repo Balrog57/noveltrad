@@ -43,7 +43,7 @@ class TMXHandler:
             # Status property
             if include_status and hasattr(seg, 'status') and seg.status:
                 prop = ET.SubElement(tu, 'prop', {'type': 'x-noveltrad:status'})
-                prop.text = str(seg.status.name if hasattr(seg.status, 'name') else seg.status)
+                prop.text = str(seg.status.value if hasattr(seg.status, 'value') else seg.status)
                 
             # Tu timestamp
             if hasattr(seg, 'last_modified') and seg.last_modified:
@@ -64,7 +64,7 @@ class TMXHandler:
         if hasattr(ET, 'indent'):
             ET.indent(tree, space="  ", level=0)
             
-        tree.write(output_path, encoding='utf-8', xml_declaration=True)
+        tree.write(str(output_path), encoding='utf-8', xml_declaration=True)
         return True
 
     @staticmethod
@@ -123,7 +123,7 @@ class TMXHandler:
                     if src_text and tgt_text:
                         # Map string status back to integer if needed
                         from src.core.segment_status import SegmentStatus
-                        status_val = SegmentStatus.TRANSLATED.value
+                        status_val = SegmentStatus.MACHINE.value
                         if 'x-noveltrad:status' in props:
                             try:
                                 status_str = props['x-noveltrad:status']

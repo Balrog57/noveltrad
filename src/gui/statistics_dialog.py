@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QComboBox, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QPushButton, QGroupBox)
+                             QComboBox, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QPushButton, QGroupBox,
+                             QGridLayout)
 from PyQt6.QtCore import Qt
 from src.core.cost_estimator import CostEstimator
 
@@ -58,7 +59,6 @@ class StatisticsDialog(QDialog):
     def calculate_stats(self):
         if not self.project: return
         
-        from PyQt6.QtWidgets import QGridLayout # Local import fix if needed, but I used it above.
         from src.core.database import Segment
         from src.core.segment_status import SegmentStatus
         

@@ -472,6 +472,49 @@ class MainWindow(QMainWindow):
         
         self.load_languages_into_footer()
 
+    def load_chapters(self):
+        """Legacy compatibility wrapper for controller-based chapter loading."""
+        self.editor_ctrl.load_chapters()
+
+    def load_segments(self, chapter_id=None):
+        """Legacy compatibility wrapper for controller-based segment loading."""
+        self.editor_ctrl.load_segments(chapter_id)
+
+    def load_glossary(self):
+        """Legacy compatibility wrapper for glossary refresh."""
+        self.editor_ctrl.load_glossary()
+
+    def get_active_segment_card(self):
+        """Return the currently selected segment card if visible."""
+        segment_id = getattr(self, 'current_segment_index', -1)
+        if segment_id == -1:
+            return None
+        return self.editor_ctrl.get_segment_card(segment_id)
+
+    def _set_combo_to_code(self, combo, language_code):
+        """Select the combo item matching the given language code."""
+        if not combo or language_code is None:
+            return
+
+        index = combo.findData(language_code)
+        if index >= 0 and combo.currentIndex() != index:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(index)
+            combo.blockSignals(False)
+
+    def update_project_ui(self):
+        """Refresh top-level widgets after project changes."""
+        project = self.project_manager.current_project
+        if not project:
+            self.project_name_label.setText("Aucun Projet Chargé")
+            return
+
+        self.project_name_label.setText(project.name)
+        self._set_combo_to_code(self.source_lang_combo, project.source_language)
+        self._set_combo_to_code(self.target_lang_combo, project.target_language)
+        self.update_footer_stats()
+        self.refresh_preview()
+
     def create_icon_btn(self, icon_name, tooltip, callback):
         btn = QPushButton()
         btn.setObjectName("IconButton")
@@ -511,8 +554,8 @@ class MainWindow(QMainWindow):
         progress = int((translated / total) * 100) if total > 0 else 0
         
         # Update UI
-        self.source_lang_label.setText(f"Source: {project.source_language.upper()}")
-        self.target_lang_label.setText(f"Target: {project.target_language.upper()}")
+        self._set_combo_to_code(self.source_lang_combo, project.source_language)
+        self._set_combo_to_code(self.target_lang_combo, project.target_language)
         
         self.progress_pct.setText(f"{progress}%")
         
@@ -670,10 +713,12 @@ class MainWindow(QMainWindow):
         """Toggle between horizontal and vertical layout for segments."""
         if self.current_layout_mode == "horizontal":
             self.current_layout_mode = "vertical"
-            self.btn_layout.setToolTip("Vue : Verticale (cliquer pour changer)")
+            if hasattr(self, 'btn_layout') and self.btn_layout:
+                self.btn_layout.setToolTip("Vue : Verticale (cliquer pour changer)")
         else:
             self.current_layout_mode = "horizontal"
-            self.btn_layout.setToolTip("Vue : Horizontale (cliquer pour changer)")
+            if hasattr(self, 'btn_layout') and self.btn_layout:
+                self.btn_layout.setToolTip("Vue : Horizontale (cliquer pour changer)")
             
         # Update visible cards
         # iterate self.cards_layout
@@ -683,7 +728,6 @@ class MainWindow(QMainWindow):
                 item = layout.itemAt(i)
                 if item and item.widget():
                     widget = item.widget()
-                    from src.gui.segment_card import SegmentCard
                     if isinstance(widget, SegmentCard):
                         widget.set_layout_mode(self.current_layout_mode)
 

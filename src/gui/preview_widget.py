@@ -28,7 +28,7 @@ class PreviewWidget(QWebEngineView):
 <head>
     <meta charset="UTF-8">
     <style>
-        * { box-sizing: border-box; }
+        * {{ box-sizing: border-box; }}
         body {{
             font-family: {font_family};
             font-size: {font_size}px;
@@ -149,11 +149,14 @@ class PreviewDockWidget:
     def toggle_visibility(self):
         """Toggle preview visibility."""
         if self.dock_widget:
-            self.dock_widget.setVisible(not self.dock_widget.isVisible())
+            should_show = not self.dock_widget.isVisible()
+            self.dock_widget.setVisible(should_show)
+            if should_show:
+                self.main_window.refresh_preview()
     
     def update(self, text: str, title: str = ""):
         """Update preview content."""
-        if self.preview_widget:
+        if self.preview_widget and self.dock_widget and self.dock_widget.isVisible():
             theme = "dark" if self.main_window.is_dark_theme else "light"
             self.preview_widget.update_preview(text, title, theme=theme)
 

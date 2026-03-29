@@ -115,8 +115,8 @@ class ProjectController:
             QMessageBox.warning(self.main_window, "Erreur", "Aucun projet actif.")
             return
         
-        from src.gui.stats_dialog import StatsDialog
-        dialog = StatsDialog(self.main_window, self.project_manager)
+        from src.gui.statistics_dialog import StatisticsDialog
+        dialog = StatisticsDialog(self.project_manager.current_project, self.main_window)
         dialog.exec()
 
     def show_backup_dialog(self):

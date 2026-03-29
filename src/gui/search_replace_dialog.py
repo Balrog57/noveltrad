@@ -92,7 +92,7 @@ class SearchReplaceDialog(QDialog):
             if text_to_search and pattern.search(text_to_search):
                 self.last_match_index = i
                 self._highlight_segment(seg)
-                self.main_window.status_bar.showMessage(f"Trouvé au segment {seg.index+1}")
+                self.main_window.statusBar().showMessage(f"Trouvé au segment {seg.index+1}")
                 return
                 
         # If we reach here, we didn't find anything or we wrapped around
@@ -105,17 +105,16 @@ class SearchReplaceDialog(QDialog):
     def _highlight_segment(self, segment):
         # Tell main window to load the chapter and focus the segment
         self.main_window.load_segments(segment.chapter_id)
-        self.main_window.current_segment_index = segment.index
-        
-        for i in range(self.main_window.cards_layout.count() - 1):
-            widget = self.main_window.cards_layout.itemAt(i).widget()
-            if isinstance(widget, SegmentCard) and widget.segment_id == segment.index:
-                widget.set_active(True)
-                if self.search_source.isChecked():
-                    widget.source_edit.setFocus()
-                else:
-                    widget.target_edit.setFocus()
-                break
+        self.main_window.editor_ctrl.on_segment_card_clicked(segment.id)
+
+        card = self.main_window.get_active_segment_card()
+        if not card:
+            return
+
+        if self.search_source.isChecked():
+            card.source_edit.setFocus()
+        else:
+            card.target_edit.setFocus()
 
     def _replace_text(self):
         if self.search_source.isChecked():
@@ -138,7 +137,7 @@ class SearchReplaceDialog(QDialog):
                     if new_text != seg.target_text:
                         seg.target_text = new_text
                         seg.save()
-                        self.main_window.status_bar.showMessage(f"Remplacé au segment {seg.index+1}")
+                        self.main_window.statusBar().showMessage(f"Remplacé au segment {seg.index+1}")
                         self._highlight_segment(seg) # Refresh UI
                         
                         # Find next

@@ -16,7 +16,8 @@ class SegmentCard(QFrame):
     def __init__(self, segment, parent=None):
         super().__init__(parent)
         self.segment = segment
-        self.segment_id = segment.index
+        self.segment_id = segment.id if getattr(segment, 'id', None) is not None else segment.index
+        self.segment_index = getattr(segment, 'index', self.segment_id)
         self.is_active = False
         
         # Style
@@ -42,7 +43,8 @@ class SegmentCard(QFrame):
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         
-        id_label = QLabel(f"SEGMENT #{self.segment_id}")
+        display_index = self.segment_index + 1 if isinstance(self.segment_index, int) else self.segment_id
+        id_label = QLabel(f"SEGMENT #{display_index}")
         id_label.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px;")
         
         status = self.segment.get_status()
@@ -399,13 +401,15 @@ class Sidebar(QWidget):
         self.items = []
         
     def on_item_clicked(self, item_id):
+        self.set_active_item(item_id)
+        self.itemClicked.emit(item_id)
+
+    def set_active_item(self, item_id):
         for item in self.items:
             item.set_active(item.item_id == item_id)
-        self.itemClicked.emit(item_id)
 
     def update_item_progress(self, item_id, progress):
         for item in self.items:
             if item.item_id == item_id:
                 item.update_progress(progress)
                 break
-

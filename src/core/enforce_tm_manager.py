@@ -36,7 +36,7 @@ class EnforceTMManager:
         """
         Forces the replacement of the target text of a segment, overwriting it entirely.
         """
-        from src.core.database import SegmentStatus
+        from src.core.segment_status import SegmentStatus
         segment.target_text = target_text
-        segment.status = SegmentStatus.VERIFIED.value # Force as verified since it's Enforced
+        segment.status = SegmentStatus.VALIDATED.value
         segment.save()
