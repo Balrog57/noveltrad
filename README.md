@@ -1,4 +1,4 @@
-# NovelTrad Desktop
+# [WIP]NovelTrad Desktop
 
 Application de bureau pour la traduction assistée par ordinateur de romans et web novels, avec moteurs de traduction multiples, glossaires, mémoires de traduction et outils de QA.
 
