@@ -71,10 +71,9 @@ dist/
 
 # ============================================
 # AI Agents & Virtual Environments
-# ============================================
-
 .agents/
 .gemini/
+.kilo/
 tasks/
 OmegaT_Doc/
 .env
