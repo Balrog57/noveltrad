@@ -112,6 +112,7 @@ class Orchestrator:
                 )
             self._project = project
             project.status = "running"
+            self.store.clear_project_data()
             self.store.set_state(
                 "current_project",
                 {
@@ -120,6 +121,7 @@ class Orchestrator:
                     "source_lang": project.source_lang,
                     "target_lang": project.target_lang,
                     "source_path": str(project.source_path),
+                    "output_path": str(project.output_path) if project.output_path else None,
                     "started_at": project.started_at,
                 },
             )
@@ -132,6 +134,22 @@ class Orchestrator:
                 target=self._drain_loop, name="orch-drain", daemon=True
             )
             self._drain_thread.start()
+        from ..agents.base_worker import make_task_message
+
+        self._workers.queues_for("parser").input.put(
+            make_task_message(
+                chunk_id=project.project_id,
+                action="parse",
+                payload={
+                    "project_id": project.project_id,
+                    "project_dir": str(project.project_dir),
+                    "source_path": str(project.source_path),
+                    "source_lang": project.source_lang,
+                    "target_lang": project.target_lang,
+                    "output_path": str(project.output_path) if project.output_path else None,
+                },
+            )
+        )
         self._emit(
             {
                 "type": "pipeline_started",
@@ -352,6 +370,8 @@ class Orchestrator:
             "paused_stages": sorted(self._paused_stages),
             "pending_hltl": len(self._pending_hltl),
             "event_log_tail": list(self._event_log)[-20:],
+            "output_artifact": self.store.get_state_json("output_artifact"),
+            "project_manifest_path": self.store.get_state("project_manifest_path"),
         }
 
     def recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -417,15 +437,16 @@ class Orchestrator:
             return
 
         if msg_type == "progress":
-            self._emit(
-                {
-                    "type": "agent_progress",
-                    "stage": stage,
-                    "chunk_id": chunk_id,
-                    "percent": payload.get("percent"),
-                    "note": payload.get("note"),
-                }
-            )
+            base = {
+                "stage": stage,
+                "chunk_id": chunk_id,
+                "percent": payload.get("percent"),
+                "note": payload.get("note"),
+            }
+            self._emit({"type": "agent_progress", **base})
+            self._emit({"type": "stage_progress", **base})
+            if chunk_id:
+                self._emit({"type": "chunk_progress", **base})
             return
 
         if msg_type == "done":
@@ -435,6 +456,10 @@ class Orchestrator:
             # parser's terminal=True prevents the regular forward path
             # from doing it.
             if stage == "parser" and chunk_id is None:
+                if payload.get("manifest_path"):
+                    self.store.set_state("project_manifest_path", payload["manifest_path"])
+                if payload.get("target_path"):
+                    self.store.set_state("target_path", payload["target_path"])
                 chapters = payload.get("chapters") or []
                 flat: list[dict[str, Any]] = []
                 for chap in chapters:
@@ -450,6 +475,15 @@ class Orchestrator:
                         "stage": stage,
                         "chunk_id": None,
                         "payload": payload,
+                    }
+                )
+                self._emit(
+                    {
+                        "type": "log",
+                        "message": (
+                            f"parser: {payload.get('chunk_count', 0)} chunks "
+                            f"extracted; manifest={payload.get('manifest_path', '')}"
+                        ),
                     }
                 )
                 return
@@ -540,6 +574,18 @@ class Orchestrator:
     ) -> None:
         if not chunk_id:
             return
+        if stage == ASSEMBLER:
+            if payload.get("output_path"):
+                artifact = {
+                    "output_path": payload.get("output_path"),
+                    "chunk_count": payload.get("chunk_count", 0),
+                    "created_at": _now_iso(),
+                }
+                self.store.set_state("output_artifact", artifact)
+                with self._lock:
+                    if self._project is not None:
+                        self._project.status = "done"
+                self._emit({"type": "artifact_ready", **artifact})
         # 1. Persist any data the stage produced.
         for field_name in (
             "raw_translation",
@@ -557,6 +603,8 @@ class Orchestrator:
         #    further processing" via payload["terminal"] = True).
         if not payload.get("terminal"):
             next_stage = self._next_stage(stage)
+            if next_stage == ASSEMBLER:
+                next_stage = None
             if next_stage is not None:
                 from ..agents.base_worker import make_task_message
 
@@ -729,6 +777,7 @@ class Orchestrator:
                     "output_path": str(out),
                     "format": fmt,
                     "title": self._project.project_id,
+                    "manifest_path": self.store.get_state("project_manifest_path"),
                 },
             )
         )

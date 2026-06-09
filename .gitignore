@@ -61,6 +61,11 @@ Thumbs.db
 *.log
 logs/
 
+# Local pipeline / smoke-test state stores
+*.db
+*.db-shm
+*.db-wal
+
 # ============================================
 # build_script.py & Deployment
 # ============================================
@@ -68,6 +73,7 @@ logs/
 build/
 dist/
 *.spec
+!build.spec
 
 # ============================================
 # AI Agents & Virtual Environments

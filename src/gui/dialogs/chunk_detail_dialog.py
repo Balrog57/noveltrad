@@ -7,6 +7,7 @@ grammar, polished) plus the issues flagged by each stage.
 from __future__ import annotations
 
 from typing import Any
+import json
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -47,6 +48,7 @@ class ChunkDetailDialog(QDialog):
             "QA",
             "Grammar",
             "Polished",
+            "Issues",
             "Status",
         ):
             self._tabs.addTab(QTextEdit(), label)
@@ -85,7 +87,13 @@ class ChunkDetailDialog(QDialog):
             f"Source hash: {c.get('source_hash', '')}\n"
             f"Error: {c.get('error_message') or 'none'}"
         )
-        self._set_text(6, meta)
+        issues = {
+            "qa_issues": c.get("qa_issues") or [],
+            "grammar_issues": c.get("grammar_issues") or [],
+            "consistency_flags": c.get("consistency_flags") or [],
+        }
+        self._set_text(6, json.dumps(issues, ensure_ascii=False, indent=2))
+        self._set_text(7, meta)
 
     def _reprocess(self) -> None:
         try:
@@ -93,9 +101,9 @@ class ChunkDetailDialog(QDialog):
                 f"/chunks/{self._chunk_id}/reprocess", timeout=5.0
             )
         except BackendError as exc:
-            self._set_text(6, f"Reprocess failed: {exc}")
+            self._set_text(7, f"Reprocess failed: {exc}")
             return
-        self._set_text(6, "Reprocess queued.")
+        self._set_text(7, "Reprocess queued.")
 
 
 __all__ = ["ChunkDetailDialog"]

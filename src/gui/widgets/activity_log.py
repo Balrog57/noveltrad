@@ -116,7 +116,7 @@ class ActivityLogWidget(QWidget):
         chunk_id = event.get("chunk_id") or ""
         if kind == "log":
             return f"{ts}  {event.get('message', '')}"
-        if kind == "agent_progress":
+        if kind in ("agent_progress", "stage_progress", "chunk_progress"):
             return f"{ts}  {stage}: {event.get('note', '')} ({event.get('percent', 0):.0f}%)"
         if kind == "agent_done":
             payload = event.get("payload") or {}
@@ -145,6 +145,8 @@ class ActivityLogWidget(QWidget):
             return f"{ts}  pipeline stopped"
         if kind == "assemble_triggered":
             return f"{ts}  assembler: writing {event.get('output_path', '')}"
+        if kind == "artifact_ready":
+            return f"{ts}  output ready: {event.get('output_path', '')}"
         return f"{ts}  {kind}"
 
     @staticmethod
@@ -153,7 +155,7 @@ class ActivityLogWidget(QWidget):
             return "#ff6b6b"
         if kind in ("hltl_alert",):
             return "#ffb86b"
-        if kind in ("agent_done", "pipeline_stopped"):
+        if kind in ("agent_done", "pipeline_stopped", "artifact_ready"):
             return "#7be395"
         if kind in ("pipeline_paused",):
             return "#ffd166"

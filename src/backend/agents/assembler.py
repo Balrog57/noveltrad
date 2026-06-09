@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
 from .base_worker import BaseWorker
+from ..formats import read_project_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,12 @@ class Worker(BaseWorker):
         out.parent.mkdir(parents=True, exist_ok=True)
         try:
             if fmt == "epub":
-                _write_epub(out, chunks, title=payload.get("title", out.stem))
+                _write_epub(
+                    out,
+                    chunks,
+                    title=payload.get("title", out.stem),
+                    manifest_path=payload.get("manifest_path"),
+                )
             elif fmt == "docx":
                 _write_docx(out, chunks)
             elif fmt == "srt":
@@ -97,7 +104,20 @@ def _write_txt(path: Path, chunks: list[dict[str, Any]]) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def _write_epub(path: Path, chunks: list[dict[str, Any]], title: str) -> None:
+def _write_epub(
+    path: Path,
+    chunks: list[dict[str, Any]],
+    title: str,
+    manifest_path: str | None = None,
+) -> None:
+    if manifest_path:
+        try:
+            manifest = read_project_manifest(manifest_path)
+            if manifest.get("source_format") == "epub":
+                _write_epub_from_manifest(path, chunks, manifest)
+                return
+        except Exception:
+            logger.exception("assembler: manifest EPUB write failed; using fallback")
     try:
         from ebooklib import epub
     except ImportError as exc:
@@ -144,6 +164,85 @@ def _write_epub(path: Path, chunks: list[dict[str, Any]], title: str) -> None:
     book.add_item(epub.EpubNav())
     book.spine = ["nav", *chapters]
     epub.write_epub(str(path), book)
+
+
+def _write_epub_from_manifest(
+    path: Path, chunks: list[dict[str, Any]], manifest: dict[str, Any]
+) -> None:
+    try:
+        import ebooklib
+        from bs4 import BeautifulSoup
+        from ebooklib import epub
+    except ImportError as exc:
+        raise RuntimeError("EPUB assembly requires EbookLib and BeautifulSoup4") from exc
+
+    source_epub = Path(manifest.get("working_source_path") or manifest.get("source_path"))
+    if not source_epub.exists():
+        raise RuntimeError(f"Manifest source EPUB not found: {source_epub}")
+
+    book = epub.read_epub(str(source_epub), options={"ignore_ncx": True})
+    translations_by_anchor: dict[tuple[str, int], list[str]] = {}
+    for chunk in _sorted_chunks(chunks):
+        translated = _polished_text(chunk).strip()
+        if not translated:
+            continue
+        anchors = (chunk.get("metadata") or {}).get("anchors") or []
+        if not anchors:
+            continue
+        first = anchors[0]
+        if first.get("kind") != "epub_text_node":
+            continue
+        key = (str(first.get("item_id")), int(first.get("node_index", 0)))
+        translations_by_anchor.setdefault(key, []).append(translated)
+        # If a chunk covered several tiny source nodes, blank the
+        # remaining nodes so the translated paragraph is not duplicated.
+        for extra in anchors[1:]:
+            if extra.get("kind") == "epub_text_node":
+                extra_key = (
+                    str(extra.get("item_id")),
+                    int(extra.get("node_index", 0)),
+                )
+                translations_by_anchor.setdefault(extra_key, [])
+
+    for item_id, replacements in _group_replacements(translations_by_anchor).items():
+        item = book.get_item_with_id(item_id)
+        if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
+            continue
+        soup = BeautifulSoup(item.get_content(), "html.parser")
+        editable_nodes = []
+        for node in soup.find_all(string=True):
+            normalized = " ".join(str(node).split())
+            if not normalized:
+                continue
+            parent_name = getattr(getattr(node, "parent", None), "name", "") or ""
+            if parent_name.lower() in {"script", "style", "title"}:
+                continue
+            editable_nodes.append(node)
+        for node_index, value in replacements.items():
+            if 0 <= node_index < len(editable_nodes):
+                editable_nodes[node_index].replace_with(value)
+        item.set_content(str(soup).encode("utf-8"))
+
+    doc_items = []
+    for item in book.get_items():
+        if item.get_type() == ebooklib.ITEM_DOCUMENT:
+            if not getattr(item, "uid", None):
+                item.uid = getattr(item, "id", None) or getattr(item, "file_name", "chapter")
+            doc_items.append(item)
+    if doc_items:
+        book.toc = tuple(doc_items)
+        book.spine = ["nav", *doc_items]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    epub.write_epub(str(path), book)
+
+
+def _group_replacements(
+    translations_by_anchor: dict[tuple[str, int], list[str]]
+) -> dict[str, dict[int, str]]:
+    grouped: dict[str, dict[int, str]] = {}
+    for (item_id, node_index), parts in translations_by_anchor.items():
+        grouped.setdefault(item_id, {})[node_index] = "\n\n".join(parts)
+    return grouped
 
 
 def _write_docx(path: Path, chunks: list[dict[str, Any]]) -> None:

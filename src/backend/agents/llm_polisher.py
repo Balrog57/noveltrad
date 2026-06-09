@@ -132,6 +132,81 @@ def _neighbour_context(neighbours: list[dict[str, Any]]) -> str:
     return "\n".join(snippets)
 
 
+def _source_leak_count(source: str, translation: str) -> int:
+    """Count meaningful source words that appear verbatim in the translation."""
+    source_words = {
+        w.lower()
+        for w in re.findall(r"[A-Za-z][A-Za-z'-]{3,}", source)
+        if w.lower()
+        not in {
+            "this",
+            "that",
+            "with",
+            "from",
+            "into",
+            "your",
+            "have",
+            "were",
+            "been",
+            "they",
+            "them",
+        }
+    }
+    if not source_words:
+        return 0
+    translated_words = {
+        w.lower() for w in re.findall(r"[A-Za-z][A-Za-z'-]{3,}", translation)
+    }
+    return len(source_words & translated_words)
+
+
+def _rejects_as_source_leak(source: str, current: str, improved: str) -> bool:
+    """Reject a polish that leaks source-language words more than its input."""
+    current_leaks = _source_leak_count(source, current)
+    improved_leaks = _source_leak_count(source, improved)
+    return improved_leaks >= 2 and improved_leaks > current_leaks + 1
+
+
+def _paragraph_count(text: str) -> int:
+    return len([p for p in re.split(r"\n\s*\n+", text.strip()) if p.strip()])
+
+
+def _rejects_as_assistant_reply(current: str, improved: str) -> bool:
+    """Reject chatty LLM replies instead of translation-only output."""
+    lowered = improved.strip().lower()
+    bad_prefixes = (
+        "bien sûr",
+        "voici",
+        "traduction",
+        "traduction améliorée",
+        "sure",
+        "certainly",
+        "here is",
+        "here's",
+        "improved translation",
+        "the improved translation",
+    )
+    if lowered.startswith(bad_prefixes):
+        return True
+    first_line = lowered.splitlines()[0] if lowered else ""
+    if "traduction" in first_line and ":" in first_line:
+        return True
+    current_paragraphs = _paragraph_count(current)
+    improved_paragraphs = _paragraph_count(improved)
+    return current_paragraphs > 0 and improved_paragraphs > current_paragraphs + 1
+
+
+def _rejects_as_omission(current: str, improved: str) -> bool:
+    """Reject a polish that likely drops translated content."""
+    current_paragraphs = _paragraph_count(current)
+    improved_paragraphs = _paragraph_count(improved)
+    if current_paragraphs > 0 and improved_paragraphs < current_paragraphs:
+        return True
+    current_len = len(current.strip())
+    improved_len = len(improved.strip())
+    return current_len >= 80 and improved_len < int(current_len * 0.65)
+
+
 class Worker(BaseWorker):
     use_control_thread = True
 
@@ -211,10 +286,30 @@ class Worker(BaseWorker):
             improved = current
         if not improved.strip():
             improved = current
+        improved = improved.strip()
+        if _rejects_as_source_leak(src, current, improved):
+            logger.warning(
+                "llm_polisher: rejecting polish with source-language leakage "
+                "(chunk=%s)",
+                chunk_id,
+            )
+            improved = current
+        elif _rejects_as_assistant_reply(current, improved):
+            logger.warning(
+                "llm_polisher: rejecting chatty assistant-style polish (chunk=%s)",
+                chunk_id,
+            )
+            improved = current
+        elif _rejects_as_omission(current, improved):
+            logger.warning(
+                "llm_polisher: rejecting polish with likely omission (chunk=%s)",
+                chunk_id,
+            )
+            improved = current
         return self._emit_done(
             chunk_id,
             {
-                "polished_translation": improved.strip(),
+                "polished_translation": improved,
                 "reflection": reflection.get("reflection", ""),
                 "suggestions": suggestions,
                 "status": "polished",

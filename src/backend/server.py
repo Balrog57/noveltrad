@@ -36,6 +36,22 @@ from src.backend.orchestrator.state_store import StateStore
 logger = logging.getLogger("noveltrad.backend")
 
 
+def _frozen_debug_log(message: str) -> None:
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        path = (
+            Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+            / "NovelTrad"
+            / "backend.log"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(message + "\n")
+    except Exception:
+        pass
+
+
 # ---------- FastAPI app factory ----------
 
 
@@ -65,6 +81,8 @@ def _build_schemas() -> dict[str, Any]:
         paused_stages: list[str]
         pending_hltl: int
         event_log_tail: list[dict[str, Any]]
+        output_artifact: dict[str, Any] | None = None
+        project_manifest_path: str | None = None
 
     class HITLResponseRequest(BaseModel):
         request_id: str
@@ -163,9 +181,31 @@ def create_app(
 
     @app.get("/health")
     def health() -> dict[str, Any]:
+        from src.backend.engines.nllb_engine import diagnostics as nllb_diagnostics
+        from src.backend.llm_router.router import get_router
+
+        provider_count = 0
+        try:
+            router = get_router()
+            provider_count = len(router.providers)
+            llm_stats = router.stats()
+            llm_ready = bool(router.providers) or os.environ.get("NOVELTRAD_FAKE_LLM") in {
+                "1",
+                "true",
+                "yes",
+            }
+        except Exception as exc:
+            llm_stats = {"error": str(exc)}
+            llm_ready = False
         return {
             "ok": True,
             "vector_store": store.vector_status,
+            "nllb": nllb_diagnostics(),
+            "llm": {
+                "ready": llm_ready,
+                "provider_count": provider_count,
+                "stats": llm_stats,
+            },
         }
 
     @app.post("/projects")
@@ -199,7 +239,14 @@ def create_app(
                 make_task_message(
                     chunk_id=project_id,
                     action="parse",
-                    payload={"source_path": str(ctx.source_path)},
+                    payload={
+                        "project_id": project_id,
+                        "project_dir": str(ctx.project_dir),
+                        "source_path": str(ctx.source_path),
+                        "source_lang": ctx.source_lang,
+                        "target_lang": ctx.target_lang,
+                        "output_path": str(ctx.output_path) if ctx.output_path else None,
+                    },
                 )
             )
         return {"project_id": project_id, "status": "created"}
@@ -246,6 +293,8 @@ def create_app(
             paused_stages=snap["paused_stages"],
             pending_hltl=snap["pending_hltl"],
             event_log_tail=snap["event_log_tail"],
+            output_artifact=snap.get("output_artifact"),
+            project_manifest_path=snap.get("project_manifest_path"),
         )
 
     @app.post("/chunks/submit")
@@ -268,6 +317,9 @@ def create_app(
         chunk = store.get_chunk(chunk_id)
         if chunk is None:
             raise HTTPException(status_code=404, detail="chunk not found")
+        chunk["qa_issues"] = store.list_qa_issues(chunk_id)
+        chunk["grammar_issues"] = store.list_grammar_issues(chunk_id)
+        chunk["consistency_flags"] = store.list_consistency_flags(chunk_id)
         return chunk
 
     @app.post("/assemble")
@@ -427,7 +479,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="noveltrad-backend")
     parser.add_argument("--host", default=os.environ.get("NOVELTRAD_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("NOVELTRAD_PORT", "8765")))
-    parser.add_argument("--db", default=None, help="Path to SQLite state DB")
+    parser.add_argument(
+        "--db",
+        "--db-path",
+        dest="db",
+        default=None,
+        help="Path to SQLite state DB",
+    )
     parser.add_argument(
         "--vectors", default=None, help="Path to LanceDB vector directory"
     )
@@ -439,10 +497,14 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
+    _frozen_debug_log("server.main: before create_app")
     app = create_app(db_path=args.db, vector_dir=args.vectors)
+    _frozen_debug_log("server.main: after create_app")
 
     try:
+        _frozen_debug_log("server.main: before import uvicorn")
         import uvicorn
+        _frozen_debug_log("server.main: after import uvicorn")
     except ImportError:
         print(
             "uvicorn is required to run the backend. Install it with:\n"
@@ -451,7 +513,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level.lower())
+    _frozen_debug_log("server.main: before uvicorn.run")
+    run_kwargs = {
+        "host": args.host,
+        "port": args.port,
+        "log_level": args.log_level.lower(),
+    }
+    if getattr(sys, "frozen", False):
+        run_kwargs["log_config"] = None
+        run_kwargs["access_log"] = False
+    uvicorn.run(app, **run_kwargs)
+    _frozen_debug_log("server.main: after uvicorn.run")
     return 0
 
 

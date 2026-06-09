@@ -1,5 +1,25 @@
 import os
 import sys
+import multiprocessing as mp
+from pathlib import Path
+
+mp.freeze_support()
+
+
+def _backend_debug_log(message: str) -> None:
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        path = (
+            Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+            / "NovelTrad"
+            / "backend.log"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(message + "\n")
+    except Exception:
+        pass
 
 # Add project root to path
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,16 +37,25 @@ try:
 except ImportError:
     pass
 
-ARGOS_AVAILABLE = False
-try:
-    import argostranslate.package  # noqa: F401
-    import argostranslate.translate  # noqa: F401
-    ARGOS_AVAILABLE = True
-except (ImportError, Exception):
-    pass
+if "--backend" in sys.argv:
+    argv = [arg for arg in sys.argv[1:] if arg != "--backend"]
+    _backend_debug_log(f"backend argv={argv!r}")
+    try:
+        from src.gui.app_config import ConfigManager
+
+        ConfigManager().apply_environment()
+        _backend_debug_log("backend environment applied from user config")
+    except Exception as exc:
+        _backend_debug_log(f"backend config environment failed: {exc}")
+    from src.backend.server import main as backend_main
+
+    _backend_debug_log("backend_main imported")
+    code = backend_main(argv)
+    _backend_debug_log(f"backend_main exited code={code}")
+    raise SystemExit(code)
 
 from PyQt6.QtWidgets import QApplication
-from src.core.config_manager import ConfigManager
+from src.gui.app_config import ConfigManager
 from src.gui.first_run_wizard import FirstRunWizard
 from src.gui.main_window import MainWindow
 

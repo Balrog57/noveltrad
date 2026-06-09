@@ -11,16 +11,16 @@ Language codes: NLLB uses BCP-47-like "eng_Latn", "fra_Latn", "zho_Hans"
 etc. The engine accepts ISO-639-1 ("en", "fr", "zh") and maps them
 internally.
 
-Soft dependencies: ctranslate2 and sentencepiece are optional. If
-they are not installed, the engine falls back to a deterministic
-"identity" mode (returns the source text). The agent tests still pass.
-The fallback is logged as a warning so the user knows.
+Soft dependencies: ctranslate2 and sentencepiece are optional. In
+production, missing NLLB is reported as unavailable; callers must
+choose an explicit fallback such as LLM draft mode.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from pathlib import Path
 from typing import Any
@@ -110,7 +110,7 @@ class NLLBEngine:
         except ImportError as exc:
             self._load_error = f"ctranslate2 / sentencepiece not installed: {exc}"
             logger.warning(
-                "NLLBEngine running in fallback (identity) mode: %s", self._load_error
+                "NLLBEngine unavailable: %s", self._load_error
             )
             return
         try:
@@ -132,15 +132,21 @@ class NLLBEngine:
             )
         except Exception as exc:
             self._load_error = f"NLLB load failed: {exc}"
-            logger.warning("NLLBEngine falling back to identity: %s", exc)
+            logger.warning("NLLBEngine unavailable: %s", exc)
             self._translator = None
 
     def _resolve_model_path(self) -> str:
         # If the env points at a local dir, use it directly. Otherwise
-        # we try `huggingface_hub` to snapshot the model.
+        # require explicit opt-in for network downloads; a desktop app
+        # should not silently pull a multi-GB model at worker startup.
         p = Path(self.model_name)
         if p.is_dir():
             return str(p)
+        if os.environ.get("NLLB_ALLOW_DOWNLOAD", "0") not in {"1", "true", "yes"}:
+            raise RuntimeError(
+                "NLLB_MODEL must point to a local CTranslate2 model directory "
+                "or NLLB_ALLOW_DOWNLOAD=1 must be set explicitly"
+            )
         try:
             from huggingface_hub import snapshot_download  # type: ignore
 
@@ -169,17 +175,33 @@ class NLLBEngine:
     ) -> str:
         if not text.strip():
             return text
+        if "\n" in text:
+            return self._translate_multiblock(
+                text,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                max_decoding_length=max_decoding_length,
+            )
         if not self.available:
-            # Identity fallback. Tests still pass.
-            return f"[{from_nllb_code(to_nllb_code(target_lang))}] {text}"
+            if os.environ.get("NOVELTRAD_ALLOW_IDENTITY_TRANSLATION") in {
+                "1",
+                "true",
+                "yes",
+            }:
+                logger.warning("Using explicit identity translation fallback")
+                return f"[{from_nllb_code(to_nllb_code(target_lang))}] {text}"
+            raise RuntimeError(self._load_error or "NLLB engine unavailable")
         with self._lock:
             try:
                 src_code = to_nllb_code(source_lang)
                 tgt_code = to_nllb_code(target_lang)
-                tokens = self._sp.encode(text, out_type=str)  # type: ignore[union-attr]
+                tokens = self._sp.encode(text.strip(), out_type=str)  # type: ignore[union-attr]
+                source_tokens = [src_code, *tokens, "</s>"]
                 results = self._translator.translate_batch(  # type: ignore[union-attr]
-                    [tokens],
+                    [source_tokens],
+                    batch_type="tokens",
                     target_prefix=[[tgt_code]],
+                    beam_size=4,
                     max_decoding_length=max_decoding_length,
                 )
                 out_tokens = results[0].hypotheses[0]
@@ -190,6 +212,40 @@ class NLLBEngine:
             except Exception as exc:
                 logger.exception("NLLB translate failed")
                 return text
+
+    def _translate_multiblock(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        max_decoding_length: int,
+    ) -> str:
+        """Translate paragraph-like blocks separately while preserving spacing."""
+        parts = re.split(r"(\n\s*\n+)", text)
+        translated: list[str] = []
+        for part in parts:
+            if not part:
+                continue
+            if re.fullmatch(r"\n\s*\n+", part):
+                translated.append(part)
+                continue
+            if not part.strip():
+                translated.append(part)
+                continue
+            leading = part[: len(part) - len(part.lstrip())]
+            trailing = part[len(part.rstrip()) :]
+            core = part.strip()
+            translated.append(
+                leading
+                + self.translate(
+                    core,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    max_decoding_length=max_decoding_length,
+                )
+                + trailing
+            )
+        return "".join(translated)
 
     def translate_batch(
         self,
@@ -210,7 +266,40 @@ def get_engine() -> NLLBEngine:
     with _singleton_lock:
         if _singleton is None:
             _singleton = NLLBEngine()
-        return _singleton
+    return _singleton
 
 
-__all__ = ["NLLBEngine", "get_engine", "to_nllb_code", "from_nllb_code"]
+def diagnostics() -> dict[str, Any]:
+    """Cheap readiness check that does not download or load the model."""
+    model_name = os.environ.get("NLLB_MODEL", "facebook/nllb-200-distilled-600M")
+    try:
+        import ctranslate2  # noqa: F401
+        import sentencepiece  # noqa: F401
+    except ImportError as exc:
+        return {
+            "available": False,
+            "model": model_name,
+            "reason": f"ctranslate2/sentencepiece missing: {exc}",
+        }
+    p = Path(model_name)
+    if not p.is_dir():
+        return {
+            "available": False,
+            "model": model_name,
+            "reason": "NLLB_MODEL is not a local CTranslate2 directory",
+        }
+    spm = p / "sentencepiece.bpe.model"
+    return {
+        "available": spm.exists(),
+        "model": str(p),
+        "reason": "" if spm.exists() else "sentencepiece.bpe.model missing",
+    }
+
+
+__all__ = [
+    "NLLBEngine",
+    "diagnostics",
+    "get_engine",
+    "to_nllb_code",
+    "from_nllb_code",
+]

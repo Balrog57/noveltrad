@@ -76,17 +76,17 @@ class StageQueues:
         self._controls: dict[int, mp.Queue] = {}
         self._lock = threading.Lock()
 
-    def make_control_queue(self, pid: int) -> mp.Queue:
+    def make_control_queue(self, key: int) -> mp.Queue:
         with self._lock:
-            q = self._controls.get(pid)
+            q = self._controls.get(key)
             if q is None:
                 q = mp.Queue(maxsize=64)
-                self._controls[pid] = q
+                self._controls[key] = q
             return q
 
-    def drop_control_queue(self, pid: int) -> None:
+    def drop_control_queue(self, key: int) -> None:
         with self._lock:
-            self._controls.pop(pid, None)
+            self._controls.pop(key, None)
 
     def close(self) -> None:
         for q in (self.input, self.output):
@@ -234,7 +234,7 @@ class WorkerManager:
         self, spec: StageSpec, queues: StageQueues, index: int
     ) -> WorkerSlot:
         worker_id = f"{spec.key}__{index}" if index > 0 else spec.key
-        control_q = queues.make_control_queue(os.getpid())
+        control_q = queues.make_control_queue(index)
         # NOTE: we share control_q across all workers spawned from the
         # orchestrator process. Each spawned worker will get a fresh
         # copy via inheritance of mp.Queue — they share state under
@@ -283,7 +283,7 @@ class WorkerManager:
         self._slots.pop((slot.stage, slot.index), None)
         queues = self._queues.get(slot.stage)
         if queues is not None:
-            queues.drop_control_queue(os.getpid())
+            queues.drop_control_queue(slot.index)
 
         if self._shutdown_requested:
             return
@@ -328,7 +328,7 @@ class WorkerManager:
         for slot in list(self._slots.values()):
             if slot.stage != stage:
                 continue
-            ctrl = queues.make_control_queue(slot.process.pid or os.getpid())
+            ctrl = queues.make_control_queue(slot.index)
             try:
                 ctrl.put(msg, timeout=1.0)
             except Exception:

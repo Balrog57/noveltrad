@@ -1,6 +1,6 @@
 """Settings tab — LLM provider, model, NLLB parameters.
 
-Persists settings to `config.json` (the existing ConfigManager). The
+Persists settings to `config.json` (the v4 ConfigManager). The
 backend reads the env vars (`OLLAMA_BASE_URL`, `OLLAMA_MODEL`,
 `OPENAI_API_KEY`, …) at startup, so changing a value here is a
 guideline — the GUI nudges the user to restart the backend for the
@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.core.config_manager import ConfigManager
+from src.gui.app_config import ConfigManager
 
 
 class SettingsTab(QWidget):
@@ -36,7 +36,7 @@ class SettingsTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
-        layout.addWidget(QLabel("Settings are stored in config.json."))
+        layout.addWidget(QLabel("Settings are stored in your NovelTrad app data folder."))
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -62,6 +62,9 @@ class SettingsTab(QWidget):
         self._parallel.setRange(1, 16)
         self._parallel.setValue(1)
         form.addRow("Parallel chunks (Ollama):", self._parallel)
+
+        self._draft_fallback = QCheckBox("Use LLM draft if NLLB is unavailable")
+        form.addRow("", self._draft_fallback)
 
         self._nllb_model = QLineEdit()
         self._nllb_model.setPlaceholderText("facebook/nllb-200-distilled-600M")
@@ -104,6 +107,7 @@ class SettingsTab(QWidget):
         self._base_url.setText(llm.get("base_url", "http://127.0.0.1:11434"))
         self._api_key.setText(llm.get("api_key", ""))
         self._parallel.setValue(int(llm.get("parallel", 1)))
+        self._draft_fallback.setChecked(bool(llm.get("draft_fallback", False)))
         self._nllb_model.setText(nllb.get("model", "facebook/nllb-200-distilled-600M"))
         dev = nllb.get("device", "cpu")
         idx = self._nllb_device.findText(dev)
@@ -119,6 +123,7 @@ class SettingsTab(QWidget):
                 "base_url": self._base_url.text().strip() or "http://127.0.0.1:11434",
                 "api_key": self._api_key.text().strip(),
                 "parallel": self._parallel.value(),
+                "draft_fallback": self._draft_fallback.isChecked(),
             },
             "nllb": {
                 "model": self._nllb_model.text().strip() or "facebook/nllb-200-distilled-600M",
@@ -131,24 +136,12 @@ class SettingsTab(QWidget):
         cfg = self._config.config
         cfg.update(self._collect())
         self._config.save_config()
-        self._apply_env()
+        self._config.apply_environment()
         self._status.setText("Saved.")
         self._status.setStyleSheet("color: #7be395;")
 
     def _save_and_restart(self) -> None:
         self._save()
         self._status.setText("Saved. Restart NovelTrad to apply backend changes.")
-
-    def _apply_env(self) -> None:
-        llm = self._collect()["llm"]
-        os.environ["OLLAMA_BASE_URL"] = llm["base_url"]
-        os.environ["OLLAMA_MODEL"] = llm["model"]
-        os.environ["OLLAMA_PARALLEL"] = str(llm["parallel"])
-        if llm.get("api_key"):
-            os.environ["OPENAI_API_KEY"] = llm["api_key"]
-        nllb = self._collect()["nllb"]
-        os.environ["NLLB_MODEL"] = nllb["model"]
-        os.environ["NLLB_DEVICE"] = nllb["device"]
-
 
 __all__ = ["SettingsTab"]

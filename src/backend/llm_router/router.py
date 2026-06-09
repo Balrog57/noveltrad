@@ -216,6 +216,8 @@ class LLMRouter:
         max_retries: int = 3,
     ) -> str:
         """Return the completion text. May raise on hard failure."""
+        if os.environ.get("NOVELTRAD_FAKE_LLM") in {"1", "true", "yes"}:
+            return _fake_completion(prompt)
         provider = self._pick_provider(model)
         if provider is None:
             raise RuntimeError("No LLM providers configured")
@@ -339,6 +341,24 @@ def _http_post_json(
         req.add_header("Authorization", auth_header)
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
         return resp.read().decode("utf-8", errors="replace")
+
+
+def _fake_completion(prompt: str) -> str:
+    """Deterministic local LLM used by smoke tests and offline demos."""
+    lower = prompt.lower()
+    if "strict json" in lower and '"terms"' in lower:
+        return '{"terms": []}'
+    if "strict json" in lower and '"issues"' in lower:
+        return '{"issues": []}'
+    if "strict json" in lower and '"suggestions"' in lower:
+        return '{"reflection": "offline fake LLM", "suggestions": []}'
+    marker = "CURRENT TRANSLATION:"
+    if marker in prompt:
+        return prompt.split(marker, 1)[1].strip()
+    marker = "TEXT:"
+    if marker in prompt:
+        return prompt.split(marker, 1)[1].strip()
+    return ""
 
 
 # ---------- singleton ----------

@@ -41,7 +41,13 @@ from pathlib import Path
 from typing import Any
 
 from .base_worker import BaseWorker
-from ..formats import chunk_paragraphs, read_document
+from ..formats import (
+    chunk_blocks,
+    chunk_paragraphs,
+    prepare_project_source,
+    read_document,
+    write_project_manifest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +65,9 @@ class Worker(BaseWorker):
                 f"parser: unknown action {action!r}",
             )
         source_path = payload.get("source_path") or payload.get("path")
+        project_id = payload.get("project_id") or msg.get("chunk_id") or "project"
+        project_dir = payload.get("project_dir") or str(Path(source_path or ".").parent)
+        output_path = payload.get("output_path")
         if not source_path:
             return self._emit_error(
                 None, "missing_source_path", "parser: payload.source_path missing"
@@ -71,20 +80,53 @@ class Worker(BaseWorker):
                 f"parser: file not found: {source}",
             )
         try:
-            doc = read_document(source)
+            manifest = prepare_project_source(
+                source,
+                project_dir=project_dir,
+                project_id=str(project_id),
+                output_path=output_path,
+            )
+            working_source = Path(manifest["working_source_path"])
+            doc = read_document(working_source)
         except Exception as exc:
             logger.exception("Parser failed on %s", source)
             return self._emit_error(None, "parse_failed", str(exc))
 
         chapters_payload: list[dict[str, Any]] = []
+        manifest["format_payload"] = dict(doc.metadata)
         total = 0
         for chap in doc.chapters:
-            chunks = chunk_paragraphs(
-                chap.paragraphs,
-                chapter_id=chap.id,
-                chapter_title=chap.title,
-            )
+            if chap.blocks:
+                chunks = chunk_blocks(
+                    chap.blocks,
+                    chapter_id=chap.id,
+                    chapter_title=chap.title,
+                )
+            else:
+                chunks = chunk_paragraphs(
+                    chap.paragraphs,
+                    chapter_id=chap.id,
+                    chapter_title=chap.title,
+                )
             total += len(chunks)
+            manifest["chapters"].append(
+                {
+                    "id": chap.id,
+                    "title": chap.title,
+                    "metadata": chap.metadata,
+                    "chunk_count": len(chunks),
+                }
+            )
+            manifest["chunks"].extend(
+                {
+                    "id": c.get("id"),
+                    "chapter_id": c.get("chapter_id"),
+                    "chunk_index": c.get("chunk_index"),
+                    "source_hash": c.get("source_hash"),
+                    "metadata": c.get("metadata") or {},
+                }
+                for c in chunks
+            )
             chapters_payload.append(
                 {
                     "id": chap.id,
@@ -99,6 +141,7 @@ class Worker(BaseWorker):
                 note=f"parsed {total} chunks in {len(chapters_payload)} chapters",
             )
 
+        manifest_path = write_project_manifest(project_dir, manifest)
         logger.info(
             "Parser: %d chunks from %d chapters in %s",
             total,
@@ -115,6 +158,9 @@ class Worker(BaseWorker):
                 "chapters": chapters_payload,
                 "chunk_count": total,
                 "source_path": str(source),
+                "working_source_path": manifest.get("working_source_path"),
+                "target_path": manifest.get("target_path"),
+                "manifest_path": str(manifest_path),
             },
             terminal=True,
         )

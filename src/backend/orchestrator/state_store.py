@@ -186,6 +186,34 @@ class StateStore:
             except Exception:
                 pass
 
+    def clear_project_data(self) -> None:
+        """Clear per-project pipeline rows from the active SQLite store.
+
+        The MVP backend currently runs one active project per backend
+        process. Until the schema carries project_id on every table,
+        starting a new project must clear old chunks/issues so the
+        assembler cannot mix content from previous runs.
+        """
+        with self._lock:
+            self._conn.execute("DELETE FROM consistency_flags")
+            self._conn.execute("DELETE FROM grammar_issues")
+            self._conn.execute("DELETE FROM qa_issues")
+            self._conn.execute("DELETE FROM lexicon_terms")
+            self._conn.execute("DELETE FROM chunks")
+            self._conn.execute(
+                """
+                DELETE FROM pipeline_state
+                WHERE key IN (
+                    'current_project',
+                    'output_artifact',
+                    'project_manifest_path',
+                    'target_path'
+                )
+                OR key LIKE 'project:%'
+                OR key LIKE 'hltl_response:%'
+                """
+            )
+
     # ---------- chunks ----------
 
     def add_chunk(self, chunk: dict[str, Any]) -> None:
@@ -412,6 +440,63 @@ class StateStore:
                 ),
             )
 
+    def list_qa_issues(self, chunk_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM qa_issues WHERE chunk_id = ? ORDER BY id",
+                (chunk_id,),
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "chunk_id": r["chunk_id"],
+                "issue_type": r["issue_type"],
+                "severity": r["severity"],
+                "message": r["message"],
+                "auto_fixed": bool(r["auto_fixed"]),
+            }
+            for r in rows
+        ]
+
+    def list_grammar_issues(self, chunk_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM grammar_issues WHERE chunk_id = ? ORDER BY id",
+                (chunk_id,),
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "chunk_id": r["chunk_id"],
+                "start_pos": r["start_pos"],
+                "end_pos": r["end_pos"],
+                "message": r["message"],
+                "suggestion": r["suggestion"],
+                "applied": bool(r["applied"]),
+                "rule_id": r["rule_id"],
+            }
+            for r in rows
+        ]
+
+    def list_consistency_flags(self, chunk_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM consistency_flags WHERE chunk_id = ? ORDER BY id",
+                (chunk_id,),
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "chunk_id": r["chunk_id"],
+                "source_term": r["source_term"],
+                "expected_translation": r["expected_translation"],
+                "found_translation": r["found_translation"],
+                "confidence": r["confidence"],
+                "resolved": bool(r["resolved"]),
+            }
+            for r in rows
+        ]
+
     # ---------- pipeline state key/value ----------
 
     def set_state(self, key: str, value: Any) -> None:
@@ -450,6 +535,8 @@ class StateStore:
                 for s in (
                     "parsed",
                     "fast_translated",
+                    "lexicon_ready",
+                    "lexicon_skipped",
                     "glossary_applied",
                     "consistency_checked",
                     "qa_checked",

@@ -13,6 +13,7 @@ import os
 from typing import Any
 
 from .base_worker import BaseWorker
+from ..llm_router.router import get_router
 
 logger = logging.getLogger(__name__)
 
@@ -65,22 +66,53 @@ class Worker(BaseWorker):
         )
         try:
             translated = self._engine.translate(source, src_lang, tgt_lang)
+            engine_name = "nllb-200-distilled-600M"
         except Exception as exc:
-            logger.exception("FastTranslator crashed on chunk %s", chunk_id)
-            return self._emit_error(chunk_id, "translate_failed", str(exc))
+            logger.warning("NLLB unavailable on chunk %s: %s", chunk_id, exc)
+            translated = self._fallback_translate(source, src_lang, tgt_lang)
+            if translated is None:
+                return self._emit_error(
+                    chunk_id,
+                    "nllb_unavailable",
+                    (
+                        "NLLB is unavailable and no explicit draft fallback "
+                        f"succeeded: {exc}"
+                    ),
+                )
+            engine_name = "llm-draft-fallback"
         self._emit_progress(chunk_id, percent=100.0, note="fast translated")
         return self._emit_done(
             chunk_id,
             {
                 "raw_translation": translated,
-                "engine": (
-                    "nllb-200-distilled-600M"
-                    if self._engine.available
-                    else "nllb-fallback-identity"
-                ),
+                "engine": engine_name,
                 "status": "fast_translated",
             },
         )
+
+    def _fallback_translate(
+        self, source: str, source_lang: str, target_lang: str
+    ) -> str | None:
+        if os.environ.get("NOVELTRAD_TRANSLATION_TEST_MODE") in {"1", "true", "yes"}:
+            return f"[{target_lang}] {source}"
+        if os.environ.get("NOVELTRAD_LLM_DRAFT_ON_NLLB_MISSING", "0") not in {
+            "1",
+            "true",
+            "yes",
+        }:
+            return None
+        prompt = (
+            "Translate the following literary text faithfully. Preserve paragraph "
+            "breaks and do not add commentary.\n\n"
+            f"Source language: {source_lang}\n"
+            f"Target language: {target_lang}\n\n"
+            f"TEXT:\n{source}"
+        )
+        try:
+            return get_router().complete(prompt, use_cache=True)
+        except Exception as exc:
+            logger.warning("LLM draft fallback failed: %s", exc)
+            return None
 
 
 __all__ = ["Worker"]

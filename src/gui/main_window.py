@@ -40,7 +40,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.core.config_manager import ConfigManager
+from src.gui.app_config import ConfigManager
 from src.gui.backend_client import BackendClient, BackendError
 from src.gui.dialogs.chunk_detail_dialog import ChunkDetailDialog
 from src.gui.dialogs.hitl_popup import HITLPopup
@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
         self.resize(1100, 760)
 
         self._config = ConfigManager()
+        self._config.apply_environment()
         backend_url = os.environ.get("NOVELTRAD_BACKEND", "http://127.0.0.1:8765")
         self._client = BackendClient(backend_url)
         self._backend_proc: subprocess.Popen | None = None
@@ -92,7 +93,7 @@ class MainWindow(QMainWindow):
         # --- tabs ---
         self._tabs = QTabWidget()
         self._tabs.setDocumentMode(True)
-        self._translate_tab = TranslateTab(default_target=self._config.get("target_language", "fr"))
+        self._translate_tab = TranslateTab(default_target="fr")
         self._translate_tab.startRequested.connect(self._on_start_translation)
         self._tabs.addTab(self._translate_tab, "Translate")
         self._settings_tab = SettingsTab()
@@ -135,10 +136,30 @@ class MainWindow(QMainWindow):
             pass
         try:
             env = os.environ.copy()
+            self._config.apply_environment()
+            env.update(os.environ)
             env.setdefault("NOVELTRAD_HOST", "127.0.0.1")
             env.setdefault("NOVELTRAD_PORT", "8765")
+            backend_cmd = [
+                sys.executable,
+                "-m",
+                "src.backend.server",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8765",
+            ]
+            if getattr(sys, "frozen", False):
+                backend_cmd = [
+                    sys.executable,
+                    "--backend",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "8765",
+                ]
             self._backend_proc = subprocess.Popen(  # noqa: S603
-                [sys.executable, "-m", "src.backend.server", "--host", "127.0.0.1", "--port", "8765"],
+                backend_cmd,
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -249,9 +270,27 @@ class MainWindow(QMainWindow):
             self._llm_badge.setText("● LLM: (offline)")
             self._llm_badge.setStyleSheet("color: #ff6b6b;")
             return
+        nllb = h.get("nllb") or {}
+        llm = h.get("llm") or {}
         if h.get("ok"):
-            self._llm_badge.setText("● LLM: ready")
-            self._llm_badge.setStyleSheet("color: #7be395;")
+            nllb_text = "NLLB ready" if nllb.get("available") else "NLLB unavailable"
+            llm_text = "LLM ready" if llm.get("ready") else "LLM offline"
+            self._llm_badge.setText(f"● {llm_text} · {nllb_text}")
+            self._llm_badge.setStyleSheet(
+                "color: #7be395;" if nllb.get("available") or llm.get("ready") else "color: #ffd166;"
+            )
+            try:
+                state = self._client.get("/pipeline/state", timeout=2.0) or {}
+                counts = (state.get("state_store") or {}).get("chunks_by_status") or {}
+                artifact = state.get("output_artifact") or {}
+                if artifact.get("output_path"):
+                    self._translate_tab.set_status(f"Output ready: {artifact['output_path']}")
+                elif any(counts.values()):
+                    done = counts.get("polished", 0) + counts.get("assembled", 0)
+                    total = (state.get("state_store") or {}).get("chunks_total", 0)
+                    self._translate_tab.set_status(f"Pipeline: {done}/{total} chunks finalized")
+            except BackendError:
+                pass
         else:
             self._llm_badge.setText("● LLM: ?")
             self._llm_badge.setStyleSheet("color: #ffd166;")
