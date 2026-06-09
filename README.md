@@ -321,4 +321,4 @@ python src/main_qt.py
 
 ## Licence
 
-Voir le fichier `LICENSE` (à ajouter).
+Distribué sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour le texte complet.
