@@ -114,6 +114,18 @@ CREATE TABLE IF NOT EXISTS pipeline_state (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS pending_hltl (
+    request_id TEXT PRIMARY KEY,
+    chunk_id TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    issue_json TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_hltl_chunk ON pending_hltl(chunk_id);
+CREATE INDEX IF NOT EXISTS idx_hltl_unresolved
+    ON pending_hltl(resolved_at) WHERE resolved_at IS NULL;
 """
 
 
@@ -199,6 +211,7 @@ class StateStore:
             self._conn.execute("DELETE FROM grammar_issues")
             self._conn.execute("DELETE FROM qa_issues")
             self._conn.execute("DELETE FROM lexicon_terms")
+            self._conn.execute("DELETE FROM pending_hltl")
             self._conn.execute("DELETE FROM chunks")
             self._conn.execute(
                 """
@@ -281,6 +294,7 @@ class StateStore:
         status: str | None = None,
         chapter_id: str | None = None,
         limit: int | None = None,
+        offset: int | None = None,
     ) -> list[dict[str, Any]]:
         query = "SELECT * FROM chunks"
         clauses: list[str] = []
@@ -296,6 +310,8 @@ class StateStore:
         query += " ORDER BY chapter_id, chunk_index"
         if limit is not None:
             query += f" LIMIT {int(limit)}"
+        if offset is not None and offset > 0:
+            query += f" OFFSET {int(offset)}"
         with self._lock:
             rows = self._conn.execute(query, params).fetchall()
         return [_row_to_chunk(r) for r in rows]
@@ -524,6 +540,70 @@ class StateStore:
         except json.JSONDecodeError:
             return default
 
+    # ---------- pending_hltl (persistent HITL queue) ----------
+
+    def register_hltl_record(
+        self,
+        request_id: str,
+        chunk_id: str,
+        stage: str,
+        issue: dict[str, Any],
+        received_at: str,
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO pending_hltl (
+                    request_id, chunk_id, stage, issue_json, received_at, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    request_id,
+                    chunk_id,
+                    stage,
+                    json.dumps(issue, ensure_ascii=False),
+                    received_at,
+                ),
+            )
+
+    def resolve_hltl_record(self, request_id: str, resolved_at: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE pending_hltl SET resolved_at = ? WHERE request_id = ?",
+                (resolved_at, request_id),
+            )
+
+    def list_unresolved_hltl(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT request_id, chunk_id, stage, issue_json, received_at
+                FROM pending_hltl
+                WHERE resolved_at IS NULL
+                ORDER BY received_at
+                """
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            try:
+                issue = json.loads(r["issue_json"])
+            except json.JSONDecodeError:
+                issue = {}
+            out.append(
+                {
+                    "request_id": r["request_id"],
+                    "chunk_id": r["chunk_id"],
+                    "stage": r["stage"],
+                    "issue": issue,
+                    "received_at": r["received_at"],
+                }
+            )
+        return out
+
+    def clear_hltl_records(self) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM pending_hltl")
+
     # ---------- diagnostics ----------
 
     def snapshot(self) -> dict[str, Any]:
@@ -552,6 +632,9 @@ class StateStore:
             "grammar_issues": self._scalar("SELECT COUNT(*) FROM grammar_issues"),
             "consistency_flags": self._scalar(
                 "SELECT COUNT(*) FROM consistency_flags"
+            ),
+            "pending_hltl": self._scalar(
+                "SELECT COUNT(*) FROM pending_hltl WHERE resolved_at IS NULL"
             ),
             "vector_store": self.vector_status,
         }

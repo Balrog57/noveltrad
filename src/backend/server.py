@@ -307,9 +307,18 @@ def create_app(
         status: str | None = None,
         chapter_id: str | None = None,
         limit: int | None = 100,
+        offset: int | None = 0,
     ) -> dict[str, Any]:
+        items = store.list_chunks(
+            status=status, chapter_id=chapter_id, limit=limit, offset=offset
+        )
+        total = store.count_chunks(status=status)
         return {
-            "chunks": store.list_chunks(status=status, chapter_id=chapter_id, limit=limit),
+            "items": items,
+            "chunks": items,  # legacy key for the Files tab
+            "total": total,
+            "limit": limit,
+            "offset": offset,
         }
 
     @app.get("/chunks/{chunk_id}")
@@ -423,6 +432,14 @@ def create_app(
         if not ok:
             raise HTTPException(status_code=404, detail="request not found")
         return {"ok": True}
+
+    @app.post("/orchestrator/hltl/replay")
+    def hltl_replay() -> dict[str, Any]:
+        """Re-inject every waiting-for-human chunk that has a live target worker.
+
+        Returns a summary so the GUI can show a status toast.
+        """
+        return orchestrator.replay_pending_hltl()
 
     # ----- WebSocket -----
 

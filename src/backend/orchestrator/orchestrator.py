@@ -42,6 +42,7 @@ from .pipeline import (
     ASSEMBLER,
     DEFAULT_PIPELINE_ORDER,
     PARALLELIZABLE_STAGES,
+    PARSER,
     STAGE_TO_STATUS,
     STATUS_ERROR,
     StageSpec,
@@ -55,6 +56,12 @@ logger = logging.getLogger(__name__)
 
 # Callback signature for state changes (used by the WebSocket layer).
 StateListener = Callable[[dict[str, Any]], None]
+
+
+# Drain loop: when a single stage output queue is saturated, we drain
+# up to this many of its messages per loop iteration before moving on.
+# Keeps a chatty stage from starving quieter ones.
+MAX_DRAIN_PER_STAGE_PER_LOOP = 8
 
 
 @dataclass
@@ -208,7 +215,7 @@ class Orchestrator:
         proxy by writing the chunks into the store and pushing one
         task per chunk to the FastTranslator queue.
         """
-        spec = self._stages[FAST_TRANSLATOR := "fast_translator"]
+        spec = self._stages["fast_translator"]
         q = self._workers.queues_for(spec.key).input
         count = 0
         for chunk in chunks:
@@ -248,22 +255,37 @@ class Orchestrator:
     # ---------- HITL ----------
 
     def register_hltl(self, msg: dict[str, Any]) -> None:
-        """Record a human-in-the-loop request emitted by an agent."""
+        """Record a human-in-the-loop request emitted by an agent.
+
+        The record is held both in memory (for the snapshot / GUI polling)
+        and persisted in `pending_hltl` (for crash-safe replay).
+        """
         chunk_id = msg.get("chunk_id")
         if not chunk_id:
             return
         issue = (msg.get("payload") or {}).get("issue", {})
         request_id = uuid.uuid4().hex
+        received_at = _now_iso()
         record = {
             "request_id": request_id,
             "chunk_id": chunk_id,
             "stage": msg.get("stage"),
             "issue": issue,
-            "received_at": _now_iso(),
+            "received_at": received_at,
         }
         with self._lock:
             self._pending_hltl[request_id] = record
             self.store.update_chunk_field(chunk_id, "status", "waiting_for_human")
+        try:
+            self.store.register_hltl_record(
+                request_id=request_id,
+                chunk_id=chunk_id,
+                stage=msg.get("stage") or "",
+                issue=issue,
+                received_at=received_at,
+            )
+        except Exception:
+            logger.exception("hltl: failed to persist pending_hltl record")
         self._emit(
             {
                 "type": "hltl_alert",
@@ -271,54 +293,167 @@ class Orchestrator:
                 "chunk_id": chunk_id,
                 "stage": msg.get("stage"),
                 "issue": issue,
-                "timestamp": _now_iso(),
+                "timestamp": received_at,
             }
         )
 
     def respond_hltl(self, request_id: str, answer: str) -> bool:
         """Apply a human answer to a pending HITL request.
 
-        Phase 1: store the answer, mark the chunk back to its last
-        known good status, and re-inject the chunk into the next
-        stage. The full UX (StageAware re-injection) lands in Phase 8.
+        If the target stage has no live worker (or the stage is unknown),
+        the chunk stays in `waiting_for_human`, an `hltl_unroutable`
+        event is emitted, and the `pending_hltl` record is left
+        unresolved so a later `replay_pending_hltl` can pick it up.
+        Only on a successful re-injection do we mark the record resolved.
         """
         with self._lock:
             record = self._pending_hltl.pop(request_id, None)
         if record is None:
             return False
         chunk_id = record["chunk_id"]
+        target_stage = record.get("stage")
+        resolved_at = _now_iso()
+        # Always record the human answer for audit.
         self.store.set_state(
             f"hltl_response:{request_id}",
             {
                 "answer": answer,
                 "chunk_id": chunk_id,
-                "responded_at": _now_iso(),
+                "responded_at": resolved_at,
             },
         )
-        # Best-effort: send the chunk back to the requesting stage.
-        target_stage = record.get("stage")
-        if target_stage and target_stage in self._stages:
-            q = self._workers.queues_for(target_stage).input
-            from ..agents.base_worker import make_task_message
-
-            q.put(
-                make_task_message(
-                    chunk_id=chunk_id,
-                    action="hltl_reprocess",
-                    payload={"answer": answer, "issue": record.get("issue")},
-                )
+        if not target_stage or target_stage not in self._stages:
+            self._emit(
+                {
+                    "type": "hltl_unroutable",
+                    "request_id": request_id,
+                    "chunk_id": chunk_id,
+                    "stage": target_stage,
+                    "reason": "unknown_stage",
+                    "timestamp": resolved_at,
+                }
             )
+            return True
+        if not self._workers.is_alive(target_stage):
+            logger.info(
+                "hltl: target stage %s has no live worker; chunk %s "
+                "remains waiting_for_human",
+                target_stage,
+                chunk_id,
+            )
+            self._emit(
+                {
+                    "type": "hltl_unroutable",
+                    "request_id": request_id,
+                    "chunk_id": chunk_id,
+                    "stage": target_stage,
+                    "reason": "worker_dead",
+                    "timestamp": resolved_at,
+                }
+            )
+            # Keep the request_id in the in-memory map so a follow-up
+            # replay can still act on it without round-tripping to disk.
+            with self._lock:
+                self._pending_hltl[request_id] = record
+            return True
+        q = self._workers.queues_for(target_stage).input
+        from ..agents.base_worker import make_task_message
+
+        q.put(
+            make_task_message(
+                chunk_id=chunk_id,
+                action="hltl_reprocess",
+                payload={"answer": answer, "issue": record.get("issue")},
+            )
+        )
         self.store.update_chunk_field(chunk_id, "status", "parsed")
+        try:
+            self.store.resolve_hltl_record(request_id, resolved_at)
+        except Exception:
+            logger.exception("hltl: failed to mark record resolved")
+        logger.info(
+            "hltl: chunk %s waiting_for_human -> parsed (re-injected to %s)",
+            chunk_id,
+            target_stage,
+        )
         self._emit(
             {
                 "type": "hltl_resolved",
                 "request_id": request_id,
                 "chunk_id": chunk_id,
                 "answer": answer,
-                "timestamp": _now_iso(),
+                "timestamp": resolved_at,
             }
         )
         return True
+
+    def replay_pending_hltl(self) -> dict[str, int]:
+        """Re-route any HITL requests that were left unrouted.
+
+        Intended to be called after a worker restart. Returns a summary
+        of how many requests were re-injected vs left pending.
+        """
+        routed = 0
+        skipped = 0
+        # Reload from store in case we restarted without an in-memory copy.
+        for rec in self.store.list_unresolved_hltl():
+            request_id = rec["request_id"]
+            with self._lock:
+                if request_id in self._pending_hltl:
+                    skipped += 1
+                    continue
+                self._pending_hltl[request_id] = rec
+            self.store.update_chunk_field(
+                rec["chunk_id"], "status", "waiting_for_human"
+            )
+            self._emit(
+                {
+                    "type": "hltl_replay_started",
+                    "request_id": request_id,
+                    "chunk_id": rec["chunk_id"],
+                    "stage": rec["stage"],
+                }
+            )
+            target_stage = rec.get("stage")
+            if not target_stage or target_stage not in self._stages:
+                skipped += 1
+                continue
+            if not self._workers.is_alive(target_stage):
+                self._emit(
+                    {
+                        "type": "hltl_unroutable",
+                        "request_id": request_id,
+                        "chunk_id": rec["chunk_id"],
+                        "stage": target_stage,
+                        "reason": "worker_still_dead",
+                    }
+                )
+                skipped += 1
+                continue
+            q = self._workers.queues_for(target_stage).input
+            from ..agents.base_worker import make_task_message
+
+            q.put(
+                make_task_message(
+                    chunk_id=rec["chunk_id"],
+                    action="hltl_reprocess",
+                    payload={"answer": None, "issue": rec.get("issue")},
+                )
+            )
+            self.store.update_chunk_field(
+                rec["chunk_id"], "status", "parsed"
+            )
+            self._emit(
+                {
+                    "type": "hltl_resolved",
+                    "request_id": request_id,
+                    "chunk_id": rec["chunk_id"],
+                    "answer": None,
+                    "note": "replayed",
+                }
+            )
+            routed += 1
+        return {"routed": routed, "skipped": skipped}
 
     def pending_hltl(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -378,14 +513,70 @@ class Orchestrator:
         with self._lock:
             return list(self._event_log)[-limit:]
 
-    # ---------- internals: drain loop ----------
+    # ---------- internals: run-level and drain loop ----------
+
+    def _handle_run_level_message(
+        self, stage: str, payload: dict[str, Any]
+    ) -> None:
+        """Process a project-level (chunk_id=None) completion message.
+
+        Currently only the Parser uses this path: it produces a manifest
+        and a list of chapters/chunks that must be injected into the
+        FastTranslator queue (the regular forward path can't do it
+        because the Parser's `terminal=True` flag would block it).
+        """
+        if stage == PARSER:
+            if payload.get("manifest_path"):
+                self.store.set_state(
+                    "project_manifest_path", payload["manifest_path"]
+                )
+            if payload.get("target_path"):
+                self.store.set_state("target_path", payload["target_path"])
+            chapters = payload.get("chapters") or []
+            flat: list[dict[str, Any]] = []
+            for chap in chapters:
+                for c in chap.get("chunks") or []:
+                    c.setdefault("chapter_id", chap.get("id"))
+                    c.setdefault("chapter_title", chap.get("title"))
+                    flat.append(c)
+            if flat:
+                self.submit_chunks(flat)
+            self._emit(
+                {
+                    "type": "agent_done",
+                    "stage": stage,
+                    "chunk_id": None,
+                    "payload": payload,
+                }
+            )
+            self._emit(
+                {
+                    "type": "log",
+                    "message": (
+                        f"parser: {payload.get('chunk_count', 0)} chunks "
+                        f"extracted; manifest={payload.get('manifest_path', '')}"
+                    ),
+                }
+            )
+            return
+        # Unknown stage at run level: log and let listeners see it.
+        logger.warning("run-level completion from unknown stage %r", stage)
+        self._emit(
+            {
+                "type": "agent_done",
+                "stage": stage,
+                "chunk_id": None,
+                "payload": payload,
+            }
+        )
 
     def _drain_loop(self) -> None:
         """Read every stage's output queue, update the store, forward chunks.
 
-        We round-robin across stages to avoid starving any one of them.
-        Each iteration we do a short blocking get on each queue, in
-        pipeline order, and process whatever message is there.
+        Round-robin across stages with a soft back-pressure: when a queue
+        is saturated (size >= MAX_DRAIN_PER_STAGE_PER_LOOP), drain up to
+        that cap from it before moving on, so a chatty stage cannot
+        starve quieter ones.
         """
         while not self._stop_drain.is_set():
             did_work = False
@@ -397,11 +588,17 @@ class Orchestrator:
                 except KeyError:
                     continue
                 try:
-                    msg = q.get_nowait()
+                    pending = q.qsize()
                 except Exception:
-                    continue
-                did_work = True
-                self._handle_worker_message(stage, msg)
+                    pending = 0
+                cap = MAX_DRAIN_PER_STAGE_PER_LOOP if pending >= MAX_DRAIN_PER_STAGE_PER_LOOP else 1
+                for _ in range(cap):
+                    try:
+                        msg = q.get_nowait()
+                    except Exception:
+                        break
+                    did_work = True
+                    self._handle_worker_message(stage, msg)
             if not did_work:
                 time.sleep(0.05)
 
@@ -449,43 +646,19 @@ class Orchestrator:
                 self._emit({"type": "chunk_progress", **base})
             return
 
+        if msg_type == "run_done":
+            # Project-level completion emitted by a stage. Generic route
+            # so any stage can finish its run-level work without the
+            # orchestrator needing a hard-coded branch.
+            self._handle_run_level_message(stage, payload)
+            return
+
         if msg_type == "done":
-            # Parser emits a stage-level done with chunk_id=None and a
-            # list of chapters/chunks in the payload. We need to inject
-            # those into the FastTranslator queue here, because the
-            # parser's terminal=True prevents the regular forward path
-            # from doing it.
-            if stage == "parser" and chunk_id is None:
-                if payload.get("manifest_path"):
-                    self.store.set_state("project_manifest_path", payload["manifest_path"])
-                if payload.get("target_path"):
-                    self.store.set_state("target_path", payload["target_path"])
-                chapters = payload.get("chapters") or []
-                flat: list[dict[str, Any]] = []
-                for chap in chapters:
-                    for c in chap.get("chunks") or []:
-                        c.setdefault("chapter_id", chap.get("id"))
-                        c.setdefault("chapter_title", chap.get("title"))
-                        flat.append(c)
-                if flat:
-                    self.submit_chunks(flat)
-                self._emit(
-                    {
-                        "type": "agent_done",
-                        "stage": stage,
-                        "chunk_id": None,
-                        "payload": payload,
-                    }
-                )
-                self._emit(
-                    {
-                        "type": "log",
-                        "message": (
-                            f"parser: {payload.get('chunk_count', 0)} chunks "
-                            f"extracted; manifest={payload.get('manifest_path', '')}"
-                        ),
-                    }
-                )
+            # run_done is a project-level completion (chunk_id=None). Any
+            # stage may emit it when it finishes its run-level work; we
+            # delegate to a dedicated handler.
+            if chunk_id is None:
+                self._handle_run_level_message(stage, payload)
                 return
             # LexiconBuilder emits terms in its payload. We persist
             # them and forward the chunk to the next stage.
