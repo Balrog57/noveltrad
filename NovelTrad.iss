@@ -9,8 +9,10 @@
 ; directive is added to both Sign and SignOnce. Otherwise the
 ; installer is built unsigned (developer machines).
 
-#ifndef NOVELTRAD_VERSION
+#if GetEnv("NOVELTRAD_VERSION") == ""
   #define NOVELTRAD_VERSION "0.0.0"
+#else
+  #define NOVELTRAD_VERSION GetEnv("NOVELTRAD_VERSION")
 #endif
 
 #ifndef MyAppId
@@ -55,9 +57,11 @@ UninstallDisplayIcon={app}\NovelTrad.exe
 UninstallDisplayName={#MyAppName}
 WizardStyle=modern
 SetupLogging=yes
-SignedUninstaller=yes
+SignedUninstaller={#GetEnv("SIGNTOOL_PFX") != "" ? "yes" : "no"}
+#if GetEnv("SIGNTOOL_PFX") != ""
 SignTool={#SignTool}
 Sign=Setup
+#endif
 
 [Files]
 Source: "dist\NovelTrad\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -80,14 +84,17 @@ var
   DependencyPage: TOutputMsgWizardPage;
 
 procedure KillRunningInstance();
+var
+  RetCode: Integer;
 begin
   // Stop a running NovelTrad.exe before the installer overwrites the
   // binary. We try `/F /IM` first; if the process is not running the
-  // command exits with a non-zero code which Exec() surfaces as a
-  // non-fatal warning (Result of Exec is not checked).
-  if Exec('taskkill.exe', '/F /IM NovelTrad.exe', '', SW_HIDE, ewNoWait, 0) then
-    // Give the OS a moment to release file handles.
+  // command exits with a non-zero code which is intentionally ignored.
+  if Exec('taskkill.exe', '/F /IM NovelTrad.exe', '',
+         SW_HIDE, ewNoWait, RetCode) then
+  begin
     Sleep(500);
+  end;
 end;
 
 procedure InitializeWizard;

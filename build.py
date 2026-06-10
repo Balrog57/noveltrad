@@ -53,6 +53,11 @@ def read_version() -> str:
 
 def _run(cmd: list[str], **kwargs) -> None:
     print("+", " ".join(cmd))
+    # When invoked as `python build.py ...`, the script's directory is on
+    # sys.path[0], so a child `python -m build` would re-import THIS file
+    # instead of the `build` package. Run the child in a clean cwd to avoid
+    # that shadow.
+    kwargs.setdefault("cwd", str(ROOT))
     subprocess.check_call(cmd, **kwargs)  # noqa: S603
 
 
@@ -73,7 +78,15 @@ def cmd_wheel(version: str) -> None:
     # `python -m build` writes to ./dist by default; we copy what we
     # need into dist/wheel/ and keep the rest. We don't pass --outdir
     # so the user can also see a unified dist/ tree.
-    _run([sys.executable, "-m", "build", "--wheel", "--sdist"])
+    # Run in a temp cwd to avoid re-importing this file as the `build`
+    # module when invoked as `python build.py`. `python -m build`
+    # also needs the source dir, so we pass it as the last positional.
+    import tempfile
+    with tempfile.TemporaryDirectory() as _td:
+        _run(
+            [sys.executable, "-m", "build", "--wheel", "--sdist", str(ROOT)],
+            cwd=_td,
+        )
     # Move artefacts into dist/wheel/ for clarity.
     for f in (ROOT / "dist").iterdir():
         if f.is_file() and (f.suffix in (".whl", ".tar.gz") or f.name.startswith("noveltrad")):
@@ -119,7 +132,7 @@ def cmd_installer(version: str) -> None:
         )
     env = os.environ.copy()
     env["NOVELTRAD_VERSION"] = version
-    _run([str(iscc), "NovelTrad.iss"], env=env)
+    _run([str(iscc), "/DNOVELTRAD_VERSION=" + version, "NovelTrad.iss"], env=env)
     print(f"installer built: Setup_NovelTrad-{version}.exe")
 
 
