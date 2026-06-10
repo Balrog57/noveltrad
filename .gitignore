@@ -88,4 +88,6 @@ env/
 venv/
 *.egg-info/
 .noveltrad/
+.noveltrad_vectors/
 *.ntrad
+Setup_NovelTrad.exe
