@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -28,9 +29,12 @@ from PyQt6.QtWidgets import (
 )
 
 from src.gui.app_config import ConfigManager
+from src.gui.updater import Updater, is_skipped
 
 
 class SettingsTab(QWidget):
+    checkForUpdatesRequested = pyqtSignal()
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
@@ -86,6 +90,14 @@ class SettingsTab(QWidget):
         self._restart_btn = QPushButton("Save & Restart backend")
         self._restart_btn.clicked.connect(self._save_and_restart)
         row.addWidget(self._restart_btn)
+        self._check_updates_btn = QPushButton("Check for updates")
+        self._check_updates_btn.setToolTip(
+            "Check GitHub Releases for a newer version of NovelTrad."
+        )
+        self._check_updates_btn.clicked.connect(
+            self.checkForUpdatesRequested.emit
+        )
+        row.addWidget(self._check_updates_btn)
         row.addStretch(1)
         self._status = QLabel("")
         row.addWidget(self._status)

@@ -52,12 +52,14 @@ from src.gui.app_config import ConfigManager
 from src.gui.backend_client import BackendClient, BackendError
 from src.gui.dialogs.chunk_detail_dialog import ChunkDetailDialog
 from src.gui.dialogs.hitl_popup import HITLPopup
+from src.gui.dialogs.update_dialog import UpdateDialog
 from src.gui.notifier import Notifier
 from src.gui.tabs.files_tab import FilesTab
 from src.gui.tabs.glossaries_tab import GlossariesTab
 from src.gui.tabs.settings_tab import SettingsTab
 from src.gui.tabs.translate_tab import TranslateTab
 from src.gui.theme import VALID_THEMES, ThemeManager
+from src.gui.updater import Updater, is_skipped
 from src.gui.widgets.activity_log import ActivityLogWidget
 from src.gui.widgets.event_debouncer import EventDebouncer
 
@@ -88,6 +90,13 @@ class MainWindow(QMainWindow):
         self._backend_proc: subprocess.Popen | None = None
         self._active_hitl: dict[str, HITLPopup] = {}
         self._notifier = Notifier(self)
+        # Auto-updater. We never auto-update when the env var disables
+        # it or when we're running from the dev checkout (Updater
+        # short-circuits in that case).
+        import src as _src_pkg
+
+        self._updater = Updater(current_version=_src_pkg.__version__)
+        self._pending_update_dialog: UpdateDialog | None = None
 
         # Apply theme via ThemeManager (persisted in QSettings).
         self._theme = ThemeManager.instance()
@@ -151,6 +160,9 @@ class MainWindow(QMainWindow):
         self._files_tab.chunkActivated.connect(self._show_chunk_detail)
         self._stack.addWidget(self._files_tab)
         self._settings_tab = SettingsTab()
+        self._settings_tab.checkForUpdatesRequested.connect(
+            self._on_manual_check_for_updates
+        )
         self._stack.addWidget(self._settings_tab)
 
         self._splitter.addWidget(self._sidebar)
@@ -191,6 +203,9 @@ class MainWindow(QMainWindow):
         self._drawer_open = True
         self._sidebar.setVisible(True)
         self._splitter.setSizes([200, max(400, self.width() - 200)])
+
+        # Background auto-update check, fires once the UI is settled.
+        QTimer.singleShot(3000, self._check_for_updates)
 
     # ----- responsive -----
 
@@ -521,6 +536,69 @@ class MainWindow(QMainWindow):
             self._sidebar.setCurrentRow(page)
             self._stack.setCurrentIndex(page)
         # Theme already restored by ThemeManager.restore_from.
+
+    # ----- auto-update -----
+
+    def _check_for_updates(self) -> None:
+        """Background update check fired by QTimer.singleShot at boot.
+
+        Never raises; on success it pops a non-modal :class:`UpdateDialog`
+        and on no-update it stays silent. Skipped entirely in dev mode
+        and when ``NOVELTRAD_SKIP_UPDATE=1``.
+        """
+        try:
+            if is_skipped() or not self._updater.should_check():
+                return
+            info = self._updater.check()
+        except Exception as exc:  # noqa: BLE001 - timer slot must not raise
+            logger.warning("auto-update check failed: %s", exc)
+            return
+        if info is None:
+            return
+        self._present_update_dialog(info)
+
+    def _on_manual_check_for_updates(self) -> None:
+        """Slot for the ``Check for updates`` button in SettingsTab."""
+        if is_skipped() or not self._updater.should_check():
+            QMessageBox.information(
+                self,
+                "Updates",
+                "Auto-update is disabled in this build (dev mode or "
+                "NOVELTRAD_SKIP_UPDATE=1).",
+            )
+            return
+        try:
+            info = self._updater.check()
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(
+                self, "Update check failed", f"Could not contact GitHub: {exc}"
+            )
+            return
+        if info is None:
+            QMessageBox.information(
+                self,
+                "Up to date",
+                f"You are running the latest stable version "
+                f"({self._updater.current_version}).",
+            )
+            return
+        self._present_update_dialog(info)
+
+    def _present_update_dialog(self, info) -> None:  # noqa: ANN001 - UpdateInfo
+        if (
+            self._pending_update_dialog is not None
+            and self._pending_update_dialog.isVisible()
+        ):
+            self._pending_update_dialog.raise_()
+            self._pending_update_dialog.activateWindow()
+            return
+        dlg = UpdateDialog(self._updater, info, parent=self)
+        self._pending_update_dialog = dlg
+        dlg.finished.connect(lambda _r: self._on_update_dialog_closed())
+        dlg.show()
+
+    def _on_update_dialog_closed(self) -> None:
+        self._pending_update_dialog = None
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._settings.setValue("MainWindow/geometry", self.saveGeometry())
