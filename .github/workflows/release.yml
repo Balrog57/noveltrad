@@ -50,7 +50,11 @@ jobs:
                   $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
                   if (-not $iscc) { throw "ISCC.exe not found in any of: $($candidates -join ', ')" }
                   Write-Host "Using ISCC at $iscc"
-                  & $iscc /?
+                  # Expose the resolved ISCC path to subsequent steps.
+                  "iscc=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+                  # Add Inno Setup's directory to PATH for this and later steps.
+                  $isccDir = Split-Path $iscc -Parent
+                  Add-Content -Path $env:GITHUB_PATH -Value $isccDir
 
             - name: Run build.py --all
               env:
