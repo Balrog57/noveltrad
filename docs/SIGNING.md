@@ -20,10 +20,12 @@ the `SIGNTOOL_PFX` environment variable is set:
     "")
 ```
 
-The `Sign=Setup` directive in `[Setup]` then runs `signtool` on the
-generated installer. When `SIGNTOOL_PFX` is empty, `SignTool` is the
-empty string and Inno Setup skips signing entirely — this is the
-"developer machine" mode.
+The `SignTool` and `SignedUninstaller=yes` directives in `[Setup]`
+then run `signtool` on the generated installer and uninstaller
+(`Setup_NovelTrad-vX.Y.Z.exe` and the embedded `unins000.exe`).
+When `SIGNTOOL_PFX` is empty, `SignTool` is the empty string and
+Inno Setup skips signing entirely — this is the "developer machine"
+mode.
 
 ## Local signing (developer machine)
 
