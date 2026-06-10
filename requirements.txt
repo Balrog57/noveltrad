@@ -23,5 +23,8 @@ httpx>=0.27.0
 language-tool-python>=2.7.1
 lancedb>=0.13.0
 
+# Version parsing for the auto-updater (Sparkle-like, GitHub Releases)
+packaging>=23.0
+
 # Packaging
 pyinstaller>=6.3.0
