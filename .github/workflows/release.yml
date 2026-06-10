@@ -37,11 +37,12 @@ jobs:
             - name: Install Inno Setup 6
               shell: pwsh
               run: |
-                  $url = "https://jrsoftware.org/download.php/is.exe"
-                  $installer = "$env:TEMP\is.exe"
+                  $url = 'https://jrsoftware.org/download.php/is.exe'
+                  $installer = Join-Path $env:TEMP 'is.exe'
                   Invoke-WebRequest -Uri $url -OutFile $installer
-                  Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=`"C:\Inno Setup 6`"" -Wait
-                  "C:\Inno Setup 6\ISCC.exe" /?
+                  $proc = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\Inno Setup 6' -Wait -PassThru
+                  Write-Host ("Install exit code: {0}" -f $proc.ExitCode)
+                  & 'C:\Inno Setup 6\ISCC.exe' /?
 
             - name: Run build.py --all
               env:
