@@ -343,6 +343,180 @@ def _http_post_json(
         return resp.read().decode("utf-8", errors="replace")
 
 
+# ---------- Ollama discovery ----------
+
+
+# Curated suggestions: cheap local models that pair well with the
+# NLLB-200 draft + 4 GB-ish VRAM. Surfaced in the GUI when no
+# Ollama instance is reachable yet.
+SUGGESTED_OLLAMA_MODELS: list[dict[str, str]] = [
+    {
+        "name": "gemma3:4b",
+        "size": "3.3 GB",
+        "notes": "Multilingual, good general quality. Recommended default.",
+    },
+    {
+        "name": "llama3.1:8b",
+        "size": "4.9 GB",
+        "notes": "Stronger reasoning, needs ~6 GB VRAM.",
+    },
+    {
+        "name": "qwen2.5:7b",
+        "size": "4.7 GB",
+        "notes": "Excellent for Chinese/Japanese source novels.",
+    },
+    {
+        "name": "phi4:14b",
+        "size": "9.1 GB",
+        "notes": "High quality, but heavy. CPU is slow.",
+    },
+    {
+        "name": "mistral-nemo:12b",
+        "size": "7.1 GB",
+        "notes": "Long context, great for chapters.",
+    },
+]
+
+# Curated cloud suggestions. Surfaced in the GUI as quick-pick chips.
+SUGGESTED_CLOUD_MODELS: list[dict[str, str]] = [
+    {
+        "name": "gpt-4o-mini",
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "notes": "OpenAI, cheap and fast.",
+    },
+    {
+        "name": "gpt-4o",
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "notes": "OpenAI, high quality.",
+    },
+    {
+        "name": "claude-3-5-sonnet-latest",
+        "provider": "openai",
+        "base_url": "https://api.anthropic.com/v1",
+        "notes": "Anthropic via OpenAI-compatible proxy.",
+    },
+    {
+        "name": "gemini-1.5-flash",
+        "provider": "openai",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "notes": "Google, very fast and free tier available.",
+    },
+    {
+        "name": "deepseek-chat",
+        "provider": "openai",
+        "base_url": "https://api.deepseek.com/v1",
+        "notes": "DeepSeek, very cheap.",
+    },
+]
+
+
+@dataclass
+class OllamaModelInfo:
+    name: str
+    size_bytes: int = 0
+    family: str = ""
+    parameter_size: str = ""
+    quantization: str = ""
+    modified_at: str = ""
+
+
+def discover_ollama_models(
+    base_url: str = "http://127.0.0.1:11434",
+    *,
+    timeout: float = 2.0,
+    opener: Callable[[Any, float | None], Any] | None = None,
+) -> dict[str, Any]:
+    """Probe an Ollama instance and return a structured discovery payload.
+
+    Returns a dict with:
+      * ``reachable`` (bool): whether the HTTP probe succeeded.
+      * ``base_url`` (str): the URL we actually probed.
+      * ``version`` (str | None): Ollama version string when reachable.
+      * ``models`` (list[OllamaModelInfo]): installed models, sorted by name.
+      * ``error`` (str | None): human-readable error when unreachable.
+
+    ``opener`` is injectable for tests: it must accept a URL (string or
+    ``urllib.request.Request``) and a timeout, and return an object that
+    behaves like a context manager and exposes ``.read()``.
+
+    Never raises; failures are captured in the returned dict. Callers
+    in the GUI can use the structured payload to populate a
+    ``QComboBox`` with a sensible default and a fallback list of
+    suggested models.
+    """
+    base = base_url.rstrip("/") or "http://127.0.0.1:11434"
+    out: dict[str, Any] = {
+        "reachable": False,
+        "base_url": base,
+        "version": None,
+        "models": [],
+        "error": None,
+    }
+
+    def _open(url: str) -> Any:
+        if opener is not None:
+            return opener(url, timeout)
+        return urllib.request.urlopen(url, timeout=timeout)  # noqa: S310
+
+    try:
+        try:
+            with _open(base + "/api/version") as resp:
+                payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+            if isinstance(payload, dict):
+                out["version"] = str(payload.get("version") or "") or None
+        except Exception:
+            # Older Ollama builds (pre-0.5) don't expose /api/version; the
+            # /api/tags endpoint below is the source of truth, so we
+            # silently fall through instead of failing here.
+            pass
+        with _open(base + "/api/tags") as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"Ollama not reachable at {base}: {exc}"
+        return out
+    raw_models = payload.get("models") if isinstance(payload, dict) else None
+    if not isinstance(raw_models, list):
+        return out
+    parsed: list[OllamaModelInfo] = []
+    for entry in raw_models:
+        if not isinstance(entry, dict):
+            continue
+        details = entry.get("details") or {}
+        try:
+            size = int(entry.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        parsed.append(
+            OllamaModelInfo(
+                name=str(entry.get("name") or "").strip(),
+                size_bytes=size,
+                family=str(details.get("family") or ""),
+                parameter_size=str(details.get("parameter_size") or ""),
+                quantization=str(details.get("quantization_level") or ""),
+                modified_at=str(entry.get("modified_at") or ""),
+            )
+        )
+    parsed.sort(key=lambda m: m.name)
+    out["reachable"] = True
+    out["models"] = parsed
+    return out
+
+
+__all__ = [
+    "ProviderConfig",
+    "ContentHashCache",
+    "CircuitState",
+    "LLMRouter",
+    "get_router",
+    "OllamaModelInfo",
+    "discover_ollama_models",
+    "SUGGESTED_OLLAMA_MODELS",
+    "SUGGESTED_CLOUD_MODELS",
+]
+
+
 def _fake_completion(prompt: str) -> str:
     """Deterministic local LLM used by smoke tests and offline demos."""
     lower = prompt.lower()

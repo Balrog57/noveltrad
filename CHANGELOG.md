@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- LLM auto-discovery: the first-run wizard and settings tab now call
+  `GET /llm/providers` and `POST /llm/providers/refresh` to
+  enumerate the local Ollama models, suggest curated local models
+  (gemma3:4b, llama3.1:8b, qwen2.5:7b, phi4:14b, mistral-nemo:12b)
+  and curated OpenAI-compatible cloud endpoints
+  (gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-1.5-flash,
+  deepseek-chat). The user can still type a custom model and base
+  URL.
+
 ### Planned
 - Real "Recent projects" page (currently a placeholder in the GUI).
 - HMAC-signed `latest.json` for stronger auto-update integrity.

@@ -1,10 +1,27 @@
-from PyQt6.QtWidgets import (QWizard, QWizardPage, QVBoxLayout, QLabel, 
-                             QLineEdit, QPushButton, QFileDialog, QRadioButton, 
-                             QButtonGroup, QFormLayout, QComboBox, QCheckBox)
-from PyQt6.QtCore import Qt
+"""First-run wizard for the v4 PyQt client.
+
+Walks the user through:
+  1. Welcome
+  2. Workspace location
+  3. LLM provider — auto-detects Ollama + suggests cloud models
+  4. NLLB fast-draft
+  5. Theme
+  6. Finish
+"""
+
+from PyQt6.QtWidgets import (QWizard, QWizardPage, QVBoxLayout, QLabel,
+                             QLineEdit, QPushButton, QFileDialog, QRadioButton,
+                             QButtonGroup, QFormLayout, QComboBox, QCheckBox,
+                             QListWidget, QListWidgetItem, QHBoxLayout)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
 import os
 import urllib.request
 from src.gui.app_config import ConfigManager
+from src.gui.llm_discovery import (
+    ProviderChoice,
+    fetch_provider_choices,
+    refresh_router,
+)
 
 class FirstRunWizard(QWizard):
     def __init__(self):
@@ -103,13 +120,67 @@ class ThemePage(QWizardPage):
 
 
 class LLMPage(QWizardPage):
+    """LLM provider auto-discovery.
+
+    The page calls ``GET /llm/providers`` on the running backend and
+    populates a single ``QListWidget`` with three sections:
+
+    * **Installed (auto-detected)**: models the local Ollama instance
+      already has on disk.
+    * **Local suggestions**: curated models the user can install with
+      ``ollama pull <name>``.
+    * **Cloud**: a small list of OpenAI-compatible endpoints with one
+      click.
+
+    The user can also type any custom model name or base URL — the
+    widgets stay editable so power users aren't blocked.
+    """
+
+    BACKEND_URL = "http://127.0.0.1:8765"
+
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.setTitle("LLM Provider")
-        self.setSubTitle("Configure the model used by lexicon, QA, and polishing agents.")
+        self.setSubTitle(
+            "Pick a model for the lexicon, QA, and polishing agents. "
+            "Ollama models installed on this machine are detected "
+            "automatically; you can also pick a cloud provider or "
+            "type your own."
+        )
+
+        self._choices: dict[str, list[ProviderChoice]] = {
+            "installed": [],
+            "suggestions": [],
+            "cloud": [],
+        }
+        self._ollama_meta: dict = {"reachable": False, "version": None, "error": None}
 
         layout = QVBoxLayout()
+
+        # ---- picker (auto-detected) ----
+        picker_label = QLabel("Discovered models:")
+        layout.addWidget(picker_label)
+        self.picker = QListWidget()
+        self.picker.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.picker.currentItemChanged.connect(self._on_pick)
+        layout.addWidget(self.picker, 1)
+
+        self.status = QLabel("Detecting Ollama…")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+
+        btn_row = QHBoxLayout()
+        self.refresh_btn = QPushButton("Re-detect")
+        self.refresh_btn.clicked.connect(self._refresh)
+        btn_row.addWidget(self.refresh_btn)
+        self.test_btn = QPushButton("Test endpoint")
+        self.test_btn.clicked.connect(self.test_ollama)
+        btn_row.addWidget(self.test_btn)
+        btn_row.addStretch(1)
+        layout.addLayout(btn_row)
+
+        # ---- manual override ----
         form = QFormLayout()
         llm = dict(self.config.get("llm", {}) or {})
 
@@ -119,26 +190,121 @@ class LLMPage(QWizardPage):
         idx = self.provider.findData(llm.get("provider", "ollama"))
         if idx >= 0:
             self.provider.setCurrentIndex(idx)
-        form.addRow("Provider:", self.provider)
+        self.provider.currentIndexChanged.connect(self._sync_provider_visibility)
+        form.addRow("Provider kind:", self.provider)
 
         self.base_url = QLineEdit(llm.get("base_url", "http://127.0.0.1:11434"))
         form.addRow("Base URL:", self.base_url)
+
         self.model = QLineEdit(llm.get("model", "gemma3:4b"))
         form.addRow("Model:", self.model)
+
         self.api_key = QLineEdit(llm.get("api_key", ""))
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("API key:", self.api_key)
+
         self.draft_fallback = QCheckBox("Use LLM draft if NLLB is unavailable")
         self.draft_fallback.setChecked(bool(llm.get("draft_fallback", False)))
         form.addRow("", self.draft_fallback)
         layout.addLayout(form)
-
-        self.status = QLabel("")
-        layout.addWidget(self.status)
-        test_btn = QPushButton("Test Ollama endpoint")
-        test_btn.clicked.connect(self.test_ollama)
-        layout.addWidget(test_btn)
         self.setLayout(layout)
+
+        self._sync_provider_visibility()
+        # Kick off an initial discovery in the background.
+        self._refresh()
+
+    # ----- discovery -------------------------------------------------
+
+    def _refresh(self):
+        self.refresh_btn.setEnabled(False)
+        self.status.setText("Detecting Ollama…")
+        worker = _DiscoveryWorker(self.BACKEND_URL)
+        worker.finished.connect(self._on_discovery)
+        worker.start()
+        self._worker = worker  # keep alive
+
+    def _on_discovery(self, payload: dict):
+        self.refresh_btn.setEnabled(True)
+        self._choices["installed"] = payload.get("ollama_choices") or []
+        self._choices["suggestions"] = payload.get("ollama_suggestions") or []
+        self._choices["cloud"] = payload.get("cloud_choices") or []
+        self._ollama_meta = payload.get("ollama") or {}
+        self._rebuild_picker()
+
+    def _rebuild_picker(self):
+        self.picker.clear()
+        sections = [
+            (
+                "Installed on this PC"
+                if self._ollama_meta.get("reachable")
+                else "Local — Ollama not reachable",
+                self._choices["installed"],
+            ),
+            ("Local — suggestions to install", self._choices["suggestions"]),
+            ("Cloud — OpenAI-compatible", self._choices["cloud"]),
+        ]
+        for header, items in sections:
+            if not items:
+                continue
+            head = QListWidgetItem(header)
+            head.setFlags(Qt.ItemFlag.NoItemFlags)
+            head.setData(Qt.ItemDataRole.UserRole, None)
+            self.picker.addItem(head)
+            for ch in items:
+                li = QListWidgetItem(ch.display())
+                li.setData(Qt.ItemDataRole.UserRole, ch)
+                self.picker.addItem(li)
+        # Status line.
+        if self._ollama_meta.get("reachable"):
+            version = self._ollama_meta.get("version") or "?"
+            self.status.setText(
+                f"✓ Ollama {version} — {len(self._choices['installed'])} model(s) installed."
+            )
+        elif self._ollama_meta.get("error"):
+            self.status.setText(
+                f"Ollama not reachable. {self._ollama_meta['error']}. "
+                "Pick a suggestion and run 'ollama pull <name>' later, "
+                "or use a cloud model."
+            )
+        else:
+            self.status.setText(
+                "No Ollama instance found. Pick a cloud model or install Ollama."
+            )
+        self._sync_provider_visibility()
+
+    def _on_pick(self, current: QListWidgetItem | None, _previous):
+        if current is None:
+            return
+        ch = current.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(ch, ProviderChoice):
+            return
+        self.model.setText(ch.model)
+        if ch.base_url:
+            self.base_url.setText(ch.base_url)
+        # Switch provider kind to match the choice.
+        idx = self.provider.findData(ch.provider_kind)
+        if idx >= 0:
+            self.provider.setCurrentIndex(idx)
+
+    def _sync_provider_visibility(self):
+        is_ollama = self.provider.currentData() == "ollama"
+        self.api_key.setEnabled(not is_ollama)
+
+    # ----- validation -------------------------------------------------
+
+    def test_ollama(self):
+        try:
+            with urllib.request.urlopen(
+                self.base_url.text().strip().rstrip("/") + "/api/tags",
+                timeout=2,
+            ) as resp:
+                ok = resp.status < 400
+        except Exception as exc:
+            self.status.setText(f"Ollama test failed: {exc}")
+            return
+        self.status.setText(
+            "Ollama endpoint responded." if ok else "Ollama endpoint returned an error."
+        )
 
     def validatePage(self):
         llm = dict(self.config.get("llm", {}) or {})
@@ -154,17 +320,26 @@ class LLMPage(QWizardPage):
         self.config.set("llm", llm)
         return True
 
-    def test_ollama(self):
+
+class _DiscoveryWorker(QThread):
+    finished = pyqtSignal(dict)
+
+    def __init__(self, backend_url: str):
+        super().__init__()
+        self.backend_url = backend_url
+
+    def run(self):
         try:
-            with urllib.request.urlopen(
-                self.base_url.text().strip().rstrip("/") + "/api/tags",
-                timeout=2,
-            ) as resp:
-                ok = resp.status < 400
-        except Exception as exc:
-            self.status.setText(f"Ollama test failed: {exc}")
-            return
-        self.status.setText("Ollama endpoint responded." if ok else "Ollama endpoint returned an error.")
+            payload = fetch_provider_choices(self.backend_url)
+        except Exception as exc:  # noqa: BLE001
+            payload = {
+                "ollama_choices": [],
+                "ollama_suggestions": [],
+                "cloud_choices": [],
+                "ollama": {"reachable": False, "version": None, "error": str(exc)},
+                "error": str(exc),
+            }
+        self.finished.emit(payload)
 
 
 class NLLBPage(QWizardPage):
