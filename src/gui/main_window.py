@@ -1,18 +1,20 @@
-"""MainWindow for NovelTrad v4 — TBL-inspired 4-tab GUI.
+"""MainWindow for NovelTrad v4 — sidebar + stacked pages layout.
 
-Lays out:
+Layout:
 
-  [📚 NovelTrad]                              ● LLM: Ollama …   [🌙]
-  ─────────────────────────────────────────────────────────────────
-  [Translate*] [Settings] [Glossaries] [Files]
-  ─────────────────────────────────────────────────────────────────
-  … active tab content …
-  ─────────────────────────────────────────────────────────────────
-  Activity Log (collapsible, fed by WebSocket)
+   [📚 NovelTrad]              ● LLM: Ollama …   [🌙] [☰]
+   ────────────────────────────────────────────────────────
+   [ Translate  ] ┌──────────────────────────────────────┐
+   [ Projects  ]  │   page content                       │
+   [ Glossaries]  │   (QStackedWidget)                   │
+   [ Files     ]  │                                      │
+   [ Settings  ]  │                                      │
+   ───────────────┴──────────────────────────────────────┘
+   Activity Log (collapsible, fed by WebSocket)
 
-The window holds a single BackendClient that all tabs share. The
-WebSocket fanout is wired to the activity log and to a HITL popup
-that appears when a `hltl_alert` event arrives.
+Responsive: below 900 px the sidebar collapses into a drawer
+toggled by the hamburger button in the header. State is persisted
+via QSettings on `closeEvent` and restored on `__init__`.
 """
 
 from __future__ import annotations
@@ -26,31 +28,51 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtCore import QSettings, Qt, QTimer
+from PyQt6.QtGui import QAction, QCloseEvent, QKeySequence
 from PyQt6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
+    QListView,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSplitter,
+    QStackedWidget,
     QStatusBar,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from src.gui.a11y import GLOBAL_SHORTCUTS, bind_shortcut, configure
 from src.gui.app_config import ConfigManager
 from src.gui.backend_client import BackendClient, BackendError
 from src.gui.dialogs.chunk_detail_dialog import ChunkDetailDialog
 from src.gui.dialogs.hitl_popup import HITLPopup
+from src.gui.notifier import Notifier
 from src.gui.tabs.files_tab import FilesTab
 from src.gui.tabs.glossaries_tab import GlossariesTab
 from src.gui.tabs.settings_tab import SettingsTab
 from src.gui.tabs.translate_tab import TranslateTab
+from src.gui.theme import VALID_THEMES, ThemeManager
 from src.gui.widgets.activity_log import ActivityLogWidget
+from src.gui.widgets.event_debouncer import EventDebouncer
 
 logger = logging.getLogger(__name__)
+
+
+SIDEBAR_ITEMS: tuple[tuple[str, str], ...] = (
+    ("translate", "Translate"),
+    ("projects", "Projects"),
+    ("glossaries", "Glossaries"),
+    ("files", "Files"),
+    ("settings", "Settings"),
+)
+
+DRAWER_BREAKPOINT = 700
 
 
 class MainWindow(QMainWindow):
@@ -65,6 +87,12 @@ class MainWindow(QMainWindow):
         self._client = BackendClient(backend_url)
         self._backend_proc: subprocess.Popen | None = None
         self._active_hitl: dict[str, HITLPopup] = {}
+        self._notifier = Notifier(self)
+
+        # Apply theme via ThemeManager (persisted in QSettings).
+        self._theme = ThemeManager.instance()
+        self._settings = QSettings()
+        self._theme.restore_from(self._settings, QApplication_or_holder(self))
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -72,39 +100,65 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # --- header (title + LLM badge) ---
+        # --- header ---
         header = QWidget()
-        header.setStyleSheet("QWidget { background: #0d0d0d; }")
         hbox = QHBoxLayout(header)
         hbox.setContentsMargins(12, 6, 12, 6)
+        self._hamburger = QPushButton("☰")
+        self._hamburger.setFixedWidth(36)
+        self._hamburger.clicked.connect(self._toggle_drawer)
+        configure(self._hamburger, name="Toggle sidebar drawer")
+        hbox.addWidget(self._hamburger)
+
         title = QLabel("📚  NovelTrad")
-        title.setStyleSheet("font-size: 14pt; font-weight: 600;")
+        title.setProperty("role", "title")
         hbox.addWidget(title)
         hbox.addStretch(1)
         self._llm_badge = QLabel("● LLM: …")
-        self._llm_badge.setStyleSheet("color: #888;")
+        self._llm_badge.setProperty("role", "muted")
         hbox.addWidget(self._llm_badge)
         self._theme_btn = QPushButton("🌙")
-        self._theme_btn.setFixedWidth(32)
-        self._theme_btn.clicked.connect(self._toggle_theme)
+        self._theme_btn.setFixedWidth(36)
+        self._theme_btn.clicked.connect(self._cycle_theme)
+        configure(self._theme_btn, name="Cycle theme", tooltip="Switch theme (Ctrl+Shift+T)")
         hbox.addWidget(self._theme_btn)
         root.addWidget(header)
 
-        # --- tabs ---
-        self._tabs = QTabWidget()
-        self._tabs.setDocumentMode(True)
-        self._translate_tab = TranslateTab(default_target="fr")
+        # --- sidebar + stacked pages in a splitter ---
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._sidebar = QListWidget()
+        for _key, label in SIDEBAR_ITEMS:
+            item = QListWidgetItem(label)
+            self._sidebar.addItem(item)
+        self._sidebar.setFixedWidth(200)
+        self._sidebar.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        configure(self._sidebar, name="Navigation")
+        self._sidebar.currentRowChanged.connect(self._on_sidebar_changed)
+
+        self._stack = QStackedWidget()
+        self._translate_tab = TranslateTab(
+            default_target="fr", client=self._client
+        )
         self._translate_tab.startRequested.connect(self._on_start_translation)
-        self._tabs.addTab(self._translate_tab, "Translate")
-        self._settings_tab = SettingsTab()
-        self._tabs.addTab(self._settings_tab, "Settings")
+        self._translate_tab.replayHltlRequested.connect(self._on_replay_hltl)
+        self._translate_tab.assembleRequested.connect(self._on_assemble_requested)
+        self._stack.addWidget(self._translate_tab)
+        self._projects_tab = self._build_projects_placeholder()
+        self._stack.addWidget(self._projects_tab)
         self._glossaries_tab = GlossariesTab(self._client)
-        self._tabs.addTab(self._glossaries_tab, "Glossaries")
+        self._stack.addWidget(self._glossaries_tab)
         self._files_tab = FilesTab(self._client)
         self._files_tab.chunkActivated.connect(self._show_chunk_detail)
-        self._tabs.addTab(self._files_tab, "Files")
-        self._tabs.currentChanged.connect(self._on_tab_changed)
-        root.addWidget(self._tabs, 1)
+        self._stack.addWidget(self._files_tab)
+        self._settings_tab = SettingsTab()
+        self._stack.addWidget(self._settings_tab)
+
+        self._splitter.addWidget(self._sidebar)
+        self._splitter.addWidget(self._stack)
+        self._splitter.setStretchFactor(0, 0)
+        self._splitter.setStretchFactor(1, 1)
+        self._splitter.setCollapsible(0, True)
+        root.addWidget(self._splitter, 1)
 
         # --- activity log ---
         self._activity = ActivityLogWidget()
@@ -114,6 +168,12 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage("Starting backend…")
 
+        # WebSocket event debouncer.
+        self._debouncer = EventDebouncer(self._on_event_batch, parent=self)
+
+        # Install global shortcuts.
+        self._install_shortcuts()
+
         # Start backend subprocess (idempotent if already running).
         self._start_backend()
         # Periodically refresh LLM badge + status.
@@ -122,17 +182,128 @@ class MainWindow(QMainWindow):
         self._timer.timeout.connect(self._refresh_status)
         self._timer.start()
         QTimer.singleShot(500, self._post_startup)
+        # Restore layout.
+        self._restore_layout()
+        # Apply initial responsive mode once the window is actually
+        # shown (resizeEvent won't fire on a hidden widget). We default
+        # to "full sidebar" until the first show; the resizeEvent will
+        # then re-evaluate against the real geometry.
+        self._drawer_open = True
+        self._sidebar.setVisible(True)
+        self._splitter.setSizes([200, max(400, self.width() - 200)])
+
+    # ----- responsive -----
+
+    def resizeEvent(self, event) -> None:  # noqa: ANN001 - Qt signature
+        super().resizeEvent(event)
+        self._apply_responsive_mode(event.size().width())
+
+    def _apply_responsive_mode(self, width: int) -> None:
+        drawer = width < DRAWER_BREAKPOINT
+        if drawer:
+            self._splitter.setSizes([0, width])
+            self._sidebar.setVisible(False)
+            self._drawer_open = False
+        else:
+            self._sidebar.setVisible(True)
+            self._drawer_open = True
+            if self._splitter.sizes()[0] == 0:
+                self._splitter.setSizes([200, max(400, width - 200)])
+
+    def _toggle_drawer(self) -> None:
+        # Manual user action (hamburger click). Always toggles the
+        # sidebar visibility, regardless of the responsive breakpoint.
+        if self._drawer_open:
+            self._sidebar.setVisible(False)
+            self._drawer_open = False
+            self._splitter.setSizes([0, max(400, self.width())])
+        else:
+            self._sidebar.setVisible(True)
+            self._drawer_open = True
+            self._splitter.setSizes(
+                [200, max(400, self.width() - 200)]
+            )
+
+    # ----- shortcuts -----
+
+    def _install_shortcuts(self) -> None:
+        bind_shortcut(self, "Ctrl+O", self._action_open_file)
+        bind_shortcut(self, "Ctrl+R", self._action_rerun)
+        bind_shortcut(self, "Ctrl+,", self._action_settings)
+        bind_shortcut(self, "F1", self._action_help)
+        bind_shortcut(self, "Ctrl+Q", self.close)
+        bind_shortcut(self, "Ctrl+Shift+T", self._cycle_theme)
+        bind_shortcut(self, "Esc", self._action_close_overlay)
+
+    def _action_open_file(self) -> None:
+        if hasattr(self._translate_tab, "_drop"):
+            self._translate_tab._drop._open_dialog()  # type: ignore[attr-defined]
+
+    def _action_rerun(self) -> None:
+        # Best-effort: replay pending HITL counts as a "rerun" of the
+        # most stuck chunks.
+        self._on_replay_hltl()
+
+    def _action_settings(self) -> None:
+        idx = next(
+            (i for i, (k, _) in enumerate(SIDEBAR_ITEMS) if k == "settings"), 0
+        )
+        self._sidebar.setCurrentRow(idx)
+        self._stack.setCurrentIndex(idx)
+
+    def _action_help(self) -> None:
+        lines = ["Keyboard shortcuts:"]
+        for spec in GLOBAL_SHORTCUTS:
+            lines.append(f"  {spec.sequence:<14} {spec.label}")
+        QMessageBox.information(self, "Help", "\n".join(lines))
+
+    def _action_close_overlay(self) -> None:
+        # Close any active HITL popup.
+        if self._active_hitl:
+            for dlg in list(self._active_hitl.values()):
+                dlg.reject()
+        elif self._sidebar.isVisible() and self.width() < DRAWER_BREAKPOINT:
+            self._toggle_drawer()
+
+    # ----- theme -----
+
+    def _cycle_theme(self) -> None:
+        from PyQt6.QtWidgets import QApplication
+
+        new_name = self._theme.cycle(QApplication.instance())  # type: ignore[arg-type]
+        self._theme.save_to(self._settings)
+        self._theme_btn.setText({"light": "☀", "dark": "🌙", "high_contrast": "🔆"}[new_name])
+        self.statusBar().showMessage(f"Theme: {new_name}", 2000)
+
+    # ----- projects placeholder -----
+
+    def _build_projects_placeholder(self) -> QWidget:
+        page = QFrame()
+        page.setProperty("role", "card")
+        v = QVBoxLayout(page)
+        v.setContentsMargins(24, 24, 24, 24)
+        title = QLabel("Recent projects")
+        title.setProperty("role", "title")
+        v.addWidget(title)
+        hint = QLabel(
+            "Projects will appear here as you translate. "
+            "Each entry shows source, target, date and a quick re-open action."
+        )
+        hint.setProperty("role", "muted")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
+        v.addStretch(1)
+        configure(page, name="Recent projects", description="List of past translation runs.")
+        return page
 
     # ----- backend lifecycle -----
 
     def _start_backend(self) -> None:
-        # If a backend is already responding, just connect.
         try:
             if self._client.health().get("ok"):
                 self.statusBar().showMessage("Backend connected.")
                 return
         except Exception:
-            # Connection refused / timeout: we'll try to spawn one.
             pass
         try:
             env = os.environ.copy()
@@ -170,7 +341,7 @@ class MainWindow(QMainWindow):
                 self, "Backend", f"Could not start backend subprocess: {exc}"
             )
             return
-        # Wait for readiness in background.
+
         def _wait() -> None:
             if self._client.wait_ready(timeout_s=15.0):
                 QTimer.singleShot(0, lambda: self.statusBar().showMessage("Backend ready."))
@@ -185,7 +356,6 @@ class MainWindow(QMainWindow):
         threading.Thread(target=_wait, daemon=True).start()
 
     def _post_startup(self) -> None:
-        # Open WebSocket and refresh state.
         try:
             self._client.open_websocket(self._on_ws_event)
         except Exception as exc:
@@ -193,20 +363,34 @@ class MainWindow(QMainWindow):
         self._refresh_status()
 
     def _on_ws_event(self, event: dict[str, Any]) -> None:
-        # Marshal back to the GUI thread via QTimer.singleShot(0, …)
-        QTimer.singleShot(0, lambda: self._handle_event(event))
+        # Marshal to GUI thread and into the debouncer.
+        self._debouncer.push(event)
+
+    def _on_event_batch(self, batch: list[dict[str, Any]]) -> None:
+        for event in batch:
+            self._handle_event(event)
 
     def _handle_event(self, event: dict[str, Any]) -> None:
         self._activity.on_event(event)
         kind = event.get("type")
         if kind == "hltl_alert":
             self._show_hitl(event)
-        elif kind in ("agent_done", "chunks_submitted", "assemble_triggered"):
-            # Cheap re-poll of the Files tab.
-            if self._tabs.currentIndex() == 3:
+            self._notifier.notify(
+                "HITL needed",
+                f"Stage {event.get('stage', '?')}: {(event.get('issue') or {}).get('summary', '')}",
+                level="warning",
+            )
+        elif kind == "agent_done":
+            if self._files_tab is not None:
                 self._files_tab.refresh()
+        elif kind == "artifact_ready":
+            self._translate_tab.on_artifact_ready(event.get("output_path", ""))
         elif kind == "pipeline_started":
             self.statusBar().showMessage("Pipeline started.")
+        elif kind == "hltl_unroutable":
+            self.statusBar().showMessage(
+                f"HITL not routed: {event.get('reason', '?')}", 5000
+            )
 
     def _show_hitl(self, event: dict[str, Any]) -> None:
         rid = event.get("request_id", "")
@@ -257,10 +441,40 @@ class MainWindow(QMainWindow):
         )
         self.statusBar().showMessage(f"Project {res.get('project_id')} running…")
 
-    def _on_tab_changed(self, _idx: int) -> None:
-        if self._tabs.currentWidget() is self._glossaries_tab:
+    def _on_replay_hltl(self) -> None:
+        try:
+            res = self._client.post("/orchestrator/hltl/replay", timeout=5.0) or {}
+        except BackendError as exc:
+            self.statusBar().showMessage(f"Replay failed: {exc}", 4000)
+            return
+        routed = res.get("routed", 0)
+        skipped = res.get("skipped", 0)
+        self.statusBar().showMessage(
+            f"HITL replay: {routed} routed, {skipped} skipped", 4000
+        )
+
+    def _on_assemble_requested(self, fmt: str) -> None:
+        try:
+            res = self._client.post(
+                "/projects/assemble",
+                body={"format": fmt},
+                timeout=10.0,
+            ) or {}
+        except BackendError as exc:
+            QMessageBox.warning(self, "Assemble failed", str(exc))
+            return
+        if res.get("output_path"):
+            self.statusBar().showMessage(
+                f"Output: {res['output_path']}", 5000
+            )
+
+    def _on_sidebar_changed(self, idx: int) -> None:
+        if idx < 0 or idx >= self._stack.count():
+            return
+        self._stack.setCurrentIndex(idx)
+        if self._stack.currentWidget() is self._glossaries_tab:
             self._glossaries_tab.refresh()
-        elif self._tabs.currentWidget() is self._files_tab:
+        elif self._stack.currentWidget() is self._files_tab:
             self._files_tab.refresh()
 
     def _refresh_status(self) -> None:
@@ -268,7 +482,9 @@ class MainWindow(QMainWindow):
             h = self._client.health()
         except BackendError:
             self._llm_badge.setText("● LLM: (offline)")
-            self._llm_badge.setStyleSheet("color: #ff6b6b;")
+            self._llm_badge.setProperty("role", "muted")
+            self._llm_badge.style().unpolish(self._llm_badge)
+            self._llm_badge.style().polish(self._llm_badge)
             return
         nllb = h.get("nllb") or {}
         llm = h.get("llm") or {}
@@ -276,41 +492,47 @@ class MainWindow(QMainWindow):
             nllb_text = "NLLB ready" if nllb.get("available") else "NLLB unavailable"
             llm_text = "LLM ready" if llm.get("ready") else "LLM offline"
             self._llm_badge.setText(f"● {llm_text} · {nllb_text}")
-            self._llm_badge.setStyleSheet(
-                "color: #7be395;" if nllb.get("available") or llm.get("ready") else "color: #ffd166;"
-            )
+            self.statusBar().showMessage("Backend connected.")
             try:
                 state = self._client.get("/pipeline/state", timeout=2.0) or {}
-                counts = (state.get("state_store") or {}).get("chunks_by_status") or {}
-                artifact = state.get("output_artifact") or {}
-                if artifact.get("output_path"):
-                    self._translate_tab.set_status(f"Output ready: {artifact['output_path']}")
-                elif any(counts.values()):
-                    done = counts.get("polished", 0) + counts.get("assembled", 0)
-                    total = (state.get("state_store") or {}).get("chunks_total", 0)
-                    self._translate_tab.set_status(f"Pipeline: {done}/{total} chunks finalized")
+                self._translate_tab.update_pipeline_state(state)
             except BackendError:
                 pass
         else:
             self._llm_badge.setText("● LLM: ?")
-            self._llm_badge.setStyleSheet("color: #ffd166;")
 
-    def _toggle_theme(self) -> None:
-        cur = self._config.get("ui", {}) or {}
-        cur = dict(cur) if isinstance(cur, dict) else {}
-        cur["dark"] = not bool(cur.get("dark", True))
-        cfg = self._config.config
-        cfg["ui"] = cur
-        self._config.save_config()
-        QMessageBox.information(
-            self,
-            "Theme",
-            "Theme change will apply on next launch.",
-        )
+    # ----- layout persistence -----
 
-    # ----- shutdown -----
+    def _restore_layout(self) -> None:
+        geom = self._settings.value("MainWindow/geometry")
+        if geom is not None:
+            try:
+                self.restoreGeometry(geom)
+            except Exception:
+                pass
+        state = self._settings.value("MainWindow/state")
+        if state is not None:
+            try:
+                self.restoreState(state)
+            except Exception:
+                pass
+        page = self._settings.value("MainWindow/currentPage", 0, type=int)
+        if 0 <= page < self._stack.count():
+            self._sidebar.setCurrentRow(page)
+            self._stack.setCurrentIndex(page)
+        # Theme already restored by ThemeManager.restore_from.
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._settings.setValue("MainWindow/geometry", self.saveGeometry())
+        self._settings.setValue("MainWindow/state", self.saveState())
+        self._settings.setValue(
+            "MainWindow/currentPage", self._sidebar.currentRow()
+        )
+        self._theme.save_to(self._settings)
+        try:
+            self._debouncer.flush_now()
+        except Exception:
+            pass
         self._client.close()
         if self._backend_proc is not None and self._backend_proc.poll() is None:
             try:
@@ -320,4 +542,10 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
-__all__ = ["MainWindow"]
+def QApplication_or_holder(widget: QWidget):  # noqa: ANN201
+    from PyQt6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
+
+__all__ = ["MainWindow", "SIDEBAR_ITEMS", "DRAWER_BREAKPOINT"]

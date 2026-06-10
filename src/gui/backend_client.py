@@ -38,8 +38,13 @@ class BackendClient:
 
     # ----- HTTP -----
 
-    def get(self, path: str, timeout: float = 5.0) -> Any:
-        return self._request("GET", path, timeout=timeout)
+    def get(
+        self,
+        path: str,
+        timeout: float = 5.0,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        return self._request("GET", path, params=params, timeout=timeout)
 
     def post(self, path: str, body: dict[str, Any] | None = None, timeout: float = 30.0) -> Any:
         return self._request("POST", path, body=body, timeout=timeout)
@@ -55,8 +60,18 @@ class BackendClient:
         method: str,
         path: str,
         body: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
         timeout: float = 10.0,
     ) -> Any:
+        if params:
+            from urllib.parse import urlencode
+
+            qs = urlencode(
+                {k: v for k, v in params.items() if v is not None and v != ""},
+                doseq=False,
+            )
+            if qs:
+                path = f"{path}?{qs}" if "?" not in path else f"{path}&{qs}"
         url = f"{self.base_url}{path}"
         data = json.dumps(body).encode("utf-8") if body is not None else None
         req = urllib.request.Request(url, data=data, method=method)
