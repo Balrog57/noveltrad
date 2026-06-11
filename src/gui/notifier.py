@@ -34,13 +34,17 @@ class Notifier(QObject):
             icon = QIcon.fromTheme("noveltrad", QIcon())
             self._tray = QSystemTrayIcon(icon, self)
             menu = QMenu()
-            open_act = QAction("Open NovelTrad", self)
-            quit_act = QAction("Quit", self)
+            open_act = QAction(self.tr("Open NovelTrad"), self)
+            quit_act = QAction(self.tr("Quit"), self)
             menu.addAction(open_act)
             menu.addSeparator()
             menu.addAction(quit_act)
             self._tray.setContextMenu(menu)
-            configure(self._tray, name="NovelTrad tray", description="Background notifier")
+            configure(
+                self._tray,
+                name=self.tr("NovelTrad tray"),
+                description=self.tr("Background notifier"),
+            )
             self._tray.show()
             return True
         except Exception as exc:

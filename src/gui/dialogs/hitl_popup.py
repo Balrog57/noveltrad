@@ -32,31 +32,33 @@ class HITLPopup(QDialog):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle(f"HITL — {stage}")
+        self.setWindowTitle(self.tr("HITL — {stage}").format(stage=stage))
         self.setModal(False)
         self._request_id = request_id
         self._client = client
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"<b>Chunk:</b> {chunk_id[:12]}"))
-        layout.addWidget(QLabel(f"<b>Stage:</b> {stage}"))
+        layout.addWidget(QLabel(self.tr("<b>Chunk:</b> {cid}").format(cid=chunk_id[:12])))
+        layout.addWidget(QLabel(self.tr("<b>Stage:</b> {stage}").format(stage=stage)))
         priority = issue.get("priority", "ISSUE")
         text = QTextEdit()
         text.setReadOnly(True)
         text.setPlainText(
-            f"Priority: {priority}\n\n{issue.get('explanation', '')}\n\n"
-            f"Quote: {issue.get('quote', '')}"
+            self.tr("Priority: {priority}\n\n{explanation}\n\n").format(
+                priority=priority, explanation=issue.get("explanation", "")
+            )
+            + self.tr("Quote: {quote}").format(quote=issue.get("quote", ""))
         )
         text.setMaximumHeight(180)
         layout.addWidget(text)
-        layout.addWidget(QLabel("Your answer:"))
+        layout.addWidget(QLabel(self.tr("Your answer:")))
         self._answer = QLineEdit()
         layout.addWidget(self._answer)
         row = QHBoxLayout()
         row.addStretch(1)
-        skip_btn = QPushButton("Skip")
+        skip_btn = QPushButton(self.tr("Skip"))
         skip_btn.clicked.connect(self.reject)
         row.addWidget(skip_btn)
-        send_btn = QPushButton("Send")
+        send_btn = QPushButton(self.tr("Send"))
         send_btn.clicked.connect(self._send)
         send_btn.setDefault(True)
         row.addWidget(send_btn)

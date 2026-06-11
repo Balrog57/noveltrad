@@ -109,3 +109,39 @@ be truly deleted. If a release is broken:
 2. Or push a new patch version (`vX.Y.Z+1`) that supersedes it.
 
 The auto-updater will simply point users to the new tag.
+
+## 8. UI translations (i18n)
+
+The desktop client is translatable via Qt Linguist. Source strings
+live in code wrapped in `self.tr(...)` (English is the source
+language). Translated catalogues live under `src/gui/i18n/` as
+`.ts` files; the runtime loads compiled `.qm` files placed next to
+them. If the `.qm` is missing, the app gracefully falls back to
+English.
+
+### Compiling the catalogues
+
+`PyQt6` does not bundle the `lrelease` binary on Windows. Two
+options:
+
+1. **Qt Tools (recommended)**: install Qt 6 via the official online
+   installer and add `lrelease.exe` to the PATH, then:
+   ```powershell
+   lrelease src/gui/i18n/noveltrad_fr.ts -qm src/gui/i18n/noveltrad_fr.qm
+   ```
+2. **PyQt6 dev tools (Linux/macOS)**: `pip install pyqt6-tools` and
+   invoke `pylrelease`:
+   ```bash
+   pylrelease src/gui/i18n/*.ts
+   ```
+
+Add a new language:
+
+1. Copy `src/gui/i18n/noveltrad_fr.ts` to `noveltrad_<code>.ts`.
+2. Translate the `<translation>` blocks.
+3. Compile to `.qm` and ship next to the `.ts`.
+4. Register the new code in `src/gui/i18n/__init__.py`
+   (`AVAILABLE_LANGUAGES`).
+
+The Settings tab language combobox is auto-populated from
+`AVAILABLE_LANGUAGES`; no other code changes are required.

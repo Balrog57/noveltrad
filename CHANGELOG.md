@@ -13,6 +13,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Multi-file batch translation** (`FileCloud` widget): the Translate
+  tab now accepts one *or many* files via drag-and-drop or the
+  multi-select file dialog, dedupes them, and shows each as a badge
+  with the right extension icon. The pipeline tags every chunk with
+  the `source_file` column (new in `state_store.chunks`) and the
+  Assembler now writes **one output file per source**, suffixed with
+  the source's stem (e.g. `out_alpha.txt`, `out_beta.txt`).
+- **Lexicon hard delete**: `DELETE /lexicon/{term_id}` is now a real
+  `DELETE` in the state store. The GUI asks for confirmation before
+  removing one or more terms; the glossary table refreshes
+  immediately.
+- **i18n infrastructure** (`src/gui/i18n/`): the desktop client is
+  translatable via Qt Linguist. The first shipped translation is
+  French (`src/gui/i18n/noveltrad_fr.ts`). The Settings tab exposes a
+  Language combobox; the chosen language is persisted in
+  `ConfigManager` under `ui.language`. The runtime falls back to
+  English when the compiled `.qm` is missing (e.g. on developer
+  machines that haven't run `pylrelease6`).
 - LLM auto-discovery: the first-run wizard and settings tab now call
   `GET /llm/providers` and `POST /llm/providers/refresh` to
   enumerate the local Ollama models, suggest curated local models
@@ -22,11 +40,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   deepseek-chat). The user can still type a custom model and base
   URL.
 
+### Tests
+- `tests/test_lexicon_delete.py` (3 tests): hard delete removes
+  the row, 404 on missing id, recreate-after-delete yields a new id.
+- `tests/test_batch_translate.py` (7 tests): `FileCloud` emits a
+  list on add, dedupes repeated paths, uses
+  `QFileDialog.getOpenFileNames` for browse; `state_store` filters
+  chunks by `source_file`; the assembler groups chunks by source
+  and writes one output per group.
+- `tests/test_i18n_smoke.py` (6 tests): the i18n helpers
+  (`default_language`, `available_languages`, `has_translation`,
+  `load_translator`) never raise and report the expected types.
+  `ConfigManager` defaults `ui.language` to `en`.
+
 ### Planned
 - Real "Recent projects" page (currently a placeholder in the GUI).
 - HMAC-signed `latest.json` for stronger auto-update integrity.
 - Optional Authenticode verification step in the auto-updater
   (see `docs/SIGNING.md`).
+- `pylrelease6` invocation integrated into `build.py --all`.
 
 ---
 

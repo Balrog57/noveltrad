@@ -80,7 +80,7 @@ DRAWER_BREAKPOINT = 700
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("NovelTrad")
+        self.setWindowTitle(self.tr("NovelTrad"))
         self.resize(1100, 760)
 
         self._config = ConfigManager()
@@ -119,17 +119,21 @@ class MainWindow(QMainWindow):
         configure(self._hamburger, name="Toggle sidebar drawer")
         hbox.addWidget(self._hamburger)
 
-        title = QLabel("📚  NovelTrad")
+        title = QLabel(self.tr("📚  NovelTrad"))
         title.setProperty("role", "title")
         hbox.addWidget(title)
         hbox.addStretch(1)
-        self._llm_badge = QLabel("● LLM: …")
+        self._llm_badge = QLabel(self.tr("● LLM: …"))
         self._llm_badge.setProperty("role", "muted")
         hbox.addWidget(self._llm_badge)
         self._theme_btn = QPushButton("🌙")
         self._theme_btn.setFixedWidth(36)
         self._theme_btn.clicked.connect(self._cycle_theme)
-        configure(self._theme_btn, name="Cycle theme", tooltip="Switch theme (Ctrl+Shift+T)")
+        configure(
+            self._theme_btn,
+            name=self.tr("Cycle theme"),
+            tooltip=self.tr("Switch theme (Ctrl+Shift+T)"),
+        )
         hbox.addWidget(self._theme_btn)
         root.addWidget(header)
 
@@ -137,7 +141,7 @@ class MainWindow(QMainWindow):
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._sidebar = QListWidget()
         for _key, label in SIDEBAR_ITEMS:
-            item = QListWidgetItem(label)
+            item = QListWidgetItem(self.tr(label))
             self._sidebar.addItem(item)
         self._sidebar.setFixedWidth(200)
         self._sidebar.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -178,7 +182,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self._activity)
 
         self.setStatusBar(QStatusBar())
-        self.statusBar().showMessage("Starting backend…")
+        self.statusBar().showMessage(self.tr("Starting backend…"))
 
         # WebSocket event debouncer.
         self._debouncer = EventDebouncer(self._on_event_batch, parent=self)
@@ -251,8 +255,8 @@ class MainWindow(QMainWindow):
         bind_shortcut(self, "Esc", self._action_close_overlay)
 
     def _action_open_file(self) -> None:
-        if hasattr(self._translate_tab, "_drop"):
-            self._translate_tab._drop._open_dialog()  # type: ignore[attr-defined]
+        if hasattr(self._translate_tab, "_cloud"):
+            self._translate_tab._cloud._open_dialog()  # type: ignore[attr-defined]
 
     def _action_rerun(self) -> None:
         # Best-effort: replay pending HITL counts as a "rerun" of the
@@ -267,10 +271,10 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentIndex(idx)
 
     def _action_help(self) -> None:
-        lines = ["Keyboard shortcuts:"]
+        lines = [self.tr("Keyboard shortcuts:")]
         for spec in GLOBAL_SHORTCUTS:
             lines.append(f"  {spec.sequence:<14} {spec.label}")
-        QMessageBox.information(self, "Help", "\n".join(lines))
+        QMessageBox.information(self, self.tr("Help"), "\n".join(lines))
 
     def _action_close_overlay(self) -> None:
         # Close any active HITL popup.
@@ -288,7 +292,7 @@ class MainWindow(QMainWindow):
         new_name = self._theme.cycle(QApplication.instance())  # type: ignore[arg-type]
         self._theme.save_to(self._settings)
         self._theme_btn.setText({"light": "☀", "dark": "🌙", "high_contrast": "🔆"}[new_name])
-        self.statusBar().showMessage(f"Theme: {new_name}", 2000)
+        self.statusBar().showMessage(self.tr("Theme: {name}").format(name=new_name), 2000)
 
     # ----- projects placeholder -----
 
@@ -297,18 +301,24 @@ class MainWindow(QMainWindow):
         page.setProperty("role", "card")
         v = QVBoxLayout(page)
         v.setContentsMargins(24, 24, 24, 24)
-        title = QLabel("Recent projects")
+        title = QLabel(self.tr("Recent projects"))
         title.setProperty("role", "title")
         v.addWidget(title)
         hint = QLabel(
-            "Projects will appear here as you translate. "
-            "Each entry shows source, target, date and a quick re-open action."
+            self.tr(
+                "Projects will appear here as you translate. "
+                "Each entry shows source, target, date and a quick re-open action."
+            )
         )
         hint.setProperty("role", "muted")
         hint.setWordWrap(True)
         v.addWidget(hint)
         v.addStretch(1)
-        configure(page, name="Recent projects", description="List of past translation runs.")
+        configure(
+            page,
+            name=self.tr("Recent projects"),
+            description=self.tr("List of past translation runs."),
+        )
         return page
 
     # ----- backend lifecycle -----
@@ -316,7 +326,7 @@ class MainWindow(QMainWindow):
     def _start_backend(self) -> None:
         try:
             if self._client.health().get("ok"):
-                self.statusBar().showMessage("Backend connected.")
+                self.statusBar().showMessage(self.tr("Backend connected."))
                 return
         except Exception:
             pass
@@ -353,17 +363,24 @@ class MainWindow(QMainWindow):
             )
         except Exception as exc:
             QMessageBox.warning(
-                self, "Backend", f"Could not start backend subprocess: {exc}"
+                self,
+                self.tr("Backend"),
+                self.tr("Could not start backend subprocess: {err}").format(err=exc),
             )
             return
 
         def _wait() -> None:
             if self._client.wait_ready(timeout_s=15.0):
-                QTimer.singleShot(0, lambda: self.statusBar().showMessage("Backend ready."))
+                QTimer.singleShot(
+                    0,
+                    lambda: self.statusBar().showMessage(self.tr("Backend ready.")),
+                )
             else:
                 QTimer.singleShot(
                     0,
-                    lambda: self.statusBar().showMessage("Backend did not respond."),
+                    lambda: self.statusBar().showMessage(
+                        self.tr("Backend did not respond.")
+                    ),
                 )
 
         import threading
@@ -391,8 +408,11 @@ class MainWindow(QMainWindow):
         if kind == "hltl_alert":
             self._show_hitl(event)
             self._notifier.notify(
-                "HITL needed",
-                f"Stage {event.get('stage', '?')}: {(event.get('issue') or {}).get('summary', '')}",
+                self.tr("HITL needed"),
+                self.tr("Stage {stage}: {summary}").format(
+                    stage=event.get("stage", "?"),
+                    summary=(event.get("issue") or {}).get("summary", ""),
+                ),
                 level="warning",
             )
         elif kind == "agent_done":
@@ -401,10 +421,13 @@ class MainWindow(QMainWindow):
         elif kind == "artifact_ready":
             self._translate_tab.on_artifact_ready(event.get("output_path", ""))
         elif kind == "pipeline_started":
-            self.statusBar().showMessage("Pipeline started.")
+            self.statusBar().showMessage(self.tr("Pipeline started."))
         elif kind == "hltl_unroutable":
             self.statusBar().showMessage(
-                f"HITL not routed: {event.get('reason', '?')}", 5000
+                self.tr("HITL not routed: {reason}").format(
+                    reason=event.get("reason", "?")
+                ),
+                5000,
             )
 
     def _show_hitl(self, event: dict[str, Any]) -> None:
@@ -445,27 +468,36 @@ class MainWindow(QMainWindow):
                 timeout=10.0,
             )
         except BackendError as exc:
-            QMessageBox.warning(self, "Start failed", str(exc))
+            QMessageBox.warning(self, self.tr("Start failed"), str(exc))
             return
         self._activity.on_event(
             {
                 "type": "log",
-                "message": f"Project created: {res.get('project_id')}",
+                "message": self.tr("Project created: {pid}").format(
+                    pid=res.get("project_id")
+                ),
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             }
         )
-        self.statusBar().showMessage(f"Project {res.get('project_id')} running…")
+        self.statusBar().showMessage(
+            self.tr("Project {pid} running…").format(pid=res.get("project_id"))
+        )
 
     def _on_replay_hltl(self) -> None:
         try:
             res = self._client.post("/orchestrator/hltl/replay", timeout=5.0) or {}
         except BackendError as exc:
-            self.statusBar().showMessage(f"Replay failed: {exc}", 4000)
+            self.statusBar().showMessage(
+                self.tr("Replay failed: {err}").format(err=exc), 4000
+            )
             return
         routed = res.get("routed", 0)
         skipped = res.get("skipped", 0)
         self.statusBar().showMessage(
-            f"HITL replay: {routed} routed, {skipped} skipped", 4000
+            self.tr("HITL replay: {routed} routed, {skipped} skipped").format(
+                routed=routed, skipped=skipped
+            ),
+            4000,
         )
 
     def _on_assemble_requested(self, fmt: str) -> None:
@@ -476,11 +508,11 @@ class MainWindow(QMainWindow):
                 timeout=10.0,
             ) or {}
         except BackendError as exc:
-            QMessageBox.warning(self, "Assemble failed", str(exc))
+            QMessageBox.warning(self, self.tr("Assemble failed"), str(exc))
             return
         if res.get("output_path"):
             self.statusBar().showMessage(
-                f"Output: {res['output_path']}", 5000
+                self.tr("Output: {path}").format(path=res["output_path"]), 5000
             )
 
     def _on_sidebar_changed(self, idx: int) -> None:
@@ -496,7 +528,7 @@ class MainWindow(QMainWindow):
         try:
             h = self._client.health()
         except BackendError:
-            self._llm_badge.setText("● LLM: (offline)")
+            self._llm_badge.setText(self.tr("● LLM: (offline)"))
             self._llm_badge.setProperty("role", "muted")
             self._llm_badge.style().unpolish(self._llm_badge)
             self._llm_badge.style().polish(self._llm_badge)
@@ -504,17 +536,21 @@ class MainWindow(QMainWindow):
         nllb = h.get("nllb") or {}
         llm = h.get("llm") or {}
         if h.get("ok"):
-            nllb_text = "NLLB ready" if nllb.get("available") else "NLLB unavailable"
-            llm_text = "LLM ready" if llm.get("ready") else "LLM offline"
-            self._llm_badge.setText(f"● {llm_text} · {nllb_text}")
-            self.statusBar().showMessage("Backend connected.")
+            nllb_text = (
+                self.tr("NLLB ready") if nllb.get("available") else self.tr("NLLB unavailable")
+            )
+            llm_text = (
+                self.tr("LLM ready") if llm.get("ready") else self.tr("LLM offline")
+            )
+            self._llm_badge.setText(self.tr("● {llm} · {nllb}").format(llm=llm_text, nllb=nllb_text))
+            self.statusBar().showMessage(self.tr("Backend connected."))
             try:
                 state = self._client.get("/pipeline/state", timeout=2.0) or {}
                 self._translate_tab.update_pipeline_state(state)
             except BackendError:
                 pass
         else:
-            self._llm_badge.setText("● LLM: ?")
+            self._llm_badge.setText(self.tr("● LLM: ?"))
 
     # ----- layout persistence -----
 
@@ -562,24 +598,30 @@ class MainWindow(QMainWindow):
         if is_skipped() or not self._updater.should_check():
             QMessageBox.information(
                 self,
-                "Updates",
-                "Auto-update is disabled in this build (dev mode or "
-                "NOVELTRAD_SKIP_UPDATE=1).",
+                self.tr("Updates"),
+                self.tr(
+                    "Auto-update is disabled in this build (dev mode or "
+                    "NOVELTRAD_SKIP_UPDATE=1)."
+                ),
             )
             return
         try:
             info = self._updater.check()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(
-                self, "Update check failed", f"Could not contact GitHub: {exc}"
+                self,
+                self.tr("Update check failed"),
+                self.tr("Could not contact GitHub: {err}").format(err=exc),
             )
             return
         if info is None:
             QMessageBox.information(
                 self,
-                "Up to date",
-                f"You are running the latest stable version "
-                f"({self._updater.current_version}).",
+                self.tr("Up to date"),
+                self.tr(
+                    "You are running the latest stable version "
+                    "({version})."
+                ).format(version=self._updater.current_version),
             )
             return
         self._present_update_dialog(info)

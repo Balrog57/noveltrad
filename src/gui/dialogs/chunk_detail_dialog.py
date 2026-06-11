@@ -27,29 +27,29 @@ from src.gui.backend_client import BackendClient, BackendError
 class ChunkDetailDialog(QDialog):
     def __init__(self, chunk_id: str, client: BackendClient, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"Chunk {chunk_id[:12]}")
+        self.setWindowTitle(self.tr("Chunk {cid}").format(cid=chunk_id[:12]))
         self.resize(720, 560)
         self._client = client
         self._chunk_id = chunk_id
         layout = QVBoxLayout(self)
         header = QHBoxLayout()
-        header.addWidget(QLabel(f"<b>ID:</b> {chunk_id}"))
+        header.addWidget(QLabel(self.tr("<b>ID:</b> {cid}").format(cid=chunk_id)))
         header.addStretch(1)
-        reprocess_btn = QPushButton("Reprocess")
+        reprocess_btn = QPushButton(self.tr("Reprocess"))
         reprocess_btn.clicked.connect(self._reprocess)
         header.addWidget(reprocess_btn)
         layout.addLayout(header)
 
         self._tabs = QTabWidget()
         for label in (
-            "Source",
-            "Raw (NLLB)",
-            "Glossary",
-            "QA",
-            "Grammar",
-            "Polished",
-            "Issues",
-            "Status",
+            self.tr("Source"),
+            self.tr("Raw (NLLB)"),
+            self.tr("Glossary"),
+            self.tr("QA"),
+            self.tr("Grammar"),
+            self.tr("Polished"),
+            self.tr("Issues"),
+            self.tr("Status"),
         ):
             self._tabs.addTab(QTextEdit(), label)
         layout.addWidget(self._tabs)
@@ -64,13 +64,13 @@ class ChunkDetailDialog(QDialog):
     def _set_text(self, idx: int, text: str) -> None:
         w = self._tabs.widget(idx)
         if isinstance(w, QTextEdit):
-            w.setPlainText(text or "(empty)")
+            w.setPlainText(text or self.tr("(empty)"))
 
     def refresh(self) -> None:
         try:
             c = self._client.get(f"/chunks/{self._chunk_id}", timeout=5.0)
         except BackendError as exc:
-            self._set_text(0, f"Backend error: {exc}")
+            self._set_text(0, self.tr("Backend error: {err}").format(err=exc))
             return
         if not c:
             return
@@ -81,11 +81,15 @@ class ChunkDetailDialog(QDialog):
         self._set_text(4, c.get("grammar_checked", ""))
         self._set_text(5, c.get("polished_translation", ""))
         meta = (
-            f"Status: {c.get('status', '')}\n"
-            f"Chapter: {c.get('chapter_title') or c.get('chapter_id', '')}\n"
-            f"Chunk #: {c.get('chunk_index', '')}\n"
-            f"Source hash: {c.get('source_hash', '')}\n"
-            f"Error: {c.get('error_message') or 'none'}"
+            self.tr("Status: {status}\n").format(status=c.get("status", ""))
+            + self.tr("Chapter: {chapter}\n").format(
+                chapter=c.get("chapter_title") or c.get("chapter_id", "")
+            )
+            + self.tr("Chunk #: {n}\n").format(n=c.get("chunk_index", ""))
+            + self.tr("Source hash: {h}\n").format(h=c.get("source_hash", ""))
+            + self.tr("Error: {err}").format(
+                err=c.get("error_message") or "none"
+            )
         )
         issues = {
             "qa_issues": c.get("qa_issues") or [],
@@ -101,9 +105,9 @@ class ChunkDetailDialog(QDialog):
                 f"/chunks/{self._chunk_id}/reprocess", timeout=5.0
             )
         except BackendError as exc:
-            self._set_text(7, f"Reprocess failed: {exc}")
+            self._set_text(7, self.tr("Reprocess failed: {err}").format(err=exc))
             return
-        self._set_text(7, "Reprocess queued.")
+        self._set_text(7, self.tr("Reprocess queued."))
 
 
 __all__ = ["ChunkDetailDialog"]

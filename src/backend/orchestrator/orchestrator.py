@@ -533,11 +533,14 @@ class Orchestrator:
             if payload.get("target_path"):
                 self.store.set_state("target_path", payload["target_path"])
             chapters = payload.get("chapters") or []
+            source_file = str(payload.get("source_path") or "")
             flat: list[dict[str, Any]] = []
             for chap in chapters:
                 for c in chap.get("chunks") or []:
                     c.setdefault("chapter_id", chap.get("id"))
                     c.setdefault("chapter_title", chap.get("title"))
+                    if source_file and "source_file" not in c:
+                        c["source_file"] = source_file
                     flat.append(c)
             if flat:
                 self.submit_chunks(flat)

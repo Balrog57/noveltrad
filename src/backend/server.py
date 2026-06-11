@@ -510,13 +510,10 @@ def create_app(
 
     @app.delete("/lexicon/{term_id}")
     def delete_lexicon_term(term_id: str) -> dict[str, Any]:
-        # The state store has no DELETE method yet; emulate with update.
-        # We just blank the term by source/target.
-        store.update_lexicon_term(
-            term_id,
-            {"source": f"_deleted_{term_id}", "target": f"_deleted_{term_id}"},
-        )
-        return {"ok": True}
+        deleted = store.delete_lexicon_term(term_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Term not found")
+        return {"ok": True, "term_id": term_id}
 
     @app.get("/lexicon/export")
     def export_lexicon() -> dict[str, Any]:

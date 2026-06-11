@@ -55,14 +55,18 @@ class UpdateDialog(QDialog):
         self._downloaded_path: Optional[Path] = None
         self._error: Optional[str] = None
 
-        self.setWindowTitle("Update available")
+        self.setWindowTitle(self.tr("Update available"))
         self.resize(560, 440)
 
         layout = QVBoxLayout(self)
 
         header = QLabel(
-            f"<h3>Version <b>{info.version}</b> is available</h3>"
-            f"<p>You are running <b>{updater.current_version}</b>.</p>"
+            self.tr("<h3>Version <b>{ver}</b> is available</h3>").format(
+                ver=info.version
+            )
+            + self.tr("<p>You are running <b>{cur}</b>.</p>").format(
+                cur=updater.current_version
+            )
         )
         header.setTextFormat(Qt.TextFormat.RichText)
         header.setWordWrap(True)
@@ -70,13 +74,13 @@ class UpdateDialog(QDialog):
 
         self._notes = QTextEdit()
         self._notes.setReadOnly(True)
-        self._notes.setPlainText(info.body or "(no release notes)")
+        self._notes.setPlainText(info.body or self.tr("(no release notes)"))
         layout.addWidget(self._notes, 1)
 
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
-        self._progress.setFormat("%p% — preparing…")
+        self._progress.setFormat(self.tr("%p% — preparing…"))
         layout.addWidget(self._progress)
 
         self._status = QLabel("")
@@ -85,14 +89,14 @@ class UpdateDialog(QDialog):
 
         # Buttons (custom, to control labels and behaviour).
         button_row = QHBoxLayout()
-        self._github_btn = QPushButton("View on GitHub")
+        self._github_btn = QPushButton(self.tr("View on GitHub"))
         self._github_btn.clicked.connect(self._open_github)
         button_row.addWidget(self._github_btn)
         button_row.addStretch(1)
-        self._later_btn = QPushButton("Later")
+        self._later_btn = QPushButton(self.tr("Later"))
         self._later_btn.clicked.connect(self.reject)
         button_row.addWidget(self._later_btn)
-        self._update_btn = QPushButton("Update now")
+        self._update_btn = QPushButton(self.tr("Update now"))
         self._update_btn.setDefault(True)
         self._update_btn.clicked.connect(self._start_download)
         button_row.addWidget(self._update_btn)
@@ -117,8 +121,8 @@ class UpdateDialog(QDialog):
     def _start_download(self) -> None:
         self._update_btn.setEnabled(False)
         self._github_btn.setEnabled(False)
-        self._progress.setFormat("Downloading… %p%")
-        self._status.setText("Downloading the installer…")
+        self._progress.setFormat(self.tr("Downloading… %p%"))
+        self._status.setText(self.tr("Downloading the installer…"))
 
         def worker() -> None:
             try:
@@ -167,24 +171,24 @@ class UpdateDialog(QDialog):
         if self._error or not self._downloaded_path:
             self._update_btn.setEnabled(True)
             self._github_btn.setEnabled(True)
-            self._progress.setFormat("Failed")
+            self._progress.setFormat(self.tr("Failed"))
             self._status.setText(
-                f"Download failed: {self._error or 'unknown error'}.\n"
-                "You can install the update manually from GitHub."
+                self.tr("Download failed: {err}.\n").format(err=self._error or "unknown error")
+                + self.tr("You can install the update manually from GitHub.")
             )
             self.updateFinished.emit(False, self._error or "download failed")
             return
         self._progress.setValue(100)
-        self._progress.setFormat("Downloaded — launching installer")
-        self._status.setText("Installer downloaded. Launching it…")
+        self._progress.setFormat(self.tr("Downloaded — launching installer"))
+        self._status.setText(self.tr("Installer downloaded. Launching it…"))
         self.updateStarted.emit(self._downloaded_path)
         try:
             self._updater.install(self._downloaded_path)
         except Exception as exc:  # noqa: BLE001
             logger.exception("updater: install launch failed: %s", exc)
             self._status.setText(
-                f"Could not launch installer: {exc}.\n"
-                f"File saved to: {self._downloaded_path}"
+                self.tr("Could not launch installer: {err}.\n").format(err=exc)
+                + self.tr("File saved to: {path}").format(path=self._downloaded_path)
             )
         self.updateFinished.emit(True, "ok")
         self.accept()

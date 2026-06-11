@@ -27,7 +27,7 @@ class ConfigManager:
     DEFAULT_CONFIG: dict[str, Any] = {
         "first_run": True,
         "workspace_dir": str(Path.home() / "Documents" / "NovelTradProjects"),
-        "ui": {"dark": True},
+        "ui": {"dark": True, "language": "en"},
         "llm": {
             "provider": "ollama",
             "model": "gemma3:4b",

@@ -36,17 +36,23 @@ class GlossariesTab(QWidget):
         layout.setSpacing(8)
 
         header_row = QHBoxLayout()
-        header_row.addWidget(QLabel("Lexicon (source → target)"))
+        header_row.addWidget(QLabel(self.tr("Lexicon (source → target)")))
         header_row.addStretch(1)
         self._filter = QLineEdit()
-        self._filter.setPlaceholderText("Filter…")
+        self._filter.setPlaceholderText(self.tr("Filter…"))
         self._filter.textChanged.connect(self._apply_filter)
         header_row.addWidget(self._filter)
         layout.addLayout(header_row)
 
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(
-            ["Source", "Target", "Category", "Gender", "Confidence"]
+            [
+                self.tr("Source"),
+                self.tr("Target"),
+                self.tr("Category"),
+                self.tr("Gender"),
+                self.tr("Confidence"),
+            ]
         )
         self._table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
@@ -55,20 +61,20 @@ class GlossariesTab(QWidget):
         layout.addWidget(self._table)
 
         row = QHBoxLayout()
-        add_btn = QPushButton("+ Add term")
+        add_btn = QPushButton(self.tr("+ Add term"))
         add_btn.clicked.connect(self._on_add)
         row.addWidget(add_btn)
-        del_btn = QPushButton("Delete selected")
+        del_btn = QPushButton(self.tr("Delete selected"))
         del_btn.clicked.connect(self._on_delete)
         row.addWidget(del_btn)
         row.addStretch(1)
-        imp_btn = QPushButton("Import JSON…")
+        imp_btn = QPushButton(self.tr("Import JSON…"))
         imp_btn.clicked.connect(self._on_import)
         row.addWidget(imp_btn)
-        exp_btn = QPushButton("Export JSON…")
+        exp_btn = QPushButton(self.tr("Export JSON…"))
         exp_btn.clicked.connect(self._on_export)
         row.addWidget(exp_btn)
-        refresh_btn = QPushButton("Refresh")
+        refresh_btn = QPushButton(self.tr("Refresh"))
         refresh_btn.clicked.connect(self.refresh)
         row.addWidget(refresh_btn)
         layout.addLayout(row)
@@ -86,7 +92,9 @@ class GlossariesTab(QWidget):
         try:
             data = self._client.get("/lexicon", timeout=5.0) or {"terms": []}
         except BackendError as exc:
-            self._status.setText(f"Backend unavailable: {exc}")
+            self._status.setText(
+                self.tr("Backend unavailable: {err}").format(err=exc)
+            )
             return
         self._terms = list(data.get("terms") or [])
         self._populate()
@@ -125,13 +133,27 @@ class GlossariesTab(QWidget):
 
     def _on_delete(self) -> None:
         rows = sorted({i.row() for i in self._table.selectedItems()}, reverse=True)
+        if not rows:
+            return
+        reply = QMessageBox.question(
+            self,
+            self.tr("Delete term"),
+            self.tr("Delete {n} term(s) permanently? This cannot be undone.").format(
+                n=len(rows)
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         for r in rows:
             term_id = self._table.item(r, 0).data(Qt.ItemDataRole.UserRole)
             if term_id:
                 try:
                     self._client.delete(f"/lexicon/{term_id}", timeout=5.0)
                 except BackendError as exc:
-                    QMessageBox.warning(self, "Delete failed", str(exc))
+                    QMessageBox.warning(
+                        self, self.tr("Delete failed"), str(exc)
+                    )
                     return
             self._table.removeRow(r)
         self.refresh()
@@ -162,7 +184,9 @@ class GlossariesTab(QWidget):
         try:
             self._client.put(f"/lexicon/{term_id}", body=updates, timeout=5.0)
         except BackendError as exc:
-            self._status.setText(f"Update failed: {exc}")
+            self._status.setText(
+                self.tr("Update failed: {err}").format(err=exc)
+            )
 
     def _persist_new_row(self, row: int) -> None:
         src = (self._table.item(row, 0) or QTableWidgetItem("")).text().strip()
@@ -184,7 +208,7 @@ class GlossariesTab(QWidget):
         try:
             res = self._client.post("/lexicon", body=body, timeout=5.0)
         except BackendError as exc:
-            self._status.setText(f"Add failed: {exc}")
+            self._status.setText(self.tr("Add failed: {err}").format(err=exc))
             return
         new_id = (res or {}).get("id")
         if new_id:
@@ -205,7 +229,7 @@ class GlossariesTab(QWidget):
 
     def _on_import(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Import lexicon", "", "JSON (*.json)"
+            self, self.tr("Import lexicon"), "", self.tr("JSON (*.json)")
         )
         if not path:
             return
@@ -213,38 +237,42 @@ class GlossariesTab(QWidget):
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as exc:
-            QMessageBox.warning(self, "Import failed", str(exc))
+            QMessageBox.warning(self, self.tr("Import failed"), str(exc))
             return
         terms = data.get("terms") if isinstance(data, dict) else data
         if not isinstance(terms, list):
-            QMessageBox.warning(self, "Import failed", "Expected a list or {terms: [...]}.")
+            QMessageBox.warning(
+                self,
+                self.tr("Import failed"),
+                self.tr("Expected a list or {terms: [...]}."),
+            )
             return
         try:
             res = self._client.post("/lexicon/import", body={"terms": terms}, timeout=15.0)
         except BackendError as exc:
-            QMessageBox.warning(self, "Import failed", str(exc))
+            QMessageBox.warning(self, self.tr("Import failed"), str(exc))
             return
-        self._status.setText(f"Imported {res.get('imported', 0)} terms.")
+        self._status.setText(self.tr("Imported {n} terms.").format(n=res.get("imported", 0)))
         self.refresh()
 
     def _on_export(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export lexicon", "lexicon.json", "JSON (*.json)"
+            self, self.tr("Export lexicon"), "lexicon.json", self.tr("JSON (*.json)")
         )
         if not path:
             return
         try:
             data = self._client.get("/lexicon/export", timeout=5.0)
         except BackendError as exc:
-            QMessageBox.warning(self, "Export failed", str(exc))
+            QMessageBox.warning(self, self.tr("Export failed"), str(exc))
             return
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as exc:
-            QMessageBox.warning(self, "Export failed", str(exc))
+            QMessageBox.warning(self, self.tr("Export failed"), str(exc))
             return
-        self._status.setText(f"Exported to {path}")
+        self._status.setText(self.tr("Exported to {path}").format(path=path))
 
 
 __all__ = ["GlossariesTab"]

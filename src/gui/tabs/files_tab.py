@@ -33,10 +33,12 @@ class FilesTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
-        layout.addWidget(QLabel("Chunks of the current project"))
+        layout.addWidget(QLabel(self.tr("Chunks of the current project")))
 
         self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels(["Chunk", "Status", "Chapter", "Open"])
+        self._table.setHorizontalHeaderLabels(
+            [self.tr("Chunk"), self.tr("Status"), self.tr("Chapter"), self.tr("Open")]
+        )
         self._table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
@@ -44,10 +46,10 @@ class FilesTab(QWidget):
         layout.addWidget(self._table)
 
         row = QHBoxLayout()
-        self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn = QPushButton(self.tr("Refresh"))
         self._refresh_btn.clicked.connect(self.refresh)
         row.addWidget(self._refresh_btn)
-        self._assemble_btn = QPushButton("Assemble output…")
+        self._assemble_btn = QPushButton(self.tr("Assemble output…"))
         self._assemble_btn.clicked.connect(self._on_assemble)
         row.addWidget(self._assemble_btn)
         row.addStretch(1)
@@ -62,7 +64,9 @@ class FilesTab(QWidget):
         try:
             data = self._client.get("/chunks?limit=200", timeout=5.0) or {}
         except BackendError as exc:
-            self._status.setText(f"Backend unavailable: {exc}")
+            self._status.setText(
+                self.tr("Backend unavailable: {err}").format(err=exc)
+            )
             return
         chunks = data.get("chunks") or []
         for c in chunks:
@@ -72,11 +76,11 @@ class FilesTab(QWidget):
             self._table.setItem(r, 0, QTableWidgetItem(cid[:12]))
             self._table.setItem(r, 1, QTableWidgetItem(c.get("status", "")))
             self._table.setItem(r, 2, QTableWidgetItem(c.get("chapter_title") or c.get("chapter_id") or ""))
-            open_item = QTableWidgetItem("View")
+            open_item = QTableWidgetItem(self.tr("View"))
             open_item.setData(Qt.ItemDataRole.UserRole, cid)
             open_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._table.setItem(r, 3, open_item)
-        self._status.setText(f"{len(chunks)} chunks")
+        self._status.setText(self.tr("{n} chunks").format(n=len(chunks)))
 
     def _on_double_click(self, row: int, col: int) -> None:
         if col != 3:
@@ -90,7 +94,12 @@ class FilesTab(QWidget):
         from PyQt6.QtWidgets import QFileDialog
 
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save assembled output", "output.txt", "Text (*.txt);;EPUB (*.epub);;DOCX (*.docx);;SRT (*.srt)"
+            self,
+            self.tr("Save assembled output"),
+            "output.txt",
+            self.tr(
+                "Text (*.txt);;EPUB (*.epub);;DOCX (*.docx);;SRT (*.srt)"
+            ),
         )
         if not path:
             return
@@ -100,10 +109,14 @@ class FilesTab(QWidget):
                 "/assemble", body={"output_path": path, "format": fmt}, timeout=10.0
             )
         except BackendError as exc:
-            self._status.setText(f"Assemble failed: {exc}")
+            self._status.setText(
+                self.tr("Assemble failed: {err}").format(err=exc)
+            )
             return
         self._status.setText(
-            f"Dispatched ({res.get('chunk_count', 0)} chunks → {res.get('output_path')})"
+            self.tr("Dispatched ({n} chunks → {path})").format(
+                n=res.get("chunk_count", 0), path=res.get("output_path")
+            )
         )
 
 

@@ -1,10 +1,10 @@
 """Translate tab — 3-step workflow (Select / Pipeline / Review).
 
-Mirrors the TBL UX. Drops a file → POST /projects → orchestrator
-parses and the activity log shows progress. The tab is split into
-three pages, switched by the WebSocket event stream:
+Mirrors the TBL UX. Drops one or many files → POST /projects →
+orchestrator parses and the activity log shows progress. The tab is
+split into three pages, switched by the WebSocket event stream:
 
-  0 Select   — drop zone, source/target language, quality preset.
+  0 Select   — drop zone (FileCloud), source/target language, quality preset.
   1 Pipeline — per-stage status cards, pause/resume/stop controls,
                "Re-run" + "Replay pending HITL" actions.
   2 Review   — virtualised list of chunks with status filter, double
@@ -18,11 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QComboBox,
-    QFileDialog,
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -36,6 +33,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..a11y import configure, set_touch_target
+from ..widgets.file_cloud import FileCloud
 from .review_model import ChunkReviewModel
 
 logger = logging.getLogger(__name__)
@@ -67,91 +65,6 @@ PIPELINE_STAGES: tuple[str, ...] = (
 )
 
 
-class _DropZone(QFrame):
-    fileDropped = pyqtSignal(str)
-
-    def __init__(self, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.setAcceptDrops(True)
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setProperty("role", "dropzone")
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._icon = QLabel("☁")
-        self._icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._icon.setStyleSheet("font-size: 36pt;")
-        layout.addWidget(self._icon)
-        self._hint = QLabel("Drop files to translate")
-        self._hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._hint.setStyleSheet("font-size: 12pt;")
-        layout.addWidget(self._hint)
-        self._sub = QLabel("Support for TXT, EPUB, SRT, and DOCX")
-        self._sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._sub.setProperty("role", "muted")
-        layout.addWidget(self._sub)
-        self._browse = QPushButton("Browse Files")
-        self._browse.setProperty("role", "primary")
-        self._browse.clicked.connect(self._open_dialog)
-        layout.addWidget(self._browse, alignment=Qt.AlignmentFlag.AlignCenter)
-        self._path_label = QLabel("")
-        self._path_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._path_label.setWordWrap(True)
-        layout.addWidget(self._path_label)
-        self._dropped: str | None = None
-
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            self.setProperty("active", "true")
-            self.style().unpolish(self)
-            self.style().polish(self)
-
-    def dragLeaveEvent(self, event) -> None:  # noqa: ANN001 - Qt signature
-        self.setProperty("active", "false")
-        self.style().unpolish(self)
-        self.style().polish(self)
-        super().dragLeaveEvent(event)
-
-    def dropEvent(self, event: QDropEvent) -> None:
-        urls = event.mimeData().urls()
-        self.setProperty("active", "false")
-        self.style().unpolish(self)
-        self.style().polish(self)
-        if not urls:
-            return
-        local = urls[0].toLocalFile()
-        if local:
-            self.set_path(local)
-            self.fileDropped.emit(local)
-            event.acceptProposedAction()
-
-    def mousePressEvent(self, event) -> None:  # noqa: ANN001 - Qt signature
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._open_dialog()
-        super().mousePressEvent(event)
-
-    def _open_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select a file to translate",
-            "",
-            "Documents (*.epub *.docx *.txt *.srt);;All files (*.*)",
-        )
-        if path:
-            self.set_path(path)
-            self.fileDropped.emit(path)
-
-    def set_path(self, path: str) -> None:
-        self._dropped = path
-        p = Path(path)
-        self._path_label.setText(p.name)
-        self._hint.setText("File ready")
-        self._icon.setText("📄")
-
-    def selected_path(self) -> str | None:
-        return self._dropped
-
-
 class TranslateTab(QWidget):
     startRequested = pyqtSignal(dict)
     fileSelected = pyqtSignal(str)
@@ -166,7 +79,7 @@ class TranslateTab(QWidget):
     ):
         super().__init__(parent)
         self._client = client
-        self._selected_path: str | None = None
+        self._selected_paths: list[str] = []
         self._project_dir: str = ""
 
         # Outer layout = vertical stack: header bar + stacked pages.
@@ -178,7 +91,7 @@ class TranslateTab(QWidget):
         self._header = QWidget()
         hlayout = QHBoxLayout(self._header)
         hlayout.setContentsMargins(16, 10, 16, 10)
-        self._step_label = QLabel("1 · Select")
+        self._step_label = QLabel(self.tr("1 · Select"))
         self._step_label.setProperty("role", "title")
         hlayout.addWidget(self._step_label)
         hlayout.addStretch(1)
@@ -218,7 +131,11 @@ class TranslateTab(QWidget):
     def go_to_step(self, step: int) -> None:
         if 0 <= step < self._stack.count():
             self._stack.setCurrentIndex(step)
-            labels = ["1 · Select", "2 · Pipeline", "3 · Review"]
+            labels = [
+                self.tr("1 · Select"),
+                self.tr("2 · Pipeline"),
+                self.tr("3 · Review"),
+            ]
             self._step_label.setText(labels[step])
 
     def update_pipeline_state(self, state: dict[str, Any]) -> None:
@@ -228,7 +145,7 @@ class TranslateTab(QWidget):
         total = ss.get("chunks_total") or 0
         for stage, row in self._stage_rows.items():
             count = counts.get(stage, 0) or counts.get(self._status_alias(stage), 0)
-            row["count"].setText(f"{count} chunks")
+            row["count"].setText(self.tr("{n} chunks").format(n=count))
             row["progress"].setValue(min(100, int(100 * count / max(1, total))))
         polished = counts.get("polished", 0)
         issues = (
@@ -238,19 +155,23 @@ class TranslateTab(QWidget):
         )
         if total:
             self._progress_label.setText(
-                f"{polished}/{total} chunks · {issues} issues"
+                self.tr("{polished}/{total} chunks · {issues} issues").format(
+                    polished=polished, total=total, issues=issues
+                )
             )
         artifact = state.get("output_artifact") or {}
         if artifact.get("output_path"):
             self._assemble_btn.setEnabled(True)
-            self._assemble_btn.setText("📦  Open output folder")
+            self._assemble_btn.setText(self.tr("📦  Open output folder"))
         if any(counts.values()):
             self.go_to_step(1)
 
     def on_artifact_ready(self, output_path: str) -> None:
         self._assemble_btn.setEnabled(True)
-        self._assemble_btn.setText("📦  Open output folder")
-        self._progress_label.setText(f"Done · {output_path}")
+        self._assemble_btn.setText(self.tr("📦  Open output folder"))
+        self._progress_label.setText(
+            self.tr("Done · {path}").format(path=output_path)
+        )
         # Refresh review list and switch to it.
         if self._review_model is not None:
             self._review_model.refresh()
@@ -265,50 +186,54 @@ class TranslateTab(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
 
         lang_row = QHBoxLayout()
-        lang_row.addWidget(QLabel("SOURCE LANG"))
+        lang_row.addWidget(QLabel(self.tr("SOURCE LANG")))
         self._src = QComboBox()
         for code, label in LANGUAGES:
-            self._src.addItem(label, code)
-        configure(self._src, name="Source language")
+            self._src.addItem(self.tr(label), code)
+        configure(self._src, name=self.tr("Source language"))
         lang_row.addWidget(self._src, 1)
         lang_row.addSpacing(20)
-        lang_row.addWidget(QLabel("TARGET LANG"))
+        lang_row.addWidget(QLabel(self.tr("TARGET LANG")))
         self._tgt = QComboBox()
         for code, label in LANGUAGES:
             if code == "auto":
                 continue
-            self._tgt.addItem(label, code)
+            self._tgt.addItem(self.tr(label), code)
         idx = self._tgt.findData(default_target)
         if idx >= 0:
             self._tgt.setCurrentIndex(idx)
-        configure(self._tgt, name="Target language")
+        configure(self._tgt, name=self.tr("Target language"))
         lang_row.addWidget(self._tgt, 1)
         layout.addLayout(lang_row)
 
         # Quality preset selector.
         quality_row = QHBoxLayout()
-        quality_row.addWidget(QLabel("QUALITY"))
+        quality_row.addWidget(QLabel(self.tr("QUALITY")))
         self._quality = QComboBox()
-        self._quality.addItem("Fast (skip polish + grammar)", "fast")
-        self._quality.addItem("Balanced (default)", "balanced")
-        self._quality.addItem("High (full QA + double-pass polish)", "high")
-        configure(self._quality, name="Quality preset")
+        self._quality.addItem(self.tr("Fast (skip polish + grammar)"), "fast")
+        self._quality.addItem(self.tr("Balanced (default)"), "balanced")
+        self._quality.addItem(
+            self.tr("High (full QA + double-pass polish)"), "high"
+        )
+        configure(self._quality, name=self.tr("Quality preset"))
         quality_row.addWidget(self._quality, 1)
         layout.addLayout(quality_row)
 
-        self._drop = _DropZone()
-        self._drop.fileDropped.connect(self._on_file)
-        layout.addWidget(self._drop, 1)
+        self._cloud = FileCloud()
+        self._cloud.filesSelected.connect(self._on_files)
+        layout.addWidget(self._cloud, 1)
 
-        self._start_btn = QPushButton("▶  Start Translation")
+        self._start_btn = QPushButton(self.tr("▶  Start Translation"))
         self._start_btn.setProperty("role", "primary")
         set_touch_target(self._start_btn, 48)
         self._start_btn.setEnabled(False)
         self._start_btn.clicked.connect(self._on_start)
         configure(
             self._start_btn,
-            name="Start translation",
-            description="Kick off the multi-agent translation pipeline.",
+            name=self.tr("Start translation"),
+            description=self.tr(
+                "Kick off the multi-agent translation pipeline."
+            ),
             shortcut="Ctrl+Return",
         )
         layout.addWidget(self._start_btn, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -319,11 +244,13 @@ class TranslateTab(QWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
-        title = QLabel("Pipeline progress")
+        title = QLabel(self.tr("Pipeline progress"))
         title.setProperty("role", "subtitle")
         layout.addWidget(title)
         self._stage_table = QTableWidget(0, 3)
-        self._stage_table.setHorizontalHeaderLabels(["Stage", "Count", "Progress"])
+        self._stage_table.setHorizontalHeaderLabels(
+            [self.tr("Stage"), self.tr("Count"), self.tr("Progress")]
+        )
         self._stage_table.verticalHeader().setVisible(False)
         self._stage_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
@@ -336,21 +263,23 @@ class TranslateTab(QWidget):
         for stage in PIPELINE_STAGES:
             self._add_stage_row(stage)
         actions = QHBoxLayout()
-        self._replay_btn = QPushButton("🔁  Replay pending HITL")
+        self._replay_btn = QPushButton(self.tr("🔁  Replay pending HITL"))
         self._replay_btn.clicked.connect(self.replayHltlRequested.emit)
         configure(
             self._replay_btn,
-            name="Replay pending HITL",
-            description="Re-inject every waiting-for-human chunk to its requesting stage.",
+            name=self.tr("Replay pending HITL"),
+            description=self.tr(
+                "Re-inject every waiting-for-human chunk to its requesting stage."
+            ),
         )
         actions.addWidget(self._replay_btn)
-        self._assemble_btn = QPushButton("📦  Assemble now")
+        self._assemble_btn = QPushButton(self.tr("📦  Assemble now"))
         self._assemble_btn.clicked.connect(lambda: self.assembleRequested.emit("epub"))
         self._assemble_btn.setEnabled(False)
         configure(
             self._assemble_btn,
-            name="Assemble now",
-            description="Trigger the Assembler stage on the current chunks.",
+            name=self.tr("Assemble now"),
+            description=self.tr("Trigger the Assembler stage on the current chunks."),
         )
         actions.addWidget(self._assemble_btn)
         actions.addStretch(1)
@@ -363,7 +292,7 @@ class TranslateTab(QWidget):
         name_item = QTableWidgetItem(stage.replace("_", " ").title())
         name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self._stage_table.setItem(row, 0, name_item)
-        count_item = QTableWidgetItem("0 chunks")
+        count_item = QTableWidgetItem(self.tr("0 chunks"))
         count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         count_item.setFlags(count_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self._stage_table.setItem(row, 1, count_item)
@@ -381,14 +310,14 @@ class TranslateTab(QWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
-        title = QLabel("Review")
+        title = QLabel(self.tr("Review"))
         title.setProperty("role", "subtitle")
         layout.addWidget(title)
 
         filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("STATUS"))
+        filter_row.addWidget(QLabel(self.tr("STATUS")))
         self._filter = QComboBox()
-        self._filter.addItem("All", "")
+        self._filter.addItem(self.tr("All"), "")
         for code in (
             "parsed",
             "fast_translated",
@@ -403,7 +332,7 @@ class TranslateTab(QWidget):
         ):
             self._filter.addItem(code.replace("_", " ").title(), code)
         self._filter.currentIndexChanged.connect(self._on_filter_changed)
-        configure(self._filter, name="Chunk status filter")
+        configure(self._filter, name=self.tr("Chunk status filter"))
         filter_row.addWidget(self._filter, 1)
         layout.addLayout(filter_row)
 
@@ -412,8 +341,8 @@ class TranslateTab(QWidget):
         self._review_view.doubleClicked.connect(self._on_chunk_double_clicked)
         configure(
             self._review_view,
-            name="Chunk list",
-            description="List of chunks, double-click to inspect.",
+            name=self.tr("Chunk list"),
+            description=self.tr("List of chunks, double-click to inspect."),
         )
         self._review_model = ChunkReviewModel(self._client)
         self._review_model.errorOccurred.connect(
@@ -425,25 +354,39 @@ class TranslateTab(QWidget):
 
     # ----- slots -----
 
-    def _on_file(self, path: str) -> None:
-        self._selected_path = path
-        self._start_btn.setEnabled(True)
-        self.fileSelected.emit(path)
+    def _on_files(self, paths: list[str]) -> None:
+        self._selected_paths = list(paths)
+        self._start_btn.setEnabled(bool(paths))
+        if paths:
+            self.fileSelected.emit(paths[0])
 
     def _on_start(self) -> None:
-        if not self._selected_path:
+        if not self._selected_paths:
             return
-        payload = {
-            "source_path": self._selected_path,
-            "source_lang": self._src.currentData() or "auto",
-            "target_lang": self._tgt.currentData() or "fr",
-            "quality": self._quality.currentData() or "balanced",
-            "project_dir": self._project_dir or str(Path(self._selected_path).parent),
-        }
-        self.startRequested.emit(payload)
+        source_lang = self._src.currentData() or "auto"
+        target_lang = self._tgt.currentData() or "fr"
+        quality = self._quality.currentData() or "balanced"
+        project_dir = self._project_dir or str(
+            Path(self._selected_paths[0]).parent
+        )
+        # Emit one start per file so the orchestrator queues them
+        # sequentially and tags each chunk's source_file accordingly.
+        # For the v1 batch UI we keep the startRequested signal
+        # single-payload: callers iterate the cloud's selection.
+        for path in self._selected_paths:
+            payload = {
+                "source_path": path,
+                "source_lang": source_lang,
+                "target_lang": target_lang,
+                "quality": quality,
+                "project_dir": project_dir,
+            }
+            self.startRequested.emit(payload)
+        names = ", ".join(Path(p).name for p in self._selected_paths)
         self.set_status(
-            f"Queued: {Path(self._selected_path).name} "
-            f"({payload['source_lang']} → {payload['target_lang']})"
+            self.tr("Queued: {names} ({src} → {tgt})").format(
+                names=names, src=source_lang, tgt=target_lang
+            )
         )
         self.go_to_step(1)
 

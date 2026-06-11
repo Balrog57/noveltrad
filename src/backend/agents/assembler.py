@@ -47,29 +47,36 @@ class Worker(BaseWorker):
             )
         out = Path(str(output_path))
         out.parent.mkdir(parents=True, exist_ok=True)
+        groups = _grouped_by_source(chunks)
+        written: list[str] = []
         try:
-            if fmt == "epub":
-                _write_epub(
-                    out,
-                    chunks,
-                    title=payload.get("title", out.stem),
-                    manifest_path=payload.get("manifest_path"),
-                )
-            elif fmt == "docx":
-                _write_docx(out, chunks)
-            elif fmt == "srt":
-                _write_srt(out, chunks)
-            else:
-                _write_txt(out, chunks)
+            for idx, (source_file, group_chunks) in enumerate(groups):
+                target = _derive_output_path(out, source_file, idx)
+                if fmt == "epub":
+                    _write_epub(
+                        target,
+                        group_chunks,
+                        title=payload.get("title", target.stem),
+                        manifest_path=payload.get("manifest_path"),
+                    )
+                elif fmt == "docx":
+                    _write_docx(target, group_chunks)
+                elif fmt == "srt":
+                    _write_srt(target, group_chunks)
+                else:
+                    _write_txt(target, group_chunks)
+                written.append(str(target))
         except Exception as exc:
             logger.exception("assembler: write failed")
             return self._emit_error(chunk_id, "write_failed", str(exc))
+        primary = written[0] if written else str(out)
         return self._emit_done(
             chunk_id,
             {
-                "output_path": str(out),
+                "output_path": primary,
                 "chunk_count": len(chunks),
                 "status": "assembled",
+                "outputs": written,
             },
         )
 
@@ -79,6 +86,35 @@ def _sorted_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return (str(c.get("chapter_id") or ""), int(c.get("chunk_index") or 0))
 
     return sorted(chunks, key=key)
+
+
+def _grouped_by_source(
+    chunks: list[dict[str, Any]],
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Group chunks by their ``source_file`` attribute, preserving order.
+
+    Chunks without a ``source_file`` end up in a single bucket with an
+    empty key, which is the legacy single-file behaviour. Within each
+    bucket the chunks are sorted by chapter and chunk_index so the
+    output is deterministic.
+    """
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for c in chunks:
+        key = str(c.get("source_file") or "")
+        buckets.setdefault(key, []).append(c)
+    return [(k, _sorted_chunks(v)) for k, v in buckets.items()]
+
+
+def _derive_output_path(
+    template: Path, source_file: str, idx: int
+) -> Path:
+    """If the payload holds chunks from multiple source files, append
+    a per-source suffix to avoid clobbering siblings."""
+    if not source_file:
+        return template
+    stem = Path(source_file).stem or f"file{idx}"
+    suffix = template.suffix or ".txt"
+    return template.with_name(f"{template.stem}_{stem}{suffix}")
 
 
 def _polished_text(c: dict[str, Any]) -> str:

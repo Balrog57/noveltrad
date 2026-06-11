@@ -57,10 +57,12 @@ CREATE TABLE IF NOT EXISTS chunks (
     polished_translation TEXT,
     status TEXT DEFAULT 'parsed',
     error_message TEXT,
-    metadata_json TEXT
+    metadata_json TEXT,
+    source_file TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_status ON chunks(status);
 CREATE INDEX IF NOT EXISTS idx_chunks_chapter ON chunks(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_source_file ON chunks(source_file);
 
 CREATE TABLE IF NOT EXISTS lexicon_terms (
     id TEXT PRIMARY KEY,
@@ -239,8 +241,8 @@ class StateStore:
                     source_hash, glossary_version, output_hash,
                     raw_translation, glossary_applied, qa_checked,
                     grammar_checked, polished_translation,
-                    status, error_message, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    status, error_message, metadata_json, source_file
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chunk["id"],
@@ -259,6 +261,7 @@ class StateStore:
                     chunk.get("status", "parsed"),
                     chunk.get("error_message"),
                     json.dumps(meta, ensure_ascii=False) if meta else None,
+                    chunk.get("source_file", ""),
                 ),
             )
 
@@ -293,6 +296,7 @@ class StateStore:
         self,
         status: str | None = None,
         chapter_id: str | None = None,
+        source_file: str | None = None,
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[dict[str, Any]]:
@@ -305,9 +309,12 @@ class StateStore:
         if chapter_id is not None:
             clauses.append("chapter_id = ?")
             params.append(chapter_id)
+        if source_file is not None:
+            clauses.append("source_file = ?")
+            params.append(source_file)
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY chapter_id, chunk_index"
+        query += " ORDER BY source_file, chapter_id, chunk_index"
         if limit is not None:
             query += f" LIMIT {int(limit)}"
         if offset is not None and offset > 0:
@@ -394,6 +401,15 @@ class StateStore:
             self._conn.execute(
                 f"UPDATE lexicon_terms SET {', '.join(cols)} WHERE id = ?", params
             )
+
+    def delete_lexicon_term(self, term_id: str) -> bool:
+        """Hard-delete a lexicon term. Returns True if a row was removed."""
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM lexicon_terms WHERE id = ?", (term_id,)
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
 
     # ---------- QA / grammar / consistency ----------
 
@@ -668,6 +684,7 @@ def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
         "status": row["status"],
         "error_message": row["error_message"],
         "metadata": metadata,
+        "source_file": row["source_file"] if "source_file" in row.keys() else "",
     }
 
 

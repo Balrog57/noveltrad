@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.gui.app_config import ConfigManager
+from src.gui.i18n import available_languages
 from src.gui.updater import Updater, is_skipped
 
 
@@ -40,59 +41,72 @@ class SettingsTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
-        layout.addWidget(QLabel("Settings are stored in your NovelTrad app data folder."))
+        layout.addWidget(
+            QLabel(
+                self.tr(
+                    "Settings are stored in your NovelTrad app data folder."
+                )
+            )
+        )
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         self._provider = QComboBox()
-        self._provider.addItem("Ollama (local)", "ollama")
-        self._provider.addItem("OpenAI-compatible (cloud)", "openai")
-        form.addRow("Provider:", self._provider)
+        self._provider.addItem(self.tr("Ollama (local)"), "ollama")
+        self._provider.addItem(self.tr("OpenAI-compatible (cloud)"), "openai")
+        form.addRow(self.tr("Provider:"), self._provider)
 
         self._model = QLineEdit()
-        self._model.setPlaceholderText("e.g. gemma3:4b / gpt-4o-mini")
-        form.addRow("Model:", self._model)
+        self._model.setPlaceholderText(self.tr("e.g. gemma3:4b / gpt-4o-mini"))
+        form.addRow(self.tr("Model:"), self._model)
 
         self._base_url = QLineEdit()
         self._base_url.setPlaceholderText("http://127.0.0.1:11434")
-        form.addRow("Base URL:", self._base_url)
+        form.addRow(self.tr("Base URL:"), self._base_url)
 
         self._api_key = QLineEdit()
         self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow("API key (cloud):", self._api_key)
+        form.addRow(self.tr("API key (cloud):"), self._api_key)
 
         self._parallel = QSpinBox()
         self._parallel.setRange(1, 16)
         self._parallel.setValue(1)
-        form.addRow("Parallel chunks (Ollama):", self._parallel)
+        form.addRow(self.tr("Parallel chunks (Ollama):"), self._parallel)
 
-        self._draft_fallback = QCheckBox("Use LLM draft if NLLB is unavailable")
+        self._draft_fallback = QCheckBox(
+            self.tr("Use LLM draft if NLLB is unavailable")
+        )
         form.addRow("", self._draft_fallback)
 
         self._nllb_model = QLineEdit()
         self._nllb_model.setPlaceholderText("facebook/nllb-200-distilled-600M")
-        form.addRow("NLLB model:", self._nllb_model)
+        form.addRow(self.tr("NLLB model:"), self._nllb_model)
 
         self._nllb_device = QComboBox()
         self._nllb_device.addItems(["cpu", "cuda", "auto"])
-        form.addRow("NLLB device:", self._nllb_device)
+        form.addRow(self.tr("NLLB device:"), self._nllb_device)
 
-        self._dark_mode = QCheckBox("Dark theme")
+        self._dark_mode = QCheckBox(self.tr("Dark theme"))
         form.addRow("", self._dark_mode)
+
+        self._language = QComboBox()
+        for code, native in available_languages():
+            self._language.addItem(native, code)
+        form.addRow(self.tr("Language:"), self._language)
 
         layout.addLayout(form)
 
         row = QHBoxLayout()
-        self._save_btn = QPushButton("Save")
+        self._save_btn = QPushButton(self.tr("Save"))
         self._save_btn.clicked.connect(self._save)
         row.addWidget(self._save_btn)
-        self._restart_btn = QPushButton("Save & Restart backend")
+        self._restart_btn = QPushButton(self.tr("Save & Restart backend"))
         self._restart_btn.clicked.connect(self._save_and_restart)
         row.addWidget(self._restart_btn)
-        self._check_updates_btn = QPushButton("Check for updates")
+        self._check_updates_btn = QPushButton(self.tr("Check for updates"))
         self._check_updates_btn.setToolTip(
-            "Check GitHub Releases for a newer version of NovelTrad."
+            self.tr("Check GitHub Releases for a newer version of NovelTrad.")
         )
         self._check_updates_btn.clicked.connect(
             self.checkForUpdatesRequested.emit
@@ -126,6 +140,9 @@ class SettingsTab(QWidget):
         if idx >= 0:
             self._nllb_device.setCurrentIndex(idx)
         self._dark_mode.setChecked(bool(ui.get("dark", True)))
+        lang_idx = self._language.findData(ui.get("language", "en"))
+        if lang_idx >= 0:
+            self._language.setCurrentIndex(lang_idx)
 
     def _collect(self) -> dict:
         return {
@@ -141,7 +158,10 @@ class SettingsTab(QWidget):
                 "model": self._nllb_model.text().strip() or "facebook/nllb-200-distilled-600M",
                 "device": self._nllb_device.currentText(),
             },
-            "ui": {"dark": self._dark_mode.isChecked()},
+            "ui": {
+                "dark": self._dark_mode.isChecked(),
+                "language": self._language.currentData() or "en",
+            },
         }
 
     def _save(self) -> None:
@@ -149,11 +169,13 @@ class SettingsTab(QWidget):
         cfg.update(self._collect())
         self._config.save_config()
         self._config.apply_environment()
-        self._status.setText("Saved.")
+        self._status.setText(self.tr("Saved."))
         self._status.setStyleSheet("color: #7be395;")
 
     def _save_and_restart(self) -> None:
         self._save()
-        self._status.setText("Saved. Restart NovelTrad to apply backend changes.")
+        self._status.setText(
+            self.tr("Saved. Restart NovelTrad to apply backend changes.")
+        )
 
 __all__ = ["SettingsTab"]

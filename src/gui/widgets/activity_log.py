@@ -44,7 +44,7 @@ class ActivityLogWidget(QWidget):
         layout.setSpacing(2)
 
         header_row = QHBoxLayout()
-        self._title = QLabel("Activity Log")
+        self._title = QLabel(self.tr("Activity Log"))
         self._title.setStyleSheet("font-weight: 600;")
         header_row.addWidget(self._title)
         header_row.addStretch(1)
@@ -53,13 +53,13 @@ class ActivityLogWidget(QWidget):
         self._toggle.setFlat(True)
         self._toggle.clicked.connect(self._toggle_collapsed)
         header_row.addWidget(self._toggle)
-        self._count_label = QLabel("0 events")
+        self._count_label = QLabel(self.tr("0 events"))
         self._count_label.setStyleSheet("color: #888;")
         header_row.addWidget(self._count_label)
         layout.addLayout(header_row)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter…")
+        self._search.setPlaceholderText(self.tr("Filter…"))
         self._search.textChanged.connect(self._apply_filter)
         self._collapsible = QWidget()
         cbl = QVBoxLayout(self._collapsible)
@@ -94,12 +94,14 @@ class ActivityLogWidget(QWidget):
         self._list.scrollToBottom()
         filter_key = (text + " " + kind).lower()
         self._items.append((item, text, filter_key))
-        self._count_label.setText(f"{len(self._items)} events")
+        self._count_label.setText(
+            self.tr("{n} events").format(n=len(self._items))
+        )
 
     def clear(self) -> None:
         self._list.clear()
         self._items.clear()
-        self._count_label.setText("0 events")
+        self._count_label.setText(self.tr("0 events"))
 
     def _toggle_collapsed(self) -> None:
         visible = not self._collapsible.isVisible() and not self._list.isVisible()
