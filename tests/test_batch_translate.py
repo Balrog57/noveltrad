@@ -129,6 +129,65 @@ class StateStoreSourceFileTests(unittest.TestCase):
             ["legacy"],
         )
 
+    def test_legacy_db_without_source_file_is_migrated(self) -> None:
+        """A DB created by NovelTrad 4.0.0 (no `source_file` column)
+        must be transparently upgraded: a fresh chunk can be added and
+        read back with `source_file=""` (the DEFAULT)."""
+        import sqlite3
+
+        legacy_path = Path(self._tmp.name) / ".legacy.db"
+        conn = sqlite3.connect(str(legacy_path))
+        # Schema mirrors pre-4.0.1 — no source_file column.
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS chunks (
+                id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL,
+                chapter_title TEXT, chunk_index INTEGER NOT NULL,
+                source_text TEXT NOT NULL, source_hash TEXT,
+                glossary_version TEXT, output_hash TEXT,
+                raw_translation TEXT, glossary_applied TEXT,
+                qa_checked TEXT, grammar_checked TEXT,
+                polished_translation TEXT, status TEXT DEFAULT 'parsed',
+                error_message TEXT, metadata_json TEXT
+            );
+            """
+        )
+        # Pre-seed a legacy row to confirm we don't drop data.
+        conn.execute(
+            "INSERT INTO chunks (id, chapter_id, chapter_title, "
+            "chunk_index, source_text) VALUES (?, ?, ?, ?, ?)",
+            ("legacy-pre", "ch-old", "Old", 0, "old text"),
+        )
+        conn.commit()
+        conn.close()
+
+        from src.backend.orchestrator.state_store import StateStore
+
+        store = StateStore(db_path=legacy_path, vector_dir=None)
+        try:
+            # The pre-existing row should still be there.
+            row = store.get_chunk("legacy-pre")
+            self.assertIsNotNone(row)
+            self.assertEqual(row["source_text"], "old text")
+            self.assertEqual(row["source_file"], "")
+            # New rows can be added and the source_file column is
+            # populated correctly.
+            store.add_chunk(
+                {
+                    "id": "new",
+                    "chapter_id": "ch-new",
+                    "chapter_title": "New",
+                    "chunk_index": 0,
+                    "source_text": "new",
+                    "source_file": "C:/fresh.txt",
+                }
+            )
+            self.assertEqual(
+                store.get_chunk("new")["source_file"], "C:/fresh.txt"
+            )
+        finally:
+            store.close()
+
 
 class AssemblerMultiFileTests(unittest.TestCase):
     def test_writes_one_output_per_source_file(self) -> None:

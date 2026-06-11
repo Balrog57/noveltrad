@@ -62,7 +62,6 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_status ON chunks(status);
 CREATE INDEX IF NOT EXISTS idx_chunks_chapter ON chunks(chapter_id);
-CREATE INDEX IF NOT EXISTS idx_chunks_source_file ON chunks(source_file);
 
 CREATE TABLE IF NOT EXISTS lexicon_terms (
     id TEXT PRIMARY KEY,
@@ -157,12 +156,56 @@ class StateStore:
             self._conn.execute("PRAGMA foreign_keys=ON")
         except sqlite3.DatabaseError as exc:
             logger.warning("PRAGMA setup failed (non-fatal): %s", exc)
+        # Idempotent in-place migrations for DBs created by older
+        # versions of NovelTrad (4.0.0 and earlier don't have the
+        # `source_file` column on `chunks`).
+        self._apply_migrations()
         self._conn.executescript(SCHEMA_SQL)
+        # Defensive index creation: this index lives on a column that
+        # didn't exist before 4.0.1, so it can't be in SCHEMA_SQL
+        # (which is run on every open).
+        self._safe_create_index(
+            "idx_chunks_source_file", "chunks", "source_file"
+        )
 
         self._vector = None
         self._vector_import_error: str | None = None
         if self.vector_dir is not None:
             self._init_vector_store()
+
+    def _apply_migrations(self) -> None:
+        """Idempotent column-level migrations for pre-4.0.1 DBs."""
+        with self._lock:
+            self._safe_add_column("chunks", "source_file", "TEXT DEFAULT ''")
+
+    def _safe_add_column(
+        self, table: str, column: str, definition: str
+    ) -> None:
+        try:
+            self._conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+            )
+            logger.info("Migration: added %s.%s", table, column)
+        except sqlite3.OperationalError as exc:
+            msg = str(exc).lower()
+            # "duplicate column name" → already migrated (idempotent OK).
+            # "no such table" → fresh DB, SCHEMA_SQL will create the
+            # column from the CREATE TABLE statement; no migration needed.
+            if "duplicate column" in msg or "no such table" in msg:
+                return
+            logger.warning(
+                "Migration: failed to add %s.%s: %s", table, column, exc
+            )
+
+    def _safe_create_index(
+        self, name: str, table: str, column: str
+    ) -> None:
+        try:
+            self._conn.execute(
+                f"CREATE INDEX IF NOT EXISTS {name} ON {table}({column})"
+            )
+        except sqlite3.OperationalError as exc:
+            logger.debug("Index %s skipped: %s", name, exc)
 
     def _init_vector_store(self) -> None:
         """Try to attach LanceDB. Soft-fail: store still works without it."""

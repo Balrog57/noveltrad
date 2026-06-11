@@ -54,7 +54,7 @@ if "--backend" in sys.argv:
     _backend_debug_log(f"backend_main exited code={code}")
     raise SystemExit(code)
 
-from PyQt6.QtCore import QCoreApplication, QTranslator
+from PyQt6.QtCore import QTranslator
 from PyQt6.QtWidgets import QApplication
 from src.gui.app_config import ConfigManager
 from src.gui.first_run_wizard import FirstRunWizard
@@ -64,13 +64,12 @@ from src.gui.main_window import MainWindow
 
 def main() -> int:
     app = QApplication(sys.argv)
-    # Install UI translator (French today; English by default).
+    # Install UI translator (French today; English by default). Note:
+    # language switching requires a restart in Qt — we only honour the
+    # language at launch. The Settings combobox persists the choice
+    # to ConfigManager; the next launch picks it up.
     language = default_language()
     if language and has_translation(language):
-        QCoreApplication.setApplicationAttribute(
-            __import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.ApplicationAttribute.AA_EnableHighDpiScaling,
-            True,
-        )
         translator = load_translator(language)
         if translator is not None:
             app.installTranslator(translator)

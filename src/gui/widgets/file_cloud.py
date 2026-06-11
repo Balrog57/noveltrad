@@ -131,14 +131,46 @@ class FileCloud(QGroupBox):
             if p in self._selected_paths:
                 continue
             self._selected_paths.append(p)
-            item = QListWidgetItem(f"{_icon_for(p)}  {Path(p).name}")
-            item.setData(Qt.ItemDataRole.UserRole, p)
-            item.setToolTip(p)
-            self._list.addItem(item)
+            row = QListWidgetItem()
+            row.setData(Qt.ItemDataRole.UserRole, p)
+            row.setToolTip(p)
+            self._list.addItem(row)
+            # Embed a small custom widget per row that shows the
+            # badge label AND the remove button. Using setItemWidget
+            # with a single QPushButton would hide the item's text in
+            # QListWidget, so we ship a row widget instead.
+            self._attach_remove_button(row, p)
             added = True
         if added:
             self._refresh_empty_state()
             self.filesSelected.emit(list(self._selected_paths))
+
+    def _attach_remove_button(self, row: QListWidgetItem, path: str) -> None:
+        from PyQt6.QtWidgets import (
+            QHBoxLayout,
+            QLabel,
+            QPushButton,
+            QWidget,
+        )  # local import: keep top stable
+
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(6)
+        label = QLabel(f"{_icon_for(path)}  {Path(path).name}")
+        label.setToolTip(path)
+        layout.addWidget(label, 1)
+        btn = QPushButton(self.tr("✕"))
+        btn.setFixedSize(28, 24)
+        btn.setFlat(True)
+        btn.setToolTip(self.tr("Remove this file"))
+        btn.clicked.connect(lambda _checked=False, p=path: self.remove_path(p))
+        layout.addWidget(btn, 0)
+        # The list view sizes items by the widget's sizeHint; we need
+        # at least one fixed row height for the embedded widget to
+        # render correctly.
+        row.setSizeHint(widget.sizeHint())
+        self._list.setItemWidget(row, widget)
 
     def remove_path(self, path: str) -> None:
         if path not in self._selected_paths:
@@ -147,6 +179,9 @@ class FileCloud(QGroupBox):
         for i in range(self._list.count()):
             it = self._list.item(i)
             if it and it.data(Qt.ItemDataRole.UserRole) == path:
+                # Detach the embedded button (Qt would crash on takeItem
+                # if the widget is still parented to the list).
+                self._list.removeItemWidget(it)
                 self._list.takeItem(i)
                 break
         self._refresh_empty_state()

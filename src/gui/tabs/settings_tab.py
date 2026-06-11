@@ -62,7 +62,7 @@ class SettingsTab(QWidget):
         form.addRow(self.tr("Model:"), self._model)
 
         self._base_url = QLineEdit()
-        self._base_url.setPlaceholderText("http://127.0.0.1:11434")
+        self._base_url.setPlaceholderText(self.tr("http://127.0.0.1:11434"))
         form.addRow(self.tr("Base URL:"), self._base_url)
 
         self._api_key = QLineEdit()
@@ -80,7 +80,9 @@ class SettingsTab(QWidget):
         form.addRow("", self._draft_fallback)
 
         self._nllb_model = QLineEdit()
-        self._nllb_model.setPlaceholderText("facebook/nllb-200-distilled-600M")
+        self._nllb_model.setPlaceholderText(
+            self.tr("facebook/nllb-200-distilled-600M")
+        )
         form.addRow(self.tr("NLLB model:"), self._nllb_model)
 
         self._nllb_device = QComboBox()
