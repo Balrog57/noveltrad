@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.0.1] — 2026-06-11
+
 ### Added
 - **Multi-file batch translation** (`FileCloud` widget): the Translate
   tab now accepts one *or many* files via drag-and-drop or the
@@ -31,14 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `ConfigManager` under `ui.language`. The runtime falls back to
   English when the compiled `.qm` is missing (e.g. on developer
   machines that haven't run `pylrelease6`).
-- LLM auto-discovery: the first-run wizard and settings tab now call
-  `GET /llm/providers` and `POST /llm/providers/refresh` to
-  enumerate the local Ollama models, suggest curated local models
-  (gemma3:4b, llama3.1:8b, qwen2.5:7b, phi4:14b, mistral-nemo:12b)
-  and curated OpenAI-compatible cloud endpoints
-  (gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-1.5-flash,
-  deepseek-chat). The user can still type a custom model and base
-  URL.
 
 ### Tests
 - `tests/test_lexicon_delete.py` (3 tests): hard delete removes
