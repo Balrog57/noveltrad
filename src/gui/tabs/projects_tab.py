@@ -33,8 +33,13 @@ class ProjectsTab(QWidget):
             self.tr("Date"),
             self.tr("Open"),
         ])
-        self._table.horizontalHeader().setStretchLastSection(False)
-        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setStretchLastSection(False)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.cellDoubleClicked.connect(self._on_cell_double_clicked)
@@ -49,6 +54,7 @@ class ProjectsTab(QWidget):
         layout.addWidget(btn)
 
     def refresh(self) -> None:
+        self._status.setText("")
         try:
             data = self._client.get("/projects", timeout=5.0) or {}
             items = data.get("projects") or []

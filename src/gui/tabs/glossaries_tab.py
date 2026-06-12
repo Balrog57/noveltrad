@@ -54,9 +54,13 @@ class GlossariesTab(QWidget):
                 self.tr("Confidence"),
             ]
         )
-        self._table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setStretchLastSection(False)
         self._table.itemChanged.connect(self._on_item_changed)
         layout.addWidget(self._table)
 
@@ -84,11 +88,13 @@ class GlossariesTab(QWidget):
         layout.addWidget(self._status)
 
         self._terms: list[dict[str, Any]] = []
-        self.refresh()
+        # Defer the first refresh to _on_sidebar_changed: the backend
+        # subprocess starts asynchronously and is not yet ready here.
 
     # ----- backend I/O -----
 
     def refresh(self) -> None:
+        self._status.setText("")
         try:
             data = self._client.get("/lexicon", timeout=5.0) or {"terms": []}
         except BackendError as exc:
@@ -98,6 +104,7 @@ class GlossariesTab(QWidget):
             return
         self._terms = list(data.get("terms") or [])
         self._populate()
+        self._status.setText(self.tr("{n} term(s)").format(n=len(self._terms)))
 
     def _populate(self) -> None:
         self._table.blockSignals(True)

@@ -39,9 +39,12 @@ class FilesTab(QWidget):
         self._table.setHorizontalHeaderLabels(
             [self.tr("Chunk"), self.tr("Status"), self.tr("Chapter"), self.tr("Open")]
         )
-        self._table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setStretchLastSection(False)
         self._table.cellDoubleClicked.connect(self._on_double_click)
         layout.addWidget(self._table)
 
@@ -61,10 +64,9 @@ class FilesTab(QWidget):
         row.addWidget(self._status)
         layout.addLayout(row)
 
-        self.refresh()
-
     def refresh(self) -> None:
         self._table.setRowCount(0)
+        self._status.setText("")
         try:
             data = self._client.get("/chunks?limit=200", timeout=5.0) or {}
         except BackendError as exc:

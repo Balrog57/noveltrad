@@ -727,164 +727,207 @@ class Orchestrator:
             if not did_work:
                 time.sleep(0.05)
 
+    _WORKER_MSG_DISPATCH = {
+        "error": "_handle_worker_error",
+        "hltl_request": "_handle_worker_hltl_request",
+        "progress": "_handle_worker_progress",
+        "run_done": "_handle_worker_run_done",
+        "done": "_handle_worker_done",
+    }
+
     def _handle_worker_message(self, stage: str, msg: dict[str, Any]) -> None:
         msg_type = msg.get("type")
+        handler_name = self._WORKER_MSG_DISPATCH.get(msg_type)
+        if handler_name is None:
+            logger.debug("Unhandled message from %s: %r", stage, msg)
+            return
+        getattr(self, handler_name)(stage, msg)
+
+    def _handle_worker_error(self, stage: str, msg: dict[str, Any]) -> None:
         chunk_id = msg.get("chunk_id")
         payload = msg.get("payload") or {}
-
-        if msg_type == "error":
-            logger.error(
-                "[%s] error on chunk %s: %s",
-                stage,
-                chunk_id,
-                payload.get("message"),
+        logger.error(
+            "[%s] error on chunk %s: %s",
+            stage,
+            chunk_id,
+            payload.get("message"),
+        )
+        if chunk_id:
+            self.store.update_chunk_field(chunk_id, "status", STATUS_ERROR)
+            self.store.update_chunk_field(
+                chunk_id, "error_message", payload.get("message")
             )
-            if chunk_id:
-                self.store.update_chunk_field(chunk_id, "status", STATUS_ERROR)
-                self.store.update_chunk_field(
-                    chunk_id, "error_message", payload.get("message")
-                )
-            self._emit(
-                {
-                    "type": "agent_error",
-                    "stage": stage,
-                    "chunk_id": chunk_id,
-                    "payload": payload,
-                }
-            )
-            return
-
-        if msg_type == "hltl_request":
-            self.register_hltl(msg)
-            return
-
-        if msg_type == "progress":
-            base = {
+        self._emit(
+            {
+                "type": "agent_error",
                 "stage": stage,
                 "chunk_id": chunk_id,
-                "percent": payload.get("percent"),
-                "note": payload.get("note"),
+                "payload": payload,
             }
-            self._emit({"type": "agent_progress", **base})
-            self._emit({"type": "stage_progress", **base})
-            if chunk_id:
-                self._emit({"type": "chunk_progress", **base})
-            return
+        )
 
-        if msg_type == "run_done":
-            # Project-level completion emitted by a stage. Generic route
-            # so any stage can finish its run-level work without the
-            # orchestrator needing a hard-coded branch.
+    def _handle_worker_hltl_request(self, stage: str, msg: dict[str, Any]) -> None:
+        self.register_hltl(msg)
+
+    def _handle_worker_progress(self, stage: str, msg: dict[str, Any]) -> None:
+        chunk_id = msg.get("chunk_id")
+        payload = msg.get("payload") or {}
+        base = {
+            "stage": stage,
+            "chunk_id": chunk_id,
+            "percent": payload.get("percent"),
+            "note": payload.get("note"),
+        }
+        self._emit({"type": "agent_progress", **base})
+        self._emit({"type": "stage_progress", **base})
+        if chunk_id:
+            self._emit({"type": "chunk_progress", **base})
+
+    def _handle_worker_run_done(self, stage: str, msg: dict[str, Any]) -> None:
+        payload = msg.get("payload") or {}
+        self._handle_run_level_message(stage, payload)
+
+    def _handle_worker_done(self, stage: str, msg: dict[str, Any]) -> None:
+        chunk_id = msg.get("chunk_id")
+        payload = msg.get("payload") or {}
+        # run_done is a project-level completion (chunk_id=None). Any
+        # stage may emit it when it finishes its run-level work; we
+        # delegate to a dedicated handler.
+        if chunk_id is None:
             self._handle_run_level_message(stage, payload)
             return
+        self._persist_done_side_effects(stage, chunk_id, payload)
+        self._on_stage_done(stage, chunk_id, payload)
 
-        if msg_type == "done":
-            # run_done is a project-level completion (chunk_id=None). Any
-            # stage may emit it when it finishes its run-level work; we
-            # delegate to a dedicated handler.
-            if chunk_id is None:
-                self._handle_run_level_message(stage, payload)
-                return
-            # LexiconBuilder emits terms in its payload. We persist
-            # them and forward the chunk to the next stage.
-            if stage == "lexicon_builder" and payload.get("terms"):
-                for term in payload.get("terms") or []:
-                    if isinstance(term, dict) and "id" in term:
-                        try:
-                            self.store.add_lexicon_term(term)
-                        except Exception:
-                            logger.exception("lexicon: failed to persist term")
-            # GrammarProofer emits a list of issues; persist them so
-            # the GUI chunk detail can show them.
-            if stage == "grammar_proofer" and chunk_id and payload.get("grammar_issues"):
-                import uuid as _uuid
+    def _persist_done_side_effects(
+        self, stage: str, chunk_id: str, payload: dict[str, Any]
+    ) -> None:
+        if stage == "lexicon_builder" and payload.get("terms"):
+            self._persist_lexicon_terms(payload.get("terms") or [])
+        if stage == "grammar_proofer" and payload.get("grammar_issues"):
+            self._persist_grammar_issues(chunk_id, payload.get("grammar_issues") or [])
+        if stage == "qa_validator" and payload.get("qa_issues"):
+            self._persist_qa_issues(chunk_id, payload.get("qa_issues") or [])
+        if stage == "consistency_checker" and payload.get("consistency_flags"):
+            self._persist_consistency_flags(
+                chunk_id, payload.get("consistency_flags") or []
+            )
 
-                for issue in payload.get("grammar_issues") or []:
-                    if not isinstance(issue, dict):
-                        continue
-                    try:
-                        self.store.add_grammar_issue(
-                            {
-                                "id": _uuid.uuid4().hex[:12],
-                                "chunk_id": chunk_id,
-                                "start_pos": issue.get("start_pos"),
-                                "end_pos": issue.get("end_pos"),
-                                "message": issue.get("message", ""),
-                                "suggestion": issue.get("suggestion"),
-                                "applied": bool(issue.get("applied")),
-                                "rule_id": issue.get("rule_id"),
-                            }
-                        )
-                    except Exception:
-                        logger.exception("grammar: failed to persist issue")
-            # QAValidator emits issues, too.
-            if stage == "qa_validator" and chunk_id and payload.get("qa_issues"):
-                import uuid as _uuid
+    def _persist_lexicon_terms(self, terms: list[Any]) -> None:
+        for term in terms:
+            if isinstance(term, dict) and "id" in term:
+                try:
+                    self.store.add_lexicon_term(term)
+                except Exception:
+                    logger.exception("lexicon: failed to persist term")
 
-                for issue in payload.get("qa_issues") or []:
-                    if not isinstance(issue, dict):
-                        continue
-                    try:
-                        self.store.add_qa_issue(
-                            {
-                                "id": _uuid.uuid4().hex[:12],
-                                "chunk_id": chunk_id,
-                                "issue_type": issue.get("priority", "REGISTER"),
-                                "severity": (
-                                    "high"
-                                    if issue.get("priority") in ("FABRICATION", "OMISSION")
-                                    else "medium"
-                                ),
-                                "message": issue.get("explanation", ""),
-                                "auto_fixed": bool(issue.get("auto_fix")),
-                            }
-                        )
-                    except Exception:
-                        logger.exception("qa: failed to persist issue")
-            # ConsistencyChecker emits flags.
-            if stage == "consistency_checker" and chunk_id and payload.get("consistency_flags"):
-                import uuid as _uuid
+    def _persist_grammar_issues(self, chunk_id: str, issues: list[Any]) -> None:
+        import uuid as _uuid
 
-                for flag in payload.get("consistency_flags") or []:
-                    if not isinstance(flag, dict):
-                        continue
-                    try:
-                        self.store.add_consistency_flag(
-                            {
-                                "id": _uuid.uuid4().hex[:12],
-                                "chunk_id": chunk_id,
-                                "source_term": flag.get("source_term"),
-                                "expected_translation": flag.get("expected_translation"),
-                                "found_translation": flag.get("found_translation"),
-                                "confidence": float(flag.get("confidence", 0.0) or 0.0),
-                                "resolved": False,
-                            }
-                        )
-                    except Exception:
-                        logger.exception("consistency: failed to persist flag")
-            self._on_stage_done(stage, chunk_id, payload)
-            return
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            try:
+                self.store.add_grammar_issue(
+                    {
+                        "id": _uuid.uuid4().hex[:12],
+                        "chunk_id": chunk_id,
+                        "start_pos": issue.get("start_pos"),
+                        "end_pos": issue.get("end_pos"),
+                        "message": issue.get("message", ""),
+                        "suggestion": issue.get("suggestion"),
+                        "applied": bool(issue.get("applied")),
+                        "rule_id": issue.get("rule_id"),
+                    }
+                )
+            except Exception:
+                logger.exception("grammar: failed to persist issue")
 
-        logger.debug("Unhandled message from %s: %r", stage, msg)
+    def _persist_qa_issues(self, chunk_id: str, issues: list[Any]) -> None:
+        import uuid as _uuid
+
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            try:
+                self.store.add_qa_issue(
+                    {
+                        "id": _uuid.uuid4().hex[:12],
+                        "chunk_id": chunk_id,
+                        "issue_type": issue.get("priority", "REGISTER"),
+                        "severity": (
+                            "high"
+                            if issue.get("priority") in ("FABRICATION", "OMISSION")
+                            else "medium"
+                        ),
+                        "message": issue.get("explanation", ""),
+                        "auto_fixed": bool(issue.get("auto_fix")),
+                    }
+                )
+            except Exception:
+                logger.exception("qa: failed to persist issue")
+
+    def _persist_consistency_flags(self, chunk_id: str, flags: list[Any]) -> None:
+        import uuid as _uuid
+
+        for flag in flags:
+            if not isinstance(flag, dict):
+                continue
+            try:
+                self.store.add_consistency_flag(
+                    {
+                        "id": _uuid.uuid4().hex[:12],
+                        "chunk_id": chunk_id,
+                        "source_term": flag.get("source_term"),
+                        "expected_translation": flag.get("expected_translation"),
+                        "found_translation": flag.get("found_translation"),
+                        "confidence": float(flag.get("confidence", 0.0) or 0.0),
+                        "resolved": False,
+                    }
+                )
+            except Exception:
+                logger.exception("consistency: failed to persist flag")
 
     def _on_stage_done(
         self, stage: str, chunk_id: str | None, payload: dict[str, Any]
     ) -> None:
         if not chunk_id:
             return
-        if stage == ASSEMBLER:
-            if payload.get("output_path"):
-                artifact = {
-                    "output_path": payload.get("output_path"),
-                    "chunk_count": payload.get("chunk_count", 0),
-                    "created_at": _now_iso(),
-                }
-                self.store.set_state("output_artifact", artifact)
-                with self._lock:
-                    if self._project is not None:
-                        self._project.status = "done"
-                self._emit({"type": "artifact_ready", **artifact})
-        # 1. Persist any data the stage produced.
+        self._emit_artifact_if_assembler(stage, chunk_id, payload)
+        self._persist_chunk_fields(chunk_id, payload)
+        self._emit_agent_done(stage, chunk_id, payload)
+        self._maybe_auto_assemble(payload)
+        if payload.get("terminal"):
+            return
+        next_stage = self._next_stage(stage)
+        if next_stage is None or next_stage == ASSEMBLER:
+            return
+        next_stage = self._maybe_skip_grammar(stage, next_stage, chunk_id, payload)
+        if not self._maybe_reflect(stage, chunk_id, payload):
+            return
+        self._forward_to_next_stage(next_stage, chunk_id, payload)
+
+    # ----- _on_stage_done sub-steps -----
+
+    def _emit_artifact_if_assembler(
+        self, stage: str, chunk_id: str, payload: dict[str, Any]
+    ) -> None:
+        if stage != ASSEMBLER:
+            return
+        if not payload.get("output_path"):
+            return
+        artifact = {
+            "output_path": payload.get("output_path"),
+            "chunk_count": payload.get("chunk_count", 0),
+            "created_at": _now_iso(),
+        }
+        self.store.set_state("output_artifact", artifact)
+        with self._lock:
+            if self._project is not None:
+                self._project.status = "done"
+        self._emit({"type": "artifact_ready", **artifact})
+
+    def _persist_chunk_fields(self, chunk_id: str, payload: dict[str, Any]) -> None:
         for field_name in (
             "raw_translation",
             "glossary_applied",
@@ -893,208 +936,263 @@ class Orchestrator:
             "polished_translation",
         ):
             if field_name in payload:
-                self.store.update_chunk_field(chunk_id, field_name, payload[field_name])
-        # Reviewer produces review_score (float) and review_annotations (list).
+                self.store.update_chunk_field(
+                    chunk_id, field_name, payload[field_name]
+                )
         if "review_score" in payload:
-            self.store.update_chunk_field(chunk_id, "review_score", payload["review_score"])
+            self.store.update_chunk_field(
+                chunk_id, "review_score", payload["review_score"]
+            )
         if "review_annotations" in payload:
             import json as _json
+
             self.store.update_chunk_field(
-                chunk_id, "review_annotations",
+                chunk_id,
+                "review_annotations",
                 _json.dumps(payload["review_annotations"], ensure_ascii=False),
             )
         new_status = payload.get("status") or STAGE_TO_STATUS.get(stage, "parsed")
         self.store.update_chunk_field(chunk_id, "status", new_status)
 
-        # 2. Forward to the next stage (unless the stage signals "no
-        #    further processing" via payload["terminal"] = True).
-        if not payload.get("terminal"):
-            next_stage = self._next_stage(stage)
-            if next_stage == ASSEMBLER:
-                next_stage = None
-            if next_stage is not None:
-                from ..agents.base_worker import make_task_message
+    def _maybe_skip_grammar(
+        self,
+        stage: str,
+        next_stage: str | None,
+        chunk_id: str,
+        payload: dict[str, Any],
+    ) -> str | None:
+        """Apply DAG shortcuts (qa_clean → reviewer, skipping grammar_proofer)."""
+        if stage != "qa_validator" or next_stage != "grammar_proofer":
+            return next_stage
+        if not (self._project and self._project.profile in ("balanced", "premium")):
+            return next_stage
+        if payload.get("qa_issues"):
+            return next_stage
+        order = self._stage_order
+        if "reviewer" not in order:
+            return next_stage
+        self._emit(
+            {
+                "type": "dag_skip",
+                "chunk_id": chunk_id,
+                "skipped": "grammar_proofer",
+                "reason": "qa_clean",
+            }
+        )
+        return "reviewer"
 
-                # --- DAG escalation (Phase 4.1) ---
-                # If QA validator passes with zero issues in Balanced/Premium,
-                # skip grammar_proofer and route directly to reviewer.
-                if stage == "qa_validator" and next_stage == "grammar_proofer":
-                    if self._project and self._project.profile in ("balanced", "premium"):
-                        qa_issues = payload.get("qa_issues") or []
-                        if not qa_issues:
-                            order = self._stage_order
-                            if "reviewer" in order:
-                                next_stage = "reviewer"
-                                self._emit({
-                                    "type": "dag_skip",
-                                    "chunk_id": chunk_id,
-                                    "skipped": "grammar_proofer",
-                                    "reason": "qa_clean",
-                                })
+    def _maybe_reflect(
+        self, stage: str, chunk_id: str, payload: dict[str, Any]
+    ) -> bool:
+        """Re-inject the chunk into llm_polisher if the reviewer scored low.
 
-                # --- reflexive loop (Phase 3.2) ---
-                if stage == "reviewer":
-                    score = payload.get("review_score", 1.0)
-                    threshold = 0.7
-                    if self._project and self._project.profile == "premium":
-                        threshold = 0.85
-                    max_reflections = 2
-                    stored_chunk = self.store.get_chunk(chunk_id) or {}
-                    stored_meta = stored_chunk.get("metadata") or {}
-                    reflection_count = int(stored_meta.get("reflection_count") or 0)
-                    if score < threshold:
-                        if reflection_count < max_reflections:
-                            reflection_count += 1
-                            stored_meta["reflection_count"] = reflection_count
-                            import json as _json2
-                            self.store.update_chunk_field(
-                                chunk_id, "metadata_json",
-                                _json2.dumps(stored_meta, ensure_ascii=False),
-                            )
-                            annotations = payload.get("review_annotations") or []
-                            annot_text = "; ".join(
-                                f"[{a.get('type', '')}] {a.get('span', '')} → {a.get('suggestion', '')}"
-                                for a in annotations[:5]
-                            ) if annotations else ""
-                            src_for_reflect = payload.get("source_text") or stored_chunk.get("source_text") or ""
-                            tgt_for_reflect = (
-                                payload.get("polished_translation")
-                                or payload.get("grammar_checked")
-                                or stored_chunk.get("polished_translation")
-                                or stored_chunk.get("grammar_checked")
-                                or stored_chunk.get("glossary_applied")
-                                or stored_chunk.get("raw_translation")
-                                or ""
-                            )
-                            reflection_payload = {
-                                "source_text": src_for_reflect,
-                                "polished_translation": tgt_for_reflect,
-                                "review_score": score,
-                                "review_annotations": annotations,
-                                "reflection_instructions": (
-                                    f"Reviewer score: {score:.2f}. Issues: {annot_text}. "
-                                    f"Please revise the translation accordingly."
-                                ) if annot_text else f"Reviewer score: {score:.2f}. Please improve.",
-                                "reflection_count": reflection_count,
-                            }
-                            self._workers.queues_for("llm_polisher").input.put(
-                                make_task_message(
-                                    chunk_id=chunk_id,
-                                    action="polish",
-                                    payload=reflection_payload,
-                                )
-                            )
-                            self._emit({
-                                "type": "reflection_triggered",
-                                "chunk_id": chunk_id,
-                                "score": score,
-                                "reflection_count": reflection_count,
-                            })
-                            return
-                        else:
-                            self._emit({
-                                "type": "reflection_exhausted",
-                                "chunk_id": chunk_id,
-                                "score": score,
-                                "reflection_count": reflection_count,
-                            })
+        Returns False if the chunk was reflected (caller must stop
+        forwarding); True otherwise.
+        """
+        if stage != "reviewer":
+            return True
+        score = payload.get("review_score", 1.0)
+        threshold = 0.85 if (self._project and self._project.profile == "premium") else 0.7
+        if score >= threshold:
+            return True
+        stored_chunk = self.store.get_chunk(chunk_id) or {}
+        stored_meta = stored_chunk.get("metadata") or {}
+        reflection_count = int(stored_meta.get("reflection_count") or 0)
+        max_reflections = 2
+        if reflection_count >= max_reflections:
+            self._emit(
+                {
+                    "type": "reflection_exhausted",
+                    "chunk_id": chunk_id,
+                    "score": score,
+                    "reflection_count": reflection_count,
+                }
+            )
+            return True
+        reflection_count += 1
+        stored_meta["reflection_count"] = reflection_count
+        import json as _json
 
-                action = payload.get("action") or _default_action_for(next_stage)
-                next_payload = dict(payload.get("next_payload") or {})
-                # Always include the latest available translation so the
-                # next stage doesn't need to re-fetch.
-                if next_stage in (
-                    "glossary_applier",
-                    "consistency_checker",
-                    "qa_validator",
-                    "grammar_proofer",
-                    "reviewer",
-                    "llm_polisher",
-                ):
-                    for key in (
-                        "raw_translation",
-                        "glossary_applied",
-                        "qa_checked",
-                        "grammar_checked",
-                        "polished_translation",
-                        "review_score",
-                        "review_annotations",
-                    ):
-                        if key in payload and key not in next_payload:
-                            next_payload[key] = payload[key]
-                # Pre-fetch the current chunk from the StateStore so the
-                # agent has access to source_text / chapter context.
-                stored = self.store.get_chunk(chunk_id) or {}
-                # Verify source hash integrity before forwarding.
-                src_text = stored.get("source_text") or ""
-                src_hash = stored.get("source_hash")
-                if not self._verify_chunk_hash(chunk_id, src_text, src_hash):
-                    forward_ok = False
-                else:
-                    forward_ok = True
-                for key in (
-                    "source_text",
-                    "chapter_id",
-                    "chapter_title",
-                    "source_lang",
-                    "target_lang",
-                    "raw_translation",
-                    "glossary_applied",
-                    "qa_checked",
-                    "grammar_checked",
-                    "polished_translation",
-                    "review_score",
-                    "review_annotations",
-                ):
-                    if key in stored and key not in next_payload:
-                        next_payload[key] = stored[key]
-                # Pre-fetch the project context (langs).
-                ctx = self._project
-                if ctx is not None:
-                    next_payload.setdefault("source_lang", ctx.source_lang)
-                    next_payload.setdefault("target_lang", ctx.target_lang)
-                # Pre-fetch the lexicon for the glossary stage.
-                if next_stage == "glossary_applier":
-                    next_payload["lexicon_terms"] = self.store.list_lexicon()
-                # The QA / consistency / polisher stages may want the
-                # current polished text passed through.
-                if next_stage in (
-                    "qa_validator",
-                    "grammar_proofer",
-                    "consistency_checker",
-                ):
-                    polished = stored.get("polished_translation")
-                    if polished and "polished_translation" not in next_payload:
-                        next_payload["polished_translation"] = polished
-                # ConsistencyChecker benefits from a few neighbour
-                # chunks from the same chapter — we look them up here
-                # so the agent doesn't touch the StateStore.
-                if next_stage == "consistency_checker":
-                    chap = stored.get("chapter_id")
-                    if chap:
-                        neighbour_chunks = self.store.list_chunks(
-                            chapter_id=chap, limit=20
-                        )
-                        next_payload["neighbours"] = [
-                            {
-                                "id": c.get("id"),
-                                "source_text": c.get("source_text", ""),
-                                "raw_translation": c.get("raw_translation"),
-                                "glossary_applied": c.get("glossary_applied"),
-                                "polished_translation": c.get("polished_translation"),
-                            }
-                            for c in neighbour_chunks
-                            if c.get("id") != chunk_id
-                        ]
-                self._workers.queues_for(next_stage).input.put(
-                    make_task_message(
-                        chunk_id=chunk_id,
-                        action=action,
-                        payload=next_payload,
-                    )
-                ) if forward_ok else None
+        self.store.update_chunk_field(
+            chunk_id,
+            "metadata_json",
+            _json.dumps(stored_meta, ensure_ascii=False),
+        )
+        self._enqueue_reflection(chunk_id, payload, stored_chunk, score, reflection_count)
+        return False
 
-        # 3. Emit a progress event.
+    def _enqueue_reflection(
+        self,
+        chunk_id: str,
+        payload: dict[str, Any],
+        stored_chunk: dict[str, Any],
+        score: float,
+        reflection_count: int,
+    ) -> None:
+        from ..agents.base_worker import make_task_message
+
+        annotations = payload.get("review_annotations") or []
+        annot_text = (
+            "; ".join(
+                f"[{a.get('type', '')}] {a.get('span', '')} → {a.get('suggestion', '')}"
+                for a in annotations[:5]
+            )
+            if annotations
+            else ""
+        )
+        src_for_reflect = payload.get("source_text") or stored_chunk.get("source_text") or ""
+        tgt_for_reflect = (
+            payload.get("polished_translation")
+            or payload.get("grammar_checked")
+            or stored_chunk.get("polished_translation")
+            or stored_chunk.get("grammar_checked")
+            or stored_chunk.get("glossary_applied")
+            or stored_chunk.get("raw_translation")
+            or ""
+        )
+        reflection_payload = {
+            "source_text": src_for_reflect,
+            "polished_translation": tgt_for_reflect,
+            "review_score": score,
+            "review_annotations": annotations,
+            "reflection_instructions": (
+                f"Reviewer score: {score:.2f}. Issues: {annot_text}. "
+                "Please revise the translation accordingly."
+            )
+            if annot_text
+            else f"Reviewer score: {score:.2f}. Please improve.",
+            "reflection_count": reflection_count,
+        }
+        self._workers.queues_for("llm_polisher").input.put(
+            make_task_message(
+                chunk_id=chunk_id,
+                action="polish",
+                payload=reflection_payload,
+            )
+        )
+        self._emit(
+            {
+                "type": "reflection_triggered",
+                "chunk_id": chunk_id,
+                "score": score,
+                "reflection_count": reflection_count,
+            }
+        )
+
+    def _forward_to_next_stage(
+        self, next_stage: str, chunk_id: str, payload: dict[str, Any]
+    ) -> None:
+        from ..agents.base_worker import make_task_message
+
+        action = payload.get("action") or _default_action_for(next_stage)
+        next_payload = dict(payload.get("next_payload") or {})
+
+        self._propagate_translation_fields(next_stage, payload, next_payload)
+
+        # Verify source hash integrity before forwarding.
+        stored = self.store.get_chunk(chunk_id) or {}
+        src_text = stored.get("source_text") or ""
+        src_hash = stored.get("source_hash")
+        if not self._verify_chunk_hash(chunk_id, src_text, src_hash):
+            return
+
+        for key in (
+            "source_text",
+            "chapter_id",
+            "chapter_title",
+            "source_lang",
+            "target_lang",
+            "raw_translation",
+            "glossary_applied",
+            "qa_checked",
+            "grammar_checked",
+            "polished_translation",
+            "review_score",
+            "review_annotations",
+        ):
+            if key in stored and key not in next_payload:
+                next_payload[key] = stored[key]
+
+        ctx = self._project
+        if ctx is not None:
+            next_payload.setdefault("source_lang", ctx.source_lang)
+            next_payload.setdefault("target_lang", ctx.target_lang)
+
+        if next_stage == "glossary_applier":
+            next_payload["lexicon_terms"] = self.store.list_lexicon()
+
+        if next_stage in (
+            "qa_validator",
+            "grammar_proofer",
+            "consistency_checker",
+        ):
+            polished = stored.get("polished_translation")
+            if polished and "polished_translation" not in next_payload:
+                next_payload["polished_translation"] = polished
+
+        if next_stage == "consistency_checker":
+            self._attach_neighbour_chunks(stored, chunk_id, next_payload)
+
+        self._workers.queues_for(next_stage).input.put(
+            make_task_message(
+                chunk_id=chunk_id,
+                action=action,
+                payload=next_payload,
+            )
+        )
+
+    def _propagate_translation_fields(
+        self,
+        next_stage: str,
+        payload: dict[str, Any],
+        next_payload: dict[str, Any],
+    ) -> None:
+        if next_stage not in (
+            "glossary_applier",
+            "consistency_checker",
+            "qa_validator",
+            "grammar_proofer",
+            "reviewer",
+            "llm_polisher",
+        ):
+            return
+        for key in (
+            "raw_translation",
+            "glossary_applied",
+            "qa_checked",
+            "grammar_checked",
+            "polished_translation",
+            "review_score",
+            "review_annotations",
+        ):
+            if key in payload and key not in next_payload:
+                next_payload[key] = payload[key]
+
+    def _attach_neighbour_chunks(
+        self,
+        stored: dict[str, Any],
+        chunk_id: str,
+        next_payload: dict[str, Any],
+    ) -> None:
+        chap = stored.get("chapter_id")
+        if not chap:
+            return
+        neighbour_chunks = self.store.list_chunks(chapter_id=chap, limit=20)
+        next_payload["neighbours"] = [
+            {
+                "id": c.get("id"),
+                "source_text": c.get("source_text", ""),
+                "raw_translation": c.get("raw_translation"),
+                "glossary_applied": c.get("glossary_applied"),
+                "polished_translation": c.get("polished_translation"),
+            }
+            for c in neighbour_chunks
+            if c.get("id") != chunk_id
+        ]
+
+    def _emit_agent_done(
+        self, stage: str, chunk_id: str, payload: dict[str, Any]
+    ) -> None:
         self._emit(
             {
                 "type": "agent_done",
@@ -1104,15 +1202,14 @@ class Orchestrator:
             }
         )
 
-        # 4. If a chunk reached the penultimate stage before the
-        #    assembler in the current profile, check if all chunks
-        #    are now ready for assembly.
+    def _maybe_auto_assemble(self, payload: dict[str, Any]) -> None:
         threshold_status = self._penultimate_status()
-        if threshold_status and payload.get("status") == threshold_status:
-            try:
-                self.maybe_auto_assemble()
-            except Exception:
-                logger.exception("auto-assemble dispatch failed")
+        if not threshold_status or payload.get("status") != threshold_status:
+            return
+        try:
+            self.maybe_auto_assemble()
+        except Exception:
+            logger.exception("auto-assemble dispatch failed")
 
     def _next_stage(self, stage: str) -> str | None:
         order = self._stage_order

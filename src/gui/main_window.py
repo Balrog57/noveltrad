@@ -176,6 +176,7 @@ class MainWindow(QMainWindow):
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
         self._splitter.setCollapsible(0, True)
+        self._splitter.setHandleWidth(1)
         root.addWidget(self._splitter, 1)
 
         # --- activity log ---
@@ -203,12 +204,17 @@ class MainWindow(QMainWindow):
         # Restore layout.
         self._restore_layout()
         # Apply initial responsive mode once the window is actually
-        # shown (resizeEvent won't fire on a hidden widget). We default
-        # to "full sidebar" until the first show; the resizeEvent will
-        # then re-evaluate against the real geometry.
-        self._drawer_open = True
-        self._sidebar.setVisible(True)
-        self._splitter.setSizes([200, max(400, self.width() - 200)])
+        # shown (resizeEvent won't fire on a hidden widget). Only seed
+        # the splitter sizes when the user has no saved layout; otherwise
+        # _restore_layout() above will set the proper sizes from QSettings
+        # and we must not clobber them.
+        saved_state = self._settings.value("MainWindow/state")
+        if not saved_state:
+            self._drawer_open = True
+            self._sidebar.setVisible(True)
+            self._splitter.setSizes([200, max(400, self.width() - 200)])
+        else:
+            self._drawer_open = self.width() >= DRAWER_BREAKPOINT
 
         # Background auto-update check, fires once the UI is settled.
         QTimer.singleShot(3000, self._check_for_updates)
@@ -222,13 +228,14 @@ class MainWindow(QMainWindow):
     def _apply_responsive_mode(self, width: int) -> None:
         drawer = width < DRAWER_BREAKPOINT
         if drawer:
-            self._splitter.setSizes([0, width])
-            self._sidebar.setVisible(False)
-            self._drawer_open = False
+            if self._drawer_open:
+                self._sidebar.setVisible(False)
+                self._drawer_open = False
+                self._splitter.setSizes([0, width])
         else:
-            self._sidebar.setVisible(True)
-            self._drawer_open = True
-            if self._splitter.sizes()[0] == 0:
+            if not self._drawer_open:
+                self._sidebar.setVisible(True)
+                self._drawer_open = True
                 self._splitter.setSizes([200, max(400, width - 200)])
 
     def _toggle_drawer(self) -> None:
@@ -562,53 +569,55 @@ class MainWindow(QMainWindow):
         try:
             h = self._client.health()
         except BackendError:
-            self._llm_badge.setText(self.tr("● Offline"))
-            self._llm_badge.setProperty("role", "muted")
-            self._llm_badge.style().unpolish(self._llm_badge)
-            self._llm_badge.style().polish(self._llm_badge)
+            self._set_badge(self.tr("● Offline"))
             return
-        nllb = h.get("nllb") or {}
-        llm = h.get("llm") or {}
-        if h.get("ok"):
-            mode = llm.get("mode", "offline")
-            mode_map = {
-                "local": self.tr("● Local only"),
-                "cloud": self.tr("● Cloud"),
-                "hybrid": self.tr("● Hybrid"),
-                "offline": self.tr("● LLM: offline"),
-            }
-            badge_text = mode_map.get(mode, self.tr("● LLM: ?"))
-            nllb_text = (
-                self.tr("NLLB ready") if nllb.get("available") else ""
-            )
-            if nllb_text:
-                badge_text += f" · {nllb_text}"
-            self._llm_badge.setText(badge_text)
-            self._llm_badge.setProperty("role", "muted")
-            self._llm_badge.style().unpolish(self._llm_badge)
-            self._llm_badge.style().polish(self._llm_badge)
-            usage = llm.get("usage") or {}
-            tokens = (usage.get("tokens_in") or 0) + (usage.get("tokens_out") or 0)
-            cost = usage.get("cost_usd") or 0.0
-            if tokens:
-                if tokens >= 1000:
-                    tok_text = f"{tokens / 1000:.1f}k tok"
-                else:
-                    tok_text = f"{tokens} tok"
-                cost_text = f"${cost:.3f}" if cost > 0 else ""
-                msg = tok_text
-                if cost_text:
-                    msg += f" · {cost_text}"
-                self.statusBar().showMessage(msg)
-            else:
-                self.statusBar().showMessage(self.tr("Backend connected."))
-            try:
-                state = self._client.get("/pipeline/state", timeout=2.0) or {}
-                self._translate_tab.update_pipeline_state(state)
-            except BackendError:
-                pass
-        else:
-            self._llm_badge.setText(self.tr("● LLM: ?"))
+        if not h.get("ok"):
+            self._set_badge(self.tr("● LLM: ?"))
+            return
+        self._set_badge(self._format_llm_badge(h))
+        self._update_statusbar_usage(h)
+        self._refresh_pipeline_state()
+
+    def _set_badge(self, text: str) -> None:
+        self._llm_badge.setText(text)
+        self._llm_badge.setProperty("role", "muted")
+        self._llm_badge.style().unpolish(self._llm_badge)
+        self._llm_badge.style().polish(self._llm_badge)
+
+    def _format_llm_badge(self, health: dict[str, Any]) -> str:
+        llm = health.get("llm") or {}
+        nllb = health.get("nllb") or {}
+        mode_map = {
+            "local": self.tr("● Local only"),
+            "cloud": self.tr("● Cloud"),
+            "hybrid": self.tr("● Hybrid"),
+            "offline": self.tr("● LLM: offline"),
+        }
+        mode = llm.get("mode", "offline")
+        badge = mode_map.get(mode, self.tr("● LLM: ?"))
+        if nllb.get("available"):
+            badge += f" · {self.tr('NLLB ready')}"
+        return badge
+
+    def _update_statusbar_usage(self, health: dict[str, Any]) -> None:
+        llm = health.get("llm") or {}
+        usage = llm.get("usage") or {}
+        tokens = (usage.get("tokens_in") or 0) + (usage.get("tokens_out") or 0)
+        if not tokens:
+            self.statusBar().showMessage(self.tr("Backend connected."))
+            return
+        cost = usage.get("cost_usd") or 0.0
+        tok_text = f"{tokens / 1000:.1f}k tok" if tokens >= 1000 else f"{tokens} tok"
+        cost_text = f"${cost:.3f}" if cost > 0 else ""
+        msg = f"{tok_text} · {cost_text}" if cost_text else tok_text
+        self.statusBar().showMessage(msg)
+
+    def _refresh_pipeline_state(self) -> None:
+        try:
+            state = self._client.get("/pipeline/state", timeout=2.0) or {}
+            self._translate_tab.update_pipeline_state(state)
+        except BackendError:
+            pass
 
     # ----- layout persistence -----
 
