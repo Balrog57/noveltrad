@@ -915,6 +915,23 @@ class Orchestrator:
             if next_stage is not None:
                 from ..agents.base_worker import make_task_message
 
+                # --- DAG escalation (Phase 4.1) ---
+                # If QA validator passes with zero issues in Balanced/Premium,
+                # skip grammar_proofer and route directly to reviewer.
+                if stage == "qa_validator" and next_stage == "grammar_proofer":
+                    if self._project and self._project.profile in ("balanced", "premium"):
+                        qa_issues = payload.get("qa_issues") or []
+                        if not qa_issues:
+                            order = self._stage_order
+                            if "reviewer" in order:
+                                next_stage = "reviewer"
+                                self._emit({
+                                    "type": "dag_skip",
+                                    "chunk_id": chunk_id,
+                                    "skipped": "grammar_proofer",
+                                    "reason": "qa_clean",
+                                })
+
                 # --- reflexive loop (Phase 3.2) ---
                 if stage == "reviewer":
                     score = payload.get("review_score", 1.0)

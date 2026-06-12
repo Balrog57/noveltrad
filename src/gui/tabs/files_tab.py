@@ -49,6 +49,10 @@ class FilesTab(QWidget):
         self._refresh_btn = QPushButton(self.tr("Refresh"))
         self._refresh_btn.clicked.connect(self.refresh)
         row.addWidget(self._refresh_btn)
+        self._replay_btn = QPushButton(self.tr("Replay errored"))
+        self._replay_btn.clicked.connect(self._on_replay_errored)
+        self._replay_btn.setToolTip(self.tr("Re-inject all errored chunks into the pipeline"))
+        row.addWidget(self._replay_btn)
         self._assemble_btn = QPushButton(self.tr("Assemble output…"))
         self._assemble_btn.clicked.connect(self._on_assemble)
         row.addWidget(self._assemble_btn)
@@ -74,7 +78,11 @@ class FilesTab(QWidget):
             self._table.insertRow(r)
             cid = c.get("id", "")
             self._table.setItem(r, 0, QTableWidgetItem(cid[:12]))
-            self._table.setItem(r, 1, QTableWidgetItem(c.get("status", "")))
+            status = c.get("status", "")
+            status_item = QTableWidgetItem(status)
+            if status == "error":
+                status_item.setForeground(Qt.GlobalColor.red)
+            self._table.setItem(r, 1, status_item)
             self._table.setItem(r, 2, QTableWidgetItem(c.get("chapter_title") or c.get("chapter_id") or ""))
             open_item = QTableWidgetItem(self.tr("View"))
             open_item.setData(Qt.ItemDataRole.UserRole, cid)
@@ -89,6 +97,34 @@ class FilesTab(QWidget):
         cid = item.data(Qt.ItemDataRole.UserRole) if item else None
         if cid:
             self.chunkActivated.emit(str(cid))
+
+    def _on_replay_errored(self) -> None:
+        errored: list[str] = []
+        try:
+            data = self._client.get("/chunks?limit=200", timeout=5.0) or {}
+            chunks = data.get("chunks") or []
+            errored = [c["id"] for c in chunks if c.get("status") == "error"]
+        except BackendError as exc:
+            self._status.setText(self.tr("Backend unavailable: {err}").format(err=exc))
+            return
+        if not errored:
+            self._status.setText(self.tr("No errored chunks to replay."))
+            return
+        try:
+            res = self._client.post(
+                "/pipeline/replay-chunks",
+                body={"chunk_ids": errored},
+                timeout=10.0,
+            )
+            replayed = res.get("replayed", 0)
+            self._status.setText(
+                self.tr("Replayed {n} chunk(s)").format(n=replayed)
+            )
+            self.refresh()
+        except BackendError as exc:
+            self._status.setText(
+                self.tr("Replay failed: {err}").format(err=exc)
+            )
 
     def _on_assemble(self) -> None:
         from PyQt6.QtWidgets import QFileDialog

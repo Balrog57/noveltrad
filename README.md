@@ -33,10 +33,15 @@ polishing, and finally assembles a translated artefact.
 - **Multi-agent translation pipeline** orchestrated by a multiprocessing
   worker pool with a SQLite state store, crash-safe HITL, and a
   back-pressure-aware queue (see `src/backend/orchestrator/`).
-- **9 specialised agent stages**: parser, fast translator, lexicon
-  builder, glossary applier, consistency checker, QA validator, grammar
-  proofer, LLM polisher, assembler
+- **11 specialised agent stages**: parser, fast translator, lexicon
+  builder, terminology researcher (Premium only), glossary applier,
+  consistency checker, QA validator, grammar proofer, reviewer,
+  LLM polisher, assembler
   (`src/backend/agents/`).
+- **Pipeline profiles**: Eco (parser → fast translator → assembler),
+  Balanced (full 10-stage pipeline including reviewer),
+  Premium (11-stage + terminology researcher).
+  Selectable in the Translate tab at step 1.
 - **Local-first translation engine**: NLLB via `ctranslate2` for fast
   batch translation, plus an Ollama / OpenAI-compatible LLM router
   for the lexicon, QA, polishing, and review steps
@@ -46,7 +51,7 @@ polishing, and finally assembles a translated artefact.
 - **PyQt6 GUI** with a responsive sidebar + stacked-pages layout,
   a design system / theme manager, a 3-step translate workflow
   (drop → review → run), and a separate Files / Glossaries / Settings
-  page. A "Recent projects" page is wired in as a placeholder.
+  page. A "Recent projects" page lists past runs with one-click re-open.
 - **WebSocket activity log**, chunk detail dialog, and HITL popup
   for human-in-the-loop corrections.
 - **Auto-updater** based on GitHub Releases: `Settings → Check for
@@ -54,6 +59,19 @@ polishing, and finally assembles a translated artefact.
   the SHA256 of the downloaded installer.
 - **Standalone Windows build** with PyInstaller; Inno Setup produces
   a signed installer (see `docs/SIGNING.md`).
+- **Input → output format matrix**:
+
+| Source ↓ / Output → | TXT | EPUB | EPUB bilingual | DOCX | SRT |
+|---------------------|-----|------|----------------|------|-----|
+| TXT                 | ✅  | ✅   | ✅             | ✅   | ✅  |
+| EPUB                | ✅  | ✅   | ✅             | ✅   | ✅  |
+| DOCX                | ✅  | ✅   | ✅             | ✅   | ✅  |
+| SRT                 | ✅  | ✅   | ✅             | ✅   | ✅  |
+
+All four source formats can be assembled into any supported output
+format. The output format selector lives in the Translate tab at step 1.
+Bilingual EPUB mode preserves the source text alongside the translation
+for review or language learning.
 
 ---
 
@@ -61,7 +79,7 @@ polishing, and finally assembles a translated artefact.
 
 ```text
 PyQt6 desktop client (src/gui)
-  - Sidebar + stacked pages: Translate, Projects (placeholder),
+  - Sidebar + stacked pages: Translate, Projects,
     Glossaries, Files, Settings
   - Activity log over WebSocket
   - HITL popup, chunk detail dialog, update dialog
