@@ -1,0 +1,4 @@
+## PALETTE'S JOURNAL
+## 2023-10-27 - Added ARIA-like labels to activity log toggle button
+**Learning:** Found an icon-only button ("▼") in `ActivityLogWidget` without an accessible name, rendering it completely opaque to screen readers. The codebase has a custom accessibility utility `src.gui.a11y.configure` that should be universally applied to widgets to inject ARIA-like `AccessibleName` and `AccessibleDescription`, setup tooltips, shortcuts, and focus policies instead of setting Qt properties manually.
+**Action:** When inspecting other icon-only buttons or interactive widgets without text, always remember to pass them through `configure()` rather than invoking `setAccessibleName` directly. If state changes visually (like expanding/collapsing), call `configure()` again to update the tooltip or description.

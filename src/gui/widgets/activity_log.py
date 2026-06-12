@@ -25,6 +25,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..a11y import configure
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,6 +54,11 @@ class ActivityLogWidget(QWidget):
         self._toggle.setFixedWidth(28)
         self._toggle.setFlat(True)
         self._toggle.clicked.connect(self._toggle_collapsed)
+        configure(
+            self._toggle,
+            name=self.tr("Toggle activity log"),
+            tooltip=self.tr("Collapse activity log"),
+        )
         header_row.addWidget(self._toggle)
         self._count_label = QLabel(self.tr("0 events"))
         self._count_label.setStyleSheet("color: #888;")
@@ -108,6 +115,11 @@ class ActivityLogWidget(QWidget):
         self._collapsible.setVisible(visible)
         self._list.setVisible(visible)
         self._toggle.setText("▼" if visible else "▲")
+        configure(
+            self._toggle,
+            name=self.tr("Toggle activity log"),
+            tooltip=self.tr("Collapse activity log") if visible else self.tr("Expand activity log"),
+        )
 
     # ----- internals -----
 
