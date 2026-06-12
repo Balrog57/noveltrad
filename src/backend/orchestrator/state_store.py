@@ -667,25 +667,38 @@ class StateStore:
 
     def snapshot(self) -> dict[str, Any]:
         """Cheap summary used by GET /pipeline/state."""
+
+        # ⚡ Bolt optimization: Batch chunk counting into a single query
+        # instead of N+1 separate queries per status.
+        expected_statuses = (
+            "parsed",
+            "fast_translated",
+            "lexicon_ready",
+            "lexicon_skipped",
+            "glossary_applied",
+            "consistency_checked",
+            "qa_checked",
+            "grammar_checked",
+            "polished",
+            "assembled",
+            "waiting_for_human",
+            "error",
+        )
+        chunks_by_status = {s: 0 for s in expected_statuses}
+        chunks_total = 0
+
+        with self._lock:
+            rows = self._conn.execute("SELECT status, COUNT(*) as n FROM chunks GROUP BY status").fetchall()
+            for r in rows:
+                status = r["status"]
+                count = int(r["n"])
+                if status in chunks_by_status:
+                    chunks_by_status[status] = count
+                chunks_total += count
+
         return {
-            "chunks_total": self.count_chunks(),
-            "chunks_by_status": {
-                s: self.count_chunks(status=s)
-                for s in (
-                    "parsed",
-                    "fast_translated",
-                    "lexicon_ready",
-                    "lexicon_skipped",
-                    "glossary_applied",
-                    "consistency_checked",
-                    "qa_checked",
-                    "grammar_checked",
-                    "polished",
-                    "assembled",
-                    "waiting_for_human",
-                    "error",
-                )
-            },
+            "chunks_total": chunks_total,
+            "chunks_by_status": chunks_by_status,
             "lexicon_terms": self._scalar("SELECT COUNT(*) FROM lexicon_terms"),
             "qa_issues": self._scalar("SELECT COUNT(*) FROM qa_issues"),
             "grammar_issues": self._scalar("SELECT COUNT(*) FROM grammar_issues"),
