@@ -244,6 +244,13 @@ class Updater:
         exe = Path(exe_path)
         if not exe.exists():
             raise FileNotFoundError(str(exe))
+        # Verify Authenticode signature on Windows before launching
+        # the installer. Gated to frozen builds only; dev mode skips.
+        if getattr(sys, "frozen", False) and sys.platform == "win32":
+            if not self._verify_authenticode(exe):
+                raise ValueError(
+                    f"Installer signature verification failed: {exe.name}"
+                )
         try:
             os.startfile(str(exe))  # type: ignore[attr-defined]
             return
@@ -253,6 +260,36 @@ class Updater:
         subprocess.Popen(  # noqa: S603
             [str(exe)], shell=False, close_fds=True
         )
+
+    @staticmethod
+    def _verify_authenticode(exe: Path) -> bool:
+        """Best-effort Authenticode signature verification via signtool.
+
+        Returns True if signtool reports a valid signature, False otherwise.
+        On platforms without signtool, returns True (signatures are optional).
+        """
+        signtool = _find_signtool()
+        if signtool is None:
+            logger.info("updater: signtool not found; skipping signature check")
+            return True
+        try:
+            res = subprocess.run(  # noqa: S603
+                [str(signtool), "verify", "/pa", "/q", str(exe)],
+                capture_output=True,
+                text=True,
+                timeout=15.0,
+            )
+            valid = res.returncode == 0
+            if not valid:
+                logger.warning(
+                    "updater: Authenticode verification failed (code=%s): %s",
+                    res.returncode,
+                    res.stderr.strip() or res.stdout.strip(),
+                )
+            return valid
+        except Exception as exc:
+            logger.warning("updater: signtool error: %s", exc)
+            return False
 
     # --- internals ----------------------------------------------------
 
@@ -300,6 +337,29 @@ def download_default_destination() -> Path:
     """Return a sensible default download directory for the installer."""
     tmp = os.environ.get("TEMP") or os.environ.get("TMP") or tempfile.gettempdir()
     return Path(tmp)
+
+
+def _find_signtool() -> Path | None:
+    """Locate Microsoft signtool.exe for Authenticode verification."""
+    if sys.platform != "win32":
+        return None
+    candidates = [
+        Path("C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64/signtool.exe"),
+        Path("C:/Program Files (x86)/Windows Kits/10/bin/10.0.22000.0/x64/signtool.exe"),
+        Path("C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/signtool.exe"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    try:
+        res = subprocess.run(
+            ["where", "signtool"], capture_output=True, text=True, timeout=5.0
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return Path(res.stdout.strip().splitlines()[0])
+    except Exception:
+        pass
+    return None
 
 
 __all__ = [

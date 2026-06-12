@@ -37,8 +37,8 @@ try:
 except ImportError:
     pass
 
-if "--backend" in sys.argv:
-    argv = [arg for arg in sys.argv[1:] if arg != "--backend"]
+if "--backend" in sys.argv or "--headless" in sys.argv:
+    argv = [arg for arg in sys.argv[1:] if arg not in ("--backend", "--headless")]
     _backend_debug_log(f"backend argv={argv!r}")
     try:
         from src.gui.app_config import ConfigManager
@@ -53,6 +53,11 @@ if "--backend" in sys.argv:
     code = backend_main(argv)
     _backend_debug_log(f"backend_main exited code={code}")
     raise SystemExit(code)
+
+if "--version" in sys.argv:
+    from src import __version__
+    print(f"NovelTrad v{__version__}")
+    raise SystemExit(0)
 
 from PyQt6.QtCore import QTranslator
 from PyQt6.QtWidgets import QApplication
