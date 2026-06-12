@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS chunks (
     polished_translation TEXT,
     status TEXT DEFAULT 'parsed',
     error_message TEXT,
+    review_score REAL DEFAULT NULL,
+    review_annotations TEXT DEFAULT NULL,
     metadata_json TEXT,
     source_file TEXT DEFAULT ''
 );
@@ -177,6 +179,8 @@ class StateStore:
         """Idempotent column-level migrations for pre-4.0.1 DBs."""
         with self._lock:
             self._safe_add_column("chunks", "source_file", "TEXT DEFAULT ''")
+            self._safe_add_column("chunks", "review_score", "REAL DEFAULT NULL")
+            self._safe_add_column("chunks", "review_annotations", "TEXT DEFAULT NULL")
 
     def _safe_add_column(
         self, table: str, column: str, definition: str
@@ -267,7 +271,6 @@ class StateStore:
                     'project_manifest_path',
                     'target_path'
                 )
-                OR key LIKE 'project:%'
                 OR key LIKE 'hltl_response:%'
                 """
             )
@@ -284,8 +287,9 @@ class StateStore:
                     source_hash, glossary_version, output_hash,
                     raw_translation, glossary_applied, qa_checked,
                     grammar_checked, polished_translation,
-                    status, error_message, metadata_json, source_file
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    status, error_message, metadata_json, source_file,
+                    review_score, review_annotations
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chunk["id"],
@@ -305,6 +309,8 @@ class StateStore:
                     chunk.get("error_message"),
                     json.dumps(meta, ensure_ascii=False) if meta else None,
                     chunk.get("source_file", ""),
+                    chunk.get("review_score"),
+                    json.dumps(chunk.get("review_annotations"), ensure_ascii=False) if chunk.get("review_annotations") else None,
                 ),
             )
 
@@ -327,6 +333,8 @@ class StateStore:
             "source_hash",
             "glossary_version",
             "output_hash",
+            "review_score",
+            "review_annotations",
         }
         if field not in allowed:
             raise ValueError(f"Refusing to update non-allowlisted field: {field}")
@@ -659,6 +667,37 @@ class StateStore:
             )
         return out
 
+    def list_projects(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Return past projects persisted in pipeline_state (project:<id> keys).
+
+        Results are ordered by key (which embeds project_id), newest-last.
+        Capped at ``limit`` rows (default 50) to avoid unbounded growth.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT key, value FROM pipeline_state WHERE key LIKE 'project:%' "
+                "AND key != 'project_manifest_path' ORDER BY key LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+        projects: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                data = json.loads(row["value"])
+                project_id = row["key"].split(":", 1)[1]
+                projects.append({
+                    "project_id": project_id,
+                    "source_path": data.get("source_path", ""),
+                    "project_dir": data.get("project_dir", ""),
+                    "source_lang": data.get("source_lang", ""),
+                    "target_lang": data.get("target_lang", ""),
+                    "profile": data.get("profile", "balanced"),
+                    "output_format": data.get("output_format", "txt"),
+                    "created_at": data.get("created_at", ""),
+                })
+            except (json.JSONDecodeError, KeyError, ValueError):
+                logger.warning("Skipping corrupt project record: %s", row["key"], exc_info=True)
+        return projects
+
     def clear_hltl_records(self) -> None:
         with self._lock:
             self._conn.execute("DELETE FROM pending_hltl")
@@ -680,6 +719,7 @@ class StateStore:
                     "consistency_checked",
                     "qa_checked",
                     "grammar_checked",
+                    "reviewed",
                     "polished",
                     "assembled",
                     "waiting_for_human",
@@ -728,6 +768,8 @@ def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
         "error_message": row["error_message"],
         "metadata": metadata,
         "source_file": row["source_file"] if "source_file" in row.keys() else "",
+        "review_score": row["review_score"] if "review_score" in row.keys() else None,
+        "review_annotations": json.loads(row["review_annotations"]) if row["review_annotations"] else None,
     }
 
 

@@ -8,4 +8,4 @@ itself is GUI-free, so this concern mostly matters for the entrypoint
 that bridges backend+GUI (src/main_qt.py).
 """
 
-__version__ = "4.0.0"
+from src import __version__  # noqa: F401  — single version source of truth

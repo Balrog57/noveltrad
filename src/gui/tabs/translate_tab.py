@@ -210,14 +210,28 @@ class TranslateTab(QWidget):
         quality_row = QHBoxLayout()
         quality_row.addWidget(QLabel(self.tr("QUALITY")))
         self._quality = QComboBox()
-        self._quality.addItem(self.tr("Fast (skip polish + grammar)"), "fast")
+        self._quality.addItem(self.tr("Eco (fast, MT only)"), "eco")
         self._quality.addItem(self.tr("Balanced (default)"), "balanced")
         self._quality.addItem(
-            self.tr("High (full QA + double-pass polish)"), "high"
+            self.tr("Premium (full QA + polish)"), "premium"
         )
         configure(self._quality, name=self.tr("Quality preset"))
         quality_row.addWidget(self._quality, 1)
         layout.addLayout(quality_row)
+
+        # Output format selector.
+        fmt_row = QHBoxLayout()
+        fmt_row.addWidget(QLabel(self.tr("OUTPUT")))
+        self._output_format = QComboBox()
+        self._output_format.addItem("TXT", "txt")
+        self._output_format.addItem("EPUB", "epub")
+        self._output_format.addItem("EPUB (bilingual)", "epub_bilingual")
+        self._output_format.addItem("DOCX", "docx")
+        self._output_format.addItem("SRT", "srt")
+        self._output_format.setCurrentIndex(0)
+        configure(self._output_format, name=self.tr("Output format"))
+        fmt_row.addWidget(self._output_format, 1)
+        layout.addLayout(fmt_row)
 
         self._cloud = FileCloud()
         self._cloud.filesSelected.connect(self._on_files)
@@ -366,6 +380,7 @@ class TranslateTab(QWidget):
         source_lang = self._src.currentData() or "auto"
         target_lang = self._tgt.currentData() or "fr"
         quality = self._quality.currentData() or "balanced"
+        output_format = self._output_format.currentData() or "txt"
         project_dir = self._project_dir or str(
             Path(self._selected_paths[0]).parent
         )
@@ -379,6 +394,7 @@ class TranslateTab(QWidget):
                 "source_lang": source_lang,
                 "target_lang": target_lang,
                 "quality": quality,
+                "output_format": output_format,
                 "project_dir": project_dir,
             }
             self.startRequested.emit(payload)

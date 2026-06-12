@@ -56,6 +56,7 @@ from src.gui.dialogs.update_dialog import UpdateDialog
 from src.gui.notifier import Notifier
 from src.gui.tabs.files_tab import FilesTab
 from src.gui.tabs.glossaries_tab import GlossariesTab
+from src.gui.tabs.projects_tab import ProjectsTab
 from src.gui.tabs.settings_tab import SettingsTab
 from src.gui.tabs.translate_tab import TranslateTab
 from src.gui.theme import VALID_THEMES, ThemeManager
@@ -156,7 +157,8 @@ class MainWindow(QMainWindow):
         self._translate_tab.replayHltlRequested.connect(self._on_replay_hltl)
         self._translate_tab.assembleRequested.connect(self._on_assemble_requested)
         self._stack.addWidget(self._translate_tab)
-        self._projects_tab = self._build_projects_placeholder()
+        self._projects_tab = ProjectsTab(self._client)
+        self._projects_tab.projectActivated.connect(self._on_project_activated)
         self._stack.addWidget(self._projects_tab)
         self._glossaries_tab = GlossariesTab(self._client)
         self._stack.addWidget(self._glossaries_tab)
@@ -259,9 +261,37 @@ class MainWindow(QMainWindow):
             self._translate_tab._cloud._open_dialog()  # type: ignore[attr-defined]
 
     def _action_rerun(self) -> None:
-        # Best-effort: replay pending HITL counts as a "rerun" of the
-        # most stuck chunks.
+        if self._stack.currentWidget() is self._projects_tab:
+            row = self._projects_tab._table.currentRow()
+            if 0 <= row < len(self._projects_tab._projects):
+                self._on_project_activated(self._projects_tab._projects[row])
+                return
         self._on_replay_hltl()
+
+    def _on_project_activated(self, proj: dict[str, Any]) -> None:
+        """Re-open a past project and switch to the Translate tab."""
+        source_path = proj.get("source_path", "")
+        if not source_path:
+            QMessageBox.information(
+                self,
+                self.tr("Project not found"),
+                self.tr("Missing source path."),
+            )
+            return
+        payload = {
+            "source_path": source_path,
+            "source_lang": proj.get("source_lang", "auto"),
+            "target_lang": proj.get("target_lang", "fr"),
+            "quality": proj.get("profile", "balanced"),
+            "output_format": proj.get("output_format", "txt"),
+            "project_dir": proj.get("project_dir", str(Path(source_path).parent)),
+        }
+        new_pid = self._on_start_translation(payload)
+        self._sidebar.setCurrentRow(0)
+        if new_pid:
+            self.statusBar().showMessage(
+                self.tr("Re-opened → project {pid}").format(pid=new_pid[:8]), 3000
+            )
 
     def _action_settings(self) -> None:
         idx = next(
@@ -454,7 +484,7 @@ class MainWindow(QMainWindow):
 
     # ----- actions -----
 
-    def _on_start_translation(self, payload: dict[str, Any]) -> None:
+    def _on_start_translation(self, payload: dict[str, Any]) -> str | None:
         try:
             res = self._client.post(
                 "/projects",
@@ -463,25 +493,27 @@ class MainWindow(QMainWindow):
                     "source_path": payload["source_path"],
                     "source_lang": payload.get("source_lang", "auto"),
                     "target_lang": payload.get("target_lang", "fr"),
+                    "profile": payload.get("quality", "balanced"),
+                    "output_format": payload.get("output_format", "txt"),
                     "parse": True,
                 },
                 timeout=10.0,
             )
         except BackendError as exc:
             QMessageBox.warning(self, self.tr("Start failed"), str(exc))
-            return
+            return None
+        pid = res.get("project_id", "")
         self._activity.on_event(
             {
                 "type": "log",
-                "message": self.tr("Project created: {pid}").format(
-                    pid=res.get("project_id")
-                ),
+                "message": self.tr("Project created: {pid}").format(pid=pid),
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             }
         )
         self.statusBar().showMessage(
-            self.tr("Project {pid} running…").format(pid=res.get("project_id"))
+            self.tr("Project {pid} running…").format(pid=pid)
         )
+        return pid
 
     def _on_replay_hltl(self) -> None:
         try:
@@ -523,12 +555,14 @@ class MainWindow(QMainWindow):
             self._glossaries_tab.refresh()
         elif self._stack.currentWidget() is self._files_tab:
             self._files_tab.refresh()
+        elif self._stack.currentWidget() is self._projects_tab:
+            self._projects_tab.refresh()
 
     def _refresh_status(self) -> None:
         try:
             h = self._client.health()
         except BackendError:
-            self._llm_badge.setText(self.tr("● LLM: (offline)"))
+            self._llm_badge.setText(self.tr("● Offline"))
             self._llm_badge.setProperty("role", "muted")
             self._llm_badge.style().unpolish(self._llm_badge)
             self._llm_badge.style().polish(self._llm_badge)
@@ -536,14 +570,38 @@ class MainWindow(QMainWindow):
         nllb = h.get("nllb") or {}
         llm = h.get("llm") or {}
         if h.get("ok"):
+            mode = llm.get("mode", "offline")
+            mode_map = {
+                "local": self.tr("● Local only"),
+                "cloud": self.tr("● Cloud"),
+                "hybrid": self.tr("● Hybrid"),
+                "offline": self.tr("● LLM: offline"),
+            }
+            badge_text = mode_map.get(mode, self.tr("● LLM: ?"))
             nllb_text = (
-                self.tr("NLLB ready") if nllb.get("available") else self.tr("NLLB unavailable")
+                self.tr("NLLB ready") if nllb.get("available") else ""
             )
-            llm_text = (
-                self.tr("LLM ready") if llm.get("ready") else self.tr("LLM offline")
-            )
-            self._llm_badge.setText(self.tr("● {llm} · {nllb}").format(llm=llm_text, nllb=nllb_text))
-            self.statusBar().showMessage(self.tr("Backend connected."))
+            if nllb_text:
+                badge_text += f" · {nllb_text}"
+            self._llm_badge.setText(badge_text)
+            self._llm_badge.setProperty("role", "muted")
+            self._llm_badge.style().unpolish(self._llm_badge)
+            self._llm_badge.style().polish(self._llm_badge)
+            usage = llm.get("usage") or {}
+            tokens = (usage.get("tokens_in") or 0) + (usage.get("tokens_out") or 0)
+            cost = usage.get("cost_usd") or 0.0
+            if tokens:
+                if tokens >= 1000:
+                    tok_text = f"{tokens / 1000:.1f}k tok"
+                else:
+                    tok_text = f"{tokens} tok"
+                cost_text = f"${cost:.3f}" if cost > 0 else ""
+                msg = tok_text
+                if cost_text:
+                    msg += f" · {cost_text}"
+                self.statusBar().showMessage(msg)
+            else:
+                self.statusBar().showMessage(self.tr("Backend connected."))
             try:
                 state = self._client.get("/pipeline/state", timeout=2.0) or {}
                 self._translate_tab.update_pipeline_state(state)

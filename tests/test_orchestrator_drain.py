@@ -12,8 +12,11 @@ fix plan:
   * (b) round-robin across stages remains stable when no queue is
     saturated.
   * (c) shutdown drains cleanly and `_drain_loop` exits.
+  * (d) source_hash mismatch is detected and chunk is marked error.
+  * (e) replay_chunks resets errored chunks and re-injects them.
 """
 
+import hashlib
 import os
 import tempfile
 import threading
@@ -243,6 +246,76 @@ class DrainLoopTests(unittest.TestCase):
         self.orch._stop_drain.set()
         self.orch._drain_thread.join(timeout=2.0)
         self.assertFalse(self.orch._drain_thread.is_alive())
+
+    def test_d_hash_mismatch_marks_chunk_error(self) -> None:
+        """A chunk with a bad source_hash is marked error and not forwarded."""
+        chunk_id = "hash-bad-1"
+        chunk = {
+            "id": chunk_id,
+            "chapter_id": "ch1",
+            "chapter_title": "Test",
+            "chunk_index": 0,
+            "source_text": "Hello world",
+            "source_hash": hashlib.sha256(b"tampered text").hexdigest(),
+        }
+        self.orch.submit_chunks([chunk])
+        stored = self.orch.store.get_chunk(chunk_id)
+        self.assertIsNotNone(stored)
+        self.assertEqual(stored["status"], "error")
+        self.assertIn("hash_mismatch", stored.get("error_message", ""))
+
+    def test_e_replay_chunks_resets_and_requeues(self) -> None:
+        """replay_chunks resets errored chunks and re-queues them."""
+        chunk_id = "hash-replay-1"
+        source_text = "Hello world, this is a test chunk for replay."
+        chunk = {
+            "id": chunk_id,
+            "chapter_id": "ch2",
+            "chapter_title": "Replay",
+            "chunk_index": 0,
+            "source_text": source_text,
+            "source_hash": hashlib.sha256(b"bad").hexdigest(),
+        }
+        # Submit with bad hash → error
+        self.orch.submit_chunks([chunk])
+        stored = self.orch.store.get_chunk(chunk_id)
+        self.assertEqual(stored["status"], "error")
+
+        # Now replay — should recompute hash, reset status, and enqueue.
+        count = self.orch.replay_chunks([chunk_id])
+        self.assertEqual(count, 1)
+        stored2 = self.orch.store.get_chunk(chunk_id)
+        self.assertEqual(stored2["status"], "parsed")
+        self.assertIsNone(stored2.get("error_message"))
+        self.assertEqual(
+            stored2["source_hash"],
+            hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+        )
+
+    def test_f_replay_nonexistent_chunk_skipped(self) -> None:
+        """replay_chunks silently skips non-existent chunk IDs."""
+        count = self.orch.replay_chunks(["does-not-exist"])
+        self.assertEqual(count, 0)
+
+    def test_g_source_hash_auto_computed_when_missing(self) -> None:
+        """Chunks submitted without source_hash get one auto-computed."""
+        chunk_id = "hash-auto-1"
+        source_text = "Auto-generated hash test."
+        chunk = {
+            "id": chunk_id,
+            "chapter_id": "ch3",
+            "chapter_title": "Auto",
+            "chunk_index": 0,
+            "source_text": source_text,
+            # no source_hash
+        }
+        self.orch.submit_chunks([chunk])
+        stored = self.orch.store.get_chunk(chunk_id)
+        self.assertEqual(stored["status"], "parsed")
+        self.assertEqual(
+            stored["source_hash"],
+            hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+        )
 
 
 if __name__ == "__main__":

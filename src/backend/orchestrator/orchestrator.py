@@ -27,6 +27,7 @@ Design notes
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import threading
 import time
@@ -47,6 +48,7 @@ from .pipeline import (
     STATUS_ERROR,
     StageSpec,
     build_stages,
+    get_profile_order,
 )
 from .state_store import StateStore
 from .worker_manager import WorkerManager
@@ -76,6 +78,8 @@ class ProjectContext:
     output_path: Path | None = None
     started_at: float = field(default_factory=time.time)
     status: str = "idle"  # idle | running | paused | stopped | done | error
+    profile: str = "balanced"
+    output_format: str = "txt"
 
 
 class Orchestrator:
@@ -108,6 +112,13 @@ class Orchestrator:
 
     # ---------- project lifecycle ----------
 
+    @property
+    def _stage_order(self) -> tuple[str, ...]:
+        """Stage order for the current project's profile."""
+        if self._project is not None:
+            return get_profile_order(self._project.profile)
+        return DEFAULT_PIPELINE_ORDER
+
     def start(self, project: ProjectContext) -> None:
         with self._lock:
             if self._project is not None and self._project.status in (
@@ -130,10 +141,17 @@ class Orchestrator:
                     "source_path": str(project.source_path),
                     "output_path": str(project.output_path) if project.output_path else None,
                     "started_at": project.started_at,
+                    "profile": project.profile,
                 },
             )
+        # Reset LLM usage counters for the new run.
+        try:
+            from ..llm_router.router import get_router
+            get_router().reset_usage()
+        except Exception:
+            pass
 
-        for stage in ALL_STAGES:
+        for stage in self._stage_order:
             self._workers.start_stage(stage)
         self._stop_drain.clear()
         if self._drain_thread is None or not self._drain_thread.is_alive():
@@ -170,7 +188,7 @@ class Orchestrator:
             if self._project is None:
                 return
             self._project.status = "paused"
-            for stage in ALL_STAGES:
+            for stage in self._stage_order:
                 self._workers.pause_stage(stage)
                 self._paused_stages.add(stage)
         self._emit({"type": "pipeline_paused", "timestamp": _now_iso()})
@@ -190,7 +208,7 @@ class Orchestrator:
             if self._project is None:
                 return
             self._project.status = "stopped"
-            for stage in ALL_STAGES:
+            for stage in self._stage_order:
                 self._workers.shutdown_stage(stage)
         self._emit({"type": "pipeline_stopped", "timestamp": _now_iso()})
 
@@ -221,14 +239,23 @@ class Orchestrator:
         for chunk in chunks:
             chunk_id = chunk.get("id") or uuid.uuid4().hex
             chunk.setdefault("id", chunk_id)
+            source_text = chunk.get("source_text") or ""
+            source_hash = chunk.get("source_hash")
+            # Compute and store the hash if not already present.
+            if not source_hash:
+                source_hash = self._compute_source_hash(source_text)
+                chunk["source_hash"] = source_hash
             self.store.add_chunk(chunk)
             self.store.update_chunk_field(chunk_id, "status", "parsed")
             from ..agents.base_worker import make_task_message
 
+            # Verify the source hash before queuing.
+            if not self._verify_chunk_hash(chunk_id, source_text, source_hash):
+                continue
+
             # The orchestrator is the single reader of the StateStore;
             # we pre-fetch the source text so the agent never has to.
             stored = self.store.get_chunk(chunk_id) or {}
-            source_text = chunk.get("source_text") or stored.get("source_text", "")
             q.put(
                 make_task_message(
                     chunk_id=chunk_id,
@@ -250,6 +277,98 @@ class Orchestrator:
                 "timestamp": _now_iso(),
             }
         )
+        return count
+
+    # ---------- chunk hash verification ----------
+
+    @staticmethod
+    def _compute_source_hash(source_text: str) -> str:
+        return hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+
+    def _verify_chunk_hash(
+        self, chunk_id: str, source_text: str, expected_hash: str | None
+    ) -> bool:
+        if not expected_hash:
+            return True
+        actual = self._compute_source_hash(source_text)
+        if actual != expected_hash:
+            logger.error(
+                "Hash mismatch for chunk %s: expected %s, got %s",
+                chunk_id, expected_hash, actual,
+            )
+            self.store.update_chunk_field(chunk_id, "status", STATUS_ERROR)
+            self.store.update_chunk_field(
+                chunk_id, "error_message",
+                f"hash_mismatch: expected={expected_hash} actual={actual}",
+            )
+            self._emit(
+                {
+                    "type": "chunk_hash_mismatch",
+                    "chunk_id": chunk_id,
+                    "expected": expected_hash,
+                    "actual": actual,
+                }
+            )
+            return False
+        return True
+
+    def replay_chunks(self, chunk_ids: list[str]) -> int:
+        """Re-inject errored chunks into the pipeline.
+
+        Resets each chunk's status and clears the error message. If a
+        chunk already has a ``raw_translation`` (i.e. it errored after
+        the FastTranslator stage), it skips re-translation and is
+        re-queued at ``fast_translated`` status so the remaining
+        downstream stages can re-process it.
+        """
+        from ..agents.base_worker import make_task_message
+
+        try:
+            queues = self._workers.queues_for("fast_translator")
+        except KeyError:
+            logger.warning("replay_chunks: translator not running")
+            return 0
+        count = 0
+        for chunk_id in chunk_ids:
+            stored = self.store.get_chunk(chunk_id)
+            if stored is None:
+                continue
+            raw = stored.get("raw_translation")
+            source_text = stored.get("source_text") or ""
+            source_hash = self._compute_source_hash(source_text)
+            self.store.update_chunk_field(chunk_id, "source_hash", source_hash)
+            self.store.update_chunk_field(chunk_id, "error_message", None)
+            if raw:
+                self.store.update_chunk_field(chunk_id, "status", "fast_translated")
+                self.store.update_chunk_field(chunk_id, "raw_translation", raw)
+                self._on_stage_done("fast_translator", chunk_id, {
+                    "status": "fast_translated",
+                    "raw_translation": raw,
+                })
+            else:
+                self.store.update_chunk_field(chunk_id, "status", "parsed")
+                queues.input.put(
+                    make_task_message(
+                        chunk_id=chunk_id,
+                        action="translate",
+                        payload={
+                            "source_text": source_text,
+                            "chapter_id": stored.get("chapter_id"),
+                            "chapter_title": stored.get("chapter_title"),
+                            "neighbor_chars": 300,
+                        },
+                    )
+                )
+            count += 1
+        if count:
+            self._emit(
+                {
+                    "type": "chunks_replayed",
+                    "count": count,
+                    "chunk_ids": chunk_ids,
+                    "timestamp": _now_iso(),
+                }
+            )
         return count
 
     # ---------- HITL ----------
@@ -580,10 +699,13 @@ class Orchestrator:
         is saturated (size >= MAX_DRAIN_PER_STAGE_PER_LOOP), drain up to
         that cap from it before moving on, so a chatty stage cannot
         starve quieter ones.
+
+        Iterates only the stages active in the current project profile.
         """
         while not self._stop_drain.is_set():
+            stage_order = self._stage_order
             did_work = False
-            for stage in DEFAULT_PIPELINE_ORDER:
+            for stage in stage_order:
                 if stage not in self._stages:
                     continue
                 try:
@@ -772,6 +894,15 @@ class Orchestrator:
         ):
             if field_name in payload:
                 self.store.update_chunk_field(chunk_id, field_name, payload[field_name])
+        # Reviewer produces review_score (float) and review_annotations (list).
+        if "review_score" in payload:
+            self.store.update_chunk_field(chunk_id, "review_score", payload["review_score"])
+        if "review_annotations" in payload:
+            import json as _json
+            self.store.update_chunk_field(
+                chunk_id, "review_annotations",
+                _json.dumps(payload["review_annotations"], ensure_ascii=False),
+            )
         new_status = payload.get("status") or STAGE_TO_STATUS.get(stage, "parsed")
         self.store.update_chunk_field(chunk_id, "status", new_status)
 
@@ -784,6 +915,73 @@ class Orchestrator:
             if next_stage is not None:
                 from ..agents.base_worker import make_task_message
 
+                # --- reflexive loop (Phase 3.2) ---
+                if stage == "reviewer":
+                    score = payload.get("review_score", 1.0)
+                    threshold = 0.7
+                    if self._project and self._project.profile == "premium":
+                        threshold = 0.85
+                    max_reflections = 2
+                    stored_chunk = self.store.get_chunk(chunk_id) or {}
+                    stored_meta = stored_chunk.get("metadata") or {}
+                    reflection_count = int(stored_meta.get("reflection_count") or 0)
+                    if score < threshold:
+                        if reflection_count < max_reflections:
+                            reflection_count += 1
+                            stored_meta["reflection_count"] = reflection_count
+                            import json as _json2
+                            self.store.update_chunk_field(
+                                chunk_id, "metadata_json",
+                                _json2.dumps(stored_meta, ensure_ascii=False),
+                            )
+                            annotations = payload.get("review_annotations") or []
+                            annot_text = "; ".join(
+                                f"[{a.get('type', '')}] {a.get('span', '')} → {a.get('suggestion', '')}"
+                                for a in annotations[:5]
+                            ) if annotations else ""
+                            src_for_reflect = payload.get("source_text") or stored_chunk.get("source_text") or ""
+                            tgt_for_reflect = (
+                                payload.get("polished_translation")
+                                or payload.get("grammar_checked")
+                                or stored_chunk.get("polished_translation")
+                                or stored_chunk.get("grammar_checked")
+                                or stored_chunk.get("glossary_applied")
+                                or stored_chunk.get("raw_translation")
+                                or ""
+                            )
+                            reflection_payload = {
+                                "source_text": src_for_reflect,
+                                "polished_translation": tgt_for_reflect,
+                                "review_score": score,
+                                "review_annotations": annotations,
+                                "reflection_instructions": (
+                                    f"Reviewer score: {score:.2f}. Issues: {annot_text}. "
+                                    f"Please revise the translation accordingly."
+                                ) if annot_text else f"Reviewer score: {score:.2f}. Please improve.",
+                                "reflection_count": reflection_count,
+                            }
+                            self._workers.queues_for("llm_polisher").input.put(
+                                make_task_message(
+                                    chunk_id=chunk_id,
+                                    action="polish",
+                                    payload=reflection_payload,
+                                )
+                            )
+                            self._emit({
+                                "type": "reflection_triggered",
+                                "chunk_id": chunk_id,
+                                "score": score,
+                                "reflection_count": reflection_count,
+                            })
+                            return
+                        else:
+                            self._emit({
+                                "type": "reflection_exhausted",
+                                "chunk_id": chunk_id,
+                                "score": score,
+                                "reflection_count": reflection_count,
+                            })
+
                 action = payload.get("action") or _default_action_for(next_stage)
                 next_payload = dict(payload.get("next_payload") or {})
                 # Always include the latest available translation so the
@@ -793,6 +991,7 @@ class Orchestrator:
                     "consistency_checker",
                     "qa_validator",
                     "grammar_proofer",
+                    "reviewer",
                     "llm_polisher",
                 ):
                     for key in (
@@ -801,12 +1000,21 @@ class Orchestrator:
                         "qa_checked",
                         "grammar_checked",
                         "polished_translation",
+                        "review_score",
+                        "review_annotations",
                     ):
                         if key in payload and key not in next_payload:
                             next_payload[key] = payload[key]
                 # Pre-fetch the current chunk from the StateStore so the
                 # agent has access to source_text / chapter context.
                 stored = self.store.get_chunk(chunk_id) or {}
+                # Verify source hash integrity before forwarding.
+                src_text = stored.get("source_text") or ""
+                src_hash = stored.get("source_hash")
+                if not self._verify_chunk_hash(chunk_id, src_text, src_hash):
+                    forward_ok = False
+                else:
+                    forward_ok = True
                 for key in (
                     "source_text",
                     "chapter_id",
@@ -818,6 +1026,8 @@ class Orchestrator:
                     "qa_checked",
                     "grammar_checked",
                     "polished_translation",
+                    "review_score",
+                    "review_annotations",
                 ):
                     if key in stored and key not in next_payload:
                         next_payload[key] = stored[key]
@@ -865,7 +1075,7 @@ class Orchestrator:
                         action=action,
                         payload=next_payload,
                     )
-                )
+                ) if forward_ok else None
 
         # 3. Emit a progress event.
         self._emit(
@@ -877,22 +1087,37 @@ class Orchestrator:
             }
         )
 
-        # 4. If a chunk just became 'polished' and all chunks are now
-        #    polished, kick off the assembler.
-        if payload.get("status") == "polished":
+        # 4. If a chunk reached the penultimate stage before the
+        #    assembler in the current profile, check if all chunks
+        #    are now ready for assembly.
+        threshold_status = self._penultimate_status()
+        if threshold_status and payload.get("status") == threshold_status:
             try:
                 self.maybe_auto_assemble()
             except Exception:
                 logger.exception("auto-assemble dispatch failed")
 
     def _next_stage(self, stage: str) -> str | None:
+        order = self._stage_order
         try:
-            idx = DEFAULT_PIPELINE_ORDER.index(stage)
+            idx = order.index(stage)
         except ValueError:
             return None
-        if idx + 1 >= len(DEFAULT_PIPELINE_ORDER):
+        if idx + 1 >= len(order):
             return None
-        return DEFAULT_PIPELINE_ORDER[idx + 1]
+        return order[idx + 1]
+
+    def _penultimate_status(self) -> str | None:
+        """Return the chunk status produced by the stage just before
+        the assembler in the current profile. Used by auto-assemble."""
+        order = self._stage_order
+        if ASSEMBLER not in order or len(order) < 2:
+            return None
+        idx = order.index(ASSEMBLER)
+        if idx == 0:
+            return None
+        penultimate = order[idx - 1]
+        return STAGE_TO_STATUS.get(penultimate)
 
     def _on_worker_exit(self, slot, exit_code: int) -> None:
         logger.error(
@@ -973,10 +1198,14 @@ class Orchestrator:
         }
 
     def maybe_auto_assemble(self) -> None:
-        """If all chunks are polished, kick off the assembler.
+        """If all chunks have reached the penultimate stage in the current
+        profile, kick off the assembler.
 
-        The output path is `<project_dir>/target/<source_stem>.<fmt>`.
+        The output path is ``<project_dir>/target/<source_stem>.<fmt>``.
         """
+        threshold = self._penultimate_status()
+        if threshold is None:
+            return
         with self._lock:
             proj = self._project
         if proj is None or proj.status == "stopped":
@@ -984,17 +1213,12 @@ class Orchestrator:
         total = self.store.count_chunks()
         if total == 0:
             return
-        polished = self.store.count_chunks(status="polished")
-        if polished < total:
+        ready = self.store.count_chunks(status=threshold)
+        if ready < total:
             return
         out_dir = Path(proj.project_dir) / "target"
         out_dir.mkdir(parents=True, exist_ok=True)
-        from ..formats import detect_format
-
-        try:
-            fmt = detect_format(proj.source_path)
-        except Exception:
-            fmt = "txt"
+        fmt = proj.output_format or "txt"
         out = out_dir / f"{Path(proj.source_path).stem}.{fmt}"
         self.assemble_now(out, fmt=fmt)
 
@@ -1004,10 +1228,12 @@ def _default_action_for(stage: str) -> str:
         "parser": "parse",
         "fast_translator": "translate",
         "lexicon_builder": "build_lexicon",
+        "terminology_researcher": "research_terms",
         "glossary_applier": "apply_glossary",
         "consistency_checker": "check_consistency",
         "qa_validator": "qa_check",
         "grammar_proofer": "proofread",
+        "reviewer": "review",
         "llm_polisher": "polish",
         "assembler": "assemble",
     }.get(stage, "process")

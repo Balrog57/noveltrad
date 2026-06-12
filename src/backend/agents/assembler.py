@@ -52,12 +52,13 @@ class Worker(BaseWorker):
         try:
             for idx, (source_file, group_chunks) in enumerate(groups):
                 target = _derive_output_path(out, source_file, idx)
-                if fmt == "epub":
+                if fmt == "epub" or fmt == "epub_bilingual":
                     _write_epub(
                         target,
                         group_chunks,
                         title=payload.get("title", target.stem),
                         manifest_path=payload.get("manifest_path"),
+                        bilingual=(fmt == "epub_bilingual"),
                     )
                 elif fmt == "docx":
                     _write_docx(target, group_chunks)
@@ -145,12 +146,13 @@ def _write_epub(
     chunks: list[dict[str, Any]],
     title: str,
     manifest_path: str | None = None,
+    bilingual: bool = False,
 ) -> None:
     if manifest_path:
         try:
             manifest = read_project_manifest(manifest_path)
             if manifest.get("source_format") == "epub":
-                _write_epub_from_manifest(path, chunks, manifest)
+                _write_epub_from_manifest(path, chunks, manifest, bilingual=bilingual)
                 return
         except Exception:
             logger.exception("assembler: manifest EPUB write failed; using fallback")
@@ -166,6 +168,12 @@ def _write_epub(
     current_chap_title: str | None = None
     current_paragraphs: list[str] = []
     chapter_index = 0
+    bilingual_css = ""
+    if bilingual:
+        bilingual_css = (
+            "<style>p.original { color: #666; font-style: italic; margin-bottom: 0.2em; } "
+            "p.translation { margin-top: 0; margin-bottom: 1em; }</style>"
+        )
 
     def _flush() -> None:
         nonlocal chapter_index, current_paragraphs, current_chap_title
@@ -179,7 +187,7 @@ def _write_epub(
         )
         body = "".join(f"<p>{p}</p>" for p in current_paragraphs if p.strip())
         c.content = (
-            f"<html><head><title>{current_chap_title or ''}</title></head>"
+            f"<html><head><title>{current_chap_title or ''}</title>{bilingual_css}</head>"
             f"<body><h1>{current_chap_title or ''}</h1>{body}</body></html>"
         )
         book.add_item(c)
@@ -193,7 +201,15 @@ def _write_epub(
         if title_c and title_c != current_chap_title:
             _flush()
             current_chap_title = title_c
-        current_paragraphs.append(_polished_text(c))
+        if bilingual:
+            src = c.get("source_text") or ""
+            tgt = _polished_text(c)
+            current_paragraphs.append(
+                f'<p class="original">{_escape_xml(src)}</p>'
+                f'<p class="translation">{_escape_xml(tgt)}</p>'
+            )
+        else:
+            current_paragraphs.append(_polished_text(c))
     _flush()
     book.toc = tuple(chapters)
     book.add_item(epub.EpubNcx())
@@ -203,7 +219,8 @@ def _write_epub(
 
 
 def _write_epub_from_manifest(
-    path: Path, chunks: list[dict[str, Any]], manifest: dict[str, Any]
+    path: Path, chunks: list[dict[str, Any]], manifest: dict[str, Any],
+    bilingual: bool = False,
 ) -> None:
     try:
         import ebooklib
@@ -230,8 +247,6 @@ def _write_epub_from_manifest(
             continue
         key = (str(first.get("item_id")), int(first.get("node_index", 0)))
         translations_by_anchor.setdefault(key, []).append(translated)
-        # If a chunk covered several tiny source nodes, blank the
-        # remaining nodes so the translated paragraph is not duplicated.
         for extra in anchors[1:]:
             if extra.get("kind") == "epub_text_node":
                 extra_key = (
@@ -245,18 +260,13 @@ def _write_epub_from_manifest(
         if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
             continue
         soup = BeautifulSoup(item.get_content(), "html.parser")
-        editable_nodes = []
-        for node in soup.find_all(string=True):
-            normalized = " ".join(str(node).split())
-            if not normalized:
-                continue
-            parent_name = getattr(getattr(node, "parent", None), "name", "") or ""
-            if parent_name.lower() in {"script", "style", "title"}:
-                continue
-            editable_nodes.append(node)
-        for node_index, value in replacements.items():
-            if 0 <= node_index < len(editable_nodes):
-                editable_nodes[node_index].replace_with(value)
+        if bilingual:
+            _apply_bilingual_replacements(soup, replacements)
+        else:
+            editable_nodes = _find_editable_nodes(soup)
+            for node_index, value in replacements.items():
+                if 0 <= node_index < len(editable_nodes):
+                    editable_nodes[node_index].replace_with(value)
         item.set_content(str(soup).encode("utf-8"))
 
     doc_items = []
@@ -270,6 +280,39 @@ def _write_epub_from_manifest(
         book.spine = ["nav", *doc_items]
     path.parent.mkdir(parents=True, exist_ok=True)
     epub.write_epub(str(path), book)
+
+
+def _find_editable_nodes(soup) -> list:
+    editable_nodes = []
+    for node in soup.find_all(string=True):
+        normalized = " ".join(str(node).split())
+        if not normalized:
+            continue
+        parent_name = getattr(getattr(node, "parent", None), "name", "") or ""
+        if parent_name.lower() in {"script", "style", "title"}:
+            continue
+        editable_nodes.append(node)
+    return editable_nodes
+
+
+def _apply_bilingual_replacements(soup, replacements: dict[int, str]) -> None:
+    from bs4 import BeautifulSoup
+
+    editable_nodes = _find_editable_nodes(soup)
+    for node_index, translation in replacements.items():
+        if 0 <= node_index < len(editable_nodes):
+            orig = editable_nodes[node_index]
+            orig_text = str(orig)
+            wrapper = soup.new_tag("p", **{"class": "original"})
+            wrapper.string = orig_text
+            trans_wrapper = soup.new_tag("p", **{"class": "translation"})
+            trans_wrapper.string = translation
+            orig.replace_with(wrapper)
+            wrapper.insert_after(trans_wrapper)
+
+
+def _escape_xml(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 def _group_replacements(

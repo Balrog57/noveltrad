@@ -56,6 +56,31 @@ class ProviderConfig:
     parallel: int = 1
     timeout_s: float = 60.0
     options: dict[str, Any] = field(default_factory=dict)
+    cost_per_1k_input: float = 0.0
+    cost_per_1k_output: float = 0.0
+
+
+@dataclass
+class Usage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+# Approximate pricing in USD per 1M tokens (input, output).
+# Local models always cost 0. Cloud defaults are per OpenAI's public pricing.
+_MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "gpt-4o": (2.50, 10.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-3.5-turbo": (0.50, 1.50),
+}
+
+
+def _lookup_pricing(model: str) -> tuple[float, float]:
+    """Return (cost_per_1k_input, cost_per_1k_output) for a model name."""
+    for key, (in_price, out_price) in _MODEL_PRICING.items():
+        if key in model.lower():
+            return (in_price / 1000.0, out_price / 1000.0)
+    return (0.0, 0.0)
 
 
 # ---------- cache ----------
@@ -162,16 +187,23 @@ class LLMRouter:
             p.name: threading.Semaphore(max(1, p.parallel)) for p in self.providers
         }
         self._stats_lock = threading.Lock()
-        self._stats = {
+        self._stats: dict[str, Any] = {
             "cache_hits": 0,
             "cache_misses": 0,
             "provider_calls": 0,
             "provider_failures": 0,
         }
+        self._tokens_in: dict[str, int] = {}
+        self._tokens_out: dict[str, int] = {}
+        self._calls_by_provider: dict[str, int] = {}
 
     # ----- lifecycle -----
 
     def add_provider(self, p: ProviderConfig) -> None:
+        if p.kind == "openai" and p.cost_per_1k_input == 0.0 and p.cost_per_1k_output == 0.0:
+            in_price, out_price = _lookup_pricing(p.model)
+            p.cost_per_1k_input = in_price
+            p.cost_per_1k_output = out_price
         self.providers.append(p)
         self._circuits[p.name] = CircuitState()
         self._provider_locks[p.name] = threading.Semaphore(max(1, p.parallel))
@@ -234,12 +266,21 @@ class LLMRouter:
         last_err: Exception | None = None
         for attempt in range(max_retries):
             try:
-                text = self._call_provider_with_lock(provider, prompt)
+                text, usage = self._call_provider_with_lock(provider, prompt)
                 circuit = self._circuits[provider.name]
                 circuit.record_success()
                 self.cache.put(cache_key, text)
                 with self._stats_lock:
                     self._stats["provider_calls"] += 1
+                    self._tokens_in[provider.name] = (
+                        self._tokens_in.get(provider.name, 0) + usage.prompt_tokens
+                    )
+                    self._tokens_out[provider.name] = (
+                        self._tokens_out.get(provider.name, 0) + usage.completion_tokens
+                    )
+                    self._calls_by_provider[provider.name] = (
+                        self._calls_by_provider.get(provider.name, 0) + 1
+                    )
                 return text
             except Exception as exc:
                 last_err = exc
@@ -261,6 +302,59 @@ class LLMRouter:
         with self._stats_lock:
             return dict(self._stats)
 
+    def usage(self) -> dict[str, Any]:
+        """Return per-provider token usage and estimated cost."""
+        with self._stats_lock:
+            by_provider: dict[str, Any] = {}
+            total_in = 0
+            total_out = 0
+            total_cost = 0.0
+            for p in self.providers:
+                name = p.name
+                tin = self._tokens_in.get(name, 0)
+                tout = self._tokens_out.get(name, 0)
+                calls = self._calls_by_provider.get(name, 0)
+                cost_in = (tin / 1000.0) * p.cost_per_1k_input
+                cost_out = (tout / 1000.0) * p.cost_per_1k_output
+                cost = cost_in + cost_out
+                total_in += tin
+                total_out += tout
+                total_cost += cost
+                by_provider[name] = {
+                    "kind": p.kind,
+                    "model": p.model,
+                    "tokens_in": tin,
+                    "tokens_out": tout,
+                    "calls": calls,
+                    "cost_usd": round(cost, 6),
+                }
+            return {
+                "tokens_in": total_in,
+                "tokens_out": total_out,
+                "cost_usd": round(total_cost, 6),
+                "by_provider": by_provider,
+            }
+
+    @property
+    def mode(self) -> str:
+        """Return the effective provider mode: local, cloud, hybrid, or offline."""
+        local = any(p.kind == "ollama" for p in self.providers)
+        cloud = any(p.kind == "openai" for p in self.providers)
+        if local and cloud:
+            return "hybrid"
+        if local:
+            return "local"
+        if cloud:
+            return "cloud"
+        return "offline"
+
+    def reset_usage(self) -> None:
+        """Clear per-provider token counters (called at start of new run)."""
+        with self._stats_lock:
+            self._tokens_in.clear()
+            self._tokens_out.clear()
+            self._calls_by_provider.clear()
+
     # ----- internals -----
 
     def _pick_provider(self, model: str | None) -> ProviderConfig | None:
@@ -280,7 +374,7 @@ class LLMRouter:
 
     def _call_provider_with_lock(
         self, provider: ProviderConfig, prompt: str
-    ) -> str:
+    ) -> tuple[str, Usage]:
         sem = self._provider_locks[provider.name]
         sem.acquire()
         try:
@@ -296,7 +390,7 @@ class LLMRouter:
 # ---------- provider implementations ----------
 
 
-def _call_ollama(p: ProviderConfig, prompt: str) -> str:
+def _call_ollama(p: ProviderConfig, prompt: str) -> tuple[str, Usage]:
     url = p.base_url.rstrip("/") + "/api/generate"
     payload = {
         "model": p.model,
@@ -308,10 +402,15 @@ def _call_ollama(p: ProviderConfig, prompt: str) -> str:
     data = json.loads(raw)
     if "error" in data:
         raise RuntimeError(f"Ollama error: {data['error']}")
-    return str(data.get("response", "")).strip()
+    text = str(data.get("response", "")).strip()
+    usage = Usage(
+        prompt_tokens=data.get("prompt_eval_count", 0),
+        completion_tokens=data.get("eval_count", 0),
+    )
+    return text, usage
 
 
-def _call_openai(p: ProviderConfig, prompt: str) -> str:
+def _call_openai(p: ProviderConfig, prompt: str) -> tuple[str, Usage]:
     url = p.base_url.rstrip("/") + "/chat/completions"
     payload = {
         "model": p.model,
@@ -327,7 +426,13 @@ def _call_openai(p: ProviderConfig, prompt: str) -> str:
     data = json.loads(raw)
     if "error" in data:
         raise RuntimeError(f"OpenAI error: {data['error']}")
-    return str(data["choices"][0]["message"]["content"]).strip()
+    text = str(data["choices"][0]["message"]["content"]).strip()
+    u = data.get("usage") or {}
+    usage = Usage(
+        prompt_tokens=u.get("prompt_tokens", 0),
+        completion_tokens=u.get("completion_tokens", 0),
+    )
+    return text, usage
 
 
 def _http_post_json(

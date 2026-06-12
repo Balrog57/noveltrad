@@ -65,7 +65,9 @@ def _build_schemas() -> dict[str, Any]:
         source_lang: str = "auto"
         target_lang: str = "fr"
         output_path: str | None = None
+        output_format: str = Field(default="txt", pattern=r"^(epub|epub_bilingual|docx|srt|txt)$")
         parse: bool = True
+        profile: str = Field(default="balanced", pattern=r"^(eco|balanced|premium)$")
 
     class ProjectStateResponse(BaseModel):
         project_id: str
@@ -106,6 +108,9 @@ def _build_schemas() -> dict[str, Any]:
         validated_by_user: bool = False
         chapter_id: str | None = None
 
+    class ReplayChunksRequest(BaseModel):
+        chunk_ids: list[str] = Field(..., min_length=1)
+
     return {
         "ProjectCreateRequest": ProjectCreateRequest,
         "ProjectStateResponse": ProjectStateResponse,
@@ -114,6 +119,7 @@ def _build_schemas() -> dict[str, Any]:
         "ChunkSubmitRequest": ChunkSubmitRequest,
         "AssembleRequest": AssembleRequest,
         "LexiconTermCreate": LexiconTermCreate,
+        "ReplayChunksRequest": ReplayChunksRequest,
     }
 
 
@@ -139,6 +145,7 @@ def create_app(
     ChunkSubmitRequest = schemas["ChunkSubmitRequest"]
     AssembleRequest = schemas["AssembleRequest"]
     LexiconTermCreate = schemas["LexiconTermCreate"]
+    ReplayChunksRequest = schemas["ReplayChunksRequest"]
 
     if db_path is None:
         db_path = Path(os.environ.get("NOVELTRAD_DB", "./.noveltrad_state.db"))
@@ -164,9 +171,11 @@ def create_app(
             orchestrator.shutdown()
             store.close()
 
+    from src.backend import __version__ as _backend_version
+
     app = FastAPI(
         title="NovelTrad Backend",
-        version="4.0.0",
+        version=_backend_version,
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -199,14 +208,30 @@ def create_app(
             llm_ready = False
         return {
             "ok": True,
+            "version": _backend_version,
             "vector_store": store.vector_status,
             "nllb": nllb_diagnostics(),
             "llm": {
                 "ready": llm_ready,
                 "provider_count": provider_count,
                 "stats": llm_stats,
+                "mode": getattr(router, "mode", "offline") if llm_ready else "offline",
+                "usage": router.usage() if llm_ready else {},
             },
         }
+
+    @app.get("/usage")
+    def usage() -> dict[str, Any]:
+        from src.backend.llm_router.router import get_router
+
+        try:
+            router = get_router()
+            return {
+                "mode": router.mode,
+                **router.usage(),
+            }
+        except Exception as exc:
+            return {"mode": "offline", "error": str(exc)}
 
     @app.get("/llm/providers")
     def llm_providers(
@@ -324,6 +349,11 @@ def create_app(
             "provider_count": len(router.providers),
         }
 
+    @app.get("/projects")
+    def list_projects() -> dict[str, Any]:
+        items = store.list_projects()
+        return {"projects": items}
+
     @app.post("/projects")
     def create_project(req: ProjectCreateRequest) -> dict[str, Any]:
         project_id = req.project_id or uuid.uuid4().hex[:12]
@@ -334,6 +364,8 @@ def create_app(
             source_lang=req.source_lang,
             target_lang=req.target_lang,
             output_path=Path(req.output_path) if req.output_path else None,
+            profile=req.profile,
+            output_format=req.output_format,
         )
         store.set_state(
             f"project:{project_id}",
@@ -344,6 +376,8 @@ def create_app(
                 "target_lang": ctx.target_lang,
                 "output_path": str(ctx.output_path) if ctx.output_path else None,
                 "created_at": ctx.started_at,
+                "profile": ctx.profile,
+                "output_format": ctx.output_format,
             },
         )
         if req.parse:
@@ -377,6 +411,8 @@ def create_app(
             source_lang=req.source_lang,
             target_lang=req.target_lang,
             output_path=Path(req.output_path) if req.output_path else None,
+            profile=req.profile,
+            output_format=req.output_format,
         )
         orchestrator.start(ctx)
         return {"project_id": project_id, "status": "running"}
@@ -476,6 +512,11 @@ def create_app(
         )
         store.update_chunk_field(chunk_id, "status", "parsed")
         return {"status": "queued", "chunk_id": chunk_id}
+
+    @app.post("/pipeline/replay-chunks")
+    def replay_chunks(req: ReplayChunksRequest) -> dict[str, Any]:
+        count = orchestrator.replay_chunks(req.chunk_ids)
+        return {"replayed": count, "chunk_ids": req.chunk_ids}
 
     @app.get("/lexicon")
     def list_lexicon() -> dict[str, Any]:

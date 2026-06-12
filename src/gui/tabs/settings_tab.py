@@ -55,10 +55,12 @@ class SettingsTab(QWidget):
         self._provider = QComboBox()
         self._provider.addItem(self.tr("Ollama (local)"), "ollama")
         self._provider.addItem(self.tr("OpenAI-compatible (cloud)"), "openai")
+        self._provider.currentIndexChanged.connect(self._on_provider_changed)
         form.addRow(self.tr("Provider:"), self._provider)
 
-        self._model = QLineEdit()
-        self._model.setPlaceholderText(self.tr("e.g. gemma3:4b / gpt-4o-mini"))
+        self._model = QComboBox()
+        self._model.setEditable(True)
+        self._model.setMinimumWidth(200)
         form.addRow(self.tr("Model:"), self._model)
 
         self._base_url = QLineEdit()
@@ -131,7 +133,7 @@ class SettingsTab(QWidget):
         idx = self._provider.findData(llm.get("provider", "ollama"))
         if idx >= 0:
             self._provider.setCurrentIndex(idx)
-        self._model.setText(llm.get("model", "gemma3:4b"))
+        self._model.setCurrentText(llm.get("model", "gemma3:4b"))
         self._base_url.setText(llm.get("base_url", "http://127.0.0.1:11434"))
         self._api_key.setText(llm.get("api_key", ""))
         self._parallel.setValue(int(llm.get("parallel", 1)))
@@ -145,12 +147,31 @@ class SettingsTab(QWidget):
         lang_idx = self._language.findData(ui.get("language", "en"))
         if lang_idx >= 0:
             self._language.setCurrentIndex(lang_idx)
+        self._on_provider_changed()
+
+    def _on_provider_changed(self) -> None:
+        provider = self._provider.currentData()
+        current = self._model.currentText()
+        self._model.clear()
+        if provider == "ollama":
+            self._model.addItem(self.tr("Fast — gemma3:4b"), "gemma3:4b")
+            self._model.addItem(self.tr("Balanced — llama3.1:8b"), "llama3.1:8b")
+            self._model.addItem(self.tr("Quality — mistral:7b"), "mistral:7b")
+            self._model.addItem(self.tr("Other — qwen2.5:7b"), "qwen2.5:7b")
+            self._model.addItem(self.tr("Other — phi4:14b"), "phi4:14b")
+        else:
+            self._model.addItem(self.tr("Fast — gpt-4o-mini"), "gpt-4o-mini")
+            self._model.addItem(self.tr("Balanced — gpt-4o"), "gpt-4o")
+            self._model.addItem(self.tr("Quality — gpt-4o"), "gpt-4o")
+            self._model.addItem(self.tr("Other — gpt-3.5-turbo"), "gpt-3.5-turbo")
+        if current:
+            self._model.setCurrentText(current)
 
     def _collect(self) -> dict:
         return {
             "llm": {
                 "provider": self._provider.currentData(),
-                "model": self._model.text().strip() or "gemma3:4b",
+                "model": self._model.currentText().strip() or "gemma3:4b",
                 "base_url": self._base_url.text().strip() or "http://127.0.0.1:11434",
                 "api_key": self._api_key.text().strip(),
                 "parallel": self._parallel.value(),

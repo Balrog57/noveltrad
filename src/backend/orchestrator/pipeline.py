@@ -26,11 +26,13 @@ from typing import Iterable
 PARSER = "parser"
 FAST_TRANSLATOR = "fast_translator"
 LEXICON_BUILDER = "lexicon_builder"
+TERMINOLOGY_RESEARCHER = "terminology_researcher"
 GLOSSARY_APPLIER = "glossary_applier"
 CONSISTENCY_CHECKER = "consistency_checker"
 QA_VALIDATOR = "qa_validator"
 GRAMMAR_PROOFER = "grammar_proofer"
 LLM_POLISHER = "llm_polisher"
+REVIEWER = "reviewer"
 ASSEMBLER = "assembler"
 
 
@@ -38,10 +40,12 @@ ALL_STAGES: tuple[str, ...] = (
     PARSER,
     FAST_TRANSLATOR,
     LEXICON_BUILDER,
+    TERMINOLOGY_RESEARCHER,
     GLOSSARY_APPLIER,
     CONSISTENCY_CHECKER,
     QA_VALIDATOR,
     GRAMMAR_PROOFER,
+    REVIEWER,
     LLM_POLISHER,
     ASSEMBLER,
 )
@@ -52,10 +56,12 @@ DEFAULT_PIPELINE_ORDER: tuple[str, ...] = (
     PARSER,
     FAST_TRANSLATOR,
     LEXICON_BUILDER,
+    TERMINOLOGY_RESEARCHER,
     GLOSSARY_APPLIER,
     CONSISTENCY_CHECKER,
     QA_VALIDATOR,
     GRAMMAR_PROOFER,
+    REVIEWER,
     LLM_POLISHER,
     ASSEMBLER,
 )
@@ -144,13 +150,19 @@ def build_stages() -> dict[str, StageSpec]:
             key=LEXICON_BUILDER,
             agent_module="src.backend.agents.lexicon_builder",
             input_channel=f"{FAST_TRANSLATOR}__to__{LEXICON_BUILDER}",
-            output_channel=f"{LEXICON_BUILDER}__to__{GLOSSARY_APPLIER}",
+            output_channel=f"{LEXICON_BUILDER}__to__{TERMINOLOGY_RESEARCHER}",
             extra_options={"emits_lexicon_ready": True},
+        ),
+        TERMINOLOGY_RESEARCHER: StageSpec(
+            key=TERMINOLOGY_RESEARCHER,
+            agent_module="src.backend.agents.terminology_researcher",
+            input_channel=f"{LEXICON_BUILDER}__to__{TERMINOLOGY_RESEARCHER}",
+            output_channel=f"{TERMINOLOGY_RESEARCHER}__to__{GLOSSARY_APPLIER}",
         ),
         GLOSSARY_APPLIER: StageSpec(
             key=GLOSSARY_APPLIER,
             agent_module="src.backend.agents.glossary_applier",
-            input_channel=f"{LEXICON_BUILDER}__to__{GLOSSARY_APPLIER}",
+            input_channel=f"{TERMINOLOGY_RESEARCHER}__to__{GLOSSARY_APPLIER}",
             output_channel=f"{GLOSSARY_APPLIER}__to__{CONSISTENCY_CHECKER}",
         ),
         CONSISTENCY_CHECKER: StageSpec(
@@ -170,12 +182,18 @@ def build_stages() -> dict[str, StageSpec]:
             key=GRAMMAR_PROOFER,
             agent_module="src.backend.agents.grammar_proofer",
             input_channel=f"{QA_VALIDATOR}__to__{GRAMMAR_PROOFER}",
-            output_channel=f"{GRAMMAR_PROOFER}__to__{LLM_POLISHER}",
+            output_channel=f"{GRAMMAR_PROOFER}__to__{REVIEWER}",
+        ),
+        REVIEWER: StageSpec(
+            key=REVIEWER,
+            agent_module="src.backend.agents.reviewer",
+            input_channel=f"{GRAMMAR_PROOFER}__to__{REVIEWER}",
+            output_channel=f"{REVIEWER}__to__{LLM_POLISHER}",
         ),
         LLM_POLISHER: StageSpec(
             key=LLM_POLISHER,
             agent_module="src.backend.agents.llm_polisher",
-            input_channel=f"{GRAMMAR_PROOFER}__to__{LLM_POLISHER}",
+            input_channel=f"{REVIEWER}__to__{LLM_POLISHER}",
             output_channel=f"{LLM_POLISHER}__to__{ASSEMBLER}",
             parallelizable=True,
         ),
@@ -206,13 +224,55 @@ STATUS_ERROR = "error"
 STAGE_TO_STATUS: dict[str, str] = {
     PARSER: STATUS_PARSED,
     FAST_TRANSLATOR: STATUS_FAST_TRANSLATED,
+    TERMINOLOGY_RESEARCHER: "lexicon_ready",
     GLOSSARY_APPLIER: STATUS_GLOSSARY_APPLIED,
     CONSISTENCY_CHECKER: STATUS_CONSISTENCY_CHECKED,
     QA_VALIDATOR: STATUS_QA_CHECKED,
     GRAMMAR_PROOFER: STATUS_GRAMMAR_CHECKED,
+    REVIEWER: "reviewed",
     LLM_POLISHER: STATUS_POLISHED,
     ASSEMBLER: STATUS_ASSEMBLED,
 }
+
+
+# ---------- pipeline profiles ----------
+
+
+PROFILE_ECO: tuple[str, ...] = (
+    PARSER,
+    FAST_TRANSLATOR,
+    ASSEMBLER,
+)
+
+PROFILE_BALANCED: tuple[str, ...] = (
+    PARSER,
+    FAST_TRANSLATOR,
+    LEXICON_BUILDER,
+    GLOSSARY_APPLIER,
+    CONSISTENCY_CHECKER,
+    QA_VALIDATOR,
+    GRAMMAR_PROOFER,
+    REVIEWER,
+    LLM_POLISHER,
+    ASSEMBLER,
+)
+
+PROFILE_PREMIUM: tuple[str, ...] = DEFAULT_PIPELINE_ORDER  # includes terminology_researcher + reviewer
+
+PROFILES: dict[str, tuple[str, ...]] = {
+    "eco": PROFILE_ECO,
+    "balanced": PROFILE_BALANCED,
+    "premium": PROFILE_PREMIUM,
+}
+
+VALID_PROFILES: frozenset[str] = frozenset(PROFILES)
+
+
+def get_profile_order(profile: str | None = None) -> tuple[str, ...]:
+    """Return the stage order for the given profile (default ``"balanced"``)."""
+    if not profile or profile not in PROFILES:
+        profile = "balanced"
+    return PROFILES[profile]
 
 
 def iter_stages(order: Iterable[str] | None = None) -> Iterable[StageSpec]:
