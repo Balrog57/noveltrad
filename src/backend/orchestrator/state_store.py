@@ -706,26 +706,36 @@ class StateStore:
 
     def snapshot(self) -> dict[str, Any]:
         """Cheap summary used by GET /pipeline/state."""
+        statuses = (
+            "parsed",
+            "fast_translated",
+            "lexicon_ready",
+            "lexicon_skipped",
+            "glossary_applied",
+            "consistency_checked",
+            "qa_checked",
+            "grammar_checked",
+            "reviewed",
+            "polished",
+            "assembled",
+            "waiting_for_human",
+            "error",
+        )
+        with self._lock:
+            total_row = self._conn.execute(
+                "SELECT COUNT(*) FROM chunks"
+            ).fetchone()
+            status_rows = self._conn.execute(
+                "SELECT status, COUNT(*) AS n FROM chunks GROUP BY status"
+            ).fetchall()
+        counts = {status: 0 for status in statuses}
+        for row in status_rows:
+            status = row["status"]
+            if status in counts:
+                counts[status] = int(row["n"])
         return {
-            "chunks_total": self.count_chunks(),
-            "chunks_by_status": {
-                s: self.count_chunks(status=s)
-                for s in (
-                    "parsed",
-                    "fast_translated",
-                    "lexicon_ready",
-                    "lexicon_skipped",
-                    "glossary_applied",
-                    "consistency_checked",
-                    "qa_checked",
-                    "grammar_checked",
-                    "reviewed",
-                    "polished",
-                    "assembled",
-                    "waiting_for_human",
-                    "error",
-                )
-            },
+            "chunks_total": int(total_row[0]) if total_row else 0,
+            "chunks_by_status": counts,
             "lexicon_terms": self._scalar("SELECT COUNT(*) FROM lexicon_terms"),
             "qa_issues": self._scalar("SELECT COUNT(*) FROM qa_issues"),
             "grammar_issues": self._scalar("SELECT COUNT(*) FROM grammar_issues"),
