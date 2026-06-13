@@ -234,7 +234,7 @@ def _write_epub_from_manifest(
         raise RuntimeError(f"Manifest source EPUB not found: {source_epub}")
 
     book = epub.read_epub(str(source_epub), options={"ignore_ncx": True})
-    translations_by_anchor: dict[tuple[str, int], list[str]] = {}
+    translations_by_anchor: dict[tuple[str, str, int], list[str]] = {}
     for chunk in _sorted_chunks(chunks):
         translated = _polished_text(chunk).strip()
         if not translated:
@@ -245,18 +245,25 @@ def _write_epub_from_manifest(
         first = anchors[0]
         if first.get("kind") != "epub_text_node":
             continue
-        key = (str(first.get("item_id")), int(first.get("node_index", 0)))
+        key = (
+            str(first.get("item_id") or ""),
+            str(first.get("href") or ""),
+            int(first.get("node_index", 0)),
+        )
         translations_by_anchor.setdefault(key, []).append(translated)
         for extra in anchors[1:]:
             if extra.get("kind") == "epub_text_node":
                 extra_key = (
-                    str(extra.get("item_id")),
+                    str(extra.get("item_id") or ""),
+                    str(extra.get("href") or ""),
                     int(extra.get("node_index", 0)),
                 )
                 translations_by_anchor.setdefault(extra_key, [])
 
-    for item_id, replacements in _group_replacements(translations_by_anchor).items():
-        item = book.get_item_with_id(item_id)
+    for (item_id, href), replacements in _group_replacements(translations_by_anchor).items():
+        item = book.get_item_with_id(item_id) if item_id else None
+        if item is None and href:
+            item = book.get_item_with_href(href)
         if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
             continue
         soup = BeautifulSoup(item.get_content(), "html.parser")
@@ -285,6 +292,8 @@ def _write_epub_from_manifest(
 def _find_editable_nodes(soup) -> list:
     editable_nodes = []
     for node in soup.find_all(string=True):
+        if _is_markup_control_node(node):
+            continue
         normalized = " ".join(str(node).split())
         if not normalized:
             continue
@@ -293,6 +302,14 @@ def _find_editable_nodes(soup) -> list:
             continue
         editable_nodes.append(node)
     return editable_nodes
+
+
+def _is_markup_control_node(node: Any) -> bool:
+    try:
+        from bs4.element import Declaration, Doctype, ProcessingInstruction
+    except ImportError:
+        return False
+    return isinstance(node, (Declaration, Doctype, ProcessingInstruction))
 
 
 def _apply_bilingual_replacements(soup, replacements: dict[int, str]) -> None:
@@ -316,11 +333,11 @@ def _escape_xml(text: str) -> str:
 
 
 def _group_replacements(
-    translations_by_anchor: dict[tuple[str, int], list[str]]
-) -> dict[str, dict[int, str]]:
-    grouped: dict[str, dict[int, str]] = {}
-    for (item_id, node_index), parts in translations_by_anchor.items():
-        grouped.setdefault(item_id, {})[node_index] = "\n\n".join(parts)
+    translations_by_anchor: dict[tuple[str, str, int], list[str]]
+) -> dict[tuple[str, str], dict[int, str]]:
+    grouped: dict[tuple[str, str], dict[int, str]] = {}
+    for (item_id, href, node_index), parts in translations_by_anchor.items():
+        grouped.setdefault((item_id, href), {})[node_index] = "\n\n".join(parts)
     return grouped
 
 

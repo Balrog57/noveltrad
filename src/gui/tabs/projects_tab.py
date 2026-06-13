@@ -4,9 +4,11 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QHBoxLayout,
     QVBoxLayout,
     QWidget,
 )
@@ -31,7 +33,7 @@ class ProjectsTab(QWidget):
             self.tr("Languages"),
             self.tr("Profile"),
             self.tr("Date"),
-            self.tr("Open"),
+            self.tr("Actions"),
         ])
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -77,11 +79,51 @@ class ProjectsTab(QWidget):
             self._table.setItem(row_idx, 1, QTableWidgetItem(langs))
             self._table.setItem(row_idx, 2, QTableWidgetItem(profile))
             self._table.setItem(row_idx, 3, QTableWidgetItem(created))
+            action_cell = QWidget()
+            action_row = QHBoxLayout(action_cell)
+            action_row.setContentsMargins(0, 0, 0, 0)
             open_btn = QPushButton(self.tr("Open"))
             open_btn.clicked.connect(lambda checked, p=proj: self.projectActivated.emit(p))
-            self._table.setCellWidget(row_idx, 4, open_btn)
+            action_row.addWidget(open_btn)
+            clear_btn = QPushButton(self.tr("Clear local data"))
+            clear_btn.setToolTip(
+                self.tr("Remove local caches and metadata for this project.")
+            )
+            clear_btn.clicked.connect(lambda checked, p=proj: self._clear_local_data(p))
+            action_row.addWidget(clear_btn)
+            self._table.setCellWidget(row_idx, 4, action_cell)
         self._status.setText(self.tr("{n} project(s)").format(n=len(items)))
 
     def _on_cell_double_clicked(self, row: int, _col: int) -> None:
         if 0 <= row < len(self._projects):
             self.projectActivated.emit(self._projects[row])
+
+    def _clear_local_data(self, proj: dict) -> None:
+        project_id = proj.get("project_id", "")
+        if not project_id:
+            return
+        reply = QMessageBox.question(
+            self,
+            self.tr("Clear local data"),
+            self.tr(
+                "Remove local caches and stored metadata for this project?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            res = self._client.delete(
+                f"/projects/{project_id}/local-data", timeout=10.0
+            ) or {}
+        except Exception as exc:
+            self._status.setText(self.tr("Clear failed: {err}").format(err=exc))
+            return
+        removed = len(res.get("removed") or [])
+        skipped = len(res.get("skipped") or [])
+        self._status.setText(
+            self.tr("Cleared {removed}, skipped {skipped}.").format(
+                removed=removed, skipped=skipped
+            )
+        )
+        self.refresh()

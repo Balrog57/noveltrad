@@ -241,6 +241,41 @@ class UpdaterCheckTests(unittest.TestCase):
         self.assertEqual(info.download_url, "https://example.com/correct.exe")
         self.assertEqual(info.expected_sha256, "deadbeef" * 8)
 
+    def test_manifest_url_wins_when_asset_name_is_unversioned(self) -> None:
+        release = {
+            "tag_name": "v4.1.0",
+            "published_at": "2026-06-10T00:00:00Z",
+            "body": "",
+            "html_url": "",
+            "prerelease": False,
+            "draft": False,
+            "assets": [
+                {
+                    "name": "Setup_NovelTrad.exe",
+                    "browser_download_url": "https://example.com/unversioned.exe",
+                }
+            ],
+        }
+        manifest = {
+            "version": "4.1.0",
+            "release_date": "2026-06-10T00:00:00Z",
+            "download_url": "https://example.com/manifest-download.exe",
+            "sha256": "cafebabe" * 8,
+        }
+        opener = _fake_opener(
+            {
+                updater_mod.API_URL: _make_response(release),
+                updater_mod.LATEST_JSON_URL: _make_response(manifest),
+            }
+        )
+        u = Updater(current_version="4.0.0", opener=opener)
+        info = u.check()
+        self.assertIsNotNone(info)
+        assert info is not None
+        self.assertEqual(
+            info.download_url, "https://example.com/manifest-download.exe"
+        )
+
 
 class UpdaterDownloadTests(unittest.TestCase):
     def setUp(self) -> None:

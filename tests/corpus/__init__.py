@@ -8,6 +8,7 @@ helpers to generate fixture files and evaluate structural integrity
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,21 @@ remained, its seven eyes fixed on the sorcerer.
 "Perhaps not," said Talric. "But I only need to hold it long enough."
 """
 
+CORPUS_SUBTITLES = """Chapter 5
+
+Run!
+
+I said run, not negotiate.
+
+The alarm will reset in ninety seconds.
+"""
+
+CORPUS_LONG_TEXT = ("Chapter 6\n\n" + "\n\n".join(
+    f"Paragraph {i}: Mara crossed the bridge, counted the lanterns, "
+    f"and repeated Talric's warning so she would not forget it."
+    for i in range(1, 80)
+))
+
 
 # ---------- all extracts ----------
 
@@ -68,7 +84,33 @@ ALL_EXTRACTS: dict[str, str] = {
     "exposition": CORPUS_EXPOSITION,
     "description": CORPUS_DESCRIPTION,
     "fantasy_terms": CORPUS_FANTASY_TERMS,
+    "subtitles": CORPUS_SUBTITLES,
+    "long_text": CORPUS_LONG_TEXT,
 }
+
+
+@dataclass(frozen=True)
+class CorpusCase:
+    case_id: str
+    source_format: str
+    extract_key: str
+    terms: tuple[str, ...] = ()
+    notes: str = ""
+
+
+CORPUS_CASES: tuple[CorpusCase, ...] = (
+    CorpusCase("dialogue_txt", "txt", "dialogue", ("gate",), "dialogue beats"),
+    CorpusCase("exposition_txt", "txt", "exposition", ("Aldervale",)),
+    CorpusCase("description_docx", "docx", "description", ("crimson roses",)),
+    CorpusCase(
+        "fantasy_epub",
+        "epub",
+        "fantasy_terms",
+        ("Veil-Walker", "Binding Words", "Arch-Fiend", "Talric"),
+    ),
+    CorpusCase("subtitles_srt", "srt", "subtitles", ("alarm",)),
+    CorpusCase("long_text_txt", "txt", "long_text", ("Talric",), "chunking limits"),
+)
 
 
 # ---------- fixture generators ----------
@@ -106,6 +148,66 @@ def write_srt_fixture(extract_key: str, target_dir: Path, lines_per_cue: int = 1
     path = target_dir / f"{extract_key}.srt"
     path.write_text("\n".join(cues), encoding="utf-8")
     return path
+
+
+def write_docx_fixture(extract_key: str, target_dir: Path) -> Path:
+    """Write a simple DOCX fixture with headings and paragraphs."""
+    try:
+        import docx
+    except ImportError as exc:  # pragma: no cover - dependency is in requirements
+        raise RuntimeError("python-docx is required for DOCX corpus fixtures") from exc
+    text = ALL_EXTRACTS.get(extract_key)
+    if text is None:
+        raise KeyError(f"Unknown extract: {extract_key!r}")
+    doc = docx.Document()
+    parts = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if parts:
+        doc.add_heading(parts[0], level=1)
+    for para in parts[1:]:
+        doc.add_paragraph(para)
+    path = target_dir / f"{extract_key}.docx"
+    doc.save(str(path))
+    return path
+
+
+def write_epub_fixture(extract_key: str, target_dir: Path) -> Path:
+    """Write a minimal EPUB fixture from one extract."""
+    try:
+        from ebooklib import epub
+    except ImportError as exc:  # pragma: no cover - dependency is in requirements
+        raise RuntimeError("EbookLib is required for EPUB corpus fixtures") from exc
+    text = ALL_EXTRACTS.get(extract_key)
+    if text is None:
+        raise KeyError(f"Unknown extract: {extract_key!r}")
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    title = paragraphs[0] if paragraphs else extract_key
+    body = "".join(f"<p>{p}</p>" for p in paragraphs[1:])
+    book = epub.EpubBook()
+    book.set_identifier(f"noveltrad-corpus-{extract_key}")
+    book.set_title(title)
+    book.set_language("en")
+    chapter = epub.EpubHtml(title=title, file_name="chapter.xhtml", lang="en")
+    chapter.content = f"<html><body><h1>{title}</h1>{body}</body></html>"
+    book.add_item(chapter)
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", chapter]
+    book.toc = (chapter,)
+    path = target_dir / f"{extract_key}.epub"
+    epub.write_epub(str(path), book)
+    return path
+
+
+def write_case_fixture(case: CorpusCase, target_dir: Path) -> Path:
+    if case.source_format == "txt":
+        return write_txt_fixture(case.extract_key, target_dir)
+    if case.source_format == "srt":
+        return write_srt_fixture(case.extract_key, target_dir)
+    if case.source_format == "docx":
+        return write_docx_fixture(case.extract_key, target_dir)
+    if case.source_format == "epub":
+        return write_epub_fixture(case.extract_key, target_dir)
+    raise ValueError(f"Unsupported corpus format: {case.source_format}")
 
 
 # ---------- evaluation helpers ----------

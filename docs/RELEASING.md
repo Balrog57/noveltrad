@@ -53,7 +53,9 @@ release build (they are ignored on purpose; use branches for that).
 3. Runs `python build.py --all` to produce sdist + wheel + PyInstaller
    bundle + installer.
 4. Computes the SHA256 of `Setup_NovelTrad-vX.Y.Z.exe`.
-5. Writes a `latest.json` next to the installer:
+5. Writes a `latest.json` next to the installer. The updater treats
+   the manifest `download_url` as the source of truth, so it must
+   match the actual release asset name:
    ```json
    {
      "version": "4.1.0",
@@ -83,7 +85,9 @@ runs on a Windows user's machine will:
    button.
 4. Stream the installer from `latest.json` `download_url`.
 5. Verify the SHA256 against `latest.json` `sha256`.
-6. Launch the installer via `ShellExecuteW` (Windows `os.startfile`).
+6. Run a best-effort Authenticode verification when `signtool.exe`
+   is available.
+7. Launch the installer via `ShellExecuteW` (Windows `os.startfile`).
 
 To verify the end-to-end flow on a dev machine without publishing a
 real release, you can run an older local build, then hand-edit the

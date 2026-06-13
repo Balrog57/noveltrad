@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from src.backend.agents.assembler import _write_epub_from_manifest
@@ -90,11 +91,12 @@ class FormatManifestTests(unittest.TestCase):
             _write_epub_from_manifest(out, translated_chunks, manifest)
             self.assertTrue(out.exists())
 
-            out_book = epub.read_epub(str(out), options={"ignore_ncx": True})
             text = ""
-            for item in out_book.get_items():
-                if item.get_type() == 9:  # ebooklib.ITEM_DOCUMENT
-                    text += BeautifulSoup(item.get_content(), "html.parser").get_text(" ")
+            with zipfile.ZipFile(out) as archive:
+                for name in archive.namelist():
+                    if name.endswith((".html", ".xhtml")):
+                        content = archive.read(name)
+                        text += BeautifulSoup(content, "html.parser").get_text(" ")
             self.assertIn("Bonjour le monde.", text)
 
 

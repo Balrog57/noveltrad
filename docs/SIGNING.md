@@ -78,22 +78,22 @@ certificate and exposes the env vars before `python build.py --all`:
 
 ## Auto-updater and signatures
 
-The current auto-updater verifies **SHA256** of the downloaded
-installer against the `sha256` field in `latest.json` (the manifest
-written by `release.yml`). It does **not** verify the Authenticode
-signature of the installer; that is an explicit non-goal of the
-Sparkle-like model (the channel is HTTPS + SHA256).
+The updater verifies **SHA256** of the downloaded installer against
+the `sha256` field in `latest.json` (the manifest written by
+`release.yml`). On Windows frozen builds it also runs a best-effort
+`signtool verify /pa` check before launching the installer when
+`signtool.exe` is available.
 
-If/when signing is wired in, the updater can be extended to call
-`signtool verify /pa` on the downloaded installer before launching
-it; see `src/gui/updater.py` (`Updater.install`). This is left out
-of v4 to avoid adding a `signtool` runtime dependency.
+The Authenticode check is not a hard runtime dependency. Many user
+machines do not have the Windows SDK installed, so the channel still
+relies on HTTPS + SHA256 pinned in the release manifest as its
+baseline integrity protection.
 
 ## EV certificates (out of scope for v4)
 
 Extended Validation (EV) certs require a hardware token (USB
-HID/smartcard) and cannot be used from a headless CI runner. v4
-does not include the plumbing for that. If you have an EV cert:
+HID/smartcard) and cannot usually be used from a headless CI runner.
+If you have an EV cert:
 
 - Sign the installer manually after the CI runs.
 - Re-attach the signed installer to the same GitHub release.

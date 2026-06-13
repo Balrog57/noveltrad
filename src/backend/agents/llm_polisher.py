@@ -23,12 +23,15 @@ import re
 from typing import Any
 
 from .base_worker import BaseWorker
+from .prompt_contracts import literary_contract
 from ..llm_router.router import get_router
 
 logger = logging.getLogger(__name__)
 
 
 _REFLECT_PROMPT = """You are a literary translation polisher.
+{contract}
+
 Source language: {src}
 Target language: {tgt}
 
@@ -57,6 +60,8 @@ CURRENT TRANSLATION:
 
 
 _IMPROVE_PROMPT = """You are a literary translation polisher.
+{contract}
+
 Source language: {src}
 Target language: {tgt}
 
@@ -240,6 +245,7 @@ class Worker(BaseWorker):
             )
 
         reflect_prompt = _REFLECT_PROMPT.format(
+            contract=literary_contract(),
             src=src_lang,
             tgt=tgt_lang,
             context=_neighbour_context(neighbours),
@@ -273,6 +279,7 @@ class Worker(BaseWorker):
             )
 
         improve_prompt = _IMPROVE_PROMPT.format(
+            contract=literary_contract(),
             src=src_lang,
             tgt=tgt_lang,
             suggestions=json.dumps(suggestions, ensure_ascii=False, indent=2),

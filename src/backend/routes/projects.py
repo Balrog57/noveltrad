@@ -1,8 +1,11 @@
 """Project lifecycle + pipeline control + chunk submission endpoints."""
 
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any
+
+from fastapi import HTTPException
 
 from src.backend.orchestrator.orchestrator import ProjectContext
 
@@ -80,6 +83,25 @@ def register(app: Any, deps: Deps) -> None:
         count = deps.orchestrator.replay_chunks(req.chunk_ids)
         return {"replayed": count, "chunk_ids": req.chunk_ids}
 
+    @app.delete("/projects/{project_id}/local-data")
+    def clear_project_local_data(project_id: str) -> dict[str, Any]:
+        project = deps.store.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        removed, skipped = _remove_project_local_files(project)
+        current = deps.store.get_state_json("current_project", default={}) or {}
+        if current.get("project_id") == project_id:
+            deps.store.clear_project_data()
+            removed.append("sqlite:current_project_pipeline_rows")
+        deps.store.forget_project(project_id)
+        removed.append("sqlite:project_metadata")
+        return {
+            "ok": True,
+            "project_id": project_id,
+            "removed": removed,
+            "skipped": skipped,
+        }
+
 
 def _build_context(project_id: str, req: Any) -> ProjectContext:
     return ProjectContext(
@@ -129,6 +151,54 @@ def _kickoff_parser(deps: Deps, project_id: str, ctx: ProjectContext) -> None:
             },
         )
     )
+
+
+def _remove_project_local_files(project: dict[str, Any]) -> tuple[list[str], list[str]]:
+    removed: list[str] = []
+    skipped: list[str] = []
+    project_dir_raw = project.get("project_dir") or ""
+    if not project_dir_raw:
+        return removed, ["project_dir:missing"]
+    try:
+        project_root = Path(project_dir_raw).expanduser().resolve()
+    except OSError:
+        return removed, [f"project_dir:invalid:{project_dir_raw}"]
+    if not project_root.exists():
+        return removed, [f"project_dir:not_found:{project_root}"]
+
+    candidates = [
+        project_root / ".noveltrad_vectors",
+        project_root / ".noveltrad_llm_cache",
+        project_root / ".llm_cache",
+        project_root / ".noveltrad_state.db",
+        project_root / ".noveltrad_state.db-shm",
+        project_root / ".noveltrad_state.db-wal",
+    ]
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            skipped.append(str(candidate))
+            continue
+        if not _is_relative_to(resolved, project_root):
+            skipped.append(f"outside_project:{resolved}")
+            continue
+        if not resolved.exists():
+            continue
+        if resolved.is_dir():
+            shutil.rmtree(resolved)
+        else:
+            resolved.unlink()
+        removed.append(str(resolved))
+    return removed, skipped
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 __all__ = ["register"]

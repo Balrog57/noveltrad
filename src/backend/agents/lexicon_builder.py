@@ -18,12 +18,15 @@ import re
 from typing import Any
 
 from .base_worker import BaseWorker
+from .prompt_contracts import literary_contract
 from ..llm_router.router import get_router
 
 logger = logging.getLogger(__name__)
 
 
 _PROMPT = """You are a terminology extractor for a literary translation.
+{contract}
+
 Given the following text in the SOURCE language and its translation in
 the TARGET language, list up to 12 named entities, cultivation terms,
 proper nouns, or recurring in-world concepts that MUST be translated
@@ -111,7 +114,11 @@ class Worker(BaseWorker):
                 chunk_id, {"status": "lexicon_skipped", "terms": []}
             )
         prompt = _PROMPT.format(
-            src=src_lang, tgt=tgt_lang, src_text=src[:1500], tgt_text=tgt[:1500]
+            contract=literary_contract(),
+            src=src_lang,
+            tgt=tgt_lang,
+            src_text=src[:1500],
+            tgt_text=tgt[:1500],
         )
         try:
             response = self._router.complete(prompt)

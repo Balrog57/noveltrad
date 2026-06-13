@@ -22,12 +22,15 @@ import re
 from typing import Any
 
 from .base_worker import BaseWorker
+from .prompt_contracts import literary_contract
 from ..llm_router.router import get_router
 
 logger = logging.getLogger(__name__)
 
 
 _DETECT_PROMPT = """You are a literary translation QA reviewer.
+{contract}
+
 Source language: {src}
 Target language: {tgt}
 
@@ -134,6 +137,7 @@ class Worker(BaseWorker):
                 chunk_id, "empty_input", "qa_validator: missing source/translation"
             )
         prompt = _DETECT_PROMPT.format(
+            contract=literary_contract(),
             src=src_lang,
             tgt=tgt_lang,
             src_text=src[:2000],

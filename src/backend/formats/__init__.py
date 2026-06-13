@@ -227,6 +227,8 @@ def _read_epub(path: Path) -> Document:
         blocks: list[dict[str, Any]] = []
         node_index = 0
         for node in soup.find_all(string=True):
+            if _is_markup_control_node(node):
+                continue
             text = str(node)
             normalized = " ".join(text.split())
             if not normalized:
@@ -237,6 +239,7 @@ def _read_epub(path: Path) -> Document:
             anchor = {
                 "kind": "epub_text_node",
                 "item_id": item_id,
+                "href": getattr(item, "file_name", ""),
                 "node_index": node_index,
             }
             blocks.append({"text": normalized, "anchors": [anchor]})
@@ -287,6 +290,14 @@ def _first_meaningful_line(paragraphs: list[str]) -> str | None:
         if 3 <= len(p) <= 120 and not p.endswith("."):
             return p
     return None
+
+
+def _is_markup_control_node(node: Any) -> bool:
+    try:
+        from bs4.element import Declaration, Doctype, ProcessingInstruction
+    except ImportError:
+        return False
+    return isinstance(node, (Declaration, Doctype, ProcessingInstruction))
 
 
 def _read_docx(path: Path) -> Document:
