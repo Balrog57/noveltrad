@@ -150,15 +150,30 @@ def write_srt_fixture(extract_key: str, target_dir: Path, lines_per_cue: int = 1
     return path
 
 
-def write_docx_fixture(extract_key: str, target_dir: Path) -> Path:
-    """Write a simple DOCX fixture with headings and paragraphs."""
+def _has_docx_support() -> bool:
     try:
-        import docx
-    except ImportError as exc:  # pragma: no cover - dependency is in requirements
-        raise RuntimeError("python-docx is required for DOCX corpus fixtures") from exc
+        import docx  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def write_docx_fixture(extract_key: str, target_dir: Path) -> Path:
+    """Write a simple DOCX fixture with headings and paragraphs.
+
+    Falls back to a plain-text representation when python-docx is not
+    installed so the corpus evaluator can still run in minimal CI
+    environments.
+    """
     text = ALL_EXTRACTS.get(extract_key)
     if text is None:
         raise KeyError(f"Unknown extract: {extract_key!r}")
+    if not _has_docx_support():
+        path = target_dir / f"{extract_key}.docx.txt"
+        path.write_text(text, encoding="utf-8")
+        return path
+    import docx
+
     doc = docx.Document()
     parts = [p.strip() for p in text.split("\n\n") if p.strip()]
     if parts:

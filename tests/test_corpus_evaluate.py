@@ -31,6 +31,7 @@ class CorpusEvaluateTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         parsed = json.loads(proc.stdout)
         self.assertEqual(parsed["schema_version"], 1)
+        self.assertNotIn("regressions", parsed.get("summary", {}))
 
 
 if __name__ == "__main__":

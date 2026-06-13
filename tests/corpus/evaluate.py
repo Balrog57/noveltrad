@@ -69,13 +69,47 @@ def evaluate_all() -> dict[str, Any]:
         "summary": {
             "case_count": len(cases),
             "warning_count": sum(len(case["warnings"]) for case in cases),
+            "avg_duration_ms": sum(c["duration_ms"] for c in cases) // max(1, len(cases)),
         },
     }
 
 
+def _check_thresholds(report: dict[str, Any]) -> list[str]:
+    """Return non-empty list if any regression threshold is breached.
+
+    Thresholds are calibrated on the current offline structural baseline:
+    parse + reconstruct is expected to lose a small number of characters
+    (whitespace/line-break normalisation) but must never drop terms.
+    """
+    failures: list[str] = []
+    cases = report.get("cases") or []
+    total_lost = sum(c["metrics"].get("chars_lost", 0) for c in cases)
+    total_added = sum(c["metrics"].get("chars_added", 0) for c in cases)
+    terms = sum(c["metrics"].get("terminology", {}).get("term_count", 0) for c in cases)
+    preserved = sum(
+        1
+        for c in cases
+        for t in c["metrics"].get("terminology", {}).get("terms", {}).values()
+        if t.get("preserved")
+    )
+    # Structural regressions — allow whitespace normalisation up to ~100 chars.
+    if total_lost > 100:
+        failures.append(f"too many chars lost: {total_lost} > 100")
+    if total_added > 100:
+        failures.append(f"too many chars added: {total_added} > 100")
+    # Terminology regressions — hard gate: every tracked term must survive.
+    if terms and preserved < terms:
+        failures.append(f"terminology not fully preserved: {preserved}/{terms}")
+    return failures
+
+
 def main() -> int:
-    print(json.dumps(evaluate_all(), ensure_ascii=False, indent=2))
-    return 0
+    report = evaluate_all()
+    failures = _check_thresholds(report)
+    if failures:
+        report["summary"]["regressions"] = failures
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

@@ -43,3 +43,13 @@ jobs:
                   NOVELTRAD_TRANSLATION_TEST_MODE: "1"
                   QT_QPA_PLATFORM: "offscreen"
               run: python -m unittest discover -s tests -p "test_*.py"
+
+            - name: Run corpus regression check
+              run: python -m tests.corpus.evaluate > corpus-report.json
+
+            - name: Upload corpus report
+              uses: actions/upload-artifact@v4
+              with:
+                  name: corpus-report-${{ matrix.os }}-py${{ matrix.python-version }}
+                  path: corpus-report.json
+                  if-no-files-found: error
