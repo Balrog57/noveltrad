@@ -981,22 +981,35 @@ class Orchestrator:
         )
         return "reviewer"
 
+    # Profile-specific reflection thresholds. Eco has no reviewer at all.
+    REFLEXION_THRESHOLD: dict[str, float] = {
+        "eco": 0.0,  # reviewer not used
+        "balanced": 0.7,
+        "premium": 0.85,
+    }
+
+    def _reflection_threshold(self) -> float:
+        """Return the review-score threshold below which a reflection is triggered."""
+        profile = self._project.profile if self._project else "balanced"
+        return self.REFLEXION_THRESHOLD.get(profile, 0.7)
+
     def _maybe_reflect(
         self, stage: str, chunk_id: str, payload: dict[str, Any]
     ) -> bool:
         """Re-inject the chunk into llm_polisher if the reviewer scored low.
 
         Returns False if the chunk was reflected (caller must stop
-        forwarding); True otherwise.
+        forwarding); True otherwise. If the maximum number of reflection
+        loops is exhausted, the chunk is escalated to HITL.
         """
         if stage != "reviewer":
             return True
         score = payload.get("review_score", 1.0)
-        threshold = 0.85 if (self._project and self._project.profile == "premium") else 0.7
+        threshold = self._reflection_threshold()
         if score >= threshold:
             return True
         stored_chunk = self.store.get_chunk(chunk_id) or {}
-        stored_meta = stored_chunk.get("metadata") or {}
+        stored_meta = dict(stored_chunk.get("metadata") or {})
         reflection_count = int(stored_meta.get("reflection_count") or 0)
         max_reflections = 2
         if reflection_count >= max_reflections:
@@ -1006,6 +1019,19 @@ class Orchestrator:
                     "chunk_id": chunk_id,
                     "score": score,
                     "reflection_count": reflection_count,
+                }
+            )
+            self.register_hltl(
+                {
+                    "type": "hltl_request",
+                    "stage": "reviewer",
+                    "chunk_id": chunk_id,
+                    "payload": {
+                        "issue": {
+                            "summary": f"Review score {score:.2f} below threshold {threshold:.2f} after {reflection_count} reflection(s)",
+                            "kind": "reflection_exhausted",
+                        }
+                    },
                 }
             )
             return True
