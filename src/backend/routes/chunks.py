@@ -41,6 +41,14 @@ def register(app: Any, deps: Deps) -> None:
         chunk["consistency_flags"] = deps.store.list_consistency_flags(chunk_id)
         return chunk
 
+    @app.post("/pipeline/replay-chunks")
+    def replay_chunks(body: dict[str, Any]) -> dict[str, Any]:
+        chunk_ids = body.get("chunk_ids") or []
+        if not isinstance(chunk_ids, list):
+            raise HTTPException(status_code=422, detail="chunk_ids must be a list")
+        replayed = deps.orchestrator.replay_chunks(chunk_ids)
+        return {"replayed": replayed}
+
     @app.post("/assemble")
     def assemble(req: AssembleRequest) -> dict[str, Any]:
         return deps.orchestrator.assemble_now(req.output_path, fmt=req.format)
