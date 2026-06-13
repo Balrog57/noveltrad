@@ -117,7 +117,11 @@ class MainWindow(QMainWindow):
         self._hamburger = QPushButton("☰")
         self._hamburger.setFixedWidth(36)
         self._hamburger.clicked.connect(self._toggle_drawer)
-        configure(self._hamburger, name="Toggle sidebar drawer")
+        configure(
+            self._hamburger,
+            name="Toggle sidebar drawer",
+            tooltip=self.tr("Toggle sidebar"),
+        )
         hbox.addWidget(self._hamburger)
 
         title = QLabel(self.tr("📚  NovelTrad"))
