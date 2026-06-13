@@ -902,7 +902,7 @@ class Orchestrator:
         next_stage = self._next_stage(stage)
         if next_stage is None or next_stage == ASSEMBLER:
             return
-        next_stage = self._maybe_skip_grammar(stage, next_stage, chunk_id, payload)
+        next_stage = self._maybe_escalate(stage, next_stage, chunk_id, payload)
         if not self._maybe_reflect(stage, chunk_id, payload):
             return
         self._forward_to_next_stage(next_stage, chunk_id, payload)
@@ -954,32 +954,59 @@ class Orchestrator:
         new_status = payload.get("status") or STAGE_TO_STATUS.get(stage, "parsed")
         self.store.update_chunk_field(chunk_id, "status", new_status)
 
-    def _maybe_skip_grammar(
+    def _maybe_escalate(
         self,
         stage: str,
         next_stage: str | None,
         chunk_id: str,
         payload: dict[str, Any],
     ) -> str | None:
-        """Apply DAG shortcuts (qa_clean → reviewer, skipping grammar_proofer)."""
-        if stage != "qa_validator" or next_stage != "grammar_proofer":
-            return next_stage
-        if not (self._project and self._project.profile in ("balanced", "premium")):
-            return next_stage
-        if payload.get("qa_issues"):
-            return next_stage
+        """Apply DAG shortcuts and escalation policies.
+
+        Current policies:
+          * qa_clean + balanced/premium → skip grammar_proofer to reviewer.
+          * consistency flag on premium profile → branch to terminology_researcher.
+          * qa_issues on any profile → keep grammar_proofer (do not skip).
+        """
+        if next_stage is None:
+            return None
         order = self._stage_order
-        if "reviewer" not in order:
-            return next_stage
-        self._emit(
-            {
-                "type": "dag_skip",
-                "chunk_id": chunk_id,
-                "skipped": "grammar_proofer",
-                "reason": "qa_clean",
-            }
-        )
-        return "reviewer"
+        profile = self._project.profile if self._project else "balanced"
+
+        # Policy A: clean QA can bypass grammar_proofer in balanced/premium.
+        if stage == "qa_validator" and next_stage == "grammar_proofer":
+            if profile in ("balanced", "premium") and not payload.get("qa_issues"):
+                if "reviewer" in order:
+                    self._emit(
+                        {
+                            "type": "dag_skip",
+                            "chunk_id": chunk_id,
+                            "skipped": "grammar_proofer",
+                            "reason": "qa_clean",
+                        }
+                    )
+                    return "reviewer"
+
+        # Policy B: consistency flags in premium trigger terminology research.
+        if (
+            stage == "consistency_checker"
+            and profile == "premium"
+            and "terminology_researcher" in order
+        ):
+            flags = payload.get("consistency_flags") or []
+            if flags:
+                self._emit(
+                    {
+                        "type": "dag_escalate",
+                        "chunk_id": chunk_id,
+                        "from": "consistency_checker",
+                        "to": "terminology_researcher",
+                        "reason": "consistency_flag",
+                    }
+                )
+                return "terminology_researcher"
+
+        return next_stage
 
     # Profile-specific reflection thresholds. Eco has no reviewer at all.
     REFLEXION_THRESHOLD: dict[str, float] = {
