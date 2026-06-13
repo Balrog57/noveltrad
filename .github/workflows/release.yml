@@ -120,7 +120,7 @@ jobs:
               with:
                   name: NovelTrad-installer
                   path: |
-                      Setup_NovelTrad-v${{ github.ref_name }}.exe
+                      Setup_NovelTrad-${{ github.ref_name }}.exe
                       latest.json
 
             - name: Create draft GitHub release
@@ -132,7 +132,7 @@ jobs:
                   prerelease: false
                   generate_release_notes: true
                   files: |
-                      Setup_NovelTrad-v${{ github.ref_name }}.exe
+                      Setup_NovelTrad-${{ github.ref_name }}.exe
                       latest.json
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
