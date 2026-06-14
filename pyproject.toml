@@ -1,4 +1,4 @@
-﻿[project]
+[project]
 name = "noveltrad"
 version = "4.1.6"
 description = "Pipeline de traduction multi-agent pour romans et web novels"

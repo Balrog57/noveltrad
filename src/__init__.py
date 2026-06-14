@@ -1,4 +1,4 @@
-﻿"""NovelTrad v4 â€” top-level package.
+"""NovelTrad v4 â€” top-level package.
 
 Single source of truth for the application version. The build script
 and the GUI auto-updater both import ``src.__version__`` so the wheel,
