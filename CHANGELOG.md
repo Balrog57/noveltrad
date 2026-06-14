@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.1.6] — 2026-06-14
+
 ### Added
 - Corpus evaluation runner (`python -m tests.corpus.evaluate`) that
   emits deterministic offline JSON metrics for structure and
@@ -21,11 +23,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Shared literary prompt contracts for LLM-backed agents.
 - CI test matrix now covers Windows and Linux for Python 3.11/3.12
   while keeping the release workflow Windows-only.
+- "Clear all" button in `FileCloud` to remove every selected file in
+  one click (disabled when the list is empty).
+- Default NLLB device switched to `auto` across the GUI, the
+  First-Run Wizard, the environment shim and the NLLB engine so
+  the engine can pick `cuda` when available and fall back to `cpu`.
 
 ### Changed
 - Release documentation now treats `latest.json` `download_url` as the
   updater source of truth and documents best-effort Authenticode
   verification.
+- `StateStore.snapshot()` collapses the per-status `COUNT(*)` loop
+  into a single `GROUP BY` query and computes the chunk total from
+  the same result set, removing the previous N+1 round-trips.
+- `NLLBEngine.translate_batch` uses CTranslate2's native batched
+  translator instead of a Python-level loop, reducing per-call
+  overhead for multi-sentence translation.
+
+### Security
+- The FastAPI CORS middleware now restricts `allow_origins` to the
+  loopback interfaces (`http://localhost` and `http://127.0.0.1`)
+  instead of `"*"`, blocking cross-origin abuse of the local API.
+
+### Accessibility
+- The "Settings" tab no longer writes the legacy `ui.dark` flag;
+  the dark theme is now controlled exclusively by the header button
+  and the `Ctrl+Shift+T` shortcut.
+- Icon-only buttons (activity log toggle, HITL popup actions) now
+  expose accessible names, tooltips and keyboard shortcuts via the
+  shared `a11y.configure` helper.
 
 ## [4.1.5] — 2026-06-14
 
