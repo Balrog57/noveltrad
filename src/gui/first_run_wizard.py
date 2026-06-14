@@ -384,7 +384,7 @@ class NLLBPage(QWizardPage):
         layout.addWidget(browse)
         self.device = QComboBox()
         self.device.addItems(["cpu", "cuda", "auto"])
-        idx = self.device.findText(nllb.get("device", "cpu"))
+        idx = self.device.findText(nllb.get("device", "auto"))
         if idx >= 0:
             self.device.setCurrentIndex(idx)
         layout.addWidget(self.device)

@@ -91,3 +91,4 @@ venv/
 .noveltrad_vectors/
 *.ntrad
 Setup_NovelTrad.exe
+Setup_NovelTrad-v*.exe

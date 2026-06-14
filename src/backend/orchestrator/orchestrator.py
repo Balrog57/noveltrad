@@ -894,7 +894,7 @@ class Orchestrator:
         if not chunk_id:
             return
         self._emit_artifact_if_assembler(stage, chunk_id, payload)
-        self._persist_chunk_fields(chunk_id, payload)
+        self._persist_chunk_fields(stage, chunk_id, payload)
         self._emit_agent_done(stage, chunk_id, payload)
         self._maybe_auto_assemble(payload)
         if payload.get("terminal"):
@@ -902,7 +902,7 @@ class Orchestrator:
         next_stage = self._next_stage(stage)
         if next_stage is None or next_stage == ASSEMBLER:
             return
-        next_stage = self._maybe_skip_grammar(stage, next_stage, chunk_id, payload)
+        next_stage = self._maybe_escalate(stage, next_stage, chunk_id, payload)
         if not self._maybe_reflect(stage, chunk_id, payload):
             return
         self._forward_to_next_stage(next_stage, chunk_id, payload)
@@ -927,7 +927,9 @@ class Orchestrator:
                 self._project.status = "done"
         self._emit({"type": "artifact_ready", **artifact})
 
-    def _persist_chunk_fields(self, chunk_id: str, payload: dict[str, Any]) -> None:
+    def _persist_chunk_fields(
+        self, stage: str, chunk_id: str, payload: dict[str, Any]
+    ) -> None:
         for field_name in (
             "raw_translation",
             "glossary_applied",
@@ -954,32 +956,71 @@ class Orchestrator:
         new_status = payload.get("status") or STAGE_TO_STATUS.get(stage, "parsed")
         self.store.update_chunk_field(chunk_id, "status", new_status)
 
-    def _maybe_skip_grammar(
+    def _maybe_escalate(
         self,
         stage: str,
         next_stage: str | None,
         chunk_id: str,
         payload: dict[str, Any],
     ) -> str | None:
-        """Apply DAG shortcuts (qa_clean → reviewer, skipping grammar_proofer)."""
-        if stage != "qa_validator" or next_stage != "grammar_proofer":
-            return next_stage
-        if not (self._project and self._project.profile in ("balanced", "premium")):
-            return next_stage
-        if payload.get("qa_issues"):
-            return next_stage
+        """Apply DAG shortcuts and escalation policies.
+
+        Current policies:
+          * qa_clean + balanced/premium → skip grammar_proofer to reviewer.
+          * consistency flag on premium profile → branch to terminology_researcher.
+          * qa_issues on any profile → keep grammar_proofer (do not skip).
+        """
+        if next_stage is None:
+            return None
         order = self._stage_order
-        if "reviewer" not in order:
-            return next_stage
-        self._emit(
-            {
-                "type": "dag_skip",
-                "chunk_id": chunk_id,
-                "skipped": "grammar_proofer",
-                "reason": "qa_clean",
-            }
-        )
-        return "reviewer"
+        profile = self._project.profile if self._project else "balanced"
+
+        # Policy A: clean QA can bypass grammar_proofer in balanced/premium.
+        if stage == "qa_validator" and next_stage == "grammar_proofer":
+            if profile in ("balanced", "premium") and not payload.get("qa_issues"):
+                if "reviewer" in order:
+                    self._emit(
+                        {
+                            "type": "dag_skip",
+                            "chunk_id": chunk_id,
+                            "skipped": "grammar_proofer",
+                            "reason": "qa_clean",
+                        }
+                    )
+                    return "reviewer"
+
+        # Policy B: consistency flags in premium trigger terminology research.
+        if (
+            stage == "consistency_checker"
+            and profile == "premium"
+            and "terminology_researcher" in order
+        ):
+            flags = payload.get("consistency_flags") or []
+            if flags:
+                self._emit(
+                    {
+                        "type": "dag_escalate",
+                        "chunk_id": chunk_id,
+                        "from": "consistency_checker",
+                        "to": "terminology_researcher",
+                        "reason": "consistency_flag",
+                    }
+                )
+                return "terminology_researcher"
+
+        return next_stage
+
+    # Profile-specific reflection thresholds. Eco has no reviewer at all.
+    REFLEXION_THRESHOLD: dict[str, float] = {
+        "eco": 0.0,  # reviewer not used
+        "balanced": 0.7,
+        "premium": 0.85,
+    }
+
+    def _reflection_threshold(self) -> float:
+        """Return the review-score threshold below which a reflection is triggered."""
+        profile = self._project.profile if self._project else "balanced"
+        return self.REFLEXION_THRESHOLD.get(profile, 0.7)
 
     def _maybe_reflect(
         self, stage: str, chunk_id: str, payload: dict[str, Any]
@@ -987,16 +1028,17 @@ class Orchestrator:
         """Re-inject the chunk into llm_polisher if the reviewer scored low.
 
         Returns False if the chunk was reflected (caller must stop
-        forwarding); True otherwise.
+        forwarding); True otherwise. If the maximum number of reflection
+        loops is exhausted, the chunk is escalated to HITL.
         """
         if stage != "reviewer":
             return True
         score = payload.get("review_score", 1.0)
-        threshold = 0.85 if (self._project and self._project.profile == "premium") else 0.7
+        threshold = self._reflection_threshold()
         if score >= threshold:
             return True
         stored_chunk = self.store.get_chunk(chunk_id) or {}
-        stored_meta = stored_chunk.get("metadata") or {}
+        stored_meta = dict(stored_chunk.get("metadata") or {})
         reflection_count = int(stored_meta.get("reflection_count") or 0)
         max_reflections = 2
         if reflection_count >= max_reflections:
@@ -1006,6 +1048,19 @@ class Orchestrator:
                     "chunk_id": chunk_id,
                     "score": score,
                     "reflection_count": reflection_count,
+                }
+            )
+            self.register_hltl(
+                {
+                    "type": "hltl_request",
+                    "stage": "reviewer",
+                    "chunk_id": chunk_id,
+                    "payload": {
+                        "issue": {
+                            "summary": f"Review score {score:.2f} below threshold {threshold:.2f} after {reflection_count} reflection(s)",
+                            "kind": "reflection_exhausted",
+                        }
+                    },
                 }
             )
             return True

@@ -276,7 +276,9 @@ The release flow is documented in detail in
 2. Tag the commit: `git tag vX.Y.Z && git push --tags`.
 3. `.github/workflows/release.yml` builds the wheel + bundle +
    installer, computes the SHA256, writes `latest.json`, and opens
-   a **draft** GitHub release with the artefacts attached.
+   a **draft** GitHub release with the artefacts attached. The
+   updater trusts the manifest `download_url`, so it must match the
+   actual release asset name.
 4. Review the release notes in the GitHub UI, then publish.
 
 Pre-release tags (`v4.0.0-rc1`, etc.) are ignored by the workflow
@@ -327,12 +329,12 @@ GitHub Releases API:
    release notes and a *Update now* button.
 4. The installer is downloaded from the `download_url` in
    `latest.json`, its **SHA256** is verified against the manifest,
-   and Inno Setup is launched via `ShellExecuteW`
-   (`os.startfile`).
+   Authenticode is checked when `signtool` is available, and Inno
+   Setup is launched via `ShellExecuteW` (`os.startfile`).
 
-Signatures are **not** verified by the updater in v4; SHA256 over HTTPS
-is the trust boundary. See `docs/SIGNING.md` for optional Authenticode
-signing of the installer.
+Authenticode verification is best-effort because many machines do not
+ship `signtool.exe`; SHA256 over HTTPS remains the baseline trust
+boundary. See `docs/SIGNING.md` for installer signing details.
 
 ---
 

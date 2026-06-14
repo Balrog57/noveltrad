@@ -81,6 +81,7 @@ class TranslateTab(QWidget):
         self._client = client
         self._selected_paths: list[str] = []
         self._project_dir: str = ""
+        self._user_requested_select = False
 
         # Outer layout = vertical stack: header bar + stacked pages.
         outer = QVBoxLayout(self)
@@ -163,7 +164,7 @@ class TranslateTab(QWidget):
         if artifact.get("output_path"):
             self._assemble_btn.setEnabled(True)
             self._assemble_btn.setText(self.tr("📦  Open output folder"))
-        if any(counts.values()):
+        if any(counts.values()) and not self._user_requested_select:
             self.go_to_step(1)
 
     def on_artifact_ready(self, output_path: str) -> None:
@@ -277,6 +278,14 @@ class TranslateTab(QWidget):
         for stage in PIPELINE_STAGES:
             self._add_stage_row(stage)
         actions = QHBoxLayout()
+        self._new_files_btn = QPushButton(self.tr("Choose files"))
+        self._new_files_btn.clicked.connect(self._go_to_select)
+        configure(
+            self._new_files_btn,
+            name=self.tr("Choose files"),
+            description=self.tr("Return to file selection."),
+        )
+        actions.addWidget(self._new_files_btn)
         self._replay_btn = QPushButton(self.tr("🔁  Replay pending HITL"))
         self._replay_btn.clicked.connect(self.replayHltlRequested.emit)
         configure(
@@ -350,6 +359,18 @@ class TranslateTab(QWidget):
         filter_row.addWidget(self._filter, 1)
         layout.addLayout(filter_row)
 
+        actions = QHBoxLayout()
+        self._review_new_files_btn = QPushButton(self.tr("Choose files"))
+        self._review_new_files_btn.clicked.connect(self._go_to_select)
+        configure(
+            self._review_new_files_btn,
+            name=self.tr("Choose files"),
+            description=self.tr("Return to file selection."),
+        )
+        actions.addWidget(self._review_new_files_btn)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+
         self._review_view = QListView()
         self._review_view.setUniformItemSizes(True)
         self._review_view.doubleClicked.connect(self._on_chunk_double_clicked)
@@ -377,6 +398,7 @@ class TranslateTab(QWidget):
     def _on_start(self) -> None:
         if not self._selected_paths:
             return
+        self._user_requested_select = False
         source_lang = self._src.currentData() or "auto"
         target_lang = self._tgt.currentData() or "fr"
         quality = self._quality.currentData() or "balanced"
@@ -405,6 +427,11 @@ class TranslateTab(QWidget):
             )
         )
         self.go_to_step(1)
+
+    def _go_to_select(self) -> None:
+        self._user_requested_select = True
+        self.go_to_step(0)
+        self.set_status(self.tr("Select files to translate."))
 
     def _on_filter_changed(self, _idx: int) -> None:
         if self._review_model is None:

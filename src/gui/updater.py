@@ -244,13 +244,12 @@ class Updater:
         exe = Path(exe_path)
         if not exe.exists():
             raise FileNotFoundError(str(exe))
-        # Verify Authenticode signature on Windows before launching
-        # the installer. Gated to frozen builds only; dev mode skips.
+        # Best-effort Authenticode verification on Windows before
+        # launching the installer. GitHub builds are unsigned when no
+        # signing certificate is configured, so SHA256 verification from
+        # latest.json remains the hard gate.
         if getattr(sys, "frozen", False) and sys.platform == "win32":
-            if not self._verify_authenticode(exe):
-                raise ValueError(
-                    f"Installer signature verification failed: {exe.name}"
-                )
+            self._verify_authenticode(exe)
         try:
             os.startfile(str(exe))  # type: ignore[attr-defined]
             return
@@ -266,7 +265,8 @@ class Updater:
         """Best-effort Authenticode signature verification via signtool.
 
         Returns True if signtool reports a valid signature, False otherwise.
-        On platforms without signtool, returns True (signatures are optional).
+        On platforms without signtool, returns True. The caller treats a
+        False return as a warning only because release builds may be unsigned.
         """
         signtool = _find_signtool()
         if signtool is None:

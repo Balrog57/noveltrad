@@ -207,6 +207,18 @@
         <translation>Parcourir les fichiers</translation>
     </message>
     <message>
+        <source>Clear all</source>
+        <translation>Tout supprimer</translation>
+    </message>
+    <message>
+        <source>Clear selected files</source>
+        <translation>Supprimer les fichiers sélectionnés</translation>
+    </message>
+    <message>
+        <source>Remove all selected files</source>
+        <translation>Supprimer tous les fichiers sélectionnés</translation>
+    </message>
+    <message>
         <source>Select files to translate</source>
         <translation>Sélectionnez les fichiers à traduire</translation>
     </message>
@@ -310,6 +322,14 @@
         <translation>{n} segments</translation>
     </message>
     <message>
+        <source>Choose files</source>
+        <translation>Choisir des fichiers</translation>
+    </message>
+    <message>
+        <source>Return to file selection.</source>
+        <translation>Revenir à la sélection des fichiers.</translation>
+    </message>
+    <message>
         <source>🔁  Replay pending HITL</source>
         <translation>🔁  Rejouer les HITL en attente</translation>
     </message>
@@ -360,6 +380,10 @@
     <message>
         <source>List of chunks, double-click to inspect.</source>
         <translation>Liste des segments, double-cliquez pour inspecter.</translation>
+    </message>
+    <message>
+        <source>Select files to translate.</source>
+        <translation>Sélectionnez les fichiers à traduire.</translation>
     </message>
     <message>
         <source>{polished}/{total} chunks · {issues} issues</source>
@@ -499,6 +523,10 @@
     <message>
         <source>Saved.</source>
         <translation>Enregistré.</translation>
+    </message>
+    <message>
+        <source>Saved. Restart NovelTrad to apply the language.</source>
+        <translation>Enregistré. Redémarrez NovelTrad pour appliquer la langue.</translation>
     </message>
     <message>
         <source>Saved. Restart NovelTrad to apply backend changes.</source>

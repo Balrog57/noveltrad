@@ -335,6 +335,7 @@ class StateStore:
             "output_hash",
             "review_score",
             "review_annotations",
+            "metadata_json",
         }
         if field not in allowed:
             raise ValueError(f"Refusing to update non-allowlisted field: {field}")
@@ -697,6 +698,35 @@ class StateStore:
             except (json.JSONDecodeError, KeyError, ValueError):
                 logger.warning("Skipping corrupt project record: %s", row["key"], exc_info=True)
         return projects
+
+    def get_project(self, project_id: str) -> dict[str, Any] | None:
+        """Return one persisted project metadata record."""
+        raw = self.get_state(f"project:{project_id}")
+        if raw is None:
+            return None
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("Skipping corrupt project record: project:%s", project_id)
+            return None
+        return {
+            "project_id": project_id,
+            "source_path": data.get("source_path", ""),
+            "project_dir": data.get("project_dir", ""),
+            "source_lang": data.get("source_lang", ""),
+            "target_lang": data.get("target_lang", ""),
+            "profile": data.get("profile", "balanced"),
+            "output_format": data.get("output_format", "txt"),
+            "created_at": data.get("created_at", ""),
+        }
+
+    def forget_project(self, project_id: str) -> None:
+        """Remove the persisted project metadata entry."""
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM pipeline_state WHERE key = ?",
+                (f"project:{project_id}",),
+            )
 
     def clear_hltl_records(self) -> None:
         with self._lock:

@@ -8,9 +8,11 @@ on:
 
 jobs:
     validate:
-        runs-on: windows-latest
+        runs-on: ${{ matrix.os }}
         strategy:
+            fail-fast: false
             matrix:
+                os: ["windows-latest", "ubuntu-latest"]
                 python-version: ["3.11", "3.12"]
 
         steps:
@@ -20,6 +22,12 @@ jobs:
               uses: actions/setup-python@v5
               with:
                   python-version: ${{ matrix.python-version }}
+
+            - name: Install Linux Qt runtime deps
+              if: runner.os == 'Linux'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libegl1 libxcb-cursor0
 
             - name: Install runtime deps
               run: |
@@ -33,4 +41,15 @@ jobs:
               env:
                   NOVELTRAD_FAKE_LLM: "1"
                   NOVELTRAD_TRANSLATION_TEST_MODE: "1"
+                  QT_QPA_PLATFORM: "offscreen"
               run: python -m unittest discover -s tests -p "test_*.py"
+
+            - name: Run corpus regression check
+              run: python -m tests.corpus.evaluate > corpus-report.json
+
+            - name: Upload corpus report
+              uses: actions/upload-artifact@v4
+              with:
+                  name: corpus-report-${{ matrix.os }}-py${{ matrix.python-version }}
+                  path: corpus-report.json
+                  if-no-files-found: error

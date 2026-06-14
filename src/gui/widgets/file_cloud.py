@@ -98,6 +98,11 @@ class FileCloud(QGroupBox):
         self._counter.setProperty("role", "muted")
         row.addWidget(self._counter)
         row.addStretch(1)
+        self._clear_all = QPushButton(self.tr("Clear all"))
+        self._clear_all.clicked.connect(self.clear)
+        self._clear_all.setToolTip(self.tr("Remove all selected files"))
+        configure(self._clear_all, name="Clear selected files")
+        row.addWidget(self._clear_all)
         self._browse = QPushButton(self.tr("Browse…"))
         self._browse.setProperty("role", "primary")
         self._browse.clicked.connect(self._open_dialog)
@@ -235,6 +240,7 @@ class FileCloud(QGroupBox):
             self._hint.setText(self.tr("Drop files to translate"))
             self._sub.setVisible(True)
             self._counter.setText("")
+            self._clear_all.setEnabled(False)
         else:
             self._icon.setText("📄")
             self._hint.setText(
@@ -242,6 +248,7 @@ class FileCloud(QGroupBox):
             )
             self._sub.setVisible(False)
             self._counter.setText(self.tr("{n} ready").format(n=n))
+            self._clear_all.setEnabled(True)
 
 
 __all__ = ["FileCloud"]

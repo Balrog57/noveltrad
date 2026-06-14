@@ -23,7 +23,15 @@ from pathlib import Path
 # Must be set before any Qt import.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QCoreApplication, QEvent, QSettings, QTimer  # noqa: E402
+from PyQt6.QtCore import (  # noqa: E402
+    Q_ARG,
+    QCoreApplication,
+    QEvent,
+    QMetaObject,
+    QSettings,
+    Qt,
+    QTimer,
+)
 from PyQt6.QtGui import QKeyEvent  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
@@ -38,6 +46,8 @@ from src.gui.design_system import (  # noqa: E402
 from src.gui.main_window import DRAWER_BREAKPOINT  # noqa: E402
 from src.gui.theme import VALID_THEMES, ThemeManager  # noqa: E402
 from src.gui.widgets.event_debouncer import EventDebouncer  # noqa: E402
+from src.gui.dialogs.update_dialog import UpdateDialog  # noqa: E402
+from src.gui.updater import UpdateInfo, Updater  # noqa: E402
 
 
 def _ensure_app() -> QApplication:
@@ -84,6 +94,33 @@ class ThemeManagerTests(unittest.TestCase):
         nxt = tm.cycle(app)
         self.assertNotEqual(start, nxt)
         self.assertIn(nxt, VALID_THEMES)
+
+
+class UpdateDialogTests(unittest.TestCase):
+    def test_download_callbacks_are_qt_slots(self) -> None:
+        app = _ensure_app()
+        dialog = UpdateDialog(
+            Updater("4.1.0"),
+            UpdateInfo(
+                version="4.1.5",
+                tag="v4.1.5",
+                release_date="",
+                body="",
+                download_url="https://example.com/setup.exe",
+            ),
+        )
+        meta = dialog.metaObject()
+        self.assertGreaterEqual(meta.indexOfSlot("_set_progress(int)"), 0)
+        self.assertGreaterEqual(meta.indexOfSlot("_on_download_finished()"), 0)
+
+        QMetaObject.invokeMethod(
+            dialog,
+            "_set_progress",
+            Qt.ConnectionType.QueuedConnection,
+            Q_ARG(int, 42),
+        )
+        app.processEvents()
+        self.assertEqual(dialog._progress.value(), 42)
 
 
 class MainWindowSmokeTests(unittest.TestCase):
@@ -255,6 +292,30 @@ class ReviewModelTests(unittest.TestCase):
         # Inspect calls: offsets are 0, 200, 400.
         offsets = [c["offset"] for c in client.calls]
         self.assertEqual(offsets, [0, 200, 400])
+
+
+class TranslateTabNavigationTests(unittest.TestCase):
+    def test_choose_files_button_returns_to_select_and_blocks_auto_pipeline_jump(self) -> None:
+        app = _ensure_app()
+        from src.gui.tabs.translate_tab import TranslateTab
+
+        tab = TranslateTab()
+        try:
+            state = {
+                "state_store": {
+                    "chunks_total": 1,
+                    "chunks_by_status": {"polished": 1},
+                }
+            }
+            tab.update_pipeline_state(state)
+            self.assertEqual(tab._stack.currentIndex(), 1)
+            tab._go_to_select()
+            self.assertEqual(tab._stack.currentIndex(), 0)
+            tab.update_pipeline_state(state)
+            self.assertEqual(tab._stack.currentIndex(), 0)
+        finally:
+            tab.deleteLater()
+            app.processEvents()
 
 
 if __name__ == "__main__":

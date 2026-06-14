@@ -23,12 +23,15 @@ import re
 from typing import Any
 
 from .base_worker import BaseWorker
+from .prompt_contracts import literary_contract
 from ..llm_router.router import get_router
 
 logger = logging.getLogger(__name__)
 
 
 _REFLECT_PROMPT = """You are a literary translation polisher.
+{contract}
+
 Source language: {src}
 Target language: {tgt}
 
@@ -57,6 +60,8 @@ CURRENT TRANSLATION:
 
 
 _IMPROVE_PROMPT = """You are a literary translation polisher.
+{contract}
+
 Source language: {src}
 Target language: {tgt}
 
@@ -225,12 +230,17 @@ class Worker(BaseWorker):
         chunk_id = msg.get("chunk_id")
         src = payload.get("source_text", "")
         current = (
-            payload.get("grammar_checked")
+            payload.get("polished_translation")
+            or payload.get("grammar_checked")
             or payload.get("qa_checked")
             or payload.get("glossary_applied")
             or payload.get("raw_translation")
             or ""
         )
+        # Reflection instructions from reviewer take precedence over plain polish.
+        reflection_instructions = payload.get("reflection_instructions")
+        review_score = payload.get("review_score")
+        review_annotations = payload.get("review_annotations") or []
         neighbours = payload.get("neighbours") or []
         src_lang = payload.get("source_lang", "en")
         tgt_lang = payload.get("target_lang", "fr")
@@ -239,7 +249,21 @@ class Worker(BaseWorker):
                 chunk_id, "empty_input", "llm_polisher: missing input"
             )
 
+        # When the orchestrator sends a reflection task, use a focused prompt.
+        if reflection_instructions:
+            return self._polish_with_reflection(
+                chunk_id,
+                src,
+                current,
+                reflection_instructions,
+                review_score,
+                review_annotations,
+                src_lang,
+                tgt_lang,
+            )
+
         reflect_prompt = _REFLECT_PROMPT.format(
+            contract=literary_contract(),
             src=src_lang,
             tgt=tgt_lang,
             context=_neighbour_context(neighbours),
@@ -273,6 +297,7 @@ class Worker(BaseWorker):
             )
 
         improve_prompt = _IMPROVE_PROMPT.format(
+            contract=literary_contract(),
             src=src_lang,
             tgt=tgt_lang,
             suggestions=json.dumps(suggestions, ensure_ascii=False, indent=2),
@@ -315,6 +340,87 @@ class Worker(BaseWorker):
                 "status": "polished",
             },
         )
+
+    def _polish_with_reflection(
+        self,
+        chunk_id: str | None,
+        src: str,
+        current: str,
+        reflection_instructions: str,
+        review_score: float | None,
+        review_annotations: list[dict[str, Any]],
+        src_lang: str,
+        tgt_lang: str,
+    ) -> dict[str, Any] | None:
+        """One-shot revision driven by reviewer annotations."""
+        annot_text = (
+            "\n".join(
+                f"- [{a.get('type', '')}] {a.get('span', '')}: {a.get('suggestion', '')}"
+                for a in review_annotations[:5]
+            )
+            if review_annotations
+            else ""
+        )
+        prompt = _REFLECTION_REWRITE_PROMPT.format(
+            contract=literary_contract(),
+            src=src_lang,
+            tgt=tgt_lang,
+            instructions=reflection_instructions,
+            annotations=annot_text,
+            src_text=src[:1500],
+            tgt_text=current[:1500],
+        )
+        try:
+            improved = self._router.complete(prompt, use_cache=False)
+        except Exception as exc:
+            logger.warning("llm_polisher: reflection rewrite failed: %s", exc)
+            improved = current
+        if not improved.strip():
+            improved = current
+        improved = improved.strip()
+        if _rejects_as_source_leak(src, current, improved):
+            improved = current
+        elif _rejects_as_assistant_reply(current, improved):
+            improved = current
+        elif _rejects_as_omission(current, improved):
+            improved = current
+        return self._emit_done(
+            chunk_id,
+            {
+                "polished_translation": improved,
+                "reflection": reflection_instructions,
+                "suggestions": review_annotations,
+                "review_score": review_score,
+                "status": "polished",
+            },
+        )
+
+
+_REFLECTION_REWRITE_PROMPT = """You are a literary translation reviser.
+{contract}
+
+Source language: {src}
+Target language: {tgt}
+
+A previous reviewer evaluated the CURRENT TRANSLATION and gave it a low score.
+Apply the following INSTRUCTIONS and ANNOTATIONS to produce an IMPROVED
+TRANSLATION. Preserve all source content, fix only the identified issues,
+and do not add commentary or markdown fences.
+
+INSTRUCTIONS:
+{instructions}
+
+ANNOTATIONS:
+{annotations}
+
+SOURCE:
+{src_text}
+
+CURRENT TRANSLATION:
+{tgt_text}
+
+IMPROVED TRANSLATION:
+"""
 
 
 __all__ = ["Worker"]

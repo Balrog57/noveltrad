@@ -291,13 +291,39 @@ class DrainLoopTests(unittest.TestCase):
             stored2["source_hash"],
             hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
         )
+        # A fresh task message should have been enqueued.
+        q = self.orch._workers.queues_for("fast_translator").input
+        self.assertEqual(q.qsize(), 1)
 
-    def test_f_replay_nonexistent_chunk_skipped(self) -> None:
+    def test_f_replay_with_raw_translation_resumes_downstream(self) -> None:
+        """A chunk that already has a raw_translation skips re-translation."""
+        chunk_id = "hash-replay-raw-1"
+        source_text = "Already translated once."
+        chunk = {
+            "id": chunk_id,
+            "chapter_id": "ch2",
+            "chapter_title": "Replay Raw",
+            "chunk_index": 0,
+            "source_text": source_text,
+            "source_hash": hashlib.sha256(b"bad").hexdigest(),
+            "raw_translation": "Déjà traduit.",
+        }
+        self.orch.submit_chunks([chunk])
+        stored = self.orch.store.get_chunk(chunk_id)
+        self.assertEqual(stored["status"], "error")
+
+        count = self.orch.replay_chunks([chunk_id])
+        self.assertEqual(count, 1)
+        stored2 = self.orch.store.get_chunk(chunk_id)
+        self.assertEqual(stored2["status"], "fast_translated")
+        self.assertEqual(stored2["raw_translation"], "Déjà traduit.")
+
+    def test_g_replay_nonexistent_chunk_skipped(self) -> None:
         """replay_chunks silently skips non-existent chunk IDs."""
         count = self.orch.replay_chunks(["does-not-exist"])
         self.assertEqual(count, 0)
 
-    def test_g_source_hash_auto_computed_when_missing(self) -> None:
+    def test_h_source_hash_auto_computed_when_missing(self) -> None:
         """Chunks submitted without source_hash get one auto-computed."""
         chunk_id = "hash-auto-1"
         source_text = "Auto-generated hash test."

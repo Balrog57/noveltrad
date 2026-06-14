@@ -17,11 +17,14 @@ import re
 from typing import Any
 
 from .base_worker import BaseWorker
+from .prompt_contracts import literary_contract
 from ..llm_router.router import get_router
 
 logger = logging.getLogger(__name__)
 
 _RESEARCH_PROMPT = """You are a literary terminology researcher.
+{contract}
+
 Source language: {src}
 Target language: {tgt}
 
@@ -117,6 +120,7 @@ class Worker(BaseWorker):
                 chunk_id, "empty_input", "terminology_researcher: empty source"
             )
         prompt = _RESEARCH_PROMPT.format(
+            contract=literary_contract(),
             src=src_lang,
             tgt=tgt_lang,
             src_text=src[:3000],

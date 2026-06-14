@@ -74,19 +74,19 @@ class NLLBEngine:
     Configuration via env / options dict:
         NLLB_MODEL  — local path or HF model id (default: facebook/nllb-200-distilled-600M)
         NLLB_QUANT  — int8 / int8_float16 / float16 / float32 (default: int8)
-        NLLB_DEVICE — cpu / cuda / auto (default: cpu)
+        NLLB_DEVICE — cpu / cuda / auto (default: auto)
     """
 
     def __init__(
         self,
         model: str | None = None,
-        device: str = "cpu",
+        device: str = "auto",
         quant: str = "int8",
     ):
         self.model_name = model or os.environ.get(
             "NLLB_MODEL", "facebook/nllb-200-distilled-600M"
         )
-        self.device = device or os.environ.get("NLLB_DEVICE", "cpu")
+        self.device = device or os.environ.get("NLLB_DEVICE", "auto")
         self.quant = quant or os.environ.get("NLLB_QUANT", "int8")
         self._translator = None
         self._sp = None

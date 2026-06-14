@@ -72,6 +72,19 @@ class FileCloudMultiFileTests(unittest.TestCase):
         cloud.remove_path(a)
         self.assertEqual(cloud.selected_paths(), [b])
 
+    def test_clear_removes_all_paths_and_emits_empty_list(self) -> None:
+        cloud = self._make_cloud()
+        captured: list[list[str]] = []
+        cloud.filesSelected.connect(lambda paths: captured.append(list(paths)))
+        paths = [
+            str(Path("C:/tmp/a.txt")),
+            str(Path("C:/tmp/b.txt")),
+        ]
+        cloud.add_paths(paths)
+        cloud.clear()
+        self.assertEqual(cloud.selected_paths(), [])
+        self.assertEqual(captured[-1], [])
+
 
 class StateStoreSourceFileTests(unittest.TestCase):
     def setUp(self) -> None:

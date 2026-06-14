@@ -17,7 +17,7 @@ import webbrowser
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWidgets import (
@@ -164,10 +164,12 @@ class UpdateDialog(QDialog):
             Q_ARG(int, pct),
         )
 
-    def _set_progress(self, pct: int) -> None:  # Qt slot
+    @pyqtSlot(int)
+    def _set_progress(self, pct: int) -> None:
         self._progress.setValue(pct)
 
-    def _on_download_finished(self) -> None:  # Qt slot
+    @pyqtSlot()
+    def _on_download_finished(self) -> None:
         if self._error or not self._downloaded_path:
             self._update_btn.setEnabled(True)
             self._github_btn.setEnabled(True)

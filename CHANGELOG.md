@@ -12,6 +12,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Corpus evaluation runner (`python -m tests.corpus.evaluate`) that
+  emits deterministic offline JSON metrics for structure and
+  terminology checks.
+- Project privacy action: Recent Projects can clear local caches and
+  stored metadata through `DELETE /projects/{project_id}/local-data`.
+- Shared literary prompt contracts for LLM-backed agents.
+- CI test matrix now covers Windows and Linux for Python 3.11/3.12
+  while keeping the release workflow Windows-only.
+
+### Changed
+- Release documentation now treats `latest.json` `download_url` as the
+  updater source of truth and documents best-effort Authenticode
+  verification.
+
+## [4.1.5] — 2026-06-14
+
+### Fixed
+- The updater dialog now receives background download progress and
+  completion callbacks through registered Qt slots.
+- Unsigned GitHub-built installers no longer block the updater launch
+  after SHA256 verification succeeds.
+
+### Tests
+- Added GUI coverage for updater dialog thread callbacks.
+
+## [4.1.4] — 2026-06-14
+
+### Fixed
+- French UI translation now loads from the saved language setting and
+  ships with the compiled Qt `.qm` catalogue in frozen builds.
+- The installer can be displayed in English or French and records the
+  initial application language without overwriting an existing user
+  config.
+- The Translate workflow exposes a visible return-to-file-selection
+  action from Pipeline and Review pages.
+- The release workflow verifies the generated
+  `Setup_NovelTrad-v<version>.exe` before uploading release assets.
+- The release workflow writes `latest.json` without recopying the
+  installer onto itself in GitHub Actions.
+- Reviewer reflection metadata is persisted correctly.
+
+### Tests
+- Added focused reflection-loop, DAG escalation, and guarded headless
+  client smoke coverage.
+
 ## [4.0.1] — 2026-06-11
 
 ### Added
@@ -47,13 +93,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `load_translator`) never raise and report the expected types.
   `ConfigManager` defaults `ui.language` to `en`.
 
-### Planned
-- Real "Recent projects" page (currently a placeholder in the GUI).
-- HMAC-signed `latest.json` for stronger auto-update integrity.
-- Optional Authenticode verification step in the auto-updater
-  (see `docs/SIGNING.md`).
-- `pylrelease6` invocation integrated into `build.py --all`.
-
 ---
 
 ## [4.0.0] — 2026-06-10
@@ -77,7 +116,7 @@ around a multi-agent translation pipeline and a minimal PyQt6 shell.
   hardware.
 - **Document readers and chunker** for EPUB, DOCX, TXT, and SRT.
 - **PyQt6 desktop client** with a responsive sidebar + 5-page
-  stacked layout (Translate, Projects placeholder, Glossaries, Files,
+  stacked layout (Translate, Projects, Glossaries, Files,
   Settings), a 3-step translate workflow, a design system / theme
   manager, a first-run wizard, an activity log over WebSocket, a
   chunk detail dialog, and a HITL popup.

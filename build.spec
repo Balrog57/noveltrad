@@ -10,7 +10,12 @@ The backend modules are still included (hiddenimports) so the spawn
 `-m src.backend.server` works inside the frozen exe too.
 """
 
+from pathlib import Path
+
+
 datas = []
+for qm in Path('src/gui/i18n').glob('*.qm'):
+    datas.append((str(qm), 'src/gui/i18n'))
 binaries = []
 hiddenimports = [
     # v4 backend (the GUI spawns these as a subprocess)

@@ -14,7 +14,9 @@ tests. Instead we verify the helpers behave correctly:
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -69,6 +71,80 @@ class ConfigLanguageDefaultTests(unittest.TestCase):
         ui = ConfigManager.DEFAULT_CONFIG.get("ui", {})
         self.assertIn("language", ui)
         self.assertEqual(ui["language"], "en")
+
+    def test_default_nllb_device_is_auto(self) -> None:
+        from src.gui.app_config import ConfigManager
+
+        old_env = os.environ.get("NLLB_DEVICE")
+        old_instance = ConfigManager._instance
+        old_config_file = ConfigManager.CONFIG_FILE
+        old_legacy_file = ConfigManager.LEGACY_CONFIG_FILE
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                ConfigManager._instance = None
+                ConfigManager.CONFIG_FILE = Path(tmp) / "missing_config.json"
+                ConfigManager.LEGACY_CONFIG_FILE = Path(tmp) / "missing_legacy.json"
+                cfg = ConfigManager()
+                self.assertEqual(cfg.config["nllb"]["device"], "auto")
+                cfg.apply_environment()
+                self.assertEqual(os.environ["NLLB_DEVICE"], "auto")
+        finally:
+            ConfigManager._instance = old_instance
+            ConfigManager.CONFIG_FILE = old_config_file
+            ConfigManager.LEGACY_CONFIG_FILE = old_legacy_file
+            if old_env is None:
+                os.environ.pop("NLLB_DEVICE", None)
+            else:
+                os.environ["NLLB_DEVICE"] = old_env
+
+    def test_default_language_reads_configured_french(self) -> None:
+        from src.gui.app_config import ConfigManager
+        from src.gui.i18n import default_language
+
+        old_instance = ConfigManager._instance
+        old_config_file = ConfigManager.CONFIG_FILE
+        old_legacy_file = ConfigManager.LEGACY_CONFIG_FILE
+        old_env = os.environ.get("NOVELTRAD_LANGUAGE")
+        try:
+            os.environ.pop("NOVELTRAD_LANGUAGE", None)
+            with tempfile.TemporaryDirectory() as tmp:
+                cfg = Path(tmp) / "config.json"
+                cfg.write_text(
+                    '{"first_run": false, "ui": {"language": "fr"}}',
+                    encoding="utf-8",
+                )
+                ConfigManager._instance = None
+                ConfigManager.CONFIG_FILE = cfg
+                ConfigManager.LEGACY_CONFIG_FILE = Path(tmp) / "missing.json"
+                self.assertEqual(default_language(), "fr")
+        finally:
+            ConfigManager._instance = old_instance
+            ConfigManager.CONFIG_FILE = old_config_file
+            ConfigManager.LEGACY_CONFIG_FILE = old_legacy_file
+            if old_env is not None:
+                os.environ["NOVELTRAD_LANGUAGE"] = old_env
+
+    def test_installer_language_used_for_initial_config_only(self) -> None:
+        from src.gui.app_config import ConfigManager
+
+        old_instance = ConfigManager._instance
+        old_config_file = ConfigManager.CONFIG_FILE
+        old_legacy_file = ConfigManager.LEGACY_CONFIG_FILE
+        old_installer_file = ConfigManager.INSTALLER_LANGUAGE_FILE
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                ConfigManager._instance = None
+                ConfigManager.CONFIG_FILE = tmp_path / "missing_config.json"
+                ConfigManager.LEGACY_CONFIG_FILE = tmp_path / "missing_legacy.json"
+                ConfigManager.INSTALLER_LANGUAGE_FILE = tmp_path / "installer_language.txt"
+                ConfigManager.INSTALLER_LANGUAGE_FILE.write_text("fr", encoding="utf-8")
+                self.assertEqual(ConfigManager().config["ui"]["language"], "fr")
+        finally:
+            ConfigManager._instance = old_instance
+            ConfigManager.CONFIG_FILE = old_config_file
+            ConfigManager.LEGACY_CONFIG_FILE = old_legacy_file
+            ConfigManager.INSTALLER_LANGUAGE_FILE = old_installer_file
 
 
 if __name__ == "__main__":
