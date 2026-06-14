@@ -207,6 +207,18 @@
         <translation>Parcourir les fichiers</translation>
     </message>
     <message>
+        <source>Clear all</source>
+        <translation>Tout supprimer</translation>
+    </message>
+    <message>
+        <source>Clear selected files</source>
+        <translation>Supprimer les fichiers sélectionnés</translation>
+    </message>
+    <message>
+        <source>Remove all selected files</source>
+        <translation>Supprimer tous les fichiers sélectionnés</translation>
+    </message>
+    <message>
         <source>Select files to translate</source>
         <translation>Sélectionnez les fichiers à traduire</translation>
     </message>

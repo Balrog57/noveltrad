@@ -43,7 +43,7 @@ class ConfigManager:
         },
         "nllb": {
             "model": "facebook/nllb-200-distilled-600M",
-            "device": "cpu",
+            "device": "auto",
         },
     }
 
@@ -126,7 +126,7 @@ class ConfigManager:
         os.environ["NLLB_MODEL"] = str(
             nllb.get("model", "facebook/nllb-200-distilled-600M")
         )
-        os.environ["NLLB_DEVICE"] = str(nllb.get("device", "cpu"))
+        os.environ["NLLB_DEVICE"] = str(nllb.get("device", "auto"))
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

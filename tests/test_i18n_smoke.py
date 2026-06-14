@@ -72,6 +72,31 @@ class ConfigLanguageDefaultTests(unittest.TestCase):
         self.assertIn("language", ui)
         self.assertEqual(ui["language"], "en")
 
+    def test_default_nllb_device_is_auto(self) -> None:
+        from src.gui.app_config import ConfigManager
+
+        old_env = os.environ.get("NLLB_DEVICE")
+        old_instance = ConfigManager._instance
+        old_config_file = ConfigManager.CONFIG_FILE
+        old_legacy_file = ConfigManager.LEGACY_CONFIG_FILE
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                ConfigManager._instance = None
+                ConfigManager.CONFIG_FILE = Path(tmp) / "missing_config.json"
+                ConfigManager.LEGACY_CONFIG_FILE = Path(tmp) / "missing_legacy.json"
+                cfg = ConfigManager()
+                self.assertEqual(cfg.config["nllb"]["device"], "auto")
+                cfg.apply_environment()
+                self.assertEqual(os.environ["NLLB_DEVICE"], "auto")
+        finally:
+            ConfigManager._instance = old_instance
+            ConfigManager.CONFIG_FILE = old_config_file
+            ConfigManager.LEGACY_CONFIG_FILE = old_legacy_file
+            if old_env is None:
+                os.environ.pop("NLLB_DEVICE", None)
+            else:
+                os.environ["NLLB_DEVICE"] = old_env
+
     def test_default_language_reads_configured_french(self) -> None:
         from src.gui.app_config import ConfigManager
         from src.gui.i18n import default_language

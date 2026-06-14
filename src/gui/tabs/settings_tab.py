@@ -91,9 +91,6 @@ class SettingsTab(QWidget):
         self._nllb_device.addItems(["cpu", "cuda", "auto"])
         form.addRow(self.tr("NLLB device:"), self._nllb_device)
 
-        self._dark_mode = QCheckBox(self.tr("Dark theme"))
-        form.addRow("", self._dark_mode)
-
         self._language = QComboBox()
         for code, native in available_languages():
             self._language.addItem(native, code)
@@ -139,11 +136,10 @@ class SettingsTab(QWidget):
         self._parallel.setValue(int(llm.get("parallel", 1)))
         self._draft_fallback.setChecked(bool(llm.get("draft_fallback", False)))
         self._nllb_model.setText(nllb.get("model", "facebook/nllb-200-distilled-600M"))
-        dev = nllb.get("device", "cpu")
+        dev = nllb.get("device", "auto")
         idx = self._nllb_device.findText(dev)
         if idx >= 0:
             self._nllb_device.setCurrentIndex(idx)
-        self._dark_mode.setChecked(bool(ui.get("dark", True)))
         lang_idx = self._language.findData(ui.get("language", "en"))
         if lang_idx >= 0:
             self._language.setCurrentIndex(lang_idx)
@@ -182,7 +178,6 @@ class SettingsTab(QWidget):
                 "device": self._nllb_device.currentText(),
             },
             "ui": {
-                "dark": self._dark_mode.isChecked(),
                 "language": self._language.currentData() or "en",
             },
         }
@@ -192,7 +187,11 @@ class SettingsTab(QWidget):
         old_lang = str((cfg.get("ui", {}) or {}).get("language", "en"))
         collected = self._collect()
         new_lang = str((collected.get("ui", {}) or {}).get("language", "en"))
-        cfg.update(collected)
+        for section, values in collected.items():
+            if isinstance(values, dict) and isinstance(cfg.get(section), dict):
+                cfg[section].update(values)
+            else:
+                cfg[section] = values
         self._config.save_config()
         self._config.apply_environment()
         if new_lang != old_lang:
