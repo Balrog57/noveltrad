@@ -39,7 +39,7 @@ class HealthVersionTests(unittest.TestCase):
                 self.assertEqual(res.status_code, 200)
                 body = res.json()
                 self.assertTrue(body.get("ok"))
-                self.assertEqual(body.get("version"), "4.1.0")
+                self.assertEqual(body.get("version"), src.__version__)
 
 
 if __name__ == "__main__":

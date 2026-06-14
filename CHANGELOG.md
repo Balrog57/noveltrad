@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   updater source of truth and documents best-effort Authenticode
   verification.
 
-## [4.1.1] — 2026-06-14
+## [4.1.2] — 2026-06-14
 
 ### Fixed
 - French UI translation now loads from the saved language setting and
