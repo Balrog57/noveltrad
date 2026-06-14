@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   updater source of truth and documents best-effort Authenticode
   verification.
 
+## [4.1.5] — 2026-06-14
+
+### Fixed
+- The updater dialog now receives background download progress and
+  completion callbacks through registered Qt slots.
+- Unsigned GitHub-built installers no longer block the updater launch
+  after SHA256 verification succeeds.
+
+### Tests
+- Added GUI coverage for updater dialog thread callbacks.
+
 ## [4.1.4] — 2026-06-14
 
 ### Fixed
