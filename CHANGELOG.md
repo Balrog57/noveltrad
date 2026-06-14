@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+## [4.1.14] - 2026-06-14
+### Fixed- Header: the legacy Queued line that expanded the title to thousands of pixels with 2000+ files is replaced with a compact Queued N file(s) message. The full list lives in the per-file queue table on the Pipeline page.- Projects tab: per-row try/except so one malformed entry can no longer crash the whole tab when the user clicks Projets.- main_qt: install a global sys.excepthook that logs every uncaught exception to APPDATA/NovelTrad/backend.log so we can diagnose Qt-side crashes that happen outside any Python try/except (for example a signal-slot raising).
 ## [4.1.13] - 2026-06-14
 
 ### Changed

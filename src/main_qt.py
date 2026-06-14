@@ -68,6 +68,10 @@ from src.gui.main_window import MainWindow
 
 
 def main() -> int:
+    # Catch-all exception hook for uncaught Python exceptions
+    # (e.g. a signal-slot raising). Without this, Qt silently
+    # terminates the app on the first uncaught exception.
+    sys.excepthook = _global_excepthook
     app = QApplication(sys.argv)
     # Install UI translator (French today; English by default). Note:
     # language switching requires a restart in Qt — we only honour the
@@ -90,6 +94,19 @@ def main() -> int:
     window.raise_()
     window.activateWindow()
     return app.exec()
+
+
+def _global_excepthook(exc_type, exc_value, exc_tb) -> None:
+    """Log uncaught exceptions to backend.log so we can
+    diagnose Qt crashes that happen outside any Python try/except
+    (for example a signal-slot failure).
+    """
+    try:
+        import traceback as _tb
+        lines = "".join(_tb.format_exception(exc_type, exc_value, exc_tb))
+        _backend_debug_log("UNCAUGHT: " + lines)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

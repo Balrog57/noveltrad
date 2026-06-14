@@ -638,17 +638,12 @@ class TranslateTab(QWidget):
                 "_queue_total": n,
             }
             self.startRequested.emit(payload)
-        names = ", ".join(Path(p).name for p in self._selected_paths)
-        suffix = (
-            self.tr("({n} files)").format(n=len(self._selected_paths))
-            if len(self._selected_paths) > 1
-            else self.tr("(1 file)")
-        )
+        # Short status in the header. The full file list lives in
+        # the per-file queue table on the Pipeline page, so the
+        # header just shows a counter (X / Y) and the active file.
+        n = len(self._selected_paths)
         self.set_status(
-            self.tr("Queued: {names} {suffix} ({src} → {tgt})").format(
-                names=names, suffix=suffix,
-                src=source_lang, tgt=target_lang,
-            )
+            self.tr("Queued {n} file(s)").format(n=n)
         )
         self.go_to_step(1)
 

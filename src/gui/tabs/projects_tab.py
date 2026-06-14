@@ -66,32 +66,38 @@ class ProjectsTab(QWidget):
         self._projects = items
         self._table.setRowCount(len(items))
         for row_idx, proj in enumerate(items):
-            src = proj.get("source_path", "")
+            # Per-row try/except so one bad project never crashes the tab.
             try:
-                from pathlib import Path
-                src_name = Path(src).name
-            except Exception:
-                src_name = src
-            langs = f"{proj.get('source_lang', '?')} → {proj.get('target_lang', '?')}"
-            profile = proj.get("profile", "balanced").capitalize()
-            created = proj.get("created_at", "")[:10]
-            self._table.setItem(row_idx, 0, QTableWidgetItem(src_name))
-            self._table.setItem(row_idx, 1, QTableWidgetItem(langs))
-            self._table.setItem(row_idx, 2, QTableWidgetItem(profile))
-            self._table.setItem(row_idx, 3, QTableWidgetItem(created))
-            action_cell = QWidget()
-            action_row = QHBoxLayout(action_cell)
-            action_row.setContentsMargins(0, 0, 0, 0)
-            open_btn = QPushButton(self.tr("Open"))
-            open_btn.clicked.connect(lambda checked, p=proj: self.projectActivated.emit(p))
-            action_row.addWidget(open_btn)
-            clear_btn = QPushButton(self.tr("Clear local data"))
-            clear_btn.setToolTip(
-                self.tr("Remove local caches and metadata for this project.")
-            )
-            clear_btn.clicked.connect(lambda checked, p=proj: self._clear_local_data(p))
-            action_row.addWidget(clear_btn)
-            self._table.setCellWidget(row_idx, 4, action_cell)
+                src = proj.get("source_path", "")
+                from pathlib import Path as _P
+                src_name = _P(src).name
+                langs = f"{proj.get('source_lang', '?')} → {proj.get('target_lang', '?')}"
+                profile = proj.get("profile", "balanced").capitalize()
+                created = proj.get("created_at", "")[:10]
+                self._table.setItem(row_idx, 0, QTableWidgetItem(src_name))
+                self._table.setItem(row_idx, 1, QTableWidgetItem(langs))
+                self._table.setItem(row_idx, 2, QTableWidgetItem(profile))
+                self._table.setItem(row_idx, 3, QTableWidgetItem(created))
+                action_cell = QWidget()
+                action_row = QHBoxLayout(action_cell)
+                action_row.setContentsMargins(0, 0, 0, 0)
+                open_btn = QPushButton(self.tr("Open"))
+                open_btn.clicked.connect(lambda checked, p=proj: self.projectActivated.emit(p))
+                action_row.addWidget(open_btn)
+                clear_btn = QPushButton(self.tr("Clear local data"))
+                clear_btn.setToolTip(
+                    self.tr("Remove local caches and metadata for this project.")
+                )
+                clear_btn.clicked.connect(lambda checked, p=proj: self._clear_local_data(p))
+                action_row.addWidget(clear_btn)
+                self._table.setCellWidget(row_idx, 4, action_cell)
+            except Exception as exc:
+                # Skip the bad row, keep going so the rest of the
+                # table still loads.
+                self._status.setText(
+                    self.tr("Skipped bad row: {err}").format(err=exc)
+                )
+                continue
         self._status.setText(self.tr("{n} project(s)").format(n=len(items)))
 
     def _on_cell_double_clicked(self, row: int, _col: int) -> None:
