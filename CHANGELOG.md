@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.1.7] — 2026-06-14
+
+### Fixed
+- Frozen Windows builds crashed on the Premium profile with
+  `ModuleNotFoundError: No module named
+  'src.backend.agents.terminology_researcher'` and the same for
+  `reviewer` and `prompt_contracts`. PyInstaller's static analysis
+  cannot see the dynamic `importlib.import_module` calls made by
+  `worker_manager._default_worker_entrypoint`, so the three modules
+  are now declared in `build.spec` `hiddenimports`.
+
 ## [4.1.6] — 2026-06-14
 
 ### Added
