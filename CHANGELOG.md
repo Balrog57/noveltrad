@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.1.11] — 2026-06-14
+
+### Fixed
+- GUI: `_on_start_translation` now catches every `Exception`, not just
+  `BackendError`. An unexpected error (malformed payload, network
+  glitch, missing field) used to propagate to the Qt event loop and
+  crash the desktop app. The user now sees a single `Start failed`
+  message instead.
+- GUI: when neither `source_paths` nor `source_path` is present, the
+  request is now rejected with a clear `ValueError` instead of a
+  bare `KeyError`.
+- Backend: the parser kickoff in `Orchestrator.start()` is now
+  wrapped in `try/except` with a 5-second queue-put timeout. If the
+  parser worker is dead or the queue is full, the orchestrator
+  surfaces an `agent_error`, marks the project as `error`, and
+  auto-starts the next queued project instead of stalling the queue.
+- Backend: `_handle_worker_error` now also calls
+  `_start_next_queued_project()` for project-level errors
+  (`chunk_id is None`), so a single bad file cannot freeze the
+  whole queue.
+
 ## [4.1.10] — 2026-06-14
 
 ### Added

@@ -197,13 +197,37 @@ class Orchestrator:
             "target_lang": project.target_lang,
             "output_path": str(project.output_path) if project.output_path else None,
         }
-        self._workers.queues_for("parser").input.put(
-            make_task_message(
-                chunk_id=project.project_id,
-                action="parse",
-                payload=parser_payload,
+        try:
+            self._workers.queues_for("parser").input.put(
+                make_task_message(
+                    chunk_id=project.project_id,
+                    action="parse",
+                    payload=parser_payload,
+                ),
+                timeout=5.0,
             )
-        )
+        except Exception:
+            # If we cannot even reach the parser queue (no worker
+            # alive, queue closed, ...), surface the failure and
+            # keep the rest of the queue moving.
+            logger.exception(
+                "orchestrator: failed to dispatch parser task for %s",
+                project.project_id,
+            )
+            self._emit({
+                "type": "agent_error",
+                "stage": PARSER,
+                "chunk_id": None,
+                "payload": {
+                    "error_kind": "parser_dispatch_failed",
+                    "message": "failed to dispatch parser task",
+                },
+            })
+            with self._lock:
+                if self._project is not None:
+                    self._project.status = "error"
+            self._start_next_queued_project()
+            return
         self._emit(
             {
                 "type": "pipeline_started",
@@ -809,6 +833,14 @@ class Orchestrator:
                 "payload": payload,
             }
         )
+        # Project-level errors (chunk_id is None) end the project. If
+        # the user queued additional files, start the next one so
+        # the queue does not stall on a single bad file.
+        if chunk_id is None:
+            with self._lock:
+                if self._project is not None:
+                    self._project.status = "error"
+            self._start_next_queued_project()
 
     def _handle_worker_hltl_request(self, stage: str, msg: dict[str, Any]) -> None:
         self.register_hltl(msg)

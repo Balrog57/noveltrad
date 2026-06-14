@@ -512,11 +512,22 @@ class MainWindow(QMainWindow):
             if paths:
                 body["source_paths"] = [str(p) for p in paths]
                 body["source_path"] = str(paths[0])
-            else:
+            elif payload.get("source_path"):
                 body["source_path"] = str(payload["source_path"])
+            else:
+                raise ValueError("payload has neither source_paths nor source_path")
             res = self._client.post("/projects", body=body, timeout=10.0)
         except BackendError as exc:
             QMessageBox.warning(self, self.tr("Start failed"), str(exc))
+            return None
+        except Exception as exc:
+            # Never let an unexpected error crash the Qt event loop.
+            logger.exception("start translation: unexpected error")
+            QMessageBox.warning(
+                self,
+                self.tr("Start failed"),
+                self.tr("Could not start translation: {err}").format(err=exc),
+            )
             return None
         pid = res.get("project_id", "")
         self._activity.on_event(
