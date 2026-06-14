@@ -73,6 +73,11 @@ class TranslateTab(QWidget):
     fileSelected = pyqtSignal(str)
     replayHltlRequested = pyqtSignal()
     assembleRequested = pyqtSignal(str)  # format
+    pauseRequested = pyqtSignal()
+    resumeRequested = pyqtSignal()
+    stopRequested = pyqtSignal()
+    fileRemoved = pyqtSignal(str)  # path
+    queueCompleted = pyqtSignal(dict)  # {done, failed, total}
 
     def __init__(
         self,
@@ -148,6 +153,7 @@ class TranslateTab(QWidget):
 
     def update_pipeline_state(self, state: dict[str, Any]) -> None:
         """Refresh the pipeline page from /pipeline/state JSON."""
+        self._update_pipeline_controls(state)
         project = state.get("project") or {}
         if project:
             self._sync_active_project(project)
@@ -207,6 +213,7 @@ class TranslateTab(QWidget):
         if self._review_model is not None:
             self._review_model.refresh()
         self.go_to_step(1 if self._queue_items else 2)
+        self._maybe_emit_queue_completed()
 
     def on_project_created(
         self, payload: dict[str, Any], response: dict[str, Any]
@@ -309,6 +316,7 @@ class TranslateTab(QWidget):
         else:
             return
         self._refresh_queue_row(item)
+        self._maybe_emit_queue_completed()
 
     # ----- builders -----
 
@@ -397,7 +405,7 @@ class TranslateTab(QWidget):
         queue_title = QLabel(self.tr("File queue"))
         queue_title.setProperty("role", "subtitle")
         layout.addWidget(queue_title)
-        self._queue_table = QTableWidget(0, 5)
+        self._queue_table = QTableWidget(0, 6)
         self._queue_table.setHorizontalHeaderLabels(
             [
                 self.tr("File"),
@@ -405,6 +413,7 @@ class TranslateTab(QWidget):
                 self.tr("Stage"),
                 self.tr("Progress"),
                 self.tr("Output / Error"),
+                self.tr("Actions"),
             ]
         )
         self._queue_table.verticalHeader().setVisible(False)
@@ -439,6 +448,59 @@ class TranslateTab(QWidget):
         self._stage_rows: dict[str, dict[str, Any]] = {}
         for stage in PIPELINE_STAGES:
             self._add_stage_row(stage)
+        # Pipeline control row: pause / resume / stop the running
+        # pipeline. These affect the whole backend, not a single file.
+        controls = QHBoxLayout()
+        self._pause_btn = QPushButton(self.tr("⏸  Pause"))
+        self._pause_btn.setProperty("role", "warning")
+        self._pause_btn.setEnabled(False)
+        self._pause_btn.clicked.connect(self.pauseRequested.emit)
+        configure(
+            self._pause_btn,
+            name=self.tr("Pause translation"),
+            description=self.tr(
+                "Pause the current pipeline. Runners finish the chunk "
+                "they are on and stop."
+            ),
+            shortcut="Ctrl+Shift+P",
+        )
+        controls.addWidget(self._pause_btn)
+        self._resume_btn = QPushButton(self.tr("▶  Resume"))
+        self._resume_btn.setProperty("role", "primary")
+        self._resume_btn.setEnabled(False)
+        self._resume_btn.clicked.connect(self.resumeRequested.emit)
+        configure(
+            self._resume_btn,
+            name=self.tr("Resume translation"),
+            description=self.tr("Resume the paused pipeline."),
+            shortcut="Ctrl+Shift+R",
+        )
+        controls.addWidget(self._resume_btn)
+        self._stop_btn = QPushButton(self.tr("■  Stop"))
+        self._stop_btn.setProperty("role", "danger")
+        self._stop_btn.setEnabled(False)
+        self._stop_btn.clicked.connect(self.stopRequested.emit)
+        configure(
+            self._stop_btn,
+            name=self.tr("Stop translation"),
+            description=self.tr(
+                "Stop the pipeline immediately and drop every queued file."
+            ),
+            shortcut="Ctrl+Shift+S",
+        )
+        controls.addWidget(self._stop_btn)
+        self._clear_finished_btn = QPushButton(self.tr("Clear finished"))
+        self._clear_finished_btn.clicked.connect(self._on_clear_finished)
+        configure(
+            self._clear_finished_btn,
+            name=self.tr("Clear finished files"),
+            description=self.tr(
+                "Remove every queue row that already reached a terminal state."
+            ),
+        )
+        controls.addWidget(self._clear_finished_btn)
+        controls.addStretch(1)
+        layout.addLayout(controls)
         actions = QHBoxLayout()
         self._new_files_btn = QPushButton(self.tr("Choose files"))
         self._new_files_btn.clicked.connect(self._go_to_select)
@@ -630,6 +692,9 @@ class TranslateTab(QWidget):
         for row in self._stage_rows.values():
             row["count"].setText(self.tr("0 chunks"))
             row["progress"].setValue(0)
+        self._pause_btn.setEnabled(False)
+        self._resume_btn.setEnabled(False)
+        self._stop_btn.setEnabled(False)
 
     def _add_queue_item(self, path: str) -> dict[str, Any]:
         if path in self._queue_by_path:
@@ -652,6 +717,16 @@ class TranslateTab(QWidget):
         self._queue_table.setItem(row, 2, stage_item)
         self._queue_table.setCellWidget(row, 3, bar)
         self._queue_table.setItem(row, 4, detail_item)
+        # Per-row remove button (column 5). Always enabled so the user
+        # can drop a queued file; we ask the backend to remove it and
+        # the backend will 409 on the currently-running project.
+        remove_btn = QPushButton(self.tr("✕"))
+        remove_btn.setFixedSize(28, 24)
+        remove_btn.setToolTip(self.tr("Remove this file from the queue"))
+        remove_btn.clicked.connect(
+            lambda _checked=False, p=path: self._on_remove_file(p)
+        )
+        self._queue_table.setCellWidget(row, 5, remove_btn)
         item: dict[str, Any] = {
             "row": row,
             "project_id": "",
@@ -666,10 +741,103 @@ class TranslateTab(QWidget):
             "_stage_item": stage_item,
             "_detail_item": detail_item,
             "_progress_bar": bar,
+            "_remove_btn": remove_btn,
         }
         self._queue_items.append(item)
         self._queue_by_path[path] = item
         return item
+
+    def _on_remove_file(self, path: str) -> None:
+        item = self._queue_by_path.get(path)
+        if item is None:
+            return
+        if item.get("state") == "running":
+            from PyQt6.QtWidgets import QMessageBox
+
+            QMessageBox.information(
+                self,
+                self.tr("Cannot remove"),
+                self.tr(
+                    "{name} is the running project. Stop the pipeline "
+                    "or wait for it to finish before removing it."
+                ).format(name=item.get("name") or path),
+            )
+            return
+        if item.get("state") in TERMINAL_QUEUE_STATES:
+            # Already done or errored — just drop the local row.
+            self._drop_row(item)
+            return
+        # Otherwise (pending or queued) ask the backend to drop the
+        # project, then remove the row locally.
+        pid = item.get("project_id") or ""
+        if pid:
+            self.fileRemoved.emit(path)
+        self._drop_row(item)
+
+    def _drop_row(self, item: dict[str, Any]) -> None:
+        path = item.get("path") or ""
+        if not path:
+            return
+        row = item.get("row", -1)
+        if row >= 0 and row < self._queue_table.rowCount():
+            self._queue_table.removeCellWidget(row, 5)
+            self._queue_table.removeRow(row)
+        self._queue_items.remove(item)
+        self._queue_by_path.pop(path, None)
+        pid = item.get("project_id") or ""
+        if pid:
+            self._queue_by_project_id.pop(pid, None)
+        # Re-index subsequent rows so the underlying dicts stay sane.
+        for i, it in enumerate(self._queue_items):
+            if it["row"] > row:
+                it["row"] -= 1
+        self._maybe_emit_queue_completed()
+
+    def _on_clear_finished(self) -> None:
+        for item in list(self._queue_items):
+            if item.get("state") in TERMINAL_QUEUE_STATES:
+                self._drop_row(item)
+
+    def _update_pipeline_controls(self, state: dict[str, Any]) -> None:
+        """Toggle Pause / Resume / Stop from the orchestrator state.
+
+        ``running`` -> Pause and Stop enabled, Resume disabled.
+        ``paused``  -> Resume and Stop enabled, Pause disabled.
+        otherwise   -> all three disabled.
+        """
+        if not getattr(self, "_pause_btn", None):
+            return
+        proj = state.get("project") or {}
+        status = proj.get("status") if proj else None
+        self._pause_btn.setEnabled(status == "running")
+        self._resume_btn.setEnabled(status == "paused")
+        self._stop_btn.setEnabled(status in ("running", "paused"))
+
+    def _maybe_emit_queue_completed(self) -> None:
+        """Emit ``queueCompleted`` when every queue row is terminal.
+
+        A row reaches a terminal state (``done`` / ``error`` /
+        ``stopped``) when the assembler has written the output for
+        that project, or when the project failed. Once all rows
+        are terminal, the main window pops a success / failure
+        notification with a sound.
+        """
+        if not self._queue_items:
+            return
+        pending = [
+            it for it in self._queue_items
+            if it.get("state") not in TERMINAL_QUEUE_STATES
+        ]
+        if pending:
+            return
+        done = sum(1 for it in self._queue_items if it.get("state") == "done")
+        failed = sum(
+            1 for it in self._queue_items
+            if it.get("state") in ("error", "stopped")
+        )
+        self.queueCompleted.emit(
+            {"done": done, "failed": failed, "total": len(self._queue_items)}
+        )
 
     def _refresh_queue_row(self, item: dict[str, Any]) -> None:
         item["_status_item"].setText(self._state_label(item.get("state", "")))

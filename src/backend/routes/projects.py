@@ -115,6 +115,27 @@ def register(app: Any, deps: Deps) -> None:
         count = deps.orchestrator.replay_chunks(req.chunk_ids)
         return {"replayed": count, "chunk_ids": req.chunk_ids}
 
+    @app.delete("/projects/{project_id}/queue")
+    def remove_queued_project(project_id: str) -> dict[str, Any]:
+        """Drop a queued (not-yet-running) project from the FIFO.
+
+        Returns 409 if the project is the one currently running.
+        """
+        with deps.orchestrator._lock:
+            current = deps.orchestrator._project
+            if current is not None and current.project_id == project_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cannot remove the running project; stop the pipeline first.",
+                )
+        removed = deps.orchestrator.remove_queued_project(project_id)
+        if not removed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No queued project with id {project_id!r}.",
+            )
+        return {"ok": True, "project_id": project_id}
+
     @app.delete("/projects/{project_id}/local-data")
     def clear_project_local_data(project_id: str) -> dict[str, Any]:
         project = deps.store.get_project(project_id)

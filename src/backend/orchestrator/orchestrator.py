@@ -1014,6 +1014,25 @@ class Orchestrator:
         # GUI having to poll.
         self._start_next_queued_project()
 
+    def remove_queued_project(self, project_id: str) -> bool:
+        """Drop a queued project by id. Returns True if removed.
+
+        Only projects that have not started yet can be removed.
+        The currently-running project is left untouched; the user
+        must hit Stop to cancel it. The endpoint returns 409 in
+        that case so the GUI can surface a clear error.
+        """
+        with self._lock:
+            for i, proj in enumerate(self._project_queue):
+                if proj.project_id == project_id:
+                    self._project_queue.pop(i)
+                    logger.info(
+                        "queue: removed project %s (was at position %d)",
+                        project_id, i + 1,
+                    )
+                    return True
+        return False
+
     def _start_next_queued_project(self) -> None:
         """Pop the next queued project and start it. No-op if empty.
 

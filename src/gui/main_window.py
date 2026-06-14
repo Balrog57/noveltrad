@@ -160,6 +160,11 @@ class MainWindow(QMainWindow):
         self._translate_tab.startRequested.connect(self._on_start_translation)
         self._translate_tab.replayHltlRequested.connect(self._on_replay_hltl)
         self._translate_tab.assembleRequested.connect(self._on_assemble_requested)
+        self._translate_tab.pauseRequested.connect(self._on_pause)
+        self._translate_tab.resumeRequested.connect(self._on_resume)
+        self._translate_tab.stopRequested.connect(self._on_stop)
+        self._translate_tab.fileRemoved.connect(self._on_remove_queued_file)
+        self._translate_tab.queueCompleted.connect(self._on_queue_completed)
         self._stack.addWidget(self._translate_tab)
         self._projects_tab = ProjectsTab(self._client)
         self._projects_tab.projectActivated.connect(self._on_project_activated)
@@ -562,6 +567,113 @@ class MainWindow(QMainWindow):
             ),
             4000,
         )
+
+    def _on_pause(self) -> None:
+        try:
+            self._client.post("/pipeline/pause", timeout=5.0)
+            self.statusBar().showMessage(self.tr("Pipeline paused."), 3000)
+        except BackendError as exc:
+            QMessageBox.warning(self, self.tr("Pause failed"), str(exc))
+        except Exception as exc:
+            QMessageBox.warning(
+                self, self.tr("Pause failed"), str(exc)
+            )
+
+    def _on_resume(self) -> None:
+        try:
+            self._client.post("/pipeline/resume", timeout=5.0)
+            self.statusBar().showMessage(self.tr("Pipeline resumed."), 3000)
+        except BackendError as exc:
+            QMessageBox.warning(self, self.tr("Resume failed"), str(exc))
+        except Exception as exc:
+            QMessageBox.warning(
+                self, self.tr("Resume failed"), str(exc)
+            )
+
+    def _on_stop(self) -> None:
+        confirm = QMessageBox.question(
+            self,
+            self.tr("Stop pipeline"),
+            self.tr(
+                "Stop the current pipeline? Every queued file will be "
+                "dropped and you can start a new batch after."
+            ),
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self._client.post("/pipeline/stop", timeout=10.0)
+            self.statusBar().showMessage(self.tr("Pipeline stopped."), 3000)
+        except BackendError as exc:
+            QMessageBox.warning(self, self.tr("Stop failed"), str(exc))
+        except Exception as exc:
+            QMessageBox.warning(
+                self, self.tr("Stop failed"), str(exc)
+            )
+
+    def _on_remove_queued_file(self, path: str) -> None:
+        # Find the project_id for this path from the GUI cache.
+        from PyQt6.QtWidgets import QMessageBox as _QMB
+        item = self._translate_tab._queue_by_path.get(path)  # type: ignore[attr-defined]
+        pid = (item or {}).get("project_id") or ""
+        if not pid:
+            return
+        try:
+            self._client.delete(
+                f"/projects/{pid}/queue", timeout=5.0
+            )
+            self.statusBar().showMessage(
+                self.tr("Removed {name} from the queue.").format(
+                    name=(item or {}).get("name") or path
+                ),
+                3000,
+            )
+        except BackendError as exc:
+            _QMB.warning(self, self.tr("Remove failed"), str(exc))
+        except Exception as exc:
+            _QMB.warning(self, self.tr("Remove failed"), str(exc))
+
+    def _on_queue_completed(self, summary: dict[str, Any]) -> None:
+        from PyQt6.QtMultimedia import QSoundEffect  # type: ignore
+        from PyQt6.QtCore import QUrl
+
+        done = int(summary.get("done", 0))
+        failed = int(summary.get("failed", 0))
+        total = int(summary.get("total", 0))
+        # Play a short success sound. ``QSoundEffect`` resolves the
+        # WAVE file at runtime; if the asset is missing we silently
+        # skip the audio so the user still gets the visual popup.
+        try:
+            sound = QSoundEffect(self)
+            from pathlib import Path as _P
+            for cand in (
+                _P(__file__).parent / "resources" / "sounds" / "success.wav",
+                _P(__file__).parent / "src" / "gui" / "resources" / "sounds" / "success.wav",
+            ):
+                if cand.exists():
+                    sound.setSource(QUrl.fromLocalFile(str(cand)))
+                    sound.play()
+                    break
+        except Exception:
+            pass
+        # System bell as a fallback. The user can hear something even
+        # if we did not ship a WAV asset.
+        try:
+            QApplication.beep()
+        except Exception:
+            pass
+        if failed == 0:
+            title = self.tr("Translation complete")
+            text = self.tr(
+                "All {total} file(s) translated successfully."
+            ).format(total=total)
+        else:
+            title = self.tr("Translation finished with errors")
+            text = self.tr(
+                "{done}/{total} file(s) translated, {failed} failed."
+            ).format(done=done, total=total, failed=failed)
+        QMessageBox.information(self, title, text)
+        self.statusBar().showMessage(title, 5000)
 
     def _on_assemble_requested(self, fmt: str) -> None:
         try:
