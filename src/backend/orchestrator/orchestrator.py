@@ -1,13 +1,13 @@
-"""Central orchestrator — coordination of pipeline stages.
+"""Central orchestrator -- coordination of pipeline stages.
 
-Responsibilities (see plan §1, §3, §5):
+Responsibilities (see plan section1, section3, section5):
   * Own the StateStore (single writer).
   * Own the WorkerManager (lifecycle of agent processes).
   * Drain every stage's output queue, update the StateStore, and forward
     the chunk to the next stage's input queue.
   * Maintain in-memory `project_state` and `pipeline_state` for the
     FastAPI layer to query (cheap, no need to hit the DB on every GUI poll).
-  * Surface progress / errors / HITL requests to subscribers — in
+  * Surface progress / errors / HITL requests to subscribers -- in
     production this is the WebSocket fanout; for Phase 1 it is a
     thread-safe callback registry.
   * Pause / resume / stop the whole pipeline or individual stages.
@@ -24,7 +24,6 @@ Design notes
     responses. The orchestrator translates those to DB reads/writes
     and to forwarding messages.
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -107,6 +106,12 @@ class Orchestrator:
 
         self._lock = threading.RLock()
         self._project: ProjectContext | None = None
+        # Watchdog: tracks when the last chunk event was emitted so
+        # we can surface a warning when a project has been running for
+        # a long time without any progress (worker stuck / crashed).
+        import time as _time
+        self._last_progress_at: float = _time.time()
+        self._last_stall_warn_at: float = 0.0
         # Sequential project queue: when `start` is called while a
         # project is already running, the new one is appended here and
         # the orchestrator picks it up automatically once the current
@@ -650,6 +655,8 @@ class Orchestrator:
 
     def _emit(self, event: dict[str, Any]) -> None:
         event.setdefault("timestamp", _now_iso())
+        # Update the watchdog: any event means the pipeline is alive.
+        self._last_progress_at = time.time()
         with self._lock:
             self._event_log.append(event)
             listeners = list(self._listeners)
@@ -737,6 +744,10 @@ class Orchestrator:
                     flat.append(c)
             if flat:
                 self.submit_chunks(flat)
+                logger.info(
+                    "orchestrator: parser injected %d chunks into the pipeline",
+                    "pipeline stage: next=fast_translator"
+                )
             self._emit(
                 {
                     "type": "agent_done",
@@ -799,6 +810,28 @@ class Orchestrator:
                     did_work = True
                     self._handle_worker_message(stage, msg)
             if not did_work:
+                # Watchdog: every iteration we check whether the
+                # current project has been running without any new
+                # event for too long. If so, emit a warning so the
+                # user is not left staring at a frozen UI.
+                now = time.time()
+                if (
+                    self._project
+                    and self._project.status == "running"
+                    and (now - self._last_progress_at) > 90
+                    and (now - self._last_stall_warn_at) > 30
+                ):
+                    self._last_stall_warn_at = now
+                    idle = int(now - self._last_progress_at)
+                    logger.warning(
+                        "pipeline stalled: no event for %ds on project %s",
+                        idle, self._project.project_id,
+                    )
+                    self._emit({
+                        "type": "pipeline_stalled",
+                        "idle_seconds": idle,
+                        "project_id": self._project.project_id,
+                    })
                 time.sleep(0.05)
 
     _WORKER_MSG_DISPATCH = {
@@ -1108,9 +1141,9 @@ class Orchestrator:
         """Apply DAG shortcuts and escalation policies.
 
         Current policies:
-          * qa_clean + balanced/premium → skip grammar_proofer to reviewer.
-          * consistency flag on premium profile → branch to terminology_researcher.
-          * qa_issues on any profile → keep grammar_proofer (do not skip).
+          * qa_clean + balanced/premium -> skip grammar_proofer to reviewer.
+          * consistency flag on premium profile -> branch to terminology_researcher.
+          * qa_issues on any profile -> keep grammar_proofer (do not skip).
         """
         if next_stage is None:
             return None
@@ -1231,7 +1264,7 @@ class Orchestrator:
         annotations = payload.get("review_annotations") or []
         annot_text = (
             "; ".join(
-                f"[{a.get('type', '')}] {a.get('span', '')} → {a.get('suggestion', '')}"
+                f"[{a.get('type', '')}] {a.get('span', '')} -> {a.get('suggestion', '')}"
                 for a in annotations[:5]
             )
             if annotations
@@ -1459,7 +1492,7 @@ class Orchestrator:
         """Trigger the Assembler stage with the current set of chunks.
 
         Returns a summary dict. Errors are reported in the dict, not
-        raised — the caller (FastAPI) is request-scoped.
+        raised -- the caller (FastAPI) is request-scoped.
         """
         if self._project is None:
             return {"status": "no_project", "chunk_count": 0}

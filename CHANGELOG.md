@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+## [4.1.15] - 2026-06-14
+### Added
+- **Pipeline watchdog**: the orchestrator now tracks the timestamp of
+  the last event emitted. When a project stays in "running" for more
+  than 90 seconds without any new event, a `pipeline_stalled` event is
+  surfaced (red, `STALLED: no event for Ns`) so the user is not left
+  staring at a frozen UI when a worker is stuck or has died silently.
+- **Logger trail after parser**: the orchestrator now logs
+  `orchestrator: parser injected N chunks into the pipeline` right
+  after the parser's `done` is processed, so we can see in the
+  backend log whether the chunks were actually forwarded to the
+  FastTranslator queue.
+### Changed
+- **Activity log order**: events are now appended (oldest at the top,
+  newest at the bottom) like a normal journal. Was newest-on-top
+  before; the chat-style order confused users reading top-to-bottom.
+- **Queue counter (header)**: when no files are queued the counter
+  shows `--  (aucun fichier)` instead of `0 / 0` so it does not look
+  like something is broken.
+- **HITL button**: renamed to `Replay HITL questions` with a tooltip
+  explaining the Human-In-The-Loop acronym. Disabled by default and
+  enabled by `main_window` only when the backend reports
+  `pending_hltl > 0`.
+- **Assemble button**: renamed to `Force assemble now` with a tooltip
+  explaining it forces the Assembler stage without waiting for the
+  pipeline to finish.
+
 ## [4.1.14] - 2026-06-14
 ### Fixed- Header: the legacy Queued line that expanded the title to thousands of pixels with 2000+ files is replaced with a compact Queued N file(s) message. The full list lives in the per-file queue table on the Pipeline page.- Projects tab: per-row try/except so one malformed entry can no longer crash the whole tab when the user clicks Projets.- main_qt: install a global sys.excepthook that logs every uncaught exception to APPDATA/NovelTrad/backend.log so we can diagnose Qt-side crashes that happen outside any Python try/except (for example a signal-slot raising).
 ## [4.1.13] - 2026-06-14

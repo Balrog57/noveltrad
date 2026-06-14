@@ -752,6 +752,10 @@ class MainWindow(QMainWindow):
         try:
             state = self._client.get("/pipeline/state", timeout=2.0) or {}
             self._translate_tab.update_pipeline_state(state)
+            # Enable the HITL replay button only when there are
+            # chunks actually waiting for a human answer.
+            pending = int(state.get("pending_hltl", 0) or 0)
+            self._translate_tab._replay_btn.setEnabled(pending > 0)
         except BackendError:
             pass
 

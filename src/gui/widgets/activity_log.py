@@ -97,8 +97,16 @@ class ActivityLogWidget(QWidget):
 
             item.setForeground(QColor(colour))
         item.setData(Qt.ItemDataRole.UserRole, event.get("chunk_id") or "")
+        # Oldest at the top, newest at the bottom (chat-style). The user
+        # reads from top to bottom like a normal log, so the latest
+        # event is always at the very bottom, which is what the user
+        # expects from a journal.
         self._list.addItem(item)
-        self._list.scrollToBottom()
+        # Cap the visible list to avoid unbounded memory growth on
+        # long runs (500 events is plenty for the backlog). When we
+        # overflow, the oldest event (at the top) is removed.
+        if self._list.count() > 500:
+            self._list.takeItem(0)
         filter_key = (text + " " + kind).lower()
         self._items.append((item, text, filter_key))
         self._count_label.setText(
@@ -169,6 +177,9 @@ class ActivityLogWidget(QWidget):
             return f"{ts}  queue failed for project {event.get('project_id', '')}"
         if kind == "pipeline_paused":
             return f"{ts}  pipeline paused"
+        if kind == "pipeline_stalled":
+            idle = event.get("idle_seconds", 0)
+            return f"{ts}  STALLED: no event for {idle}s"
         if kind == "pipeline_resumed":
             return f"{ts}  pipeline resumed"
         if kind == "pipeline_stopped":

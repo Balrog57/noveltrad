@@ -513,23 +513,24 @@ class TranslateTab(QWidget):
             description=self.tr("Go back to step 1 to pick more files."),
         )
         actions.addWidget(self._new_files_btn)
-        self._replay_btn = QPushButton(self.tr("Replay pending questions"))
+        # HITL = Human-In-The-Loop. The button stays disabled until
+        # the backend reports chunks waiting for a human answer
+        # (for example an unknown term). The tooltip explains it.
+        self._replay_btn = QPushButton(self.tr("Replay HITL questions"))
+        self._replay_btn.setEnabled(False)
         self._replay_btn.clicked.connect(self.replayHltlRequested.emit)
-        configure(
-            self._replay_btn,
-            name=self.tr("Replay pending questions"),
-            description=self.tr(
-                "Re-inject every chunk waiting for a human answer (for example an unknown term) back into the pipeline."
-            ),
+        self._replay_btn.setToolTip(
+            self.tr("Human-In-The-Loop: re-inject every chunk waiting for a human answer (unknown term, ambiguous translation) into the pipeline.")
         )
         actions.addWidget(self._replay_btn)
-        self._assemble_btn = QPushButton(self.tr("Assemble now"))
+        # Force the Assembler stage to run right now (instead of
+        # waiting for the auto-assemble when the penultimate
+ # stage reaches 100%). Useful when an LLM chunk is stuck.
+        self._assemble_btn = QPushButton(self.tr("Force assemble now"))
         self._assemble_btn.clicked.connect(lambda: self.assembleRequested.emit("epub"))
         self._assemble_btn.setEnabled(False)
-        configure(
-            self._assemble_btn,
-            name=self.tr("Assemble now"),
-            description=self.tr("Build the output file from the current chunks without waiting for the natural pipeline end."),
+        self._assemble_btn.setToolTip(
+            self.tr("Build the output file from the current chunks without waiting for the pipeline to finish. Useful when an LLM chunk is stuck in the polish step.")
         )
         actions.addWidget(self._assemble_btn)
         actions.addStretch(1)
@@ -795,9 +796,16 @@ class TranslateTab(QWidget):
             if it.get("state") in TERMINAL_QUEUE_STATES
         )
         if getattr(self, "_queue_counter", None):
-            self._queue_counter.setText(
-                self.tr("{done} / {total}").format(done=finished, total=total)
-            )
+            if total == 0:
+                # No files queued at all. Show a dash so the user
+                # does not think something is broken.
+                self._queue_counter.setText(
+                    self.tr("—  (aucun fichier)")
+                )
+            else:
+                self._queue_counter.setText(
+                    self.tr("{done} / {total}").format(done=finished, total=total)
+                )
         if getattr(self, "_queue_active_label", None):
             active = self._active_queue_item()
             if active is not None:
