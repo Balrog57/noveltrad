@@ -7,6 +7,6 @@ the PyInstaller bundle, and the Inno Setup installer all agree.
 
 from __future__ import annotations
 
-__version__ = "4.1.12"
+__version__ = "4.1.13"
 
 __all__ = ["__version__"]

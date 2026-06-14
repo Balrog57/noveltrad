@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+## [4.1.13] - 2026-06-14
+
+### Changed
+- **Pipeline page UI**: rewrote the layout to match the
+  sequential-queue workflow:
+  - Removed the redundant Active file stages table; the per-file
+    queue already shows each file's current stage.
+  - Replaced the giant horizontal header (which listed every
+    queued filename inline, blowing the layout up at 2000+ files)
+    with a compact counter X / Y (finished / total) plus the
+    current active file name.
+  - Renamed Choose files to Retour a la selection on the pipeline
+    actions row; same label on the review page.
+  - Renamed Replay pending HITL to Replay pending questions and
+    expanded the tooltip so the user knows what HITL means:
+    re-inject chunks waiting for a human answer (for example an
+    unknown term) back into the pipeline.
+  - Per-row remove button bumped from 28x24 to 32x28 with a bold
+    X so the cross is more visible on a 2000-row table.
+  - Stage columns (Status / Stage / Progress) use ResizeToContents
+    while File and Output/Error use Stretch so 2000 rows scroll
+    smoothly without per-row widget allocation on the wide columns.
 
 ## [4.1.12] - 2026-06-14
 

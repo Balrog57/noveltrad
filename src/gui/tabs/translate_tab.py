@@ -6,7 +6,7 @@ split into three pages, switched by the WebSocket event stream:
 
   0 Select   — drop zone (FileCloud), source/target language, quality preset.
   1 Pipeline — per-stage status cards, pause/resume/stop controls,
-               "Re-run" + "Replay pending HITL" actions.
+               "Re-run + Replay pending questions actions.
   2 Review   — virtualised list of chunks with status filter, double
                click opens the chunk detail dialog.
 """
@@ -154,6 +154,7 @@ class TranslateTab(QWidget):
     def update_pipeline_state(self, state: dict[str, Any]) -> None:
         """Refresh the pipeline page from /pipeline/state JSON."""
         self._update_pipeline_controls(state)
+        self._update_queue_counter()
         project = state.get("project") or {}
         if project:
             self._sync_active_project(project)
@@ -162,10 +163,6 @@ class TranslateTab(QWidget):
         ss = state.get("state_store") or {}
         counts = ss.get("chunks_by_status") or {}
         total = ss.get("chunks_total") or 0
-        for stage, row in self._stage_rows.items():
-            count = counts.get(stage, 0) or counts.get(self._status_alias(stage), 0)
-            row["count"].setText(self.tr("{n} chunks").format(n=count))
-            row["progress"].setValue(min(100, int(100 * count / max(1, total))))
         active = self._active_queue_item()
         if active is not None:
             active["progress"] = max(
@@ -192,13 +189,13 @@ class TranslateTab(QWidget):
         artifact = state.get("output_artifact") or {}
         if artifact.get("output_path"):
             self._assemble_btn.setEnabled(True)
-            self._assemble_btn.setText(self.tr("📦  Open output folder"))
+            self._assemble_btn.setText(self.tr("Open output folder"))
         if any(counts.values()) and not self._user_requested_select:
             self.go_to_step(1)
 
     def on_artifact_ready(self, output_path: str) -> None:
         self._assemble_btn.setEnabled(True)
-        self._assemble_btn.setText(self.tr("📦  Open output folder"))
+        self._assemble_btn.setText(self.tr("Open output folder"))
         active = self._active_queue_item()
         if active is not None:
             active["state"] = "done"
@@ -399,12 +396,27 @@ class TranslateTab(QWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
-        title = QLabel(self.tr("Pipeline progress"))
-        title.setProperty("role", "subtitle")
-        layout.addWidget(title)
-        queue_title = QLabel(self.tr("File queue"))
-        queue_title.setProperty("role", "subtitle")
-        layout.addWidget(queue_title)
+        # Compact header: "X / Y" (done / total) and current file
+        # name. We deliberately do NOT show the long list of every
+        # file here because with 2000+ queued items it would push
+        # the actual progress bars off the screen.
+        header_row = QHBoxLayout()
+        self._queue_counter = QLabel(self.tr("0 / 0"))
+        self._queue_counter.setProperty("role", "title")
+        self._queue_counter.setStyleSheet("font-weight: 600; font-size: 16pt;")
+        header_row.addWidget(self._queue_counter)
+        self._queue_active_label = QLabel("")
+        self._queue_active_label.setProperty("role", "muted")
+        self._queue_active_label.setWordWrap(False)
+        self._queue_active_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        header_row.addWidget(self._queue_active_label, 1)
+        layout.addLayout(header_row)
+        # Per-file queue. One row per file with progress bar,
+        # percentage label, current stage, and a remove button
+        # on the right. Scrolling stays smooth even with 2000+ rows
+        # because we set UniformItemSizes + no selection + no focus.
         self._queue_table = QTableWidget(0, 6)
         self._queue_table.setHorizontalHeaderLabels(
             [
@@ -417,12 +429,21 @@ class TranslateTab(QWidget):
             ]
         )
         self._queue_table.verticalHeader().setVisible(False)
-        self._queue_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        # File column stretches, the rest is fixed-width so a
+        # 2000-row table does not allocate widgets for columns
+        # the user never reads.
+        from PyQt6.QtWidgets import QHeaderView as _HV
+        hh = self._queue_table.horizontalHeader()
+        hh.setSectionResizeMode(0, _HV.ResizeMode.Stretch)
+        hh.setSectionResizeMode(1, _HV.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(2, _HV.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(3, _HV.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(4, _HV.ResizeMode.Stretch)
+        hh.setSectionResizeMode(5, _HV.ResizeMode.ResizeToContents)
         self._queue_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._queue_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self._queue_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._queue_table.verticalHeader().setDefaultSectionSize(28)
         configure(
             self._queue_table,
             name=self.tr("File queue"),
@@ -430,24 +451,6 @@ class TranslateTab(QWidget):
         )
         layout.addWidget(self._queue_table, 1)
 
-        stage_title = QLabel(self.tr("Active file stages"))
-        stage_title.setProperty("role", "subtitle")
-        layout.addWidget(stage_title)
-        self._stage_table = QTableWidget(0, 3)
-        self._stage_table.setHorizontalHeaderLabels(
-            [self.tr("Stage"), self.tr("Count"), self.tr("Progress")]
-        )
-        self._stage_table.verticalHeader().setVisible(False)
-        self._stage_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
-        self._stage_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._stage_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self._stage_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        layout.addWidget(self._stage_table, 1)
-        self._stage_rows: dict[str, dict[str, Any]] = {}
-        for stage in PIPELINE_STAGES:
-            self._add_stage_row(stage)
         # Pipeline control row: pause / resume / stop the running
         # pipeline. These affect the whole backend, not a single file.
         controls = QHBoxLayout()
@@ -502,55 +505,37 @@ class TranslateTab(QWidget):
         controls.addStretch(1)
         layout.addLayout(controls)
         actions = QHBoxLayout()
-        self._new_files_btn = QPushButton(self.tr("Choose files"))
+        self._new_files_btn = QPushButton(self.tr("Retour à la sélection"))
         self._new_files_btn.clicked.connect(self._go_to_select)
         configure(
             self._new_files_btn,
-            name=self.tr("Choose files"),
-            description=self.tr("Return to file selection."),
+            name=self.tr("Retour a la selection"),
+            description=self.tr("Go back to step 1 to pick more files."),
         )
         actions.addWidget(self._new_files_btn)
-        self._replay_btn = QPushButton(self.tr("🔁  Replay pending HITL"))
+        self._replay_btn = QPushButton(self.tr("Replay pending questions"))
         self._replay_btn.clicked.connect(self.replayHltlRequested.emit)
         configure(
             self._replay_btn,
-            name=self.tr("Replay pending HITL"),
+            name=self.tr("Replay pending questions"),
             description=self.tr(
-                "Re-inject every waiting-for-human chunk to its requesting stage."
+                "Re-inject every chunk waiting for a human answer (for example an unknown term) back into the pipeline."
             ),
         )
         actions.addWidget(self._replay_btn)
-        self._assemble_btn = QPushButton(self.tr("📦  Assemble now"))
+        self._assemble_btn = QPushButton(self.tr("Assemble now"))
         self._assemble_btn.clicked.connect(lambda: self.assembleRequested.emit("epub"))
         self._assemble_btn.setEnabled(False)
         configure(
             self._assemble_btn,
             name=self.tr("Assemble now"),
-            description=self.tr("Trigger the Assembler stage on the current chunks."),
+            description=self.tr("Build the output file from the current chunks without waiting for the natural pipeline end."),
         )
         actions.addWidget(self._assemble_btn)
         actions.addStretch(1)
         layout.addLayout(actions)
         return page
 
-    def _add_stage_row(self, stage: str) -> None:
-        row = self._stage_table.rowCount()
-        self._stage_table.insertRow(row)
-        name_item = QTableWidgetItem(stage.replace("_", " ").title())
-        name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self._stage_table.setItem(row, 0, name_item)
-        count_item = QTableWidgetItem(self.tr("0 chunks"))
-        count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        count_item.setFlags(count_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self._stage_table.setItem(row, 1, count_item)
-        from PyQt6.QtWidgets import QProgressBar
-
-        bar = QProgressBar()
-        bar.setRange(0, 100)
-        bar.setValue(0)
-        bar.setTextVisible(False)
-        self._stage_table.setCellWidget(row, 2, bar)
-        self._stage_rows[stage] = {"count": count_item, "progress": bar}
 
     def _build_review_page(self) -> QWidget:
         page = QWidget()
@@ -584,11 +569,11 @@ class TranslateTab(QWidget):
         layout.addLayout(filter_row)
 
         actions = QHBoxLayout()
-        self._review_new_files_btn = QPushButton(self.tr("Choose files"))
+        self._review_new_files_btn = QPushButton(self.tr("Retour à la sélection"))
         self._review_new_files_btn.clicked.connect(self._go_to_select)
         configure(
             self._review_new_files_btn,
-            name=self.tr("Choose files"),
+            name=self.tr("Retour a la selection"),
             description=self.tr("Return to file selection."),
         )
         actions.addWidget(self._review_new_files_btn)
@@ -689,10 +674,12 @@ class TranslateTab(QWidget):
         self._queue_by_project_id.clear()
         self._active_project_id = None
         self._queue_table.setRowCount(0)
-        for row in self._stage_rows.values():
-            row["count"].setText(self.tr("0 chunks"))
-            row["progress"].setValue(0)
-        self._pause_btn.setEnabled(False)
+        self._queue_counter.setText(
+            self.tr("{done} / {total}").format(done=0, total=0)
+        )
+        self._queue_active_label.setText("")
+        if getattr(self, "_pause_btn", None):
+            self._pause_btn.setEnabled(False)
         self._resume_btn.setEnabled(False)
         self._stop_btn.setEnabled(False)
 
@@ -721,7 +708,9 @@ class TranslateTab(QWidget):
         # can drop a queued file; we ask the backend to remove it and
         # the backend will 409 on the currently-running project.
         remove_btn = QPushButton(self.tr("✕"))
-        remove_btn.setFixedSize(28, 24)
+        remove_btn.setFixedSize(32, 28)
+        remove_btn.setStyleSheet("font-size: 14pt; font-weight: 600;")
+        remove_btn.setToolTip(self.tr("Remove this file from the queue"))
         remove_btn.setToolTip(self.tr("Remove this file from the queue"))
         remove_btn.clicked.connect(
             lambda _checked=False, p=path: self._on_remove_file(p)
@@ -797,6 +786,32 @@ class TranslateTab(QWidget):
         for item in list(self._queue_items):
             if item.get("state") in TERMINAL_QUEUE_STATES:
                 self._drop_row(item)
+
+    def _update_queue_counter(self) -> None:
+        """"Update the compact header counter (X / Y).
+
+        Done / error / stopped all count as finished. Pending /
+        queued / running / paused / waiting_for_human all count
+        as in progress. When everything is finished, we show N / N.
+        """
+        total = len(self._queue_items)
+        finished = sum(
+            1 for it in self._queue_items
+            if it.get("state") in TERMINAL_QUEUE_STATES
+        )
+        if getattr(self, "_queue_counter", None):
+            self._queue_counter.setText(
+                self.tr("{done} / {total}").format(done=finished, total=total)
+            )
+        if getattr(self, "_queue_active_label", None):
+            active = self._active_queue_item()
+            if active is not None:
+                name = active.get("name") or active.get("path") or ""
+                self._queue_active_label.setText(
+                    self.tr("Active: {name}").format(name=name)
+                )
+            else:
+                self._queue_active_label.setText("")
 
     def _update_pipeline_controls(self, state: dict[str, Any]) -> None:
         """Toggle Pause / Resume / Stop from the orchestrator state.
