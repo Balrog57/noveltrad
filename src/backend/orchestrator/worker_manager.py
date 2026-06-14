@@ -140,9 +140,15 @@ def _default_worker_entrypoint(
         )
         worker.run()
     except Exception:
-        # The process is about to die anyway. Print full traceback so it
-        # shows up in the orchestrator's logs.
-        print(f"[{worker_id}] worker crashed:\n{traceback.format_exc()}", flush=True)
+        # The process is about to die anyway. Log the full traceback so it
+        # shows up in the orchestrator's logs. We use ``logger`` rather
+        # than ``print`` because in a frozen Windows build (``console=False``)
+        # ``sys.stdout`` is ``None`` and a bare ``print`` would raise a
+        # secondary ``AttributeError`` that masks the real crash.
+        try:
+            logger.exception("[%s] worker crashed", worker_id)
+        except Exception:
+            pass
         raise
 
 

@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.1.8] — 2026-06-14
+
+### Fixed
+- Workers spawned by the orchestrator crashed on frozen Windows builds
+  with `AttributeError: 'NoneType' object has no attribute 'write'`
+  because `worker_manager._default_worker_entrypoint` used `print()`
+  to report its own crash and `sys.stdout` is `None` in
+  `console=False` PyInstaller bundles. Switched to `logger.exception`,
+  guarded so a logging failure cannot mask the original traceback.
+- The Settings tab now displays the running build version
+  (read from `src.__version__`) so users can confirm which build is
+  actually installed and compare it with the value on the GitHub
+  Releases page.
+
 ## [4.1.7] — 2026-06-14
 
 ### Fixed

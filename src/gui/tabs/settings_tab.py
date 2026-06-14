@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src import __version__ as APP_VERSION
 from src.gui.app_config import ConfigManager
 from src.gui.i18n import available_languages
 from src.gui.updater import Updater, is_skipped
@@ -51,6 +52,18 @@ class SettingsTab(QWidget):
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self._version = QLabel(APP_VERSION)
+        self._version.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._version.setToolTip(
+            self.tr(
+                "Version baked into the running build. "
+                "Compare it with the value on the GitHub Releases page."
+            )
+        )
+        form.addRow(self.tr("Version:"), self._version)
 
         self._provider = QComboBox()
         self._provider.addItem(self.tr("Ollama (local)"), "ollama")
