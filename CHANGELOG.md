@@ -27,6 +27,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   updater source of truth and documents best-effort Authenticode
   verification.
 
+## [4.1.1] — 2026-06-14
+
+### Fixed
+- French UI translation now loads from the saved language setting and
+  ships with the compiled Qt `.qm` catalogue in frozen builds.
+- The installer can be displayed in English or French and records the
+  initial application language without overwriting an existing user
+  config.
+- The Translate workflow exposes a visible return-to-file-selection
+  action from Pipeline and Review pages.
+- The release workflow verifies the generated
+  `Setup_NovelTrad-v<version>.exe` before uploading release assets.
+- Reviewer reflection metadata is persisted correctly.
+
+### Tests
+- Added focused reflection-loop, DAG escalation, and guarded headless
+  client smoke coverage.
+
 ## [4.0.1] — 2026-06-11
 
 ### Added
