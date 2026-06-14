@@ -445,6 +445,7 @@ class MainWindow(QMainWindow):
 
     def _handle_event(self, event: dict[str, Any]) -> None:
         self._activity.on_event(event)
+        self._translate_tab.on_pipeline_event(event)
         kind = event.get("type")
         if kind == "hltl_alert":
             self._show_hitl(event)
@@ -518,11 +519,13 @@ class MainWindow(QMainWindow):
                 raise ValueError("payload has neither source_paths nor source_path")
             res = self._client.post("/projects", body=body, timeout=10.0)
         except BackendError as exc:
+            self._translate_tab.on_project_start_failed(payload, str(exc))
             QMessageBox.warning(self, self.tr("Start failed"), str(exc))
             return None
         except Exception as exc:
             # Never let an unexpected error crash the Qt event loop.
             logger.exception("start translation: unexpected error")
+            self._translate_tab.on_project_start_failed(payload, str(exc))
             QMessageBox.warning(
                 self,
                 self.tr("Start failed"),
@@ -530,6 +533,7 @@ class MainWindow(QMainWindow):
             )
             return None
         pid = res.get("project_id", "")
+        self._translate_tab.on_project_created(payload, res)
         self._activity.on_event(
             {
                 "type": "log",

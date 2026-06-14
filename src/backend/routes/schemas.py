@@ -41,6 +41,10 @@ def build_schemas() -> dict[str, Any]:
         source_lang: str
         target_lang: str
         started_at: float
+        source_path: str | None = None
+        source_paths: list[str] = Field(default_factory=list)
+        profile: str = "balanced"
+        output_format: str = "txt"
 
     class ProjectQueueEntry(BaseModel):
         project_id: str

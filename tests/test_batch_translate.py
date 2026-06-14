@@ -85,6 +85,13 @@ class FileCloudMultiFileTests(unittest.TestCase):
         self.assertEqual(cloud.selected_paths(), [])
         self.assertEqual(captured[-1], [])
 
+    def test_accepts_more_than_ten_files_without_limit_copy(self) -> None:
+        cloud = self._make_cloud()
+        paths = [str(Path(f"C:/tmp/book_{i}.txt")) for i in range(12)]
+        cloud.add_paths(paths)
+        self.assertEqual(cloud.selected_paths(), paths)
+        self.assertNotIn("up to 10", cloud._sub.text())
+
 
 class StateStoreSourceFileTests(unittest.TestCase):
     def setUp(self) -> None:

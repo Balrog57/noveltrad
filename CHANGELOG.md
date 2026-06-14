@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.1.12] - 2026-06-14
+
+### Added
+- GUI: the Translate tab now shows a visible multi-file queue with one
+  row per file, including status, active stage, progress, and
+  output/error feedback.
+- Backend: `/pipeline/state` now exposes the active project's source
+  path(s), profile, and output format so the GUI can attach progress to
+  the right queued file.
+
+### Changed
+- GUI: file selection no longer advertises a 10-file limit.
+- Activity Log: project queue events are now formatted as readable
+  queued/started/failed messages.
+
 ## [4.1.11] — 2026-06-14
 
 ### Fixed

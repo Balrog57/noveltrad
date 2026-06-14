@@ -681,6 +681,12 @@ class Orchestrator:
                     "source_lang": project.source_lang,
                     "target_lang": project.target_lang,
                     "started_at": project.started_at,
+                    "source_path": str(project.source_path)
+                    if project.source_path
+                    else None,
+                    "source_paths": [str(p) for p in project.source_paths],
+                    "profile": project.profile,
+                    "output_format": project.output_format,
                 }
                 if project is not None
                 else None

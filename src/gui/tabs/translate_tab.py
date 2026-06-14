@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QListView,
+    QProgressBar,
     QPushButton,
     QStackedLayout,
     QTableWidget,
@@ -64,6 +65,8 @@ PIPELINE_STAGES: tuple[str, ...] = (
     "assembler",
 )
 
+TERMINAL_QUEUE_STATES = {"done", "error"}
+
 
 class TranslateTab(QWidget):
     startRequested = pyqtSignal(dict)
@@ -82,6 +85,10 @@ class TranslateTab(QWidget):
         self._selected_paths: list[str] = []
         self._project_dir: str = ""
         self._user_requested_select = False
+        self._queue_items: list[dict[str, Any]] = []
+        self._queue_by_path: dict[str, dict[str, Any]] = {}
+        self._queue_by_project_id: dict[str, dict[str, Any]] = {}
+        self._active_project_id: str | None = None
 
         # Outer layout = vertical stack: header bar + stacked pages.
         outer = QVBoxLayout(self)
@@ -141,6 +148,11 @@ class TranslateTab(QWidget):
 
     def update_pipeline_state(self, state: dict[str, Any]) -> None:
         """Refresh the pipeline page from /pipeline/state JSON."""
+        project = state.get("project") or {}
+        if project:
+            self._sync_active_project(project)
+        self._sync_queued_projects(state.get("project_queue") or [])
+
         ss = state.get("state_store") or {}
         counts = ss.get("chunks_by_status") or {}
         total = ss.get("chunks_total") or 0
@@ -148,6 +160,17 @@ class TranslateTab(QWidget):
             count = counts.get(stage, 0) or counts.get(self._status_alias(stage), 0)
             row["count"].setText(self.tr("{n} chunks").format(n=count))
             row["progress"].setValue(min(100, int(100 * count / max(1, total))))
+        active = self._active_queue_item()
+        if active is not None:
+            active["progress"] = max(
+                int(active.get("progress", 0)),
+                self._progress_from_counts(counts, total),
+            )
+            active["state"] = project.get("status") or active.get("state", "running")
+            active["current_stage"] = self._stage_from_counts(counts) or active.get(
+                "current_stage", "parser"
+            )
+            self._refresh_queue_row(active)
         polished = counts.get("polished", 0)
         issues = (
             ss.get("qa_issues", 0)
@@ -170,13 +193,122 @@ class TranslateTab(QWidget):
     def on_artifact_ready(self, output_path: str) -> None:
         self._assemble_btn.setEnabled(True)
         self._assemble_btn.setText(self.tr("📦  Open output folder"))
+        active = self._active_queue_item()
+        if active is not None:
+            active["state"] = "done"
+            active["current_stage"] = "assembler"
+            active["progress"] = 100
+            active["output_path"] = output_path
+            self._refresh_queue_row(active)
         self._progress_label.setText(
             self.tr("Done · {path}").format(path=output_path)
         )
         # Refresh review list and switch to it.
         if self._review_model is not None:
             self._review_model.refresh()
-        self.go_to_step(2)
+        self.go_to_step(1 if self._queue_items else 2)
+
+    def on_project_created(
+        self, payload: dict[str, Any], response: dict[str, Any]
+    ) -> None:
+        """Attach POST /projects metadata to the pre-created queue row."""
+        path = str(
+            (payload.get("source_paths") or [payload.get("source_path") or ""])[0]
+        )
+        item = self._queue_by_path.get(path)
+        if item is None:
+            item = self._add_queue_item(path)
+        pid = response.get("project_id") or ""
+        if pid:
+            item["project_id"] = pid
+            self._queue_by_project_id[pid] = item
+        item["state"] = "queued" if response.get("queue_position", 0) else "running"
+        item["current_stage"] = "waiting" if item["state"] == "queued" else "parser"
+        if item["state"] == "running":
+            self._active_project_id = pid or item.get("project_id")
+        self._refresh_queue_row(item)
+
+    def on_project_start_failed(self, payload: dict[str, Any], error: str) -> None:
+        path = str(
+            (payload.get("source_paths") or [payload.get("source_path") or ""])[0]
+        )
+        item = self._queue_by_path.get(path)
+        if item is None:
+            item = self._add_queue_item(path)
+        item["state"] = "error"
+        item["current_stage"] = "start"
+        item["error"] = error
+        self._refresh_queue_row(item)
+
+    def on_pipeline_event(self, event: dict[str, Any]) -> None:
+        """Apply live backend events to the file queue table."""
+        kind = event.get("type")
+        pid = event.get("project_id") or self._active_project_id
+        item = self._queue_by_project_id.get(pid or "") if pid else None
+        if item is None:
+            item = self._active_queue_item()
+
+        if kind == "project_queued":
+            item = self._queue_by_project_id.get(event.get("project_id", ""))
+            if item is not None:
+                item["state"] = "queued"
+                item["current_stage"] = "waiting"
+                self._refresh_queue_row(item)
+            return
+
+        if kind in ("pipeline_started", "project_started_from_queue"):
+            pid = event.get("project_id")
+            item = self._queue_by_project_id.get(pid or "") if pid else item
+            if item is not None:
+                self._active_project_id = item.get("project_id") or pid
+                item["state"] = "running"
+                item["current_stage"] = "parser"
+                self._refresh_queue_row(item)
+                self.go_to_step(1)
+            return
+
+        if item is None:
+            return
+
+        if kind in ("agent_progress", "stage_progress", "chunk_progress"):
+            stage = event.get("stage") or item.get("current_stage") or "parser"
+            item["state"] = "running"
+            item["current_stage"] = stage
+            item["progress"] = max(
+                int(item.get("progress", 0)),
+                self._progress_from_stage_event(stage, event.get("percent")),
+            )
+        elif kind == "agent_done":
+            stage = event.get("stage") or item.get("current_stage") or "pipeline"
+            item["current_stage"] = stage
+            item["progress"] = max(
+                int(item.get("progress", 0)),
+                self._progress_from_stage_event(stage, 100),
+            )
+        elif kind == "hltl_alert":
+            item["state"] = "waiting_for_human"
+            item["current_stage"] = event.get("stage") or item.get("current_stage")
+        elif kind == "agent_error":
+            item["state"] = "error"
+            item["current_stage"] = event.get("stage") or item.get("current_stage")
+            payload = event.get("payload") or {}
+            item["error"] = payload.get("message") or payload.get("error_kind") or ""
+        elif kind == "assemble_triggered":
+            item["state"] = "running"
+            item["current_stage"] = "assembler"
+            item["progress"] = max(int(item.get("progress", 0)), 95)
+        elif kind == "artifact_ready":
+            item["state"] = "done"
+            item["current_stage"] = "assembler"
+            item["progress"] = 100
+            item["output_path"] = event.get("output_path") or ""
+        elif kind == "project_queue_failed":
+            item["state"] = "error"
+            item["current_stage"] = "queue"
+            item["error"] = self.tr("Could not start queued project.")
+        else:
+            return
+        self._refresh_queue_row(item)
 
     # ----- builders -----
 
@@ -262,6 +394,36 @@ class TranslateTab(QWidget):
         title = QLabel(self.tr("Pipeline progress"))
         title.setProperty("role", "subtitle")
         layout.addWidget(title)
+        queue_title = QLabel(self.tr("File queue"))
+        queue_title.setProperty("role", "subtitle")
+        layout.addWidget(queue_title)
+        self._queue_table = QTableWidget(0, 5)
+        self._queue_table.setHorizontalHeaderLabels(
+            [
+                self.tr("File"),
+                self.tr("Status"),
+                self.tr("Stage"),
+                self.tr("Progress"),
+                self.tr("Output / Error"),
+            ]
+        )
+        self._queue_table.verticalHeader().setVisible(False)
+        self._queue_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self._queue_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._queue_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self._queue_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        configure(
+            self._queue_table,
+            name=self.tr("File queue"),
+            description=self.tr("Queued files and their translation progress."),
+        )
+        layout.addWidget(self._queue_table, 1)
+
+        stage_title = QLabel(self.tr("Active file stages"))
+        stage_title.setProperty("role", "subtitle")
+        layout.addWidget(stage_title)
         self._stage_table = QTableWidget(0, 3)
         self._stage_table.setHorizontalHeaderLabels(
             [self.tr("Stage"), self.tr("Count"), self.tr("Progress")]
@@ -413,6 +575,9 @@ class TranslateTab(QWidget):
         # ``queue_position`` so the GUI can show the user where each
         # file sits in the queue.
         n = len(self._selected_paths)
+        self._reset_queue()
+        for path in self._selected_paths:
+            self._add_queue_item(path)
         for i, path in enumerate(self._selected_paths):
             payload = {
                 "source_path": path,
@@ -455,6 +620,186 @@ class TranslateTab(QWidget):
         chunk = self._review_model.chunk_at(index.row()) if self._review_model else None
         if chunk:
             self.fileSelected.emit(chunk.get("id", ""))
+
+    def _reset_queue(self) -> None:
+        self._queue_items.clear()
+        self._queue_by_path.clear()
+        self._queue_by_project_id.clear()
+        self._active_project_id = None
+        self._queue_table.setRowCount(0)
+        for row in self._stage_rows.values():
+            row["count"].setText(self.tr("0 chunks"))
+            row["progress"].setValue(0)
+
+    def _add_queue_item(self, path: str) -> dict[str, Any]:
+        if path in self._queue_by_path:
+            return self._queue_by_path[path]
+        row = self._queue_table.rowCount()
+        self._queue_table.insertRow(row)
+        name_item = QTableWidgetItem(Path(path).name)
+        name_item.setToolTip(path)
+        status_item = QTableWidgetItem(self.tr("Pending"))
+        stage_item = QTableWidgetItem(self.tr("Waiting"))
+        detail_item = QTableWidgetItem("")
+        for table_item in (name_item, status_item, stage_item, detail_item):
+            table_item.setFlags(table_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        bar = QProgressBar()
+        bar.setRange(0, 100)
+        bar.setValue(0)
+        bar.setFormat("%p%")
+        self._queue_table.setItem(row, 0, name_item)
+        self._queue_table.setItem(row, 1, status_item)
+        self._queue_table.setItem(row, 2, stage_item)
+        self._queue_table.setCellWidget(row, 3, bar)
+        self._queue_table.setItem(row, 4, detail_item)
+        item: dict[str, Any] = {
+            "row": row,
+            "project_id": "",
+            "path": path,
+            "name": Path(path).name,
+            "state": "pending",
+            "current_stage": "waiting",
+            "progress": 0,
+            "output_path": "",
+            "error": "",
+            "_status_item": status_item,
+            "_stage_item": stage_item,
+            "_detail_item": detail_item,
+            "_progress_bar": bar,
+        }
+        self._queue_items.append(item)
+        self._queue_by_path[path] = item
+        return item
+
+    def _refresh_queue_row(self, item: dict[str, Any]) -> None:
+        item["_status_item"].setText(self._state_label(item.get("state", "")))
+        stage = str(item.get("current_stage") or "waiting")
+        item["_stage_item"].setText(stage.replace("_", " ").title())
+        item["_progress_bar"].setValue(max(0, min(100, int(item.get("progress", 0)))))
+        detail = item.get("error") or item.get("output_path") or item.get("project_id") or ""
+        item["_detail_item"].setText(str(detail))
+        item["_detail_item"].setToolTip(str(detail))
+
+    def _sync_active_project(self, project: dict[str, Any]) -> None:
+        pid = project.get("project_id") or ""
+        paths = project.get("source_paths") or []
+        path = str(project.get("source_path") or (paths[0] if paths else ""))
+        if not path:
+            return
+        item = self._queue_by_project_id.get(pid) or self._queue_by_path.get(path)
+        if item is None:
+            item = self._add_queue_item(path)
+        if pid:
+            item["project_id"] = pid
+            self._queue_by_project_id[pid] = item
+            self._active_project_id = pid
+        if item.get("state") not in TERMINAL_QUEUE_STATES:
+            item["state"] = project.get("status") or "running"
+        self._refresh_queue_row(item)
+
+    def _sync_queued_projects(self, entries: list[dict[str, Any]]) -> None:
+        for entry in entries:
+            pid = entry.get("project_id") or ""
+            paths = entry.get("source_paths") or []
+            path = str(entry.get("source_path") or (paths[0] if paths else ""))
+            if not path:
+                continue
+            item = self._queue_by_project_id.get(pid) or self._queue_by_path.get(path)
+            if item is None:
+                item = self._add_queue_item(path)
+            if pid:
+                item["project_id"] = pid
+                self._queue_by_project_id[pid] = item
+            if item.get("state") not in TERMINAL_QUEUE_STATES:
+                item["state"] = "queued"
+                item["current_stage"] = "waiting"
+            self._refresh_queue_row(item)
+
+    def _active_queue_item(self) -> dict[str, Any] | None:
+        if self._active_project_id:
+            item = self._queue_by_project_id.get(self._active_project_id)
+            if item is not None:
+                return item
+        for item in self._queue_items:
+            if item.get("state") in ("running", "paused", "waiting_for_human"):
+                return item
+        return None
+
+    def _progress_from_counts(self, counts: dict[str, Any], total: int) -> int:
+        if total <= 0:
+            return 0
+        status_to_index = self._status_progress_indexes()
+        units = 0
+        for status, count in counts.items():
+            try:
+                n = int(count or 0)
+            except (TypeError, ValueError):
+                n = 0
+            units += status_to_index.get(status, 0) * n
+        return min(100, int(100 * units / max(1, total * len(PIPELINE_STAGES))))
+
+    def _stage_from_counts(self, counts: dict[str, Any]) -> str | None:
+        status_to_index = self._status_progress_indexes()
+        best_status = ""
+        best_index = -1
+        for status, count in counts.items():
+            if not count:
+                continue
+            idx = status_to_index.get(status, -1)
+            if idx > best_index:
+                best_status = status
+                best_index = idx
+        if not best_status:
+            return None
+        return self._stage_for_status(best_status)
+
+    def _progress_from_stage_event(self, stage: str, percent: Any) -> int:
+        try:
+            pct = max(0.0, min(100.0, float(percent)))
+        except (TypeError, ValueError):
+            pct = 0.0
+        try:
+            idx = PIPELINE_STAGES.index(stage)
+        except ValueError:
+            idx = 0
+        return min(99, int(100 * (idx + pct / 100.0) / len(PIPELINE_STAGES)))
+
+    @classmethod
+    def _status_progress_indexes(cls) -> dict[str, int]:
+        indexes = {
+            cls._status_alias(stage): i + 1 for i, stage in enumerate(PIPELINE_STAGES)
+        }
+        indexes.update(
+            {
+                "lexicon_ready": PIPELINE_STAGES.index("lexicon_builder") + 1,
+                "lexicon_skipped": PIPELINE_STAGES.index("lexicon_builder") + 1,
+                "reviewed": PIPELINE_STAGES.index("llm_polisher") + 1,
+            }
+        )
+        return indexes
+
+    @classmethod
+    def _stage_for_status(cls, status: str) -> str:
+        for stage in PIPELINE_STAGES:
+            if cls._status_alias(stage) == status:
+                return stage
+        if status in ("lexicon_ready", "lexicon_skipped"):
+            return "lexicon_builder"
+        if status == "reviewed":
+            return "llm_polisher"
+        return status
+
+    def _state_label(self, state: str) -> str:
+        return {
+            "pending": self.tr("Pending"),
+            "queued": self.tr("Queued"),
+            "running": self.tr("Running"),
+            "paused": self.tr("Paused"),
+            "waiting_for_human": self.tr("Needs review"),
+            "done": self.tr("Done"),
+            "error": self.tr("Error"),
+            "stopped": self.tr("Stopped"),
+        }.get(state, state.replace("_", " ").title())
 
     @staticmethod
     def _status_alias(stage: str) -> str:

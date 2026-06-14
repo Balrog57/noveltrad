@@ -155,6 +155,18 @@ class ActivityLogWidget(QWidget):
             return f"{ts}  WORKER EXIT [{event.get('stage', '')}]"
         if kind == "pipeline_started":
             return f"{ts}  pipeline started"
+        if kind == "project_queued":
+            return (
+                f"{ts}  queued project {event.get('project_id', '')}"
+                f" (position {event.get('queue_position', '?')})"
+            )
+        if kind == "project_started_from_queue":
+            return (
+                f"{ts}  started queued project {event.get('project_id', '')}"
+                f" ({event.get('queue_remaining', 0)} remaining)"
+            )
+        if kind == "project_queue_failed":
+            return f"{ts}  queue failed for project {event.get('project_id', '')}"
         if kind == "pipeline_paused":
             return f"{ts}  pipeline paused"
         if kind == "pipeline_resumed":
@@ -169,13 +181,18 @@ class ActivityLogWidget(QWidget):
 
     @staticmethod
     def _colour_for(kind: str) -> str | None:
-        if kind in ("agent_error", "worker_exit"):
+        if kind in ("agent_error", "worker_exit", "project_queue_failed"):
             return "#ff6b6b"
         if kind in ("hltl_alert",):
             return "#ffb86b"
-        if kind in ("agent_done", "pipeline_stopped", "artifact_ready"):
+        if kind in (
+            "agent_done",
+            "pipeline_stopped",
+            "artifact_ready",
+            "project_started_from_queue",
+        ):
             return "#7be395"
-        if kind in ("pipeline_paused",):
+        if kind in ("pipeline_paused", "project_queued"):
             return "#ffd166"
         return None
 

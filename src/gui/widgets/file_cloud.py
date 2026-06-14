@@ -76,7 +76,9 @@ class FileCloud(QGroupBox):
         self._hint.setStyleSheet("font-size: 12pt; font-weight: 600;")
         outer.addWidget(self._hint)
 
-        self._sub = QLabel(self.tr("TXT, EPUB, SRT, DOCX — up to 10 files"))
+        self._sub = QLabel(
+            self.tr("TXT, EPUB, SRT, DOCX - add as many as needed")
+        )
         self._sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._sub.setProperty("role", "muted")
         outer.addWidget(self._sub)

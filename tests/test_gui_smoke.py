@@ -246,6 +246,37 @@ class EventDebouncerTests(unittest.TestCase):
         self.assertEqual(d.total_flushed, 3)
 
 
+class ActivityLogQueueEventTests(unittest.TestCase):
+    def test_formats_queue_events(self) -> None:
+        app = _ensure_app()
+        from src.gui.widgets.activity_log import ActivityLogWidget
+
+        log = ActivityLogWidget()
+        try:
+            log.on_event(
+                {
+                    "type": "project_queued",
+                    "project_id": "p2",
+                    "queue_position": 2,
+                }
+            )
+            log.on_event(
+                {
+                    "type": "project_started_from_queue",
+                    "project_id": "p2",
+                    "queue_remaining": 1,
+                }
+            )
+            log.on_event({"type": "project_queue_failed", "project_id": "p3"})
+            texts = [log._list.item(i).text() for i in range(log._list.count())]
+            self.assertIn("queued project p2", texts[0])
+            self.assertIn("started queued project p2", texts[1])
+            self.assertIn("queue failed for project p3", texts[2])
+        finally:
+            log.deleteLater()
+            app.processEvents()
+
+
 class ReviewModelTests(unittest.TestCase):
     def test_paginates_from_fake_client(self) -> None:
         app = _ensure_app()
@@ -313,6 +344,86 @@ class TranslateTabNavigationTests(unittest.TestCase):
             self.assertEqual(tab._stack.currentIndex(), 0)
             tab.update_pipeline_state(state)
             self.assertEqual(tab._stack.currentIndex(), 0)
+        finally:
+            tab.deleteLater()
+            app.processEvents()
+
+    def test_start_creates_queue_rows_and_emits_one_project_per_file(self) -> None:
+        app = _ensure_app()
+        from src.gui.tabs.translate_tab import TranslateTab
+
+        tab = TranslateTab()
+        captured: list[dict] = []
+        tab.startRequested.connect(lambda payload: captured.append(dict(payload)))
+        try:
+            paths = [str(Path(f"C:/tmp/book_{i}.txt")) for i in range(12)]
+            tab._cloud.add_paths(paths)
+            tab._on_start()
+            self.assertEqual(tab._queue_table.rowCount(), 12)
+            self.assertEqual(len(captured), 12)
+            self.assertEqual([c["source_paths"][0] for c in captured], paths)
+            self.assertEqual(tab._stack.currentIndex(), 1)
+        finally:
+            tab.deleteLater()
+            app.processEvents()
+
+    def test_queue_updates_from_project_response_events_and_artifact(self) -> None:
+        app = _ensure_app()
+        from src.gui.tabs.translate_tab import TranslateTab
+
+        tab = TranslateTab()
+        try:
+            path = str(Path("C:/tmp/book.txt"))
+            payload = {"source_path": path, "source_paths": [path]}
+            tab._add_queue_item(path)
+            tab.on_project_created(payload, {"project_id": "p1", "queue_position": 0})
+            self.assertEqual(tab._queue_items[0]["state"], "running")
+            tab.on_pipeline_event(
+                {
+                    "type": "agent_progress",
+                    "project_id": "p1",
+                    "stage": "fast_translator",
+                    "percent": 50,
+                }
+            )
+            self.assertEqual(tab._queue_items[0]["current_stage"], "fast_translator")
+            self.assertGreater(tab._queue_items[0]["progress"], 0)
+            tab.on_artifact_ready("C:/tmp/out.txt")
+            self.assertEqual(tab._queue_items[0]["state"], "done")
+            self.assertEqual(tab._queue_items[0]["progress"], 100)
+            self.assertIn("out.txt", tab._queue_items[0]["_detail_item"].text())
+        finally:
+            tab.deleteLater()
+            app.processEvents()
+
+    def test_pipeline_state_updates_active_file_progress(self) -> None:
+        app = _ensure_app()
+        from src.gui.tabs.translate_tab import TranslateTab
+
+        tab = TranslateTab()
+        try:
+            path = str(Path("C:/tmp/book.txt"))
+            payload = {"source_path": path, "source_paths": [path]}
+            tab.on_project_created(payload, {"project_id": "p1", "queue_position": 0})
+            tab.update_pipeline_state(
+                {
+                    "project": {
+                        "project_id": "p1",
+                        "status": "running",
+                        "source_path": path,
+                        "source_paths": [path],
+                    },
+                    "state_store": {
+                        "chunks_total": 2,
+                        "chunks_by_status": {"fast_translated": 1, "polished": 1},
+                    },
+                    "project_queue": [],
+                }
+            )
+            item = tab._queue_items[0]
+            self.assertEqual(item["current_stage"], "llm_polisher")
+            self.assertGreater(item["progress"], 0)
+            self.assertEqual(tab._stack.currentIndex(), 1)
         finally:
             tab.deleteLater()
             app.processEvents()

@@ -1,6 +1,6 @@
 [project]
 name = "noveltrad"
-version = "4.1.11"
+version = "4.1.12"
 description = "Pipeline de traduction multi-agent pour romans et web novels"
 readme = "README.md"
 requires-python = ">=3.10"
