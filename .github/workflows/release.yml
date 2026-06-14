@@ -89,7 +89,12 @@ jobs:
                   $expected = "Setup_NovelTrad-v$ver.exe"
                   $allowed = @($expected, "latest.json")
                   $api = "repos/${{ github.repository }}/releases/tags/$tag"
-                  $rel = gh api $api | ConvertFrom-Json
+                  $relJson = gh api $api 2>$null
+                  if ($LASTEXITCODE -ne 0) {
+                      Write-Host "No existing release for $tag; continuing."
+                      exit 0
+                  }
+                  $rel = $relJson | ConvertFrom-Json
                   if ($rel.draft -ne $true -and $rel.assets.Count -gt 0) {
                       throw "Release $tag already has assets and is not a draft. Refusing to modify a published release."
                   }
