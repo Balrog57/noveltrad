@@ -497,19 +497,24 @@ class MainWindow(QMainWindow):
 
     def _on_start_translation(self, payload: dict[str, Any]) -> str | None:
         try:
-            res = self._client.post(
-                "/projects",
-                body={
-                    "project_dir": payload.get("project_dir") or "./projects",
-                    "source_path": payload["source_path"],
-                    "source_lang": payload.get("source_lang", "auto"),
-                    "target_lang": payload.get("target_lang", "fr"),
-                    "profile": payload.get("quality", "balanced"),
-                    "output_format": payload.get("output_format", "txt"),
-                    "parse": True,
-                },
-                timeout=10.0,
-            )
+            body: dict[str, Any] = {
+                "project_dir": payload.get("project_dir") or "./projects",
+                "source_lang": payload.get("source_lang", "auto"),
+                "target_lang": payload.get("target_lang", "fr"),
+                "profile": payload.get("quality", "balanced"),
+                "output_format": payload.get("output_format", "txt"),
+                "parse": True,
+            }
+            # Prefer ``source_paths`` (list). Fall back to the legacy
+            # single ``source_path`` field for back-compat with
+            # re-opened projects that still carry the old payload.
+            paths = payload.get("source_paths") or []
+            if paths:
+                body["source_paths"] = [str(p) for p in paths]
+                body["source_path"] = str(paths[0])
+            else:
+                body["source_path"] = str(payload["source_path"])
+            res = self._client.post("/projects", body=body, timeout=10.0)
         except BackendError as exc:
             QMessageBox.warning(self, self.tr("Start failed"), str(exc))
             return None

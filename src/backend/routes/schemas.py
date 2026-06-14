@@ -22,7 +22,12 @@ def build_schemas() -> dict[str, Any]:
     class ProjectCreateRequest(BaseModel):
         project_id: str | None = None
         project_dir: str
-        source_path: str
+        # Either ``source_path`` (single file) or ``source_paths`` (one or
+        # more files / a whole directory flattened at the GUI level) is
+        # accepted. ``source_paths`` wins when non-empty so the GUI can
+        # batch a selection of N files into a single POST /projects.
+        source_path: str | None = None
+        source_paths: list[str] = Field(default_factory=list)
         source_lang: str = "auto"
         target_lang: str = "fr"
         output_path: str | None = None

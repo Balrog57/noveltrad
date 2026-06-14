@@ -30,11 +30,25 @@ def register(app: Any, deps: Deps) -> None:
     @app.post("/projects")
     def create_project(req: ProjectCreateRequest) -> dict[str, Any]:
         project_id = req.project_id or uuid.uuid4().hex[:12]
-        ctx = _build_context(project_id, req)
+        # Normalise to a list: ``source_paths`` wins if non-empty,
+        # otherwise we treat ``source_path`` as a single-element list
+        # for back-compat with older clients.
+        paths: list[str] = []
+        if req.source_paths:
+            paths = [str(p) for p in req.source_paths if p]
+        elif req.source_path:
+            paths = [str(req.source_path)]
+        if not paths:
+            raise HTTPException(
+                status_code=400,
+                detail="source_path or source_paths is required",
+            )
+        ctx = _build_context(project_id, req, source_paths=paths)
         _persist_project_metadata(deps, project_id, ctx)
         if req.parse:
-            _kickoff_parser(deps, project_id, ctx)
-        return {"project_id": project_id, "status": "created"}
+            _kickoff_parser(deps, project_id, ctx, paths)
+        return {"project_id": project_id, "status": "created",
+                "source_paths": paths}
 
     @app.post("/pipeline/start")
     def pipeline_start(req: ProjectCreateRequest) -> dict[str, Any]:
@@ -103,11 +117,15 @@ def register(app: Any, deps: Deps) -> None:
         }
 
 
-def _build_context(project_id: str, req: Any) -> ProjectContext:
+def _build_context(
+    project_id: str, req: Any, source_paths: list[str] | None = None
+) -> ProjectContext:
+    paths = source_paths or ([req.source_path] if req.source_path else [])
     return ProjectContext(
         project_id=project_id,
         project_dir=Path(req.project_dir),
-        source_path=Path(req.source_path),
+        source_path=Path(paths[0]) if paths else None,
+        source_paths=[Path(p) for p in paths],
         source_lang=req.source_lang,
         target_lang=req.target_lang,
         output_path=Path(req.output_path) if req.output_path else None,
@@ -132,7 +150,9 @@ def _persist_project_metadata(deps: Deps, project_id: str, ctx: ProjectContext) 
     )
 
 
-def _kickoff_parser(deps: Deps, project_id: str, ctx: ProjectContext) -> None:
+def _kickoff_parser(
+    deps: Deps, project_id: str, ctx: ProjectContext, source_paths: list[str]
+) -> None:
     from src.backend.agents.base_worker import make_task_message
 
     deps.orchestrator.start(ctx)
@@ -144,7 +164,12 @@ def _kickoff_parser(deps: Deps, project_id: str, ctx: ProjectContext) -> None:
             payload={
                 "project_id": project_id,
                 "project_dir": str(ctx.project_dir),
-                "source_path": str(ctx.source_path),
+                # ``source_paths`` is the multi-file path; ``source_path``
+                # is kept for back-compat with older workers.
+                "source_paths": [str(p) for p in source_paths],
+                "source_path": (
+                    str(source_paths[0]) if len(source_paths) == 1 else None
+                ),
                 "source_lang": ctx.source_lang,
                 "target_lang": ctx.target_lang,
                 "output_path": str(ctx.output_path) if ctx.output_path else None,

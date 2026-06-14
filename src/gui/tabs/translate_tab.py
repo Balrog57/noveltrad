@@ -406,24 +406,32 @@ class TranslateTab(QWidget):
         project_dir = self._project_dir or str(
             Path(self._selected_paths[0]).parent
         )
-        # Emit one start per file so the orchestrator queues them
-        # sequentially and tags each chunk's source_file accordingly.
-        # For the v1 batch UI we keep the startRequested signal
-        # single-payload: callers iterate the cloud's selection.
-        for path in self._selected_paths:
-            payload = {
-                "source_path": path,
-                "source_lang": source_lang,
-                "target_lang": target_lang,
-                "quality": quality,
-                "output_format": output_format,
-                "project_dir": project_dir,
-            }
-            self.startRequested.emit(payload)
+        # Send a single start request with the full file list. The
+        # backend (POST /projects) accepts ``source_paths`` and processes
+        # them as one project: one Parser pass over all files, one
+        # chunk stream, one Assembler run that writes one output file
+        # per source. This avoids the previous behaviour where the
+        # orchestrator rejected every POST after the first.
+        payload = {
+            "source_paths": list(self._selected_paths),
+            "source_path": self._selected_paths[0],
+            "source_lang": source_lang,
+            "target_lang": target_lang,
+            "quality": quality,
+            "output_format": output_format,
+            "project_dir": project_dir,
+        }
+        self.startRequested.emit(payload)
         names = ", ".join(Path(p).name for p in self._selected_paths)
+        suffix = (
+            self.tr("({n} files)").format(n=len(self._selected_paths))
+            if len(self._selected_paths) > 1
+            else self.tr("(1 file)")
+        )
         self.set_status(
-            self.tr("Queued: {names} ({src} → {tgt})").format(
-                names=names, src=source_lang, tgt=target_lang
+            self.tr("Queued: {names} {suffix} ({src} → {tgt})").format(
+                names=names, suffix=suffix,
+                src=source_lang, tgt=target_lang,
             )
         )
         self.go_to_step(1)

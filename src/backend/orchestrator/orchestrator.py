@@ -74,7 +74,11 @@ class ProjectContext:
     project_dir: Path
     source_lang: str
     target_lang: str
-    source_path: Path
+    # ``source_path`` is the first source file (back-compat); the full
+    # list lives in ``source_paths`` and is what the Parser and
+    # Assembler actually iterate on.
+    source_path: Path | None = None
+    source_paths: list[Path] = field(default_factory=list)
     output_path: Path | None = None
     started_at: float = field(default_factory=time.time)
     status: str = "idle"  # idle | running | paused | stopped | done | error

@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.1.9] — 2026-06-14
+
+### Added
+- `POST /projects` now accepts a `source_paths` list. A selection of
+  N files (or a directory flattened at the GUI level) is processed
+  as a single project: one Parser pass over every file, one chunk
+  stream, and one Assembler run that writes one output file per
+  source. The previous behaviour sent N separate requests and the
+  orchestrator rejected every request after the first, which
+  surfaced as `POST /projects -> HTTP 500` for the user.
+- `ProjectContext` and the Parser payload carry the full
+  `source_paths` list. Each chunk is stamped with `source_file` so
+  downstream stages and the Assembler can group / split per file.
+
+### Tests
+- `tests/test_multi_source.py` covers the schema (list, single
+  string, empty rejection) and the Parser multi-file iteration.
+
 ## [4.1.8] — 2026-06-14
 
 ### Fixed
