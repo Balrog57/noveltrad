@@ -46,9 +46,21 @@ def register(app: Any, deps: Deps) -> None:
         ctx = _build_context(project_id, req, source_paths=paths)
         _persist_project_metadata(deps, project_id, ctx)
         if req.parse:
-            _kickoff_parser(deps, project_id, ctx, paths)
-        return {"project_id": project_id, "status": "created",
-                "source_paths": paths}
+            started = _kickoff_parser(deps, project_id, ctx, paths)
+        else:
+            started = True
+        with deps.orchestrator._lock:
+            qpos = (
+                deps.orchestrator._project_queue.index(ctx) + 1
+                if ctx in deps.orchestrator._project_queue
+                else 0
+            )
+        return {
+            "project_id": project_id,
+            "status": "queued" if not started else "running",
+            "queue_position": qpos,
+            "source_paths": paths,
+        }
 
     @app.post("/pipeline/start")
     def pipeline_start(req: ProjectCreateRequest) -> dict[str, Any]:
@@ -74,6 +86,8 @@ def register(app: Any, deps: Deps) -> None:
 
     @app.get("/pipeline/state", response_model=PipelineStateResponse)
     def pipeline_state() -> PipelineStateResponse:
+        from .schemas import ProjectQueueEntry
+
         snap = deps.orchestrator.snapshot()
         proj = snap["project"]
         return PipelineStateResponse(
@@ -85,6 +99,10 @@ def register(app: Any, deps: Deps) -> None:
             event_log_tail=snap["event_log_tail"],
             output_artifact=snap.get("output_artifact"),
             project_manifest_path=snap.get("project_manifest_path"),
+            project_queue=[
+                ProjectQueueEntry(**q) for q in snap.get("project_queue", [])
+            ],
+            project_queue_size=snap.get("project_queue_size", 0),
         )
 
     @app.post("/chunks/submit")
@@ -152,30 +170,24 @@ def _persist_project_metadata(deps: Deps, project_id: str, ctx: ProjectContext) 
 
 def _kickoff_parser(
     deps: Deps, project_id: str, ctx: ProjectContext, source_paths: list[str]
-) -> None:
-    from src.backend.agents.base_worker import make_task_message
+) -> bool:
+    """Start the pipeline and queue the parser task.
 
+    The orchestrator's ``start()`` is now the single entry point:
+    it spawns the workers, spawns the parser task and emits
+    ``pipeline_started``. If a project is already running, the
+    call enqueues and the parser is kicked off later by
+    ``_start_next_queued_project``.
+
+    Returns ``True`` if the pipeline started immediately,
+    ``False`` if the project was queued.
+    """
+    with deps.orchestrator._lock:
+        was_idle = deps.orchestrator._project is None
     deps.orchestrator.start(ctx)
-    parser_q = deps.orchestrator._workers.queues_for("parser").input  # type: ignore[attr-defined]
-    parser_q.put(
-        make_task_message(
-            chunk_id=project_id,
-            action="parse",
-            payload={
-                "project_id": project_id,
-                "project_dir": str(ctx.project_dir),
-                # ``source_paths`` is the multi-file path; ``source_path``
-                # is kept for back-compat with older workers.
-                "source_paths": [str(p) for p in source_paths],
-                "source_path": (
-                    str(source_paths[0]) if len(source_paths) == 1 else None
-                ),
-                "source_lang": ctx.source_lang,
-                "target_lang": ctx.target_lang,
-                "output_path": str(ctx.output_path) if ctx.output_path else None,
-            },
-        )
-    )
+    with deps.orchestrator._lock:
+        queued = ctx in deps.orchestrator._project_queue
+    return was_idle and not queued
 
 
 def _remove_project_local_files(project: dict[str, Any]) -> tuple[list[str], list[str]]:

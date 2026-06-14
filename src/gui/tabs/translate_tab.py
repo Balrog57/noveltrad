@@ -406,22 +406,26 @@ class TranslateTab(QWidget):
         project_dir = self._project_dir or str(
             Path(self._selected_paths[0]).parent
         )
-        # Send a single start request with the full file list. The
-        # backend (POST /projects) accepts ``source_paths`` and processes
-        # them as one project: one Parser pass over all files, one
-        # chunk stream, one Assembler run that writes one output file
-        # per source. This avoids the previous behaviour where the
-        # orchestrator rejected every POST after the first.
-        payload = {
-            "source_paths": list(self._selected_paths),
-            "source_path": self._selected_paths[0],
-            "source_lang": source_lang,
-            "target_lang": target_lang,
-            "quality": quality,
-            "output_format": output_format,
-            "project_dir": project_dir,
-        }
-        self.startRequested.emit(payload)
+        # Emit one start per file so the backend creates one project
+        # per file and queues them ``a la file``. The orchestrator
+        # auto-starts the next queued project once the current one
+        # finishes (assembler done). The response also reports a
+        # ``queue_position`` so the GUI can show the user where each
+        # file sits in the queue.
+        n = len(self._selected_paths)
+        for i, path in enumerate(self._selected_paths):
+            payload = {
+                "source_path": path,
+                "source_paths": [path],
+                "source_lang": source_lang,
+                "target_lang": target_lang,
+                "quality": quality,
+                "output_format": output_format,
+                "project_dir": project_dir,
+                "_queue_index": i + 1,
+                "_queue_total": n,
+            }
+            self.startRequested.emit(payload)
         names = ", ".join(Path(p).name for p in self._selected_paths)
         suffix = (
             self.tr("({n} files)").format(n=len(self._selected_paths))

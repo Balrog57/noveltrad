@@ -42,6 +42,12 @@ def build_schemas() -> dict[str, Any]:
         target_lang: str
         started_at: float
 
+    class ProjectQueueEntry(BaseModel):
+        project_id: str
+        source_path: str | None = None
+        source_paths: list[str] = Field(default_factory=list)
+        profile: str = "balanced"
+
     class PipelineStateResponse(BaseModel):
         project: ProjectStateResponse | None
         state_store: dict[str, Any]
@@ -51,6 +57,8 @@ def build_schemas() -> dict[str, Any]:
         event_log_tail: list[dict[str, Any]]
         output_artifact: dict[str, Any] | None = None
         project_manifest_path: str | None = None
+        project_queue: list[ProjectQueueEntry] = Field(default_factory=list)
+        project_queue_size: int = 0
 
     class HITLResponseRequest(BaseModel):
         request_id: str

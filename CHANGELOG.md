@@ -12,6 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [4.1.10] — 2026-06-14
+
+### Added
+- **Sequential project queue** in the orchestrator. When the user
+  selects N files, the GUI now emits N separate `POST /projects`
+  calls (one per file). The orchestrator accepts each one but only
+  runs one project at a time: the 2nd..Nth are appended to a
+  FIFO `_project_queue` and auto-started by
+  `_start_next_queued_project()` once the current project has been
+  written to disk by the Assembler (`artifact_ready` event).
+- The `/projects` response now reports `status: "queued"` and a
+  `queue_position` so the GUI can show the user where each file
+  sits in the queue.
+- `/pipeline/state` now exposes `project_queue` (list of pending
+  entries) and `project_queue_size`.
+- Two new events: `project_queued` and
+  `project_started_from_queue`.
+- `Orchestrator.stop()` now also drops any pending queue entries
+  so a stopped orchestrator does not silently start them when the
+  user hits Start again.
+
+### Tests
+- `tests/test_project_queue.py` (4 cases) covers the FIFO queue,
+  the `start()` / `snapshot()` / `stop()` interactions.
+
 ## [4.1.9] — 2026-06-14
 
 ### Added

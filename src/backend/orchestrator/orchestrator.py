@@ -107,6 +107,11 @@ class Orchestrator:
 
         self._lock = threading.RLock()
         self._project: ProjectContext | None = None
+        # Sequential project queue: when `start` is called while a
+        # project is already running, the new one is appended here and
+        # the orchestrator picks it up automatically once the current
+        # project finishes (assembler done).
+        self._project_queue: list[ProjectContext] = []
         self._drain_thread: threading.Thread | None = None
         self._stop_drain = threading.Event()
         self._listeners: list[StateListener] = []
@@ -129,9 +134,17 @@ class Orchestrator:
                 "running",
                 "paused",
             ):
-                raise RuntimeError(
-                    f"Pipeline already running for project {self._project.project_id!r}"
-                )
+                # Pipeline busy: enqueue and return immediately.
+                # The orchestrator starts the next queued project
+                # automatically once the current one finishes
+                # (assembler done).
+                self._project_queue.append(project)
+                self._emit({
+                    "type": "project_queued",
+                    "project_id": project.project_id,
+                    "queue_position": len(self._project_queue),
+                })
+                return
             self._project = project
             project.status = "running"
             self.store.clear_project_data()
@@ -165,18 +178,30 @@ class Orchestrator:
             self._drain_thread.start()
         from ..agents.base_worker import make_task_message
 
+        # Build the parser message. We include both ``source_path``
+        # (legacy single-file workers) and ``source_paths`` (the
+        # multi-file flow added in v4.1.9).
+        source_paths_payload = (
+            [str(p) for p in project.source_paths]
+            if project.source_paths
+            else ([str(project.source_path)] if project.source_path else [])
+        )
+        parser_payload = {
+            "project_id": project.project_id,
+            "project_dir": str(project.project_dir),
+            "source_paths": source_paths_payload,
+            "source_path": (
+                source_paths_payload[0] if len(source_paths_payload) == 1 else None
+            ),
+            "source_lang": project.source_lang,
+            "target_lang": project.target_lang,
+            "output_path": str(project.output_path) if project.output_path else None,
+        }
         self._workers.queues_for("parser").input.put(
             make_task_message(
                 chunk_id=project.project_id,
                 action="parse",
-                payload={
-                    "project_id": project.project_id,
-                    "project_dir": str(project.project_dir),
-                    "source_path": str(project.source_path),
-                    "source_lang": project.source_lang,
-                    "target_lang": project.target_lang,
-                    "output_path": str(project.output_path) if project.output_path else None,
-                },
+                payload=parser_payload,
             )
         )
         self._emit(
@@ -209,6 +234,10 @@ class Orchestrator:
 
     def stop(self) -> None:
         with self._lock:
+            # Drop any pending queue entries on explicit stop so
+            # a stopped orchestrator does not silently start them
+            # when the user hits Start again.
+            self._project_queue.clear()
             if self._project is None:
                 return
             self._project.status = "stopped"
@@ -611,6 +640,15 @@ class Orchestrator:
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             project = self._project
+            queue = [
+                {
+                    "project_id": q.project_id,
+                    "source_path": str(q.source_path) if q.source_path else None,
+                    "source_paths": [str(p) for p in q.source_paths],
+                    "profile": q.profile,
+                }
+                for q in self._project_queue
+            ]
         return {
             "project": (
                 {
@@ -630,6 +668,8 @@ class Orchestrator:
             "event_log_tail": list(self._event_log)[-20:],
             "output_artifact": self.store.get_state_json("output_artifact"),
             "project_manifest_path": self.store.get_state("project_manifest_path"),
+            "project_queue": queue,
+            "project_queue_size": len(queue),
         }
 
     def recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -930,6 +970,47 @@ class Orchestrator:
             if self._project is not None:
                 self._project.status = "done"
         self._emit({"type": "artifact_ready", **artifact})
+        # The project is finished on the backend side. If the user
+        # queued additional files via POST /projects, start the next
+        # one now so the whole batch runs ``a la file`` without the
+        # GUI having to poll.
+        self._start_next_queued_project()
+
+    def _start_next_queued_project(self) -> None:
+        """Pop the next queued project and start it. No-op if empty.
+
+        Called by ``_emit_artifact_if_assembler`` once the
+        current project has been written to disk by the
+        Assembler. Also called by ``stop()`` so a manual stop
+        does not strand pending projects in the queue.
+        """
+        with self._lock:
+            if not self._project_queue:
+                return
+            # Refuse to start a new project if the user paused.
+            if self._project and self._project.status == "paused":
+                return
+            next_project = self._project_queue.pop(0)
+            # ``start`` will set self._project and re-spawn the
+            # workers for the new project's profile / source.
+            self._emit({
+                "type": "project_started_from_queue",
+                "project_id": next_project.project_id,
+                "queue_remaining": len(self._project_queue),
+            })
+        # Call start without holding the lock to avoid re-entrancy
+        # in WorkerManager.
+        try:
+            self.start(next_project)
+        except Exception:
+            logger.exception(
+                "queue: failed to start next project %s",
+                next_project.project_id,
+            )
+            self._emit({
+                "type": "project_queue_failed",
+                "project_id": next_project.project_id,
+            })
 
     def _persist_chunk_fields(
         self, stage: str, chunk_id: str, payload: dict[str, Any]
