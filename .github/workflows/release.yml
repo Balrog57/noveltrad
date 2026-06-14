@@ -120,7 +120,6 @@ jobs:
                       size         = [int]"${{ steps.sha.outputs.size }}"
                   }
                   $obj | ConvertTo-Json -Depth 5 | Out-File -FilePath $env:GITHUB_WORKSPACE\latest.json -Encoding utf8
-                  Copy-Item "Setup_NovelTrad-v$ver.exe" $env:GITHUB_WORKSPACE\Setup_NovelTrad-v$ver.exe -Force
 
             - name: Verify release files
               shell: pwsh

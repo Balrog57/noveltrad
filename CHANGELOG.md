@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   updater source of truth and documents best-effort Authenticode
   verification.
 
-## [4.1.3] — 2026-06-14
+## [4.1.4] — 2026-06-14
 
 ### Fixed
 - French UI translation now loads from the saved language setting and
@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   action from Pipeline and Review pages.
 - The release workflow verifies the generated
   `Setup_NovelTrad-v<version>.exe` before uploading release assets.
+- The release workflow writes `latest.json` without recopying the
+  installer onto itself in GitHub Actions.
 - Reviewer reflection metadata is persisted correctly.
 
 ### Tests
