@@ -66,6 +66,10 @@ Sign=Setup
 [Files]
 Source: "dist\NovelTrad\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+
 [Icons]
 Name: "{group}\NovelTrad"; Filename: "{app}\NovelTrad.exe"
 Name: "{userdesktop}\NovelTrad"; Filename: "{app}\NovelTrad.exe"; Tasks: desktopicon
@@ -97,6 +101,30 @@ begin
   end;
 end;
 
+function AppLanguageCode(): String;
+begin
+  if ActiveLanguage = 'french' then
+    Result := 'fr'
+  else
+    Result := 'en';
+end;
+
+procedure WriteInitialLanguage();
+var
+  AppDataDir: String;
+  ConfigPath: String;
+  LangPath: String;
+begin
+  AppDataDir := ExpandConstant('{userappdata}\NovelTrad');
+  ConfigPath := AppDataDir + '\config.json';
+  LangPath := AppDataDir + '\installer_language.txt';
+  if not DirExists(AppDataDir) then
+    ForceDirectories(AppDataDir);
+
+  if not FileExists(ConfigPath) then
+    SaveStringToFile(LangPath, AppLanguageCode(), False);
+end;
+
 procedure InitializeWizard;
 begin
   DependencyPage := CreateOutputMsgPage(
@@ -116,4 +144,6 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
     KillRunningInstance();
+  if CurStep = ssPostInstall then
+    WriteInitialLanguage();
 end;

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 import time
@@ -35,7 +36,12 @@ from typing import Any
 BASE_URL = "http://127.0.0.1:8765"
 
 
-def _request(method: str, path: str, body: dict[str, Any] | None = None, timeout: float = 30.0) -> Any:
+def _request(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    timeout: float = 30.0,
+) -> Any:
     url = f"{BASE_URL}{path}"
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
@@ -93,7 +99,10 @@ def wait_for_output(project_id: str, deadline_s: float = 120.0) -> dict[str, Any
             return artifact
         pending = state.get("pending_hltl", 0)
         if pending > 0:
-            print(f"[{project_id}] {pending} HITL request(s) pending — manual intervention required")
+            print(
+                f"[{project_id}] {pending} HITL request(s) pending "
+                "- manual intervention required"
+            )
         time.sleep(1.0)
     raise RuntimeError("Pipeline did not produce an output artifact in time")
 
@@ -111,3 +120,34 @@ def main(argv: list[str] | None = None) -> int:
     BASE_URL = args.base_url.rstrip("/")
 
     source = Path(args.source).expanduser().resolve()
+    if not source.exists():
+        print(f"Source file not found: {source}", file=sys.stderr)
+        return 2
+    if not source.is_file():
+        print(f"Source path is not a file: {source}", file=sys.stderr)
+        return 2
+
+    try:
+        wait_for_backend(timeout_s=min(args.timeout, 30.0))
+        target_dir = Path(tempfile.mkdtemp(prefix="noveltrad-headless-")).resolve()
+        project_id = create_project(source, target_dir, args.profile, args.format)
+        print(f"[{project_id}] project created")
+        artifact = wait_for_output(project_id, deadline_s=args.timeout)
+        output_path = Path(str(artifact.get("output_path", ""))).expanduser()
+        if not output_path.exists():
+            print(
+                f"Backend reported missing output artifact: {output_path}",
+                file=sys.stderr,
+            )
+            return 3
+        print(f"[{project_id}] output: {output_path}")
+        if os.environ.get("NOVELTRAD_HEADLESS_KEEP_OUTPUT") == "1":
+            print(f"[{project_id}] output directory: {target_dir}")
+        return 0
+    except (RuntimeError, urllib.error.URLError, TimeoutError) as exc:
+        print(f"Headless run failed: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

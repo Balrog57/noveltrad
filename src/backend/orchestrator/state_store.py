@@ -335,6 +335,7 @@ class StateStore:
             "output_hash",
             "review_score",
             "review_annotations",
+            "metadata_json",
         }
         if field not in allowed:
             raise ValueError(f"Refusing to update non-allowlisted field: {field}")

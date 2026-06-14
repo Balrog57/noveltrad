@@ -4,7 +4,7 @@ Subcommands (mutually exclusive; ``--all`` is a convenience):
 
 * ``--wheel``     build sdist + wheel via ``python -m build`` (dist/wheel/)
 * ``--exe``       build the standalone PyInstaller bundle (dist/NovelTrad/)
-* ``--installer`` build the Inno Setup installer (Setup_NovelTrad-<ver>.exe)
+* ``--installer`` build the Inno Setup installer (Setup_NovelTrad-v<ver>.exe)
 * ``--all``       chain the three above
 
 The version is read from ``src/__init__.__version__`` so the wheel, the
@@ -24,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
+I18N_DIR = SRC / "gui" / "i18n"
 
 
 def read_version() -> str:
@@ -71,6 +72,40 @@ def _clean(paths: list[Path]) -> None:
                 p.unlink()
 
 
+def find_lrelease() -> str | None:
+    candidates = [
+        shutil.which("pylrelease6"),
+        shutil.which("lrelease"),
+        shutil.which("lrelease6"),
+        shutil.which("pyside6-lrelease"),
+    ]
+    for candidate in candidates:
+        if candidate:
+            return candidate
+    return None
+
+
+def compile_translations(required: bool = False) -> None:
+    ts_files = sorted(I18N_DIR.glob("noveltrad_*.ts"))
+    if not ts_files:
+        return
+    tool = find_lrelease()
+    if tool is None:
+        message = (
+            "Qt translation compiler not found "
+            "(expected pylrelease6, lrelease, lrelease6, or pyside6-lrelease)."
+        )
+        if required:
+            raise SystemExit(message)
+        print(f"warning: {message}")
+        return
+    for ts_path in ts_files:
+        qm_path = ts_path.with_suffix(".qm")
+        _run([tool, str(ts_path), "-qm", str(qm_path)])
+        if not qm_path.exists():
+            raise SystemExit(f"translation build failed: {qm_path}")
+
+
 def cmd_wheel(version: str) -> None:
     print(f"== wheel ({version}) ==")
     out = ROOT / "dist" / "wheel"
@@ -97,6 +132,7 @@ def cmd_wheel(version: str) -> None:
 def cmd_exe(version: str) -> None:
     print(f"== exe ({version}) ==")
     _clean([ROOT / "build"])
+    compile_translations(required=os.environ.get("NOVELTRAD_REQUIRE_QM") == "1")
     # Keep dist/NovelTrad/ between runs so a previous installer build
     # doesn't lose its source tree.
     _run([sys.executable, "-m", "PyInstaller", "build.spec", "--noconfirm"])
@@ -133,7 +169,7 @@ def cmd_installer(version: str) -> None:
     env = os.environ.copy()
     env["NOVELTRAD_VERSION"] = version
     _run([str(iscc), "/DNOVELTRAD_VERSION=" + version, "NovelTrad.iss"], env=env)
-    print(f"installer built: Setup_NovelTrad-{version}.exe")
+    print(f"installer built: Setup_NovelTrad-v{version}.exe")
 
 
 def cmd_all(version: str) -> None:

@@ -24,6 +24,7 @@ jobs:
                   python -m pip install --upgrade pip
                   pip install -r requirements.txt
                   pip install pyinstaller build
+                  pip install pyside6
 
             - name: Compile sources
               run: python -m compileall src
@@ -59,6 +60,7 @@ jobs:
             - name: Run build.py --all
               env:
                   NOVELTRAD_VERSION: ${{ github.ref_name }}
+                  NOVELTRAD_REQUIRE_QM: "1"
               shell: pwsh
               run: |
                   $env:NOVELTRAD_VERSION = "${{ github.ref_name }}".TrimStart('v')
@@ -114,6 +116,15 @@ jobs:
                   }
                   $obj | ConvertTo-Json -Depth 5 | Out-File -FilePath $env:GITHUB_WORKSPACE\latest.json -Encoding utf8
                   Copy-Item "Setup_NovelTrad-v$ver.exe" $env:GITHUB_WORKSPACE\Setup_NovelTrad-v$ver.exe -Force
+
+            - name: Verify release files
+              shell: pwsh
+              run: |
+                  $ver = "${{ github.ref_name }}".TrimStart('v')
+                  $installer = "Setup_NovelTrad-v$ver.exe"
+                  if (-not (Test-Path $installer)) { throw "Installer not found before upload: $installer" }
+                  if (-not (Test-Path "latest.json")) { throw "latest.json not found before upload" }
+                  Get-Item $installer, "latest.json" | Select-Object Name, Length | Format-Table -AutoSize
 
             - name: Upload installer artifact
               uses: actions/upload-artifact@v4

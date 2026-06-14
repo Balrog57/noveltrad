@@ -47,9 +47,9 @@ def default_language() -> str:
     """
     env_lang = os.environ.get("NOVELTRAD_LANGUAGE", "").strip().lower()
     if env_lang:
-        return _normalise(env_lang)
+        return _normalise(env_lang) or "en"
     try:
-        from .app_config import ConfigManager  # local import to avoid cycle
+        from ..app_config import ConfigManager  # local import to avoid cycle
 
         code = (
             str(

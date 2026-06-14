@@ -257,5 +257,29 @@ class ReviewModelTests(unittest.TestCase):
         self.assertEqual(offsets, [0, 200, 400])
 
 
+class TranslateTabNavigationTests(unittest.TestCase):
+    def test_choose_files_button_returns_to_select_and_blocks_auto_pipeline_jump(self) -> None:
+        app = _ensure_app()
+        from src.gui.tabs.translate_tab import TranslateTab
+
+        tab = TranslateTab()
+        try:
+            state = {
+                "state_store": {
+                    "chunks_total": 1,
+                    "chunks_by_status": {"polished": 1},
+                }
+            }
+            tab.update_pipeline_state(state)
+            self.assertEqual(tab._stack.currentIndex(), 1)
+            tab._go_to_select()
+            self.assertEqual(tab._stack.currentIndex(), 0)
+            tab.update_pipeline_state(state)
+            self.assertEqual(tab._stack.currentIndex(), 0)
+        finally:
+            tab.deleteLater()
+            app.processEvents()
+
+
 if __name__ == "__main__":
     unittest.main()

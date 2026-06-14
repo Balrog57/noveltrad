@@ -22,6 +22,11 @@ class ConfigManager:
         / "NovelTrad"
         / "config.json"
     )
+    INSTALLER_LANGUAGE_FILE = (
+        Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+        / "NovelTrad"
+        / "installer_language.txt"
+    )
     LEGACY_CONFIG_FILE = Path("config.json")
 
     DEFAULT_CONFIG: dict[str, Any] = {
@@ -53,13 +58,29 @@ class ConfigManager:
         if not path.exists() and self.LEGACY_CONFIG_FILE.exists():
             path = self.LEGACY_CONFIG_FILE
         if not path.exists():
-            return copy.deepcopy(self.DEFAULT_CONFIG)
+            config = copy.deepcopy(self.DEFAULT_CONFIG)
+            installer_lang = self._installer_language()
+            if installer_lang:
+                config.setdefault("ui", {})["language"] = installer_lang
+            return config
         try:
             with path.open("r", encoding="utf-8") as handle:
                 loaded = json.load(handle)
         except (json.JSONDecodeError, OSError):
             return copy.deepcopy(self.DEFAULT_CONFIG)
         return _deep_merge(copy.deepcopy(self.DEFAULT_CONFIG), loaded)
+
+    def _installer_language(self) -> str:
+        try:
+            raw = self.INSTALLER_LANGUAGE_FILE.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+        code = raw.strip().lower()
+        if code.startswith("fr"):
+            return "fr"
+        if code.startswith("en"):
+            return "en"
+        return ""
 
     def save_config(self) -> None:
         try:

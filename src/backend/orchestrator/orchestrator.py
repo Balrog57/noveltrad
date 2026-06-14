@@ -894,7 +894,7 @@ class Orchestrator:
         if not chunk_id:
             return
         self._emit_artifact_if_assembler(stage, chunk_id, payload)
-        self._persist_chunk_fields(chunk_id, payload)
+        self._persist_chunk_fields(stage, chunk_id, payload)
         self._emit_agent_done(stage, chunk_id, payload)
         self._maybe_auto_assemble(payload)
         if payload.get("terminal"):
@@ -927,7 +927,9 @@ class Orchestrator:
                 self._project.status = "done"
         self._emit({"type": "artifact_ready", **artifact})
 
-    def _persist_chunk_fields(self, chunk_id: str, payload: dict[str, Any]) -> None:
+    def _persist_chunk_fields(
+        self, stage: str, chunk_id: str, payload: dict[str, Any]
+    ) -> None:
         for field_name in (
             "raw_translation",
             "glossary_applied",

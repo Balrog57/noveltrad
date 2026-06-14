@@ -189,10 +189,18 @@ class SettingsTab(QWidget):
 
     def _save(self) -> None:
         cfg = self._config.config
-        cfg.update(self._collect())
+        old_lang = str((cfg.get("ui", {}) or {}).get("language", "en"))
+        collected = self._collect()
+        new_lang = str((collected.get("ui", {}) or {}).get("language", "en"))
+        cfg.update(collected)
         self._config.save_config()
         self._config.apply_environment()
-        self._status.setText(self.tr("Saved."))
+        if new_lang != old_lang:
+            self._status.setText(
+                self.tr("Saved. Restart NovelTrad to apply the language.")
+            )
+        else:
+            self._status.setText(self.tr("Saved."))
         self._status.setStyleSheet("color: #7be395;")
 
     def _save_and_restart(self) -> None:
