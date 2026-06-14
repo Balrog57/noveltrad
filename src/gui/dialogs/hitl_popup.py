@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.gui.backend_client import BackendClient, BackendError
+from src.gui.a11y import configure
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +53,32 @@ class HITLPopup(QDialog):
         layout.addWidget(text)
         layout.addWidget(QLabel(self.tr("Your answer:")))
         self._answer = QLineEdit()
+        configure(
+            self._answer,
+            name=self.tr("Your answer"),
+            description=self.tr("Enter your correction or instruction for the AI here."),
+        )
         layout.addWidget(self._answer)
         row = QHBoxLayout()
         row.addStretch(1)
         skip_btn = QPushButton(self.tr("Skip"))
         skip_btn.clicked.connect(self.reject)
+        configure(
+            skip_btn,
+            name=self.tr("Skip"),
+            tooltip=self.tr("Skip this issue"),
+            shortcut="Esc",
+        )
         row.addWidget(skip_btn)
         send_btn = QPushButton(self.tr("Send"))
         send_btn.clicked.connect(self._send)
         send_btn.setDefault(True)
+        configure(
+            send_btn,
+            name=self.tr("Send"),
+            tooltip=self.tr("Submit your answer"),
+            shortcut="Ctrl+Return",
+        )
         row.addWidget(send_btn)
         layout.addLayout(row)
 
