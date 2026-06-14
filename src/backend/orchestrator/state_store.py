@@ -736,7 +736,7 @@ class StateStore:
 
     def snapshot(self) -> dict[str, Any]:
         """Cheap summary used by GET /pipeline/state."""
-        statuses = (
+        expected_statuses = (
             "parsed",
             "fast_translated",
             "lexicon_ready",
@@ -751,21 +751,23 @@ class StateStore:
             "waiting_for_human",
             "error",
         )
+        chunks_by_status = {s: 0 for s in expected_statuses}
+        chunks_total = 0
+
         with self._lock:
-            total_row = self._conn.execute(
-                "SELECT COUNT(*) FROM chunks"
-            ).fetchone()
-            status_rows = self._conn.execute(
-                "SELECT status, COUNT(*) AS n FROM chunks GROUP BY status"
+            rows = self._conn.execute(
+                "SELECT status, COUNT(*) as n FROM chunks GROUP BY status"
             ).fetchall()
-        counts = {status: 0 for status in statuses}
-        for row in status_rows:
-            status = row["status"]
-            if status in counts:
-                counts[status] = int(row["n"])
+            for r in rows:
+                status = r["status"]
+                count = int(r["n"])
+                if status in chunks_by_status:
+                    chunks_by_status[status] = count
+                chunks_total += count
+
         return {
-            "chunks_total": int(total_row[0]) if total_row else 0,
-            "chunks_by_status": counts,
+            "chunks_total": chunks_total,
+            "chunks_by_status": chunks_by_status,
             "lexicon_terms": self._scalar("SELECT COUNT(*) FROM lexicon_terms"),
             "qa_issues": self._scalar("SELECT COUNT(*) FROM qa_issues"),
             "grammar_issues": self._scalar("SELECT COUNT(*) FROM grammar_issues"),
