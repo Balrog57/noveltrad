@@ -171,7 +171,7 @@ class NLLBEngine:
         text: str,
         source_lang: str,
         target_lang: str,
-        max_decoding_length: int = 256,
+        max_decoding_length: int = 1024,
     ) -> str:
         if not text.strip():
             return text
@@ -201,7 +201,7 @@ class NLLBEngine:
                     [source_tokens],
                     batch_type="tokens",
                     target_prefix=[[tgt_code]],
-                    beam_size=4,
+                    beam_size=2,
                     max_decoding_length=max_decoding_length,
                 )
                 out_tokens = results[0].hypotheses[0]
@@ -220,32 +220,62 @@ class NLLBEngine:
         target_lang: str,
         max_decoding_length: int,
     ) -> str:
-        """Translate paragraph-like blocks separately while preserving spacing."""
+        """Translate paragraphs in one batched CTranslate2 call, preserving breaks."""
         parts = re.split(r"(\n\s*\n+)", text)
-        translated: list[str] = []
-        for part in parts:
+        # Collect paragraph indices and their text
+        para_indices: list[int] = []
+        para_texts: list[str] = []
+        separators: dict[int, str] = {}  # output_index → separator
+        output_parts: list[str] = []
+
+        for i, part in enumerate(parts):
             if not part:
                 continue
             if re.fullmatch(r"\n\s*\n+", part):
-                translated.append(part)
+                # Remember where to insert this separator
+                separators[len(output_parts)] = part
+                output_parts.append("")  # placeholder
                 continue
             if not part.strip():
-                translated.append(part)
+                output_parts.append(part)
                 continue
-            leading = part[: len(part) - len(part.lstrip())]
-            trailing = part[len(part.rstrip()) :]
-            core = part.strip()
-            translated.append(
-                leading
-                + self.translate(
-                    core,
-                    source_lang=source_lang,
-                    target_lang=target_lang,
-                    max_decoding_length=max_decoding_length,
-                )
-                + trailing
-            )
-        return "".join(translated)
+            para_indices.append(len(output_parts))
+            para_texts.append(part.strip())
+            output_parts.append("")  # placeholder
+
+        if not para_texts:
+            return text
+
+        # Batch translate all paragraphs
+        src_code = to_nllb_code(source_lang)
+        tgt_code = to_nllb_code(target_lang)
+        source_batch = []
+        for pt in para_texts:
+            tokens = self._sp.encode(pt, out_type=str)  # type: ignore[union-attr]
+            source_batch.append([src_code, *tokens, "</s>"])
+
+        results = self._translator.translate_batch(  # type: ignore[union-attr]
+            source_batch,
+            batch_type="tokens",
+            target_prefix=[[tgt_code]] * len(source_batch),
+            beam_size=2,
+            max_decoding_length=max_decoding_length,
+        )
+
+        # Fill in translated paragraphs
+        for j, idx in enumerate(para_indices):
+            out_tokens = results[j].hypotheses[0]
+            if out_tokens and out_tokens[0] == tgt_code:
+                out_tokens = out_tokens[1:]
+            translated = self._sp_target.decode(out_tokens)  # type: ignore[union-attr]
+            output_parts[idx] = translated
+
+        # Fill in any remaining empty separators
+        for idx, sep in separators.items():
+            if idx < len(output_parts) and output_parts[idx] == "":
+                output_parts[idx] = sep
+
+        return "".join(output_parts)
 
     def translate_batch(
         self,
@@ -290,7 +320,7 @@ class NLLBEngine:
                     source_tokens_batch,
                     batch_type="tokens",
                     target_prefix=[[tgt_code]] * len(source_tokens_batch),
-                    beam_size=4,
+                    beam_size=2,
                     max_decoding_length=256,
                 )
 

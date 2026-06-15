@@ -30,9 +30,9 @@ from typing import Any, Iterable
 logger = logging.getLogger(__name__)
 
 
-MIN_CHARS = 200
-MAX_CHARS = 800
-SOFT_TARGET = 500
+MIN_CHARS = 500
+MAX_CHARS = 4000
+SOFT_TARGET = 2000
 
 
 @dataclass
