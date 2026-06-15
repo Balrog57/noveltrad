@@ -131,7 +131,11 @@ class ChunkReviewModel(QAbstractListModel):
                     lambda: self.fetchMore() if not self._end_reached else None,
                 )
                 return
-            self.errorOccurred.emit(str(exc))
+            # Retries exhausted (or non-initial fetch).  Silently mark
+            # the model as end-reached so the view stops asking; the
+            # next refresh() (triggered by pipeline events or user
+            # action) will try again.
+            self._end_reached = True
             return
         items = res.get("items") or []
         total = int(res.get("total") or 0)
