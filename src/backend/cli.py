@@ -109,7 +109,7 @@ def cmd_translate(args) -> int:
     }
 
     client = _make_client()
-    print(f"[translate] {source.name}  {args.source_lang}→{args.target_lang}  profile={args.profile}")
+    print(f"[translate] {source.name}  {args.source_lang}->{args.target_lang}  profile={args.profile}")
 
     res = client.post("/projects", json=payload)
     if res.status_code != 200:
@@ -180,7 +180,7 @@ def cmd_project(args) -> int:
         res = client.post("/projects", json={"name": name, "project_dir": folder})
         data = res.json()
         pid = data.get("project_id", "?")
-        print(f"[project] Created: {pid} ({name} → {folder})")
+        print(f"[project] Created: {pid} ({name} -> {folder})")
         return 0
 
     if args.action == "active":
@@ -205,7 +205,7 @@ def cmd_project(args) -> int:
         pid = args.project_id
         new_name = args.new_name
         client.put(f"/projects/{pid}", json={"name": new_name})
-        print(f"[project] Renamed {pid} → {new_name}")
+        print(f"[project] Renamed {pid} -> {new_name}")
         return 0
 
     if args.action == "inspect":
@@ -261,7 +261,7 @@ def cmd_pipeline(args) -> int:
             return 0
         print(f"Project:  {proj.get('project_id','?')}")
         print(f"Status:   {proj.get('status','?')}")
-        print(f"Lang:     {proj.get('source_lang','?')}→{proj.get('target_lang','?')}")
+        print(f"Lang:     {proj.get('source_lang','?')}->{proj.get('target_lang','?')}")
         print(f"Profile:  {proj.get('profile','?')}")
         workers = state.get("workers", {})
         if workers:
@@ -330,7 +330,7 @@ def cmd_glossary(args) -> int:
             "validated_by_user": True,
         }
         client.post("/lexicon/terms", json=payload)
-        print(f"[glossary] Added: {args.source_term} → {args.target_term}")
+        print(f"[glossary] Added: {args.source_term} -> {args.target_term}")
         return 0
 
     if args.action == "remove":
@@ -358,7 +358,7 @@ def cmd_glossary(args) -> int:
             return 0
         print(f"[glossary] {len(matches)} matches for '{args.query}':")
         for t in matches:
-            print(f"  {t.get('source','')} → {t.get('target','')}  [{t.get('category','')}]")
+            print(f"  {t.get('source','')} -> {t.get('target','')}  [{t.get('category','')}]")
         return 0
 
     return 0
@@ -574,7 +574,7 @@ def cmd_batch(args) -> int:
                 elapsed = time.time() - start
                 out = Path(art["output_path"])
                 size = out.stat().st_size if out.exists() else 0
-                print(f"  ✓ {elapsed:.1f}s  {size} bytes  → {out.name}")
+                print(f"  OK {elapsed:.1f}s  {size} bytes  -> {out.name}")
                 ok += 1
                 break
             proj = state.get("project") or {}
