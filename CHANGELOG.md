@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+## [4.1.16] - 2026-06-15
+
+### Fixed
+
+- **System tray crash** — `configure()` ne crashe plus sur `QSystemTrayIcon` (wrap `setAccessibleName`/`setFocusPolicy` en try/except).
+- **Warning startup « review model: GET /chunks »** — `ChunkReviewModel` retry 5× avec backoff puis `_end_reached` silencieux.
+- **ImportError `ProjectQueueEntry`** — exporté depuis `build_schemas()`, lazy import supprimé dans `projects.py`.
+- **Headless client « created » vs « running »** — status check accepte `"running"`/`"queued"` au lieu de l'inexistant `"created"`.
+- **Tests complets** — 146/146 pass, 0 skipped, 0 erreurs (slow smoke tests désormais inclus).
+
 ## [4.1.15] - 2026-06-14
 ### Added
 - **Pipeline watchdog**: the orchestrator now tracks the timestamp of
