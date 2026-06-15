@@ -19,6 +19,7 @@ def register(app: Any, deps: Deps) -> None:
     ProjectCreateRequest = schemas["ProjectCreateRequest"]
     ProjectStateResponse = schemas["ProjectStateResponse"]
     PipelineStateResponse = schemas["PipelineStateResponse"]
+    ProjectQueueEntry = schemas["ProjectQueueEntry"]
     ChunkSubmitRequest = schemas["ChunkSubmitRequest"]
     ReplayChunksRequest = schemas["ReplayChunksRequest"]
 
@@ -86,7 +87,6 @@ def register(app: Any, deps: Deps) -> None:
 
     @app.get("/pipeline/state", response_model=PipelineStateResponse)
     def pipeline_state() -> PipelineStateResponse:
-        from .schemas import ProjectQueueEntry
 
         snap = deps.orchestrator.snapshot()
         proj = snap["project"]

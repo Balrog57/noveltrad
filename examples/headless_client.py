@@ -85,7 +85,7 @@ def create_project(source_path: Path, target_dir: Path, profile: str, fmt: str) 
         "parse": True,
     }
     res = _request("POST", "/projects", body=req)
-    if not isinstance(res, dict) or res.get("status") != "created":
+    if not isinstance(res, dict) or res.get("status") not in ("running", "queued"):
         raise RuntimeError(f"Project creation failed: {res}")
     return project_id
 

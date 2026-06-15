@@ -9,10 +9,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import QAbstractListModel, QModelIndex, Qt, pyqtSignal
+from PyQt6.QtCore import QAbstractListModel, QModelIndex, Qt, QTimer, pyqtSignal
 
 
 PAGE_SIZE = 200
+# Maximum retry attempts on connection failure.
+_MAX_INITIAL_RETRIES = 5
+# Base delay (s) for exponential backoff on initial fetch.
+_INITIAL_RETRY_DELAY = 0.5
 
 
 class ChunkReviewModel(QAbstractListModel):
@@ -30,6 +34,8 @@ class ChunkReviewModel(QAbstractListModel):
         self._total = 0  # total known (best effort from the backend)
         self._pending = False
         self._end_reached = False
+        # Initial-fetch retry state.
+        self._initial_retries = _MAX_INITIAL_RETRIES
 
     # ----- public surface -----
 
@@ -37,6 +43,7 @@ class ChunkReviewModel(QAbstractListModel):
         """Change the active status filter; clears the cache."""
         if status == self._filter:
             return
+        self._initial_retries = _MAX_INITIAL_RETRIES
         self.beginResetModel()
         self._items.clear()
         self._filter = status
@@ -54,6 +61,7 @@ class ChunkReviewModel(QAbstractListModel):
 
     def refresh(self) -> None:
         """Force a full reload from offset 0."""
+        self._initial_retries = _MAX_INITIAL_RETRIES
         self.beginResetModel()
         self._items.clear()
         self._total = 0
@@ -109,6 +117,20 @@ class ChunkReviewModel(QAbstractListModel):
             ) or {}
         except Exception as exc:
             self._pending = False
+            # On initial load (offset == 0) the backend may not be ready
+            # yet — retry with exponential backoff instead of logging a
+            # warning.  This prevents the "review model: GET /chunks …"
+            # noise at startup.
+            if offset == 0 and self._initial_retries > 0:
+                self._initial_retries -= 1
+                delay = _INITIAL_RETRY_DELAY * (
+                    2 ** (_MAX_INITIAL_RETRIES - self._initial_retries - 1)
+                )
+                QTimer.singleShot(
+                    int(delay * 1000),
+                    lambda: self.fetchMore() if not self._end_reached else None,
+                )
+                return
             self.errorOccurred.emit(str(exc))
             return
         items = res.get("items") or []

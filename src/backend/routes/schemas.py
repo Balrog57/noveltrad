@@ -91,6 +91,7 @@ def build_schemas() -> dict[str, Any]:
 
     return {
         "ProjectCreateRequest": ProjectCreateRequest,
+        "ProjectQueueEntry": ProjectQueueEntry,
         "ProjectStateResponse": ProjectStateResponse,
         "PipelineStateResponse": PipelineStateResponse,
         "HITLResponseRequest": HITLResponseRequest,
