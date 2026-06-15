@@ -57,6 +57,10 @@ def main():
 
         print(f"[{i+1}/{len(files)}] {fname} ({f.stat().st_size} bytes)...", flush=True)
 
+        # Rate-limit guard: wait between chapters to avoid 429
+        if i > 0:
+            time.sleep(3)
+
         # Create fresh client per file
         tmp = tempfile.mkdtemp(prefix="noveltrad_batch_")
         try:
