@@ -27,10 +27,13 @@
   #define MyAppPublisher "NovelTrad Team"
 #endif
 
-#define SignTool \
-  (GetEnv("SIGNTOOL_PFX") != "" ? \
-    "signtool sign /f $q%SIGNTOOL_PFX%$q /p %SIGNTOOL_PFX_PASSWORD% /tr http://timestamp.digicert.com /td sha256 /fd sha256 $f" : \
-    "")
+#if GetEnv("SIGNTOOL_PFX") != ""
+  #define SignTool \
+    "signtool sign /f $q%SIGNTOOL_PFX%$q /p %SIGNTOOL_PFX_PASSWORD% /tr http://timestamp.digicert.com /td sha256 /fd sha256 $f"
+  #define SignSetup yes
+#else
+  #define SignSetup no
+#endif
 
 [Setup]
 AppId={#MyAppId}
@@ -60,7 +63,7 @@ UninstallDisplayName={#MyAppName}
 WizardStyle=modern
 WizardSizePercent=100,100
 SetupLogging=yes
-SignedUninstaller={#GetEnv("SIGNTOOL_PFX") != "" ? "yes" : "no"}
+SignedUninstaller={#SignSetup}
 #ifdef SignTool
 SignTool={#SignTool}
 Sign=Setup
