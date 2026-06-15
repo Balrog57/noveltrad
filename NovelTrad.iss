@@ -59,7 +59,6 @@ UninstallDisplayIcon={app}\NovelTrad.exe
 UninstallDisplayName={#MyAppName}
 WizardStyle=modern
 WizardSizePercent=100,100
-WizardImageFile=assets\installer-side.bmp
 SetupLogging=yes
 SignedUninstaller={#GetEnv("SIGNTOOL_PFX") != "" ? "yes" : "no"}
 #ifdef SignTool
