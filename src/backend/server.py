@@ -80,6 +80,13 @@ def create_app(
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
+    # Load user config (NLLB_MODEL, OLLAMA_MODEL, etc.) into env
+    try:
+        from src.gui.app_config import ConfigManager
+        ConfigManager().apply_environment()
+    except Exception:
+        pass
+
     if db_path is None:
         db_path = Path(os.environ.get("NOVELTRAD_DB", "./.noveltrad_state.db"))
     if vector_dir is None:

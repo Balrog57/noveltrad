@@ -54,6 +54,50 @@ def _make_client():
 
 # ── Remote helpers ────────────────────────────────────────────────────
 
+class _RemoteClient:
+    """Thin wrapper around requests that mirrors TestClient's .get/.post/.put/.delete/.json() API."""
+
+    def __init__(self, base_url: str):
+        import requests as _requests
+        self._r = _requests
+        self._base = base_url.rstrip("/")
+
+    def get(self, path: str, **kw):
+        return _RemoteResponse(self._r.get(f"{self._base}{path}", timeout=30, **kw))
+
+    def post(self, path: str, **kw):
+        json_data = kw.pop("json", kw.pop("data", None))
+        return _RemoteResponse(self._r.post(f"{self._base}{path}", json=json_data, timeout=60, **kw))
+
+    def put(self, path: str, **kw):
+        json_data = kw.pop("json", kw.pop("data", None))
+        return _RemoteResponse(self._r.put(f"{self._base}{path}", json=json_data, timeout=30, **kw))
+
+    def delete(self, path: str, **kw):
+        return _RemoteResponse(self._r.delete(f"{self._base}{path}", timeout=30, **kw))
+
+
+class _RemoteResponse:
+    def __init__(self, resp):
+        self.status_code = resp.status_code
+        self._resp = resp
+
+    def json(self):
+        return self._resp.json()
+
+    @property
+    def text(self):
+        return self._resp.text
+
+
+def _get_client(args):
+    """Return a TestClient (embedded) or RemoteClient (--remote)."""
+    if getattr(args, "remote", False):
+        base = f"http://{os.environ.get('NOVELTRAD_HOST','127.0.0.1')}:{os.environ.get('NOVELTRAD_PORT','8765')}"
+        return _RemoteClient(base)
+    return _make_client()
+
+
 def _base_url() -> str:
     return f"http://{os.environ.get('NOVELTRAD_HOST','127.0.0.1')}:{os.environ.get('NOVELTRAD_PORT','8765')}"
 
@@ -108,7 +152,7 @@ def cmd_translate(args) -> int:
         "profile": args.profile,
     }
 
-    client = _make_client()
+    client = _get_client(args)
     print(f"[translate] {source.name}  {args.source_lang}->{args.target_lang}  profile={args.profile}")
 
     res = client.post("/projects", json=payload)
@@ -157,7 +201,7 @@ def cmd_translate(args) -> int:
 # ═══════════════════════════════════════════════════════════════════════
 
 def cmd_project(args) -> int:
-    client = _make_client()
+    client = _get_client(args)
 
     if args.action == "list":
         data = client.get("/projects").json()
@@ -246,7 +290,7 @@ def cmd_project(args) -> int:
 # ═══════════════════════════════════════════════════════════════════════
 
 def cmd_pipeline(args) -> int:
-    client = _make_client()
+    client = _get_client(args)
 
     if args.action == "status":
         state = client.get("/pipeline/state").json()
@@ -305,10 +349,10 @@ def cmd_pipeline(args) -> int:
 # ═══════════════════════════════════════════════════════════════════════
 
 def cmd_glossary(args) -> int:
-    client = _make_client()
+    client = _get_client(args)
 
     if args.action == "list":
-        data = client.get("/lexicon/terms").json()
+        data = client.get("/lexicon").json()
         terms = data.get("terms", [])
         if not terms:
             print("[glossary] Empty.")
@@ -329,13 +373,13 @@ def cmd_glossary(args) -> int:
             "confidence": 1.0,
             "validated_by_user": True,
         }
-        client.post("/lexicon/terms", json=payload)
+        client.post("/lexicon", json=payload)
         print(f"[glossary] Added: {args.source_term} -> {args.target_term}")
         return 0
 
     if args.action == "remove":
         # Search for term
-        data = client.get("/lexicon/terms").json()
+        data = client.get("/lexicon").json()
         terms = data.get("terms", [])
         found = [t for t in terms if t.get("source") == args.source_term]
         if not found:
@@ -344,12 +388,12 @@ def cmd_glossary(args) -> int:
         for t in found:
             tid = t.get("id") or t.get("term_id")
             if tid:
-                client.delete(f"/lexicon/terms/{tid}")
+                client.delete(f"/lexicon/{tid}")
                 print(f"[glossary] Removed: {args.source_term}")
         return 0
 
     if args.action == "search":
-        data = client.get("/lexicon/terms").json()
+        data = client.get("/lexicon").json()
         terms = data.get("terms", [])
         q = args.query.lower()
         matches = [t for t in terms if q in t.get("source", "").lower() or q in t.get("target", "").lower()]
@@ -377,7 +421,7 @@ def cmd_config(args) -> int:
         return 0
 
     if args.action == "path":
-        print(mgr.config_path)
+        print(mgr.CONFIG_FILE)
         return 0
 
     if args.action == "set":
@@ -395,7 +439,7 @@ def cmd_config(args) -> int:
                 cfg[k] = {}
             cfg = cfg[k]
         cfg[keys[-1]] = value
-        mgr.save()
+        mgr.save_config()
         print(f"[config] Set {args.key} = {json.dumps(value)}")
         if args.key.startswith("llm.") or args.key.startswith("nllb."):
             print("[config] WARNING Restart the backend for changes to take effect.")
@@ -409,7 +453,7 @@ def cmd_config(args) -> int:
 # ═══════════════════════════════════════════════════════════════════════
 
 def cmd_chunk(args) -> int:
-    client = _make_client()
+    client = _get_client(args)
 
     if args.action == "list":
         state = client.get("/pipeline/state").json()
@@ -455,7 +499,7 @@ def cmd_chunk(args) -> int:
 # ═══════════════════════════════════════════════════════════════════════
 
 def cmd_hltl(args) -> int:
-    client = _make_client()
+    client = _get_client(args)
 
     if args.action == "list":
         state = client.get("/pipeline/state").json()
@@ -535,7 +579,7 @@ def cmd_batch(args) -> int:
     fail = 0
     total_start = time.time()
 
-    client = _make_client()
+    client = _get_client(args)
     print(f"[batch] Backend ready, starting {len(files)} files...")
 
     for f in files:
@@ -611,7 +655,7 @@ def cmd_server(args) -> int:
 
 def cmd_health(args) -> int:
     _load_config(verbose=False)
-    client = _make_client()
+    client = _get_client(args)
     data = client.get("/health").json()
     print(json.dumps(data, indent=2, default=str))
     return 0
@@ -623,6 +667,7 @@ def cmd_health(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="noveltrad", description="NovelTrad CLI")
+    parser.add_argument("--remote", action="store_true", help="Connect to a running backend (default: embedded TestClient)")
     sub = parser.add_subparsers(dest="command")
 
     # ── translate ──
