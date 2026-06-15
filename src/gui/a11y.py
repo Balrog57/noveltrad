@@ -72,7 +72,10 @@ def configure(
     if tooltip:
         widget.setToolTip(tooltip)
     if focusable:
-        widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        try:
+            widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        except AttributeError:
+            pass
         # Make sure screen readers can reach it.
         widget.setAttribute(Qt.WidgetAttribute.WA_AccessibleObjectName, True) if hasattr(
             Qt.WidgetAttribute, "WA_AccessibleObjectName"
