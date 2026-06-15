@@ -175,7 +175,7 @@ class NLLBEngine:
     ) -> str:
         if not text.strip():
             return text
-        if "\n" in text:
+        if re.search(r"\n\s*\n+", text):
             return self._translate_multiblock(
                 text,
                 source_lang=source_lang,
