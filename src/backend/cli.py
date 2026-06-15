@@ -128,7 +128,7 @@ def cmd_translate(args) -> int:
             elapsed = time.time() - start
             out = Path(art["output_path"])
             text = out.read_text(encoding="utf-8") if out.exists() else ""
-            print(f"\n[translate] ✓ DONE  {elapsed:.1f}s  {len(text)} chars  {len(text.splitlines())} lines")
+            print(f"\n[translate] OK DONE  {elapsed:.1f}s  {len(text)} chars  {len(text.splitlines())} lines")
             print(f"[translate] output: {out}")
             if not args.quiet:
                 preview = text.splitlines()[:20]
@@ -139,7 +139,7 @@ def cmd_translate(args) -> int:
             return 0
         proj = state.get("project") or {}
         if proj.get("status") in ("error", "stopped"):
-            print(f"\n[translate] ✗ {proj['status']}")
+            print(f"\n[translate] FAIL {proj['status']}")
             for e in state.get("event_log_tail", []):
                 if e.get("level") == "error":
                     print(f"  {e.get('message','')}")
@@ -148,7 +148,7 @@ def cmd_translate(args) -> int:
         dots += 1
         if dots % 4 == 0:
             print(".", end="", flush=True)
-    print(f"\n[translate] ✗ TIMEOUT after {args.timeout}s")
+    print(f"\n[translate] FAIL TIMEOUT after {args.timeout}s")
     return 1
 
 
@@ -267,11 +267,11 @@ def cmd_pipeline(args) -> int:
         if workers:
             print(f"Workers ({len(workers)}):")
             for k, v in workers.items():
-                bar = "✓" if v.get("stage_completed") else ("●" if v.get("active") else "○")
+                bar = "OK" if v.get("stage_completed") else ("*" if v.get("active") else "-")
                 print(f"  {bar} {k}")
         hltl = state.get("pending_hltl", 0)
         if hltl:
-            print(f"⚠ Pending HITL: {hltl}")
+            print(f"WARNING Pending HITL: {hltl}")
         art = state.get("output_artifact") or {}
         if art.get("output_path"):
             print(f"Output:   {art['output_path']}")
@@ -398,7 +398,7 @@ def cmd_config(args) -> int:
         mgr.save()
         print(f"[config] Set {args.key} = {json.dumps(value)}")
         if args.key.startswith("llm.") or args.key.startswith("nllb."):
-            print("[config] ⚠ Restart the backend for changes to take effect.")
+            print("[config] WARNING Restart the backend for changes to take effect.")
         return 0
 
     return 0
@@ -539,7 +539,7 @@ def cmd_batch(args) -> int:
     print(f"[batch] Backend ready, starting {len(files)} files...")
 
     for f in files:
-        print(f"\n{'─'*60}")
+        print(f"\n{'='*60}")
         print(f"[batch] {f.name}  ({ok+fail+1}/{len(files)})")
 
         payload = {
@@ -579,17 +579,17 @@ def cmd_batch(args) -> int:
                 break
             proj = state.get("project") or {}
             if proj.get("status") in ("error", "stopped"):
-                print(f"  ✗ {proj['status']}")
+                print(f"  FAIL {proj['status']}")
                 fail += 1
                 break
             time.sleep(0.5)
         else:
-            print(f"  ✗ TIMEOUT")
+            print(f"  FAIL TIMEOUT")
             fail += 1
 
     total_elapsed = time.time() - total_start
-    print(f"\n{'═'*60}")
-    print(f"[batch] DONE  {ok} ok  {fail} failed  {total_elapsed:.0f}s total")
+    print(f"\n{'='*60}")
+    print(f"[batch] DONE  {ok} ok, {fail} failed  ({total_elapsed:.0f}s)")
     return 0 if fail == 0 else 1
 
 
