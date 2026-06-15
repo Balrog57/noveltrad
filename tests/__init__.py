@@ -1,0 +1,1 @@
+"""NovelTrad test suite."""

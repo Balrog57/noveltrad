@@ -35,7 +35,8 @@ import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +248,34 @@ class StateStore:
             except Exception:
                 pass
 
+    @contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        """Explicit SQLite transaction context manager.
+
+        All writes inside the ``with`` block are committed atomically.
+        If an exception is raised, the transaction is rolled back.
+
+        Requires ``isolation_level=None`` on the connection (already set
+        in the constructor), which puts us in manual-commit mode so
+        ``BEGIN`` / ``COMMIT`` statements are respected.
+
+        Usage::
+
+            with store.transaction():
+                store.update_chunk_field(chunk_id, "status", "parsed")
+                store.add_grammar_issue({...})
+        """
+        with self._lock:
+            self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            with self._lock:
+                self._conn.execute("ROLLBACK")
+            raise
+        with self._lock:
+            self._conn.execute("COMMIT")
+
     def clear_project_data(self) -> None:
         """Clear per-project pipeline rows from the active SQLite store.
 
@@ -424,6 +453,50 @@ class StateStore:
                 "SELECT * FROM lexicon_terms ORDER BY source"
             ).fetchall()
         return [_row_to_lexicon(r) for r in rows]
+
+    def find_lexicon_by_source(self, source: str) -> dict[str, Any] | None:
+        """Return the lexicon entry for *source*, or None if not found."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM lexicon_terms WHERE source = ?", (source,)
+            ).fetchone()
+        return _row_to_lexicon(row) if row else None
+
+    def upsert_lexicon_term(self, term: dict[str, Any]) -> None:
+        """Insert or update a lexicon term, merging by *source*.
+
+        - If a term with the same *source* already exists, keep the higher
+          confidence value, update the target if the new entry has higher
+          confidence, and merge aliases/evidence_refs.
+        - If no existing term, insert with a new UUID.
+        """
+        existing = self.find_lexicon_by_source(term.get("source", ""))
+        if existing is None:
+            # New term — generate id if missing
+            if "id" not in term or not term["id"]:
+                import uuid as _uuid
+                term["id"] = _uuid.uuid4().hex[:12]
+            self.add_lexicon_term(term)
+            return
+
+        new_conf = float(term.get("confidence", 0.0))
+        old_conf = float(existing.get("confidence", 0.0))
+
+        if new_conf <= old_conf and term.get("target", existing.get("target")) == existing.get("target"):
+            # Nothing to improve
+            return
+
+        updates: dict[str, Any] = {}
+        if new_conf > old_conf:
+            updates["confidence"] = new_conf
+            # Take the new target only when confidence is higher
+            updates["target"] = term.get("target", existing.get("target", ""))
+            updates["category"] = term.get("category") or existing.get("category")
+            updates["gender"] = term.get("gender") or existing.get("gender", "unknown")
+            updates["notes"] = term.get("notes") or existing.get("notes")
+
+        if updates:
+            self.update_lexicon_term(existing["id"], updates)
 
     def update_lexicon_term(self, term_id: str, updates: dict[str, Any]) -> None:
         if not updates:

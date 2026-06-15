@@ -1,24 +1,31 @@
 """LLMPolisher agent — Agent 8 of the v4 pipeline.
 
-Reflect → Improve loop (pattern from `andrewyng/translation-agent`).
+Multi-pass Reflect → Improve loop (pattern from `andrewyng/translation-agent`).
 
   1. TRANSLATE: the previous stage already gave us a translation.
-  2. REFLECT: ask the LLM to identify weaknesses in the translation
+  2. REFLECT (pass 1): ask the LLM to identify weaknesses in the translation
      given the source, the previous-stage output, and the surrounding
      context (neighbour chunks). The LLM returns JSON with a list of
      `suggestions` and a free-text `reflection`.
-  3. IMPROVE: ask the LLM to rewrite the translation incorporating
+  3. IMPROVE (pass 1): ask the LLM to rewrite the translation incorporating
      the suggestions. We only keep the improvement if it is non-empty
      AND the LLM call succeeded.
+  4. REFLECT (pass 2): if the first pass made a change, reflect again on the
+     improved version. Only suggest remaining issues that were NOT fixed.
+  5. IMPROVE (pass 2): apply second-round suggestions, with same rejection guards.
 
 The polisher uses the LLM router (Ollama or OpenAI-compatible), so
 the same provider load-balancing and content-hash cache apply.
+
+Configurable via env var:
+  NOVELTRAD_MAX_REFLECTION_PASSES=2   (default 2, max 3)
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
@@ -27,6 +34,9 @@ from .prompt_contracts import literary_contract
 from ..llm_router.router import get_router
 
 logger = logging.getLogger(__name__)
+
+# Max reflection-improvement passes (env override for testing)
+_MAX_PASSES = max(1, min(3, int(os.environ.get("NOVELTRAD_MAX_REFLECTION_PASSES", "2"))))
 
 
 _REFLECT_PROMPT = """You are a literary translation polisher.
@@ -55,8 +65,7 @@ SOURCE:
 {src_text}
 
 CURRENT TRANSLATION:
-{tgt_text}
-"""
+{tgt_text}"""
 
 
 _IMPROVE_PROMPT = """You are a literary translation polisher.
@@ -78,8 +87,34 @@ SOURCE:
 CURRENT TRANSLATION:
 {tgt_text}
 
+IMPROVED TRANSLATION:"""
+
+
+_REFLECT_PASS2_PROMPT = """You are a literary translation polisher — second review pass.
+{contract}
+
+Source language: {src}
+Target language: {tgt}
+
+This translation was already improved once based on earlier suggestions.
+Review the CURRENT (already improved) translation against the SOURCE.
+
+If it is now good enough, return {{"reflection": "Good.", "suggestions": []}}.
+
+If you still see remaining weaknesses (style, register, faithfulness,
+terminology issues that were NOT fixed in the first pass), return up to
+3 suggestions with {{"reflection": "<assessment>", "suggestions": [...]}}.
+Focus only on issues that are still visible — do not repeat old suggestions
+that were already addressed.
+
+SURROUNDING CONTEXT (may be empty):
+{context}
+
+SOURCE:
+{src_text}
+
 IMPROVED TRANSLATION:
-"""
+{tgt_text}"""
 
 
 def _safe_reflection_parse(text: str) -> dict[str, Any]:
@@ -137,8 +172,170 @@ def _neighbour_context(neighbours: list[dict[str, Any]]) -> str:
     return "\n".join(snippets)
 
 
+# Technical and xianxia terms that are legitimate in both source and target.
+# These should never count as "source leaks" in EN→FR translation.
+_WHITELISTED_LEXICON = frozenset(
+    {
+        # Xianxia / cultivation terms (legitimate in FR)
+        "qi",
+        "dao",
+        "yin",
+        "yang",
+        "dantian",
+        "meridian",
+        "meridians",
+        "cultivation",
+        "cultivator",
+        "cultivators",
+        "sect",
+        "sects",
+        "jade",
+        "alchemy",
+        "spirit",
+        "spiritual",
+        "pill",
+        "pills",
+        "elixir",
+        "elixirs",
+        "heaven",
+        "earth",
+        "mortal",
+        "immortal",
+        "immortals",
+        "realm",
+        "realms",
+        "soul",
+        "souls",
+        "demon",
+        "demons",
+        "divine",
+        "phoenix",
+        "dragon",
+        "beast",
+        "beasts",
+        "refining",
+        "array",
+        "arrays",
+        "talisman",
+        "artefact",
+        "artefacts",
+        "artifact",
+        "artifacts",
+        "master",
+        "elder",
+        "elders",
+        "disciple",
+        "disciples",
+        "senior",
+        "junior",
+        "ancestor",
+        "ancestors",
+        "patriarch",
+        "sword",
+        "blade",
+        "treasure",
+        "treasures",
+        "technique",
+        "techniques",
+        "scripture",
+        "scriptures",
+        "manual",
+        "manuals",
+        "breakthrough",
+        "foundation",
+        "core",
+        "nascent",
+        "tribulation",
+        "lightning",
+        "lotus",
+        "bamboo",
+        # Technical / domain terms
+        "api",
+        "json",
+        "http",
+        "https",
+        "rest",
+        "cli",
+        "gui",
+        "sql",
+        "html",
+        "css",
+        "xml",
+        "yaml",
+        "toml",
+        "url",
+        "uri",
+        "uuid",
+        "sha",
+        "hash",
+        "token",
+        "oauth",
+        "jwt",
+        "base64",
+        "utf",
+        "ascii",
+        "unicode",
+        "config",
+        "debug",
+        "cache",
+        "proxy",
+        "socket",
+        "thread",
+        "process",
+        "daemon",
+        "schema",
+        "metadata",
+        "payload",
+        "endpoint",
+        "callback",
+        "middleware",
+        "module",
+        "package",
+        "dependency",
+        "repository",
+        "binary",
+        "boolean",
+        "integer",
+        "buffer",
+        "cluster",
+        "container",
+        "docker",
+        # Common English/French cognates that are legitimate in FR
+        "possible",
+        "probable",
+        "nature",
+        "culture",
+        "structure",
+        "architecture",
+        "histoire",
+        "musique",
+        "pratique",
+        "politique",
+        "critique",
+        "unique",
+        "authentique",
+        "dynamique",
+        "logique",
+        "magique",
+        "tragique",
+        "comique",
+        "public",
+        "anglais",
+        "francais",
+        "français",
+        "chinois",
+        "japonais",
+    }
+)
+
+
 def _source_leak_count(source: str, translation: str) -> int:
-    """Count meaningful source words that appear verbatim in the translation."""
+    """Count meaningful source words that appear verbatim in the translation.
+
+    Excludes common short words (in, of, the…) and genre-specific terms
+    (xianxia cultivation, technical vocabulary, common cognates) that are
+    legitimate in both source and target languages.
+    """
     source_words = {
         w.lower()
         for w in re.findall(r"[A-Za-z][A-Za-z'-]{3,}", source)
@@ -156,6 +353,7 @@ def _source_leak_count(source: str, translation: str) -> int:
             "they",
             "them",
         }
+        and w.lower() not in _WHITELISTED_LEXICON
     }
     if not source_words:
         return 0
@@ -212,6 +410,120 @@ def _rejects_as_omission(current: str, improved: str) -> bool:
     return current_len >= 80 and improved_len < int(current_len * 0.65)
 
 
+def _run_reflect_improve_pass(
+    router: Any,
+    src: str,
+    current: str,
+    src_lang: str,
+    tgt_lang: str,
+    neighbours: list[dict[str, Any]],
+    pass_num: int,
+    prev_suggestions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Run one reflect→improve pass. Returns result dict with keys:
+    translation, reflection, suggestions, changed, passes.
+    """
+    if pass_num == 1:
+        prompt = _REFLECT_PROMPT.format(
+            contract=literary_contract(),
+            src=src_lang,
+            tgt=tgt_lang,
+            context=_neighbour_context(neighbours),
+            src_text=src[:1500],
+            tgt_text=current[:1500],
+        )
+    else:
+        prompt = _REFLECT_PASS2_PROMPT.format(
+            contract=literary_contract(),
+            src=src_lang,
+            tgt=tgt_lang,
+            context=_neighbour_context(neighbours),
+            src_text=src[:1500],
+            tgt_text=current[:1500],
+        )
+
+    try:
+        reflection_response = router.complete(prompt)
+    except Exception as exc:
+        logger.warning("llm_polisher: pass %d reflection failed: %s", pass_num, exc)
+        return {
+            "translation": current,
+            "reflection": "",
+            "suggestions": [],
+            "changed": False,
+            "passes": 0,
+        }
+
+    reflection = _safe_reflection_parse(reflection_response)
+    suggestions = reflection.get("suggestions") or []
+
+    # If no suggestions, we're done with this pass
+    if not suggestions:
+        return {
+            "translation": current,
+            "reflection": reflection.get("reflection", ""),
+            "suggestions": [],
+            "changed": False,
+            "passes": 0,
+        }
+
+    # On pass 2, check if suggestions are genuinely new — skip if same as pass 1
+    if pass_num > 1 and prev_suggestions:
+        prev_issues = {s.get("issue", "") for s in prev_suggestions if isinstance(s, dict)}
+        new_issues = {s.get("issue", "") for s in suggestions if isinstance(s, dict)}
+        if new_issues.issubset(prev_issues) and len(new_issues) <= len(prev_issues):
+            logger.debug("llm_polisher: pass %d suggestions redundant, skipping", pass_num)
+            return {
+                "translation": current,
+                "reflection": reflection.get("reflection", ""),
+                "suggestions": suggestions,
+                "changed": False,
+                "passes": 0,
+            }
+
+    improve_prompt = _IMPROVE_PROMPT.format(
+        contract=literary_contract(),
+        src=src_lang,
+        tgt=tgt_lang,
+        suggestions=json.dumps(suggestions, ensure_ascii=False, indent=2),
+        src_text=src[:1500],
+        tgt_text=current[:1500],
+    )
+    try:
+        improved = router.complete(improve_prompt, use_cache=False)
+    except Exception as exc:
+        logger.warning("llm_polisher: pass %d improvement failed: %s", pass_num, exc)
+        improved = current
+
+    if not improved.strip():
+        improved = current
+    improved = improved.strip()
+    changed = False
+
+    if _rejects_as_source_leak(src, current, improved):
+        logger.warning(
+            "llm_polisher: pass %d source-leak rejection (chunk)", pass_num
+        )
+    elif _rejects_as_assistant_reply(current, improved):
+        logger.warning(
+            "llm_polisher: pass %d assistant-reply rejection (chunk)", pass_num
+        )
+    elif _rejects_as_omission(current, improved):
+        logger.warning(
+            "llm_polisher: pass %d omission rejection (chunk)", pass_num
+        )
+    else:
+        changed = improved != current
+
+    return {
+        "translation": improved if changed else current,
+        "reflection": reflection.get("reflection", ""),
+        "suggestions": suggestions,
+        "changed": changed,
+        "passes": 1,
+    }
+
+
 class Worker(BaseWorker):
     use_control_thread = True
 
@@ -249,7 +561,8 @@ class Worker(BaseWorker):
                 chunk_id, "empty_input", "llm_polisher: missing input"
             )
 
-        # When the orchestrator sends a reflection task, use a focused prompt.
+        # When the orchestrator sends a reflection task (from reviewer),
+        # use a focused one-shot rewrite instead of the multi-pass loop.
         if reflection_instructions:
             return self._polish_with_reflection(
                 chunk_id,
@@ -262,81 +575,57 @@ class Worker(BaseWorker):
                 tgt_lang,
             )
 
-        reflect_prompt = _REFLECT_PROMPT.format(
-            contract=literary_contract(),
-            src=src_lang,
-            tgt=tgt_lang,
-            context=_neighbour_context(neighbours),
-            src_text=src[:1500],
-            tgt_text=current[:1500],
-        )
-        try:
-            reflection_response = self._router.complete(reflect_prompt)
-        except Exception as exc:
-            logger.warning("llm_polisher: reflection failed: %s", exc)
-            return self._emit_done(
-                chunk_id,
-                {
-                    "polished_translation": current,
-                    "reflection": "",
-                    "suggestions": [],
-                    "status": "polished",
-                },
-            )
-        reflection = _safe_reflection_parse(reflection_response)
-        suggestions = reflection.get("suggestions") or []
-        if not suggestions:
-            return self._emit_done(
-                chunk_id,
-                {
-                    "polished_translation": current,
-                    "reflection": reflection.get("reflection", ""),
-                    "suggestions": [],
-                    "status": "polished",
-                },
-            )
+        # ---- Multi-pass boucle réflexive ----
+        best = current
+        all_suggestions: list[dict[str, Any]] = []
+        all_reflections: list[str] = []
+        total_passes = 0
 
-        improve_prompt = _IMPROVE_PROMPT.format(
-            contract=literary_contract(),
-            src=src_lang,
-            tgt=tgt_lang,
-            suggestions=json.dumps(suggestions, ensure_ascii=False, indent=2),
-            src_text=src[:1500],
-            tgt_text=current[:1500],
+        for pass_num in range(1, _MAX_PASSES + 1):
+            result = _run_reflect_improve_pass(
+                self._router,
+                src,
+                best,
+                src_lang,
+                tgt_lang,
+                neighbours,
+                pass_num,
+                all_suggestions,
+            )
+            total_passes += result["passes"]
+            if result["changed"]:
+                best = result["translation"]
+                all_reflections.append(result["reflection"])
+                all_suggestions.extend(result["suggestions"])
+                # Stop if the second pass didn't further improve
+                if pass_num >= 2:
+                    logger.info(
+                        "llm_polisher: multi-pass completed after %d pass(es)",
+                        pass_num,
+                    )
+                    break
+            else:
+                # No change in this pass — stop
+                if result["reflection"]:
+                    all_reflections.append(result["reflection"])
+                break
+
+        logger.debug(
+            "llm_polisher: chunk=%s passes=%d changed=%s",
+            chunk_id,
+            total_passes,
+            best != current,
         )
-        try:
-            improved = self._router.complete(improve_prompt, use_cache=False)
-        except Exception as exc:
-            logger.warning("llm_polisher: improvement failed: %s", exc)
-            improved = current
-        if not improved.strip():
-            improved = current
-        improved = improved.strip()
-        if _rejects_as_source_leak(src, current, improved):
-            logger.warning(
-                "llm_polisher: rejecting polish with source-language leakage "
-                "(chunk=%s)",
-                chunk_id,
-            )
-            improved = current
-        elif _rejects_as_assistant_reply(current, improved):
-            logger.warning(
-                "llm_polisher: rejecting chatty assistant-style polish (chunk=%s)",
-                chunk_id,
-            )
-            improved = current
-        elif _rejects_as_omission(current, improved):
-            logger.warning(
-                "llm_polisher: rejecting polish with likely omission (chunk=%s)",
-                chunk_id,
-            )
-            improved = current
+
         return self._emit_done(
             chunk_id,
             {
-                "polished_translation": improved,
-                "reflection": reflection.get("reflection", ""),
-                "suggestions": suggestions,
+                "polished_translation": best,
+                "reflection": " | ".join(
+                    r for r in all_reflections if r
+                ) if all_reflections else "",
+                "suggestions": all_suggestions,
+                "reflection_passes": total_passes,
                 "status": "polished",
             },
         )
@@ -352,7 +641,7 @@ class Worker(BaseWorker):
         src_lang: str,
         tgt_lang: str,
     ) -> dict[str, Any] | None:
-        """One-shot revision driven by reviewer annotations."""
+        """One-shot revision driven by reviewer annotations (no multi-pass)."""
         annot_text = (
             "\n".join(
                 f"- [{a.get('type', '')}] {a.get('span', '')}: {a.get('suggestion', '')}"
@@ -391,6 +680,7 @@ class Worker(BaseWorker):
                 "reflection": reflection_instructions,
                 "suggestions": review_annotations,
                 "review_score": review_score,
+                "reflection_passes": 0,
                 "status": "polished",
             },
         )
@@ -419,8 +709,7 @@ SOURCE:
 CURRENT TRANSLATION:
 {tgt_text}
 
-IMPROVED TRANSLATION:
-"""
+IMPROVED TRANSLATION:"""
 
 
 __all__ = ["Worker"]

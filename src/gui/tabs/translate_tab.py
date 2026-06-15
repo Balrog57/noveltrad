@@ -57,10 +57,12 @@ PIPELINE_STAGES: tuple[str, ...] = (
     "parser",
     "fast_translator",
     "lexicon_builder",
+    "terminology_researcher",
     "glossary_applier",
     "consistency_checker",
     "qa_validator",
     "grammar_proofer",
+    "reviewer",
     "llm_polisher",
     "assembler",
 )
@@ -72,6 +74,7 @@ class TranslateTab(QWidget):
     startRequested = pyqtSignal(dict)
     fileSelected = pyqtSignal(str)
     replayHltlRequested = pyqtSignal()
+    retryRequested = pyqtSignal(str)  # path of errored project
     assembleRequested = pyqtSignal(str)  # format
     pauseRequested = pyqtSignal()
     resumeRequested = pyqtSignal()
@@ -527,7 +530,7 @@ class TranslateTab(QWidget):
         # waiting for the auto-assemble when the penultimate
  # stage reaches 100%). Useful when an LLM chunk is stuck.
         self._assemble_btn = QPushButton(self.tr("Force assemble now"))
-        self._assemble_btn.clicked.connect(lambda: self.assembleRequested.emit("epub"))
+        self._assemble_btn.clicked.connect(lambda: self.assembleRequested.emit(self._output_format.currentData() or "epub"))
         self._assemble_btn.setEnabled(False)
         self._assemble_btn.setToolTip(
             self.tr("Build the output file from the current chunks without waiting for the pipeline to finish. Useful when an LLM chunk is stuck in the polish step.")
@@ -701,15 +704,36 @@ class TranslateTab(QWidget):
         # Per-row remove button (column 5). Always enabled so the user
         # can drop a queued file; we ask the backend to remove it and
         # the backend will 409 on the currently-running project.
+        # Action buttons container (column 5). We always need the remove
+        # button; a "Retry" button is shown/hidden in _refresh_queue_row
+        # when the item enters / leaves the error state.
+        actions_widget = QWidget()
+        actions_layout = QHBoxLayout(actions_widget)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(4)
+
         remove_btn = QPushButton(self.tr("✕"))
         remove_btn.setFixedSize(32, 28)
         remove_btn.setStyleSheet("font-size: 14pt; font-weight: 600;")
         remove_btn.setToolTip(self.tr("Remove this file from the queue"))
-        remove_btn.setToolTip(self.tr("Remove this file from the queue"))
         remove_btn.clicked.connect(
             lambda _checked=False, p=path: self._on_remove_file(p)
         )
-        self._queue_table.setCellWidget(row, 5, remove_btn)
+        actions_layout.addWidget(remove_btn)
+
+        retry_btn = QPushButton(self.tr("Retry"))
+        retry_btn.setProperty("role", "primary")
+        retry_btn.setFixedHeight(28)
+        retry_btn.setToolTip(
+            self.tr("Re-submit errored chunks to the pipeline")
+        )
+        retry_btn.clicked.connect(
+            lambda _checked=False, p=path: self.retryRequested.emit(p)
+        )
+        retry_btn.hide()
+        actions_layout.addWidget(retry_btn)
+
+        self._queue_table.setCellWidget(row, 5, actions_widget)
         item: dict[str, Any] = {
             "row": row,
             "project_id": "",
@@ -725,6 +749,7 @@ class TranslateTab(QWidget):
             "_detail_item": detail_item,
             "_progress_bar": bar,
             "_remove_btn": remove_btn,
+            "_retry_btn": retry_btn,
         }
         self._queue_items.append(item)
         self._queue_by_path[path] = item
@@ -872,6 +897,10 @@ class TranslateTab(QWidget):
         detail = item.get("error") or item.get("output_path") or item.get("project_id") or ""
         item["_detail_item"].setText(str(detail))
         item["_detail_item"].setToolTip(str(detail))
+        # Show Retry button when in error state, hide otherwise.
+        retry_btn = item.get("_retry_btn")
+        if retry_btn:
+            retry_btn.setVisible(item.get("state") == "error")
 
     def _sync_active_project(self, project: dict[str, Any]) -> None:
         pid = project.get("project_id") or ""
@@ -966,7 +995,7 @@ class TranslateTab(QWidget):
             {
                 "lexicon_ready": PIPELINE_STAGES.index("lexicon_builder") + 1,
                 "lexicon_skipped": PIPELINE_STAGES.index("lexicon_builder") + 1,
-                "reviewed": PIPELINE_STAGES.index("llm_polisher") + 1,
+                "reviewed": PIPELINE_STAGES.index("reviewer") + 1,
             }
         )
         return indexes

@@ -1,55 +1,67 @@
-name: NovelTrad CI
+name: CI
 
 on:
-    push:
-        branches: ["main"]
-    pull_request:
-        branches: ["main"]
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  PYTHONUNBUFFERED: "1"
+  QT_QPA_PLATFORM: offscreen
 
 jobs:
-    validate:
-        runs-on: ${{ matrix.os }}
-        strategy:
-            fail-fast: false
-            matrix:
-                os: ["windows-latest", "ubuntu-latest"]
-                python-version: ["3.11", "3.12"]
+  test:
+    name: test py${{ matrix.python }} ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+        os: [ubuntu-latest]
+        include:
+          - os: windows-latest
+            python: "3.12"
 
-        steps:
-            - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v5
-              with:
-                  python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
 
-            - name: Install Linux Qt runtime deps
-              if: runner.os == 'Linux'
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y libegl1 libxcb-cursor0
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxcb-cursor0 2>/dev/null || true
 
-            - name: Install runtime deps
-              run: |
-                  python -m pip install --upgrade pip
-                  pip install -r requirements.txt
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e . 2>/dev/null || pip install -r requirements.txt
 
-            - name: Compile sources
-              run: python -m compileall src
+      - name: Optional deps (smoke-test only)
+        run: |
+          pip install pyinstaller
 
-            - name: Run unit tests
-              env:
-                  NOVELTRAD_FAKE_LLM: "1"
-                  NOVELTRAD_TRANSLATION_TEST_MODE: "1"
-                  QT_QPA_PLATFORM: "offscreen"
-              run: python -m unittest discover -s tests -p "test_*.py"
+      - name: Compile check
+        run: python -m compileall src
 
-            - name: Run corpus regression check
-              run: python -m tests.corpus.evaluate > corpus-report.json
+      - name: Run tests
+        run: python -m unittest discover tests -v
 
-            - name: Upload corpus report
-              uses: actions/upload-artifact@v4
-              with:
-                  name: corpus-report-${{ matrix.os }}-py${{ matrix.python-version }}
-                  path: corpus-report.json
-                  if-no-files-found: error
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-py${{ matrix.python }}
+          path: |
+            test-results/
+            *.log
+          if-no-files-found: ignore

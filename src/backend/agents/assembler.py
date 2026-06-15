@@ -59,6 +59,7 @@ class Worker(BaseWorker):
                         title=payload.get("title", target.stem),
                         manifest_path=payload.get("manifest_path"),
                         bilingual=(fmt == "epub_bilingual"),
+                        target_lang=payload.get("target_lang", "en"),
                     )
                 elif fmt == "docx":
                     _write_docx(target, group_chunks)
@@ -147,6 +148,7 @@ def _write_epub(
     title: str,
     manifest_path: str | None = None,
     bilingual: bool = False,
+    target_lang: str = "en",
 ) -> None:
     if manifest_path:
         try:
@@ -163,7 +165,7 @@ def _write_epub(
     book = epub.EpubBook()
     book.set_identifier("noveltrad-assembled")
     book.set_title(title)
-    book.set_language("en")
+    book.set_language(target_lang)
     chapters: list[Any] = []
     current_chap_title: str | None = None
     current_paragraphs: list[str] = []
@@ -183,7 +185,7 @@ def _write_epub(
         c = epub.EpubHtml(
             title=current_chap_title or f"Chapter {chapter_index}",
             file_name=f"chap_{chapter_index:04d}.xhtml",
-            lang="en",
+            lang=target_lang,
         )
         body = "".join(f"<p>{p}</p>" for p in current_paragraphs if p.strip())
         c.content = (

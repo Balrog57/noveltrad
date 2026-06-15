@@ -151,7 +151,7 @@ class MainWindowSmokeTests(unittest.TestCase):
             self.w.deleteLater()
 
     def test_five_pages_mounted(self) -> None:
-        self.assertEqual(self.w._stack.count(), 5)
+        self.assertEqual(self.w._stack.count(), 6)
 
     def test_responsive_drawer_under_breakpoint(self) -> None:
         # Width < breakpoint: sidebar must hide.

@@ -111,7 +111,9 @@ class Worker(BaseWorker):
             manifest["format_payload"] = dict(doc.metadata)
             if not primary_doc_meta:
                 primary_doc_meta = dict(doc.metadata)
-            for chap in doc.chapters:
+            # Track chapters in this file for incremental progress
+            ch_in_file = len(doc.chapters)
+            for ci, chap in enumerate(doc.chapters):
                 if chap.blocks:
                     chunks = chunk_blocks(
                         chap.blocks,
@@ -158,8 +160,8 @@ class Worker(BaseWorker):
                 )
                 self._emit_progress(
                     None,
-                    percent=100.0 * total / max(1, total),
-                    note=f"parsed {total} chunks from {len(source_paths)} file(s)",
+                    percent=100.0 * (ci + 1) / max(1, ch_in_file),
+                    note=f"parsed chapter {ci + 1}/{ch_in_file} ({total} chunks)",
                 )
             manifest["working_source_path"] = str(working_source)
             all_manifests.append(manifest)

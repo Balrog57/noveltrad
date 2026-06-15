@@ -1,4 +1,20 @@
-# NovelTrad
+<p align="center">
+  <img src="assets/noveltrad-logo-512.png" alt="NovelTrad Logo" width="256" height="256">
+</p>
+
+<h1 align="center">NovelTrad</h1>
+
+<p align="center">
+  <em>Desktop TAO application for Novels &amp; Web Novels</em>
+</p>
+
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.11+-blue.svg">
+  <img alt="License" src="https://img.shields.io/github/license/Balrog57/noveltrad">
+  <img alt="Release" src="https://img.shields.io/github/v/release/Balrog57/noveltrad">
+</p>
+
+---
 
 NovelTrad is a **PyQt6 desktop application** for translating long-form
 fiction and web novels. A local **FastAPI** backend drives a

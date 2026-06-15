@@ -101,7 +101,12 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='assets/noveltrad-icon.ico',
 )
+# Include assets alongside the exe for runtime use
+datas.append(('assets/noveltrad-icon.ico', 'assets'))
+datas.append(('assets/noveltrad-logo-256.png', 'assets'))
+
 coll = COLLECT(
     exe,
     a.binaries,

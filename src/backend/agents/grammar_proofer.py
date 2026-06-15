@@ -97,11 +97,32 @@ class Worker(BaseWorker):
                         "rule_id": getattr(m, "ruleId", None) or m.rule.id,
                     }
                 )
-                corrected = corrected.replace(m.context, replacement, 1) if m.context else corrected
-        # Grammalecte only useful for French — leave optional, skip if
-        # language detection doesn't match FR.
-        # (We don't auto-detect; the user can configure grammalecte in
-        # settings later.)
+                start = m.offset
+                end = m.offset + m.errorLength
+                corrected = corrected[:start] + replacement + corrected[end:]
+        # Grammalecte — French-specific grammar pass
+        # Runs after language_tool for deeper French grammar checking.
+        if self._grammalecte is not None and msg.get("target_lang", "fr") == "fr":
+            try:
+                from pygrammalecte import grammalecte_text
+                for gm in grammalecte_text(corrected):
+                    issues.append(
+                        {
+                            "start_pos": gm.start,
+                            "end_pos": gm.end,
+                            "message": gm.message,
+                            "suggestion": gm.suggestions[0] if gm.suggestions else "",
+                            "rule_id": gm.rule,
+                        }
+                    )
+                    if gm.suggestions:
+                        corrected = (
+                            corrected[: gm.start]
+                            + gm.suggestions[0]
+                            + corrected[gm.end :]
+                        )
+            except Exception as exc:
+                logger.warning("grammar_proofer: grammalecte failed: %s", exc)
 
         return self._emit_done(
             chunk_id,

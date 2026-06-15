@@ -60,11 +60,32 @@ if "--version" in sys.argv:
     raise SystemExit(0)
 
 from PyQt6.QtCore import QTranslator
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 from src.gui.app_config import ConfigManager
 from src.gui.first_run_wizard import FirstRunWizard
 from src.gui.i18n import default_language, has_translation, load_translator
 from src.gui.main_window import MainWindow
+
+
+def _icon_path() -> str:
+    """Return the absolute path to the app icon, works in dev and frozen builds."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        base = sys._MEIPASS  # type: ignore[attr-defined]
+    else:
+        base = root_dir
+    ico = os.path.join(base, "assets", "noveltrad-icon.ico")
+    if os.path.isfile(ico):
+        return ico
+    # fallback: try png
+    png = os.path.join(base, "assets", "noveltrad-logo-256.png")
+    return png if os.path.isfile(png) else ""
+
+
+def _set_app_icon(app: QApplication) -> None:
+    icon_path = _icon_path()
+    if icon_path:
+        app.setWindowIcon(QIcon(icon_path))
 
 
 def main() -> int:
@@ -73,6 +94,9 @@ def main() -> int:
     # terminates the app on the first uncaught exception.
     sys.excepthook = _global_excepthook
     app = QApplication(sys.argv)
+    # Set app icon
+    _set_app_icon(app)
+
     # Install UI translator (French today; English by default). Note:
     # language switching requires a restart in Qt — we only honour the
     # language at launch. The Settings combobox persists the choice

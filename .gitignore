@@ -92,3 +92,10 @@ venv/
 *.ntrad
 Setup_NovelTrad.exe
 Setup_NovelTrad-v*.exe
+
+# Project-specific
+.playwright-cli/
+test_project/
+tools/
+noveltrad-logo.png
+noveltrad-logo-512.png

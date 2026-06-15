@@ -212,7 +212,10 @@ class BackendClient:
                 logger.debug("ws loop: %s (reconnect in %.1fs)", exc, backoff)
                 if self._stop.is_set():
                     return
-                time.sleep(backoff)
+                # Jittered exponential backoff (full jitter: 0..backoff)
+                import random as _random
+                sleep_for = _random.uniform(0, backoff)
+                time.sleep(sleep_for)
                 backoff = min(8.0, backoff * 2)
 
     @staticmethod

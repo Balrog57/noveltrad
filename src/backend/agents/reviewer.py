@@ -113,7 +113,6 @@ class Worker(BaseWorker):
         src = payload.get("source_text", "")
         tgt = (
             payload.get("grammar_checked")
-            or payload.get("polished_translation")
             or payload.get("glossary_applied")
             or payload.get("raw_translation")
             or ""

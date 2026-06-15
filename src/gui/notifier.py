@@ -1,22 +1,41 @@
 """Native system notifications and a header-pulse helper.
 
-Wraps `QSystemTrayIcon` so HITL alerts can pop a Windows 10/11 toast
-even when the main window is minimised. Falls back to `QMessageBox`
-if the OS doesn't expose a tray.
+Wraps desktop-notifier / plyer for cross-platform notifications.
 """
 
 from __future__ import annotations
+
+import sys
+import os
 
 import logging
 from typing import Optional
 
 from PyQt6.QtCore import QObject
 from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
 from .a11y import configure
 
 logger = logging.getLogger(__name__)
+
+# Path resolution helpers for both dev and frozen builds
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    _BASE = sys._MEIPASS  # type: ignore[attr-defined]
+else:
+    _BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _tray_icon() -> QIcon:
+    """Load the app icon for the tray, falling back to a blank icon."""
+    candidates = [
+        os.path.join(_BASE, "assets", "noveltrad-icon.ico"),
+        os.path.join(_BASE, "assets", "noveltrad-logo-256.png"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return QIcon(path)
+    return QIcon()
 
 
 class Notifier(QObject):
@@ -31,7 +50,7 @@ class Notifier(QObject):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return False
         try:
-            icon = QIcon.fromTheme("noveltrad", QIcon())
+            icon = _tray_icon()
             self._tray = QSystemTrayIcon(icon, self)
             menu = QMenu()
             open_act = QAction(self.tr("Open NovelTrad"), self)

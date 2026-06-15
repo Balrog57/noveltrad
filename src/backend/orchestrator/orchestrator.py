@@ -786,6 +786,11 @@ class Orchestrator:
         that cap from it before moving on, so a chatty stage cannot
         starve quieter ones.
 
+        All messages drained in a single cycle are processed within one
+        SQLite transaction (via ``store.transaction()``) so that a crash
+        mid-drain never leaves the store in an inconsistent state: either
+        every message from the batch is persisted, or none are.
+
         Iterates only the stages active in the current project profile.
         """
         while not self._stop_drain.is_set():
@@ -803,13 +808,26 @@ class Orchestrator:
                 except Exception:
                     pending = 0
                 cap = MAX_DRAIN_PER_STAGE_PER_LOOP if pending >= MAX_DRAIN_PER_STAGE_PER_LOOP else 1
+                batch: list[tuple[str, dict[str, Any]]] = []
                 for _ in range(cap):
                     try:
                         msg = q.get_nowait()
                     except Exception:
                         break
-                    did_work = True
-                    self._handle_worker_message(stage, msg)
+                    batch.append((stage, msg))
+                if not batch:
+                    continue
+                did_work = True
+                try:
+                    with self.store.transaction():
+                        for st, msg in batch:
+                            self._handle_worker_message(st, msg)
+                except Exception:
+                    logger.exception(
+                        "drain: atomic batch of %d messages failed; "
+                        "transaction rolled back",
+                        len(batch),
+                    )
             if not did_work:
                 # Watchdog: every iteration we check whether the
                 # current project has been running without any new
@@ -920,6 +938,8 @@ class Orchestrator:
     ) -> None:
         if stage == "lexicon_builder" and payload.get("terms"):
             self._persist_lexicon_terms(payload.get("terms") or [])
+        if stage == "terminology_researcher" and payload.get("suggestions"):
+            self._persist_lexicon_terms(payload.get("suggestions") or [])
         if stage == "grammar_proofer" and payload.get("grammar_issues"):
             self._persist_grammar_issues(chunk_id, payload.get("grammar_issues") or [])
         if stage == "qa_validator" and payload.get("qa_issues"):
@@ -928,14 +948,56 @@ class Orchestrator:
             self._persist_consistency_flags(
                 chunk_id, payload.get("consistency_flags") or []
             )
+            self._promote_consistency_to_glossary(
+                chunk_id, payload.get("consistency_flags") or []
+            )
 
     def _persist_lexicon_terms(self, terms: list[Any]) -> None:
         for term in terms:
-            if isinstance(term, dict) and "id" in term:
+            if isinstance(term, dict):
+                # Normalise terminology_researcher output (uses "rationale" not "notes")
+                if "rationale" in term and "notes" not in term:
+                    term["notes"] = term["rationale"]
                 try:
-                    self.store.add_lexicon_term(term)
+                    self.store.upsert_lexicon_term(term)
                 except Exception:
                     logger.exception("lexicon: failed to persist term")
+
+    def _promote_consistency_to_glossary(
+        self, chunk_id: str, flags: list[dict[str, Any]]
+    ) -> None:
+        """Auto-promote high-confidence consistency flags to glossary entries.
+
+        When a flag has confidence >= 0.6 and no lexicon term exists for that
+        source term, create a low-confidence (0.3) lexicon entry.
+        """
+        for flag in flags:
+            if not isinstance(flag, dict):
+                continue
+            source = flag.get("source_term", "")
+            expected = flag.get("expected_translation", "")
+            conf = float(flag.get("confidence", 0.0))
+            if not source or not expected or conf < 0.6:
+                continue
+            existing = self.store.find_lexicon_by_source(source)
+            if existing is not None:
+                continue  # already has a glossary entry
+            self.store.upsert_lexicon_term(
+                {
+                    "source": source,
+                    "target": expected,
+                    "category": "term",
+                    "gender": "unknown",
+                    "confidence": 0.3,
+                    "notes": f"auto-extracted from consistency flag in chunk {chunk_id}",
+                    "evidence_refs": [f"chunk:{chunk_id}"],
+                    "chapter_id": None,
+                }
+            )
+            logger.info(
+                "glossary: auto-promoted consistency flag '%s'→'%s' (conf=%.1f)",
+                source, expected, conf
+            )
 
     def _persist_grammar_issues(self, chunk_id: str, issues: list[Any]) -> None:
         import uuid as _uuid
