@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.gui.a11y import configure
 from src.gui.backend_client import BackendClient, BackendError
 
 
@@ -58,6 +59,11 @@ class ChunkDetailDialog(QDialog):
         header.addStretch(1)
         reprocess_btn = QPushButton(self.tr("Reprocess"))
         reprocess_btn.clicked.connect(self._reprocess)
+        configure(
+            reprocess_btn,
+            name=self.tr("Reprocess chunk"),
+            tooltip=self.tr("Send this chunk back through the pipeline."),
+        )
         header.addWidget(reprocess_btn)
         layout.addLayout(header)
 
