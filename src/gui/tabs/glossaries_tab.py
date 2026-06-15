@@ -31,6 +31,7 @@ class GlossariesTab(QWidget):
     def __init__(self, client: BackendClient, parent: QWidget | None = None):
         super().__init__(parent)
         self._client = client
+        self._project: dict[str, Any] | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
@@ -90,6 +91,13 @@ class GlossariesTab(QWidget):
         self._terms: list[dict[str, Any]] = []
         # Defer the first refresh to _on_sidebar_changed: the backend
         # subprocess starts asynchronously and is not yet ready here.
+
+    def set_project(self, proj: dict[str, Any]) -> None:
+        """Set the active project and refresh the glossary."""
+        self._project = proj
+        name = proj.get("name", proj.get("project_id", "?")[:8])
+        self.setWindowTitle(self.tr("Glossary — {name}").format(name=name))
+        self.refresh()
 
     # ----- backend I/O -----
 

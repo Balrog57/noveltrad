@@ -138,6 +138,14 @@ class TranslateTab(QWidget):
         if self._review_model is not None:
             self._review_model._client = client  # type: ignore[attr-defined]
 
+    def set_project(self, proj: dict[str, Any]) -> None:
+        """Set the active project context for this tab."""
+        self._project = proj
+        self._project_dir = proj.get("project_dir", "")
+        # Update header to show project name.
+        name = proj.get("name", proj.get("project_id", "?")[:8])
+        self._step_label.setText(self.tr("🔵 {name} — Pipeline").format(name=name))
+
     def set_project_dir(self, project_dir: str) -> None:
         self._project_dir = project_dir
 

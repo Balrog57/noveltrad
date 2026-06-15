@@ -750,7 +750,7 @@ class StateStore:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT key, value FROM pipeline_state WHERE key LIKE 'project:%' "
-                "AND key != 'project_manifest_path' ORDER BY key LIMIT ? OFFSET ?",
+                "AND key != 'project_manifest_path' ORDER BY key DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
         projects: list[dict[str, Any]] = []
@@ -760,6 +760,7 @@ class StateStore:
                 project_id = row["key"].split(":", 1)[1]
                 projects.append({
                     "project_id": project_id,
+                    "name": data.get("name", f"Project-{project_id[:8]}"),
                     "source_path": data.get("source_path", ""),
                     "project_dir": data.get("project_dir", ""),
                     "source_lang": data.get("source_lang", ""),
@@ -784,6 +785,7 @@ class StateStore:
             return None
         return {
             "project_id": project_id,
+            "name": data.get("name", f"Project-{project_id[:8]}"),
             "source_path": data.get("source_path", ""),
             "project_dir": data.get("project_dir", ""),
             "source_lang": data.get("source_lang", ""),
@@ -792,6 +794,49 @@ class StateStore:
             "output_format": data.get("output_format", "txt"),
             "created_at": data.get("created_at", ""),
         }
+
+    def update_project(self, project_id: str, updates: dict[str, Any]) -> bool:
+        """Update persisted project metadata. Returns True if project existed."""
+        existing = self.get_project(project_id)
+        if existing is None:
+            return False
+        # Merge updates into existing data
+        raw = self.get_state(f"project:{project_id}")
+        data = json.loads(raw) if raw else {}
+        for key in ("name", "project_dir"):
+            if key in updates and updates[key] is not None:
+                data[key] = updates[key]
+        self.set_state(f"project:{project_id}", data)
+        return True
+
+    def delete_project(self, project_id: str) -> bool:
+        """Delete project metadata and its chunks/lexicon data. Returns True if existed."""
+        existing = self.get_project(project_id)
+        if existing is None:
+            return False
+        # Clear active project if it was this one
+        active = self.get_active_project()
+        if active == project_id:
+            self.clear_active_project()
+        # Forget metadata
+        self.forget_project(project_id)
+        return True
+
+    def set_active_project(self, project_id: str) -> None:
+        """Set the currently active project for the GUI context."""
+        self.set_state("active_project", project_id)
+
+    def get_active_project(self) -> str | None:
+        """Get the currently active project ID, or None."""
+        return self.get_state("active_project")
+
+    def clear_active_project(self) -> None:
+        """Clear the active project."""
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM pipeline_state WHERE key = ?",
+                ("active_project",),
+            )
 
     def forget_project(self, project_id: str) -> None:
         """Remove the persisted project metadata entry."""

@@ -17,6 +17,7 @@ def register(app: Any, deps: Deps) -> None:
 
     schemas = build_schemas()
     ProjectCreateRequest = schemas["ProjectCreateRequest"]
+    ProjectUpdateRequest = schemas["ProjectUpdateRequest"]
     ProjectStateResponse = schemas["ProjectStateResponse"]
     PipelineStateResponse = schemas["PipelineStateResponse"]
     ProjectQueueEntry = schemas["ProjectQueueEntry"]
@@ -27,6 +28,48 @@ def register(app: Any, deps: Deps) -> None:
     def list_projects() -> dict[str, Any]:
         items = deps.store.list_projects()
         return {"projects": items}
+
+    @app.get("/projects/{project_id}")
+    def get_project(project_id: str) -> dict[str, Any]:
+        proj = deps.store.get_project(project_id)
+        if proj is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return proj
+
+    @app.put("/projects/{project_id}")
+    def update_project(project_id: str, req: ProjectUpdateRequest) -> dict[str, Any]:
+        updates = {}
+        if req.name is not None:
+            updates["name"] = req.name
+        if req.project_dir is not None:
+            updates["project_dir"] = req.project_dir
+        ok = deps.store.update_project(project_id, updates)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"ok": True, "project_id": project_id}
+
+    @app.delete("/projects/{project_id}")
+    def delete_project(project_id: str) -> dict[str, Any]:
+        ok = deps.store.delete_project(project_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"ok": True, "project_id": project_id}
+
+    @app.post("/projects/{project_id}/activate")
+    def activate_project(project_id: str) -> dict[str, Any]:
+        proj = deps.store.get_project(project_id)
+        if proj is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        deps.store.set_active_project(project_id)
+        return {"ok": True, "active_project_id": project_id, "project": proj}
+
+    @app.get("/projects/active")
+    def get_active_project() -> dict[str, Any]:
+        active_id = deps.store.get_active_project()
+        if active_id is None:
+            return {"active_project_id": None, "project": None}
+        proj = deps.store.get_project(active_id)
+        return {"active_project_id": active_id, "project": proj}
 
     @app.post("/projects")
     def create_project(req: ProjectCreateRequest) -> dict[str, Any]:
@@ -39,17 +82,21 @@ def register(app: Any, deps: Deps) -> None:
             paths = [str(p) for p in req.source_paths if p]
         elif req.source_path:
             paths = [str(req.source_path)]
-        if not paths:
-            raise HTTPException(
-                status_code=400,
-                detail="source_path or source_paths is required",
-            )
         ctx = _build_context(project_id, req, source_paths=paths)
+        # Inject the human-readable name into the context for persistence.
+        if req.name:
+            ctx.name = req.name  # type: ignore[attr-defined]
         _persist_project_metadata(deps, project_id, ctx)
-        if req.parse:
-            started = _kickoff_parser(deps, project_id, ctx, paths)
-        else:
-            started = True
+        # If no source files provided, just create the project (empty).
+        if not paths or not req.parse:
+            deps.store.set_active_project(project_id)
+            return {
+                "project_id": project_id,
+                "status": "created",
+                "queue_position": 0,
+                "source_paths": paths,
+            }
+        started = _kickoff_parser(deps, project_id, ctx, paths)
         with deps.orchestrator._lock:
             qpos = (
                 deps.orchestrator._project_queue.index(ctx) + 1
@@ -177,6 +224,7 @@ def _persist_project_metadata(deps: Deps, project_id: str, ctx: ProjectContext) 
     deps.store.set_state(
         f"project:{project_id}",
         {
+            "name": getattr(ctx, "name", None) or f"Project-{project_id[:8]}",
             "project_dir": str(ctx.project_dir),
             "source_path": str(ctx.source_path),
             "source_lang": ctx.source_lang,

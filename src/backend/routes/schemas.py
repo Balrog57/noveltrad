@@ -20,12 +20,18 @@ def build_schemas() -> dict[str, Any]:
     """
 
     class ProjectCreateRequest(BaseModel):
+        """Minimal project creation — just a name and a working directory.
+
+        Source files are added later via the Pipeline tab or
+        ``POST /projects/{id}/translate`` with ``source_paths``.
+
+        The legacy ``source_path`` / ``source_paths`` / ``parse`` fields
+        are kept for backward compatibility with the older GUI.
+        """
+        name: str | None = None          # human-readable project name (v4.2+)
         project_id: str | None = None
         project_dir: str
-        # Either ``source_path`` (single file) or ``source_paths`` (one or
-        # more files / a whole directory flattened at the GUI level) is
-        # accepted. ``source_paths`` wins when non-empty so the GUI can
-        # batch a selection of N files into a single POST /projects.
+        # Legacy translation-kickoff fields (kept for old GUI / CLI).
         source_path: str | None = None
         source_paths: list[str] = Field(default_factory=list)
         source_lang: str = "auto"
@@ -34,6 +40,11 @@ def build_schemas() -> dict[str, Any]:
         output_format: str = Field(default="txt", pattern=r"^(epub|epub_bilingual|docx|srt|txt)$")
         parse: bool = True
         profile: str = Field(default="balanced", pattern=r"^(eco|balanced|premium)$")
+
+    class ProjectUpdateRequest(BaseModel):
+        """Minimal project update — rename or change working directory."""
+        name: str | None = None
+        project_dir: str | None = None
 
     class ProjectStateResponse(BaseModel):
         project_id: str
@@ -91,6 +102,7 @@ def build_schemas() -> dict[str, Any]:
 
     return {
         "ProjectCreateRequest": ProjectCreateRequest,
+        "ProjectUpdateRequest": ProjectUpdateRequest,
         "ProjectQueueEntry": ProjectQueueEntry,
         "ProjectStateResponse": ProjectStateResponse,
         "PipelineStateResponse": PipelineStateResponse,

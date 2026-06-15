@@ -34,6 +34,7 @@ class FilesTab(QWidget):
     def __init__(self, client: BackendClient, parent: QWidget | None = None):
         super().__init__(parent)
         self._client = client
+        self._project: dict[str, Any] | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
@@ -89,6 +90,11 @@ class FilesTab(QWidget):
         self._status = QLabel("")
         row.addWidget(self._status)
         layout.addLayout(row)
+
+    def set_project(self, proj: dict[str, Any]) -> None:
+        """Set the active project and refresh the file list."""
+        self._project = proj
+        self.refresh()
 
     def refresh(self) -> None:
         self._table.setRowCount(0)

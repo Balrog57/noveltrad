@@ -58,7 +58,7 @@ from src.gui.tabs.files_tab import FilesTab
 from src.gui.tabs.glossaries_tab import GlossariesTab
 from src.gui.tabs.projects_tab import ProjectsTab
 from src.gui.tabs.settings_tab import SettingsTab
-from src.gui.tabs.translate_tab import TranslateTab
+from src.gui.tabs.translate_tab import TranslateTab as PipelineTab
 from src.gui.theme import VALID_THEMES, ThemeManager
 from src.gui.updater import Updater, is_skipped
 from src.gui.widgets.activity_log import ActivityLogWidget
@@ -68,9 +68,9 @@ logger = logging.getLogger(__name__)
 
 
 SIDEBAR_ITEMS: tuple[tuple[str, str], ...] = (
-    ("translate", "Translate"),
     ("projects", "Projects"),
-    ("glossaries", "Glossaries"),
+    ("pipeline", "Pipeline"),
+    ("glossary", "Glossary"),
     ("files", "Files"),
     ("settings", "Settings"),
 )
@@ -154,24 +154,24 @@ class MainWindow(QMainWindow):
         self._sidebar.currentRowChanged.connect(self._on_sidebar_changed)
 
         self._stack = QStackedWidget()
-        self._translate_tab = TranslateTab(
+        self._pipeline_tab = PipelineTab(
             default_target="fr", client=self._client
         )
-        self._translate_tab.startRequested.connect(self._on_start_translation)
-        self._translate_tab.replayHltlRequested.connect(self._on_replay_hltl)
-        self._translate_tab.assembleRequested.connect(self._on_assemble_requested)
-        self._translate_tab.retryRequested.connect(self._on_retry)
-        self._translate_tab.pauseRequested.connect(self._on_pause)
-        self._translate_tab.resumeRequested.connect(self._on_resume)
-        self._translate_tab.stopRequested.connect(self._on_stop)
-        self._translate_tab.fileRemoved.connect(self._on_remove_queued_file)
-        self._translate_tab.queueCompleted.connect(self._on_queue_completed)
-        self._stack.addWidget(self._translate_tab)
+        self._pipeline_tab.startRequested.connect(self._on_start_translation)
+        self._pipeline_tab.replayHltlRequested.connect(self._on_replay_hltl)
+        self._pipeline_tab.assembleRequested.connect(self._on_assemble_requested)
+        self._pipeline_tab.retryRequested.connect(self._on_retry)
+        self._pipeline_tab.pauseRequested.connect(self._on_pause)
+        self._pipeline_tab.resumeRequested.connect(self._on_resume)
+        self._pipeline_tab.stopRequested.connect(self._on_stop)
+        self._pipeline_tab.fileRemoved.connect(self._on_remove_queued_file)
+        self._pipeline_tab.queueCompleted.connect(self._on_queue_completed)
+        self._stack.addWidget(self._pipeline_tab)
         self._projects_tab = ProjectsTab(self._client)
         self._projects_tab.projectActivated.connect(self._on_project_activated)
         self._stack.addWidget(self._projects_tab)
-        self._glossaries_tab = GlossariesTab(self._client)
-        self._stack.addWidget(self._glossaries_tab)
+        self._glossary_tab = GlossariesTab(self._client)
+        self._stack.addWidget(self._glossary_tab)
         self._files_tab = FilesTab(self._client)
         self._files_tab.chunkActivated.connect(self._show_chunk_detail)
         self._stack.addWidget(self._files_tab)
@@ -274,8 +274,8 @@ class MainWindow(QMainWindow):
         bind_shortcut(self, "Esc", self._action_close_overlay)
 
     def _action_open_file(self) -> None:
-        if hasattr(self._translate_tab, "_cloud"):
-            self._translate_tab._cloud._open_dialog()  # type: ignore[attr-defined]
+        if hasattr(self._pipeline_tab, "_cloud"):
+            self._pipeline_tab._cloud._open_dialog()  # type: ignore[attr-defined]
 
     def _action_rerun(self) -> None:
         if self._stack.currentWidget() is self._projects_tab:
@@ -286,29 +286,32 @@ class MainWindow(QMainWindow):
         self._on_replay_hltl()
 
     def _on_project_activated(self, proj: dict[str, Any]) -> None:
-        """Re-open a past project and switch to the Translate tab."""
-        source_path = proj.get("source_path", "")
-        if not source_path:
-            QMessageBox.information(
-                self,
-                self.tr("Project not found"),
-                self.tr("Missing source path."),
+        """Activate a project — set it as active on the backend and
+        refresh all dependent tabs (Pipeline, Files, Glossary)."""
+        pid = proj.get("project_id", "")
+        if not pid:
+            return
+        self._sidebar.setCurrentRow(0)  # stay on Projects
+        try:
+            # Tell the backend this is the active project.
+            self._client.post(f"/projects/{pid}/activate", timeout=5.0)
+        except BackendError as exc:
+            self.statusBar().showMessage(
+                self.tr("Could not activate project: {err}").format(err=exc), 4000
             )
             return
-        payload = {
-            "source_path": source_path,
-            "source_lang": proj.get("source_lang", "auto"),
-            "target_lang": proj.get("target_lang", "fr"),
-            "quality": proj.get("profile", "balanced"),
-            "output_format": proj.get("output_format", "txt"),
-            "project_dir": proj.get("project_dir", str(Path(source_path).parent)),
-        }
-        new_pid = self._on_start_translation(payload)
-        self._sidebar.setCurrentRow(0)
-        if new_pid:
-            self.statusBar().showMessage(
-                self.tr("Re-opened → project {pid}").format(pid=new_pid[:8]), 3000
-            )
+        # Refresh all project-scoped tabs.
+        self._pipeline_tab.set_project(proj)
+        if hasattr(self._files_tab, "set_project"):
+            self._files_tab.set_project(proj)
+        if hasattr(self._glossary_tab, "set_project"):
+            self._glossary_tab.set_project(proj)
+        self.statusBar().showMessage(
+            self.tr("Project: {name}").format(
+                name=proj.get("name", pid[:8])
+            ),
+            4000,
+        )
 
     def _action_settings(self) -> None:
         idx = next(
@@ -451,7 +454,7 @@ class MainWindow(QMainWindow):
 
     def _handle_event(self, event: dict[str, Any]) -> None:
         self._activity.on_event(event)
-        self._translate_tab.on_pipeline_event(event)
+        self._pipeline_tab.on_pipeline_event(event)
         kind = event.get("type")
         if kind == "hltl_alert":
             self._show_hitl(event)
@@ -467,7 +470,7 @@ class MainWindow(QMainWindow):
             if self._files_tab is not None:
                 self._files_tab.refresh()
         elif kind == "artifact_ready":
-            self._translate_tab.on_artifact_ready(event.get("output_path", ""))
+            self._pipeline_tab.on_artifact_ready(event.get("output_path", ""))
         elif kind == "pipeline_started":
             self.statusBar().showMessage(self.tr("Pipeline started."))
         elif kind == "hltl_unroutable":
@@ -525,13 +528,13 @@ class MainWindow(QMainWindow):
                 raise ValueError("payload has neither source_paths nor source_path")
             res = self._client.post("/projects", body=body, timeout=10.0)
         except BackendError as exc:
-            self._translate_tab.on_project_start_failed(payload, str(exc))
+            self._pipeline_tab.on_project_start_failed(payload, str(exc))
             QMessageBox.warning(self, self.tr("Start failed"), str(exc))
             return None
         except Exception as exc:
             # Never let an unexpected error crash the Qt event loop.
             logger.exception("start translation: unexpected error")
-            self._translate_tab.on_project_start_failed(payload, str(exc))
+            self._pipeline_tab.on_project_start_failed(payload, str(exc))
             QMessageBox.warning(
                 self,
                 self.tr("Start failed"),
@@ -539,7 +542,7 @@ class MainWindow(QMainWindow):
             )
             return None
         pid = res.get("project_id", "")
-        self._translate_tab.on_project_created(payload, res)
+        self._pipeline_tab.on_project_created(payload, res)
         self._activity.on_event(
             {
                 "type": "log",
@@ -667,7 +670,7 @@ class MainWindow(QMainWindow):
     def _on_remove_queued_file(self, path: str) -> None:
         # Find the project_id for this path from the GUI cache.
         from PyQt6.QtWidgets import QMessageBox as _QMB
-        item = self._translate_tab._queue_by_path.get(path)  # type: ignore[attr-defined]
+        item = self._pipeline_tab._queue_by_path.get(path)  # type: ignore[attr-defined]
         pid = (item or {}).get("project_id") or ""
         if not pid:
             return
@@ -747,8 +750,8 @@ class MainWindow(QMainWindow):
         if idx < 0 or idx >= self._stack.count():
             return
         self._stack.setCurrentIndex(idx)
-        if self._stack.currentWidget() is self._glossaries_tab:
-            self._glossaries_tab.refresh()
+        if self._stack.currentWidget() is self._glossary_tab:
+            self._glossary_tab.refresh()
         elif self._stack.currentWidget() is self._files_tab:
             self._files_tab.refresh()
         elif self._stack.currentWidget() is self._projects_tab:
@@ -804,11 +807,11 @@ class MainWindow(QMainWindow):
     def _refresh_pipeline_state(self) -> None:
         try:
             state = self._client.get("/pipeline/state", timeout=2.0) or {}
-            self._translate_tab.update_pipeline_state(state)
+            self._pipeline_tab.update_pipeline_state(state)
             # Enable the HITL replay button only when there are
             # chunks actually waiting for a human answer.
             pending = int(state.get("pending_hltl", 0) or 0)
-            self._translate_tab._replay_btn.setEnabled(pending > 0)
+            self._pipeline_tab._replay_btn.setEnabled(pending > 0)
         except BackendError:
             pass
 
