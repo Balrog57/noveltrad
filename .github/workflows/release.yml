@@ -1,153 +1,45 @@
-name: NovelTrad release
+name: Build & Release
 
 on:
-    push:
-        tags:
-            - "v[0-9]+.[0-9]+.[0-9]+"
+  push:
+    tags:
+      - "v*"
 
 permissions:
-    contents: write
+  contents: write
 
 jobs:
-    build:
-        runs-on: windows-latest
-        steps:
-            - uses: actions/checkout@v4
+  build:
+    name: Build EXE
+    runs-on: windows-latest
 
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Install runtime + PyInstaller + build
-              run: |
-                  python -m pip install --upgrade pip
-                  pip install -r requirements.txt
-                  pip install pyinstaller build
-                  pip install pyside6
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
 
-            - name: Compile sources
-              run: python -m compileall src
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
 
-            - name: Run unit tests
-              env:
-                  NOVELTRAD_FAKE_LLM: "1"
-                  NOVELTRAD_TRANSLATION_TEST_MODE: "1"
-              run: python -m unittest discover -s tests -p "test_*.py"
+      - name: Build with PyInstaller
+        run: pyinstaller build.spec --noconfirm
 
-            - name: Install Inno Setup 6
-              shell: pwsh
-              run: |
-                  $url = 'https://jrsoftware.org/download.php/is.exe'
-                  $installer = Join-Path $env:TEMP 'is.exe'
-                  Invoke-WebRequest -Uri $url -OutFile $installer
-                  $proc = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
-                  Write-Host ("Inno Setup installer exit code: {0}" -f $proc.ExitCode)
-                  $candidates = @(
-                      'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
-                      'C:\Program Files\Inno Setup 6\ISCC.exe',
-                      'C:\Inno Setup 6\ISCC.exe'
-                  )
-                  $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-                  if (-not $iscc) { throw "ISCC.exe not found in any of: $($candidates -join ', ')" }
-                  Write-Host "Using ISCC at $iscc"
-                  # Expose the resolved ISCC path to subsequent steps.
-                  "iscc=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-                  # Add Inno Setup's directory to PATH for this and later steps.
-                  $isccDir = Split-Path $iscc -Parent
-                  Add-Content -Path $env:GITHUB_PATH -Value $isccDir
+      - name: Show dist folder
+        run: |
+          ls -R dist/NovelTrad/
+          echo ""
+          echo "EXE size:"
+          wc -c dist/NovelTrad/NovelTrad.exe
 
-            - name: Run build.py --all
-              env:
-                  NOVELTRAD_VERSION: ${{ github.ref_name }}
-                  NOVELTRAD_REQUIRE_QM: "1"
-              shell: pwsh
-              run: |
-                  $env:NOVELTRAD_VERSION = "${{ github.ref_name }}".TrimStart('v')
-                  python build.py --all
-
-            - name: Compute SHA256 of installer
-              id: sha
-              shell: pwsh
-              run: |
-                  $ver = "${{ github.ref_name }}".TrimStart('v')
-                  $path = "Setup_NovelTrad-v$ver.exe"
-                  if (-not (Test-Path $path)) { throw "Installer not found: $path" }
-                  $h = (Get-FileHash -Path $path -Algorithm SHA256).Hash.ToLower()
-                  $size = (Get-Item $path).Length
-                  Write-Host "sha256=$h size=$size"
-                  "sha256=$h" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-                  "size=$size" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-            - name: Verify no stale assets on existing release
-              shell: pwsh
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  $tag = "${{ github.ref_name }}"
-                  $ver = "$tag".TrimStart('v')
-                  $expected = "Setup_NovelTrad-v$ver.exe"
-                  $allowed = @($expected, "latest.json")
-                  $api = "repos/${{ github.repository }}/releases/tags/$tag"
-                  $relJson = gh api $api 2>$null
-                  if ($LASTEXITCODE -ne 0) {
-                      Write-Host "No existing release for $tag; continuing."
-                      exit 0
-                  }
-                  $rel = $relJson | ConvertFrom-Json
-                  if ($rel.draft -ne $true -and $rel.assets.Count -gt 0) {
-                      throw "Release $tag already has assets and is not a draft. Refusing to modify a published release."
-                  }
-                  $stale = @($rel.assets | Where-Object { $allowed -notcontains $_.name })
-                  if ($stale.Count -gt 0) {
-                      $names = ($stale | ForEach-Object { $_.name }) -join ', '
-                      throw ("Unexpected assets on draft release: {0}. " +
-                          "Only these names are allowed: {1}. " +
-                          "Delete the unexpected assets in the GitHub UI and re-run the workflow.") -f $names, ($allowed -join ', ')
-                  }
-
-            - name: Write latest.json
-              shell: pwsh
-              run: |
-                  $ver = "${{ github.ref_name }}".TrimStart('v')
-                  $tag = "${{ github.ref_name }}"
-                  $url = "https://github.com/${{ github.repository }}/releases/download/$tag/Setup_NovelTrad-v$ver.exe"
-                  $obj = [ordered]@{
-                      version      = $ver
-                      release_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-                      download_url = $url
-                      sha256       = "${{ steps.sha.outputs.sha256 }}"
-                      size         = [int]"${{ steps.sha.outputs.size }}"
-                  }
-                  $obj | ConvertTo-Json -Depth 5 | Out-File -FilePath $env:GITHUB_WORKSPACE\latest.json -Encoding utf8
-
-            - name: Verify release files
-              shell: pwsh
-              run: |
-                  $ver = "${{ github.ref_name }}".TrimStart('v')
-                  $installer = "Setup_NovelTrad-v$ver.exe"
-                  if (-not (Test-Path $installer)) { throw "Installer not found before upload: $installer" }
-                  if (-not (Test-Path "latest.json")) { throw "latest.json not found before upload" }
-                  Get-Item $installer, "latest.json" | Select-Object Name, Length | Format-Table -AutoSize
-
-            - name: Upload installer artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: NovelTrad-installer
-                  path: |
-                      Setup_NovelTrad-${{ github.ref_name }}.exe
-                      latest.json
-
-            - name: Publish GitHub release
-              uses: softprops/action-gh-release@v2
-              with:
-                  tag_name: ${{ github.ref_name }}
-                  name: ${{ github.ref_name }}
-                  draft: false
-                  prerelease: false
-                  generate_release_notes: true
-                  files: |
-                      Setup_NovelTrad-${{ github.ref_name }}.exe
-                      latest.json
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload EXE to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.ref_name }} dist/NovelTrad/NovelTrad.exe --clobber

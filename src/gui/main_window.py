@@ -54,7 +54,6 @@ from src.gui.dialogs.chunk_detail_dialog import ChunkDetailDialog
 from src.gui.dialogs.hitl_popup import HITLPopup
 from src.gui.dialogs.update_dialog import UpdateDialog
 from src.gui.notifier import Notifier
-from src.gui.tabs.dashboard_tab import DashboardTab
 from src.gui.tabs.files_tab import FilesTab
 from src.gui.tabs.glossaries_tab import GlossariesTab
 from src.gui.tabs.projects_tab import ProjectsTab
@@ -69,7 +68,6 @@ logger = logging.getLogger(__name__)
 
 
 SIDEBAR_ITEMS: tuple[tuple[str, str], ...] = (
-    ("dashboard", "Dashboard"),
     ("translate", "Translate"),
     ("projects", "Projects"),
     ("glossaries", "Glossaries"),
@@ -156,12 +154,6 @@ class MainWindow(QMainWindow):
         self._sidebar.currentRowChanged.connect(self._on_sidebar_changed)
 
         self._stack = QStackedWidget()
-        # Dashboard — page 0, shown by default.
-        self._dashboard_tab = DashboardTab()
-        self._dashboard_tab.openFileRequested.connect(self._action_open_file)
-        self._dashboard_tab.navigateTo.connect(self._on_navigate)
-        self._stack.addWidget(self._dashboard_tab)
-
         self._translate_tab = TranslateTab(
             default_target="fr", client=self._client
         )
@@ -330,14 +322,6 @@ class MainWindow(QMainWindow):
         for spec in GLOBAL_SHORTCUTS:
             lines.append(f"  {spec.sequence:<14} {spec.label}")
         QMessageBox.information(self, self.tr("Help"), "\n".join(lines))
-
-    def _on_navigate(self, key: str) -> None:
-        """Switch to a sidebar page by key."""
-        for i, (k, _) in enumerate(SIDEBAR_ITEMS):
-            if k == key:
-                self._sidebar.setCurrentRow(i)
-                self._stack.setCurrentIndex(i)
-                return
 
     def _action_close_overlay(self) -> None:
         # Close any active HITL popup.
@@ -763,9 +747,7 @@ class MainWindow(QMainWindow):
         if idx < 0 or idx >= self._stack.count():
             return
         self._stack.setCurrentIndex(idx)
-        if idx == 0 and hasattr(self, '_dashboard_tab'):
-            pass  # Dashboard is mostly static
-        elif self._stack.currentWidget() is self._glossaries_tab:
+        if self._stack.currentWidget() is self._glossaries_tab:
             self._glossaries_tab.refresh()
         elif self._stack.currentWidget() is self._files_tab:
             self._files_tab.refresh()
@@ -823,9 +805,6 @@ class MainWindow(QMainWindow):
         try:
             state = self._client.get("/pipeline/state", timeout=2.0) or {}
             self._translate_tab.update_pipeline_state(state)
-            # Update dashboard with pipeline state + lexicon.
-            if self._dashboard_tab:
-                self._dashboard_tab.update_pipeline_state(state)
             # Enable the HITL replay button only when there are
             # chunks actually waiting for a human answer.
             pending = int(state.get("pending_hltl", 0) or 0)
