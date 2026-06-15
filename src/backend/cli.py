@@ -511,11 +511,13 @@ def cmd_batch(args) -> int:
     fail = 0
     total_start = time.time()
 
+    client = _make_client()
+    print(f"[batch] Backend ready, starting {len(files)} files...")
+
     for f in files:
         print(f"\n{'─'*60}")
         print(f"[batch] {f.name}  ({ok+fail+1}/{len(files)})")
 
-        client = _make_client()
         payload = {
             "project_dir": str(directory),
             "source_path": str(f),
