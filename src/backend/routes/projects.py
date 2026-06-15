@@ -29,6 +29,14 @@ def register(app: Any, deps: Deps) -> None:
         items = deps.store.list_projects()
         return {"projects": items}
 
+    @app.get("/projects/active")
+    def get_active_project() -> dict[str, Any]:
+        active_id = deps.store.get_active_project()
+        if active_id is None:
+            return {"active_project_id": None, "project": None}
+        proj = deps.store.get_project(active_id)
+        return {"active_project_id": active_id, "project": proj}
+
     @app.get("/projects/{project_id}")
     def get_project(project_id: str) -> dict[str, Any]:
         proj = deps.store.get_project(project_id)
@@ -62,14 +70,6 @@ def register(app: Any, deps: Deps) -> None:
             raise HTTPException(status_code=404, detail="Project not found")
         deps.store.set_active_project(project_id)
         return {"ok": True, "active_project_id": project_id, "project": proj}
-
-    @app.get("/projects/active")
-    def get_active_project() -> dict[str, Any]:
-        active_id = deps.store.get_active_project()
-        if active_id is None:
-            return {"active_project_id": None, "project": None}
-        proj = deps.store.get_project(active_id)
-        return {"active_project_id": active_id, "project": proj}
 
     @app.post("/projects")
     def create_project(req: ProjectCreateRequest) -> dict[str, Any]:
