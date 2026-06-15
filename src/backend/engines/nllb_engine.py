@@ -80,7 +80,7 @@ class NLLBEngine:
     def __init__(
         self,
         model: str | None = None,
-        device: str = "auto",
+        device: str | None = None,
         quant: str = "int8",
     ):
         self.model_name = model or os.environ.get(
@@ -210,8 +210,8 @@ class NLLBEngine:
                     out_tokens = out_tokens[1:]
                 return self._sp_target.decode(out_tokens)  # type: ignore[union-attr]
             except Exception as exc:
-                logger.exception("NLLB translate failed")
-                return text
+                logger.exception("NLLB translate failed — falling back to LLM draft")
+                raise  # let FastTranslator fall back to LLM
 
     def _translate_multiblock(
         self,
