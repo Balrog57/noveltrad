@@ -69,6 +69,10 @@ Sign=Setup
 ; Register app for file associations
 ChangesAssociations=yes
 
+[CustomMessages]
+english.WelcomeLabel2=Before You Begin
+french.WelcomeLabel2=Avant de commencer
+
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
