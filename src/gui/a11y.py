@@ -53,11 +53,22 @@ def configure(
     shortcut: str | None = None,
     focusable: bool = True,
 ) -> None:
-    """Apply a uniform accessibility baseline to a widget."""
+    """Apply a uniform accessibility baseline to a widget.
+
+    Gracefully handles non-``QWidget`` objects (e.g. ``QSystemTrayIcon``)
+    that don't expose ``setAccessibleName`` / ``setAccessibleDescription``
+    by skipping only the missing methods.
+    """
     if name:
-        widget.setAccessibleName(name)
+        try:
+            widget.setAccessibleName(name)
+        except AttributeError:
+            pass
     if description:
-        widget.setAccessibleDescription(description)
+        try:
+            widget.setAccessibleDescription(description)
+        except AttributeError:
+            pass
     if tooltip:
         widget.setToolTip(tooltip)
     if focusable:

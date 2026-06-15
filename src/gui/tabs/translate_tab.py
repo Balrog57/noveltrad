@@ -401,7 +401,7 @@ class TranslateTab(QWidget):
         # file here because with 2000+ queued items it would push
         # the actual progress bars off the screen.
         header_row = QHBoxLayout()
-        self._queue_counter = QLabel(self.tr("0 / 0"))
+        self._queue_counter = QLabel(self.tr("—"))
         self._queue_counter.setProperty("role", "title")
         self._queue_counter.setStyleSheet("font-weight: 600; font-size: 16pt;")
         header_row.addWidget(self._queue_counter)
@@ -670,9 +670,7 @@ class TranslateTab(QWidget):
         self._queue_by_project_id.clear()
         self._active_project_id = None
         self._queue_table.setRowCount(0)
-        self._queue_counter.setText(
-            self.tr("{done} / {total}").format(done=0, total=0)
-        )
+        self._queue_counter.setText(self.tr("—"))
         self._queue_active_label.setText("")
         if getattr(self, "_pause_btn", None):
             self._pause_btn.setEnabled(False)
@@ -784,7 +782,7 @@ class TranslateTab(QWidget):
                 self._drop_row(item)
 
     def _update_queue_counter(self) -> None:
-        """"Update the compact header counter (X / Y).
+        """Update the compact header counter (X / Y).
 
         Done / error / stopped all count as finished. Pending /
         queued / running / paused / waiting_for_human all count
@@ -797,14 +795,23 @@ class TranslateTab(QWidget):
         )
         if getattr(self, "_queue_counter", None):
             if total == 0:
-                # No files queued at all. Show a dash so the user
-                # does not think something is broken.
                 self._queue_counter.setText(
                     self.tr("—  (aucun fichier)")
                 )
-            else:
+            elif finished == 0:
+                # Nothing finished yet — show just the count once,
+                # no "0/" prefix which would be redundant with the
+                # step header.
+                self._queue_counter.setText(
+                    self.tr("→ {total}").format(total=total)
+                )
+            elif finished < total:
                 self._queue_counter.setText(
                     self.tr("{done} / {total}").format(done=finished, total=total)
+                )
+            else:
+                self._queue_counter.setText(
+                    self.tr("{done} / {total}  ✓").format(done=finished, total=total)
                 )
         if getattr(self, "_queue_active_label", None):
             active = self._active_queue_item()

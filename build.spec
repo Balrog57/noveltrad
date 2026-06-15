@@ -53,6 +53,10 @@ hiddenimports = [
     'src.gui.dialogs.chunk_detail_dialog',
     # stdlib modules sometimes missed by static analysis
     'sqlite3',
+    # NLLB engine dependencies — imported inside try/except ImportError
+    # so PyInstaller static analysis does not see them.
+    'ctranslate2',
+    'sentencepiece',
 ]
 
 block_cipher = None

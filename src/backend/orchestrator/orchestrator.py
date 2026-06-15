@@ -745,8 +745,9 @@ class Orchestrator:
             if flat:
                 self.submit_chunks(flat)
                 logger.info(
-                    "orchestrator: parser injected %d chunks into the pipeline",
-                    "pipeline stage: next=fast_translator"
+                    "orchestrator: parser injected %d chunks into the pipeline; next=%s",
+                    len(flat),
+                    "fast_translator",
                 )
             self._emit(
                 {
