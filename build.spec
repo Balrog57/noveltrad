@@ -4,7 +4,7 @@
 Build: pyinstaller build.spec --noconfirm
 Output: dist/NovelTrad/NovelTrad.exe
 
-The GUI (src/gui/main_window.py) spawns the backend (src/backend/server.py)
+The GUI (src/main_qt.py) spawns the backend (src/backend/server.py)
 as a subprocess at runtime, so we only need to bundle the GUI entrypoint.
 The backend modules are still included (hiddenimports) so the spawn
 `-m src.backend.server` works inside the frozen exe too.
@@ -20,6 +20,7 @@ binaries = []
 hiddenimports = [
     # v4 backend (the GUI spawns these as a subprocess)
     'src.backend.server',
+    'src.backend.server.app',
     'src.backend.orchestrator.orchestrator',
     'src.backend.orchestrator.state_store',
     'src.backend.orchestrator.worker_manager',
@@ -39,18 +40,31 @@ hiddenimports = [
     'src.backend.llm_router.router',
     'src.backend.engines.nllb_engine',
     'src.backend.formats',
+    'src.backend.routes',
+    'src.backend.routes.projects',
+    'src.backend.routes.deps',
     # v4 GUI
     'src.gui.app_config',
     'src.gui.backend_client',
     'src.gui.first_run_wizard',
     'src.gui.main_window',
+    'src.gui.a11y',
+    'src.gui.i18n',
+    'src.gui.notifier',
+    'src.gui.theme',
+    'src.gui.updater',
+    'src.gui.tabs.__init__',
     'src.gui.tabs.translate_tab',
     'src.gui.tabs.settings_tab',
     'src.gui.tabs.glossaries_tab',
     'src.gui.tabs.files_tab',
+    'src.gui.tabs.projects_tab',
+    'src.gui.tabs.review_model',
     'src.gui.widgets.activity_log',
+    'src.gui.widgets.event_debouncer',
     'src.gui.dialogs.hitl_popup',
     'src.gui.dialogs.chunk_detail_dialog',
+    'src.gui.dialogs.update_dialog',
     # stdlib modules sometimes missed by static analysis
     'sqlite3',
     # NLLB engine dependencies — imported inside try/except ImportError

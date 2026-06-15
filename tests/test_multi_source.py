@@ -60,7 +60,9 @@ class MultiSourceSchemaTest(unittest.TestCase):
         self.assertEqual(res.status_code, 200, res.text)
         self.assertEqual(len(res.json()["source_paths"]), 1)
 
-    def test_empty_source_rejected(self) -> None:
+    def test_empty_source_accepted_creates_empty_project(self) -> None:
+        """Empty source_paths now creates an empty project (valid in
+        the project-centric workflow — you add files later via Pipeline)."""
         body = {
             "project_dir": str(self.tmpdir / "out"),
             "source_lang": "en",
@@ -70,7 +72,10 @@ class MultiSourceSchemaTest(unittest.TestCase):
             "parse": False,
         }
         res = self.client.post("/projects", json=body)
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 200, res.text)
+        data = res.json()
+        self.assertEqual(data["status"], "created")
+        self.assertEqual(data["source_paths"], [])
 
 
 class ParserMultiSourceTest(unittest.TestCase):

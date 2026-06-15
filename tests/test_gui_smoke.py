@@ -176,7 +176,10 @@ class MainWindowSmokeTests(unittest.TestCase):
     def test_qsettings_round_trip(self) -> None:
         # The MainWindow restores the current page from QSettings on
         # init. Change the current page, close, and re-instantiate.
-        self.w._sidebar.setCurrentRow(2)
+        # Use Settings (index 4) — it is always enabled regardless of
+        # project state. Indices 1-3 (Pipeline/Glossary/Files) are
+        # disabled until a project is active.
+        self.w._sidebar.setCurrentRow(4)
         # Persist synchronously (closeEvent already does this).
         self.w._settings.setValue(
             "MainWindow/currentPage", self.w._sidebar.currentRow()
@@ -190,7 +193,7 @@ class MainWindowSmokeTests(unittest.TestCase):
         w2 = MainWindow()
         try:
             QCoreApplication.processEvents()
-            self.assertEqual(w2._sidebar.currentRow(), 2)
+            self.assertEqual(w2._sidebar.currentRow(), 4)
         finally:
             w2.close()
             w2.deleteLater()
