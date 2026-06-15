@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src import __version__ as APP_VERSION
+from src.gui.a11y import configure
 from src.gui.app_config import ConfigManager
 from src.gui.i18n import available_languages
 from src.gui.updater import Updater, is_skipped
@@ -69,11 +70,13 @@ class SettingsTab(QWidget):
         self._provider.addItem(self.tr("Ollama (local)"), "ollama")
         self._provider.addItem(self.tr("OpenAI-compatible (cloud)"), "openai")
         self._provider.currentIndexChanged.connect(self._on_provider_changed)
+        configure(self._provider, name=self.tr("LLM Provider"))
         form.addRow(self.tr("Provider:"), self._provider)
 
         self._model = QComboBox()
         self._model.setEditable(True)
         self._model.setMinimumWidth(200)
+        configure(self._model, name=self.tr("LLM Model"))
         form.addRow(self.tr("Model:"), self._model)
 
         self._base_url = QLineEdit()
@@ -102,11 +105,13 @@ class SettingsTab(QWidget):
 
         self._nllb_device = QComboBox()
         self._nllb_device.addItems(["cpu", "cuda", "auto"])
+        configure(self._nllb_device, name=self.tr("NLLB device"))
         form.addRow(self.tr("NLLB device:"), self._nllb_device)
 
         self._language = QComboBox()
         for code, native in available_languages():
             self._language.addItem(native, code)
+        configure(self._language, name=self.tr("Language"))
         form.addRow(self.tr("Language:"), self._language)
 
         layout.addLayout(form)
@@ -114,13 +119,17 @@ class SettingsTab(QWidget):
         row = QHBoxLayout()
         self._save_btn = QPushButton(self.tr("Save"))
         self._save_btn.clicked.connect(self._save)
+        configure(self._save_btn, name=self.tr("Save settings"))
         row.addWidget(self._save_btn)
         self._restart_btn = QPushButton(self.tr("Save & Restart backend"))
         self._restart_btn.clicked.connect(self._save_and_restart)
+        configure(self._restart_btn, name=self.tr("Save and Restart backend"))
         row.addWidget(self._restart_btn)
         self._check_updates_btn = QPushButton(self.tr("Check for updates"))
-        self._check_updates_btn.setToolTip(
-            self.tr("Check GitHub Releases for a newer version of NovelTrad.")
+        configure(
+            self._check_updates_btn,
+            name=self.tr("Check for updates"),
+            tooltip=self.tr("Check GitHub Releases for a newer version of NovelTrad."),
         )
         self._check_updates_btn.clicked.connect(
             self.checkForUpdatesRequested.emit

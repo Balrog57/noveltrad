@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.gui.a11y import configure
 from src.gui.updater import Updater, UpdateInfo, download_default_destination
 
 
@@ -91,14 +92,17 @@ class UpdateDialog(QDialog):
         button_row = QHBoxLayout()
         self._github_btn = QPushButton(self.tr("View on GitHub"))
         self._github_btn.clicked.connect(self._open_github)
+        configure(self._github_btn, name=self.tr("View release on GitHub"))
         button_row.addWidget(self._github_btn)
         button_row.addStretch(1)
         self._later_btn = QPushButton(self.tr("Later"))
         self._later_btn.clicked.connect(self.reject)
+        configure(self._later_btn, name=self.tr("Update later"), shortcut="Esc")
         button_row.addWidget(self._later_btn)
         self._update_btn = QPushButton(self.tr("Update now"))
         self._update_btn.setDefault(True)
         self._update_btn.clicked.connect(self._start_download)
+        configure(self._update_btn, name=self.tr("Update now"), shortcut="Ctrl+Return")
         button_row.addWidget(self._update_btn)
         layout.addLayout(button_row)
 
