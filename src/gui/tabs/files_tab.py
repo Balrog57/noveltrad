@@ -1,20 +1,24 @@
-"""Files tab — list of recent projects / output files.
+"""Files tab — file explorer for the active project directory.
 
-In v4 minimal mode the "projects" we list are the chunks of the
-current project. We show a small summary table and a button to
-reopen a chunk detail.
+Shows all files in the project folder with their translation status
+(working / done / error / queued). Double-click opens the file in the
+default system editor for preview/correction.
 """
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -25,192 +29,306 @@ from PyQt6.QtWidgets import (
 from src.gui.backend_client import BackendClient, BackendError
 
 
-class FilesTab(QWidget):
-    chunkActivated = pyqtSignal(str)  # chunk_id
+# Mapping from chunk statuses to emoji indicators.
+STATUS_ICONS: dict[str, str] = {
+    "done": "✅",
+    "polished": "✅",
+    "assembled": "✅",
+    "parsed": "🔄",
+    "fast_translated": "🔄",
+    "lexicon_ready": "🔄",
+    "glossary_applied": "🔄",
+    "consistency_checked": "🔄",
+    "qa_checked": "🔄",
+    "grammar_checked": "🔄",
+    "reviewed": "🔄",
+    "error": "❌",
+    "hash_mismatch": "⚠️",
+    "waiting_for_human": "⏸️",
+}
 
-    # Statuses that the user may want to replay selectively.
-    _REPLAYABLE_STATUSES: tuple[str, ...] = ("error", "hash_mismatch", "waiting_for_human")
+STATUS_GROUPS: dict[str, str] = {
+    "done": "Done",
+    "polished": "Done",
+    "assembled": "Done",
+    "parsed": "Working",
+    "fast_translated": "Working",
+    "lexicon_ready": "Working",
+    "glossary_applied": "Working",
+    "consistency_checked": "Working",
+    "qa_checked": "Working",
+    "grammar_checked": "Working",
+    "reviewed": "Working",
+    "error": "Error",
+    "hash_mismatch": "Error",
+    "waiting_for_human": "Paused",
+}
+
+FILTER_OPTIONS = ["All", "Done", "Working", "Error", "Paused"]
+
+
+class FilesTab(QWidget):
+    chunkActivated = pyqtSignal(str)  # chunk_id (kept for backward compat)
+    fileOpened = pyqtSignal(str)  # file path
 
     def __init__(self, client: BackendClient, parent: QWidget | None = None):
         super().__init__(parent)
         self._client = client
         self._project: dict[str, Any] | None = None
+        self._file_statuses: dict[str, str] = {}  # path → status_group
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
-        layout.addWidget(QLabel(self.tr("Chunks of the current project")))
 
-        # Filter bar above the table.
-        filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel(self.tr("Filter by status:")))
+        # Header.
+        header_row = QHBoxLayout()
+        self._title = QLabel(self.tr("📁 Fichiers"))
+        self._title.setProperty("role", "title")
+        header_row.addWidget(self._title)
+        header_row.addStretch(1)
+
+        filter_label = QLabel(self.tr("Filtre:"))
+        header_row.addWidget(filter_label)
         self._status_filter = QComboBox()
-        self._status_filter.addItem(self.tr("All"), "")
-        for st in self._REPLAYABLE_STATUSES:
-            self._status_filter.addItem(st, st)
-        self._status_filter.currentIndexChanged.connect(self.refresh)
-        filter_row.addWidget(self._status_filter)
-        filter_row.addStretch(1)
-        layout.addLayout(filter_row)
+        for opt in FILTER_OPTIONS:
+            self._status_filter.addItem(self.tr(opt), opt)
+        self._status_filter.currentIndexChanged.connect(self._apply_filter)
+        header_row.addWidget(self._status_filter)
+        layout.addLayout(header_row)
 
+        # Folder path.
+        self._folder_label = QLabel("")
+        self._folder_label.setProperty("role", "muted")
+        layout.addWidget(self._folder_label)
+
+        # File table: Name, Status, Size, Actions.
         self._table = QTableWidget(0, 4)
-        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QTableWidget.SelectionMode.MultiSelection)
-        self._table.setHorizontalHeaderLabels(
-            [self.tr("Chunk"), self.tr("Status"), self.tr("Chapter"), self.tr("Open")]
-        )
+        self._table.setHorizontalHeaderLabels([
+            self.tr("Fichier"),
+            self.tr("Statut"),
+            self.tr("Taille"),
+            self.tr("Actions"),
+        ])
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setStretchLastSection(False)
+        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.cellDoubleClicked.connect(self._on_double_click)
-        layout.addWidget(self._table)
+        layout.addWidget(self._table, 1)
 
-        row = QHBoxLayout()
-        self._refresh_btn = QPushButton(self.tr("Refresh"))
-        self._refresh_btn.clicked.connect(self.refresh)
-        row.addWidget(self._refresh_btn)
-        self._replay_selected_btn = QPushButton(self.tr("Replay selected"))
-        self._replay_selected_btn.clicked.connect(self._on_replay_selected)
-        self._replay_selected_btn.setToolTip(
-            self.tr("Re-inject selected chunks into the pipeline")
-        )
-        row.addWidget(self._replay_selected_btn)
-        self._replay_filtered_btn = QPushButton(self.tr("Replay filtered"))
-        self._replay_filtered_btn.clicked.connect(self._on_replay_filtered)
-        self._replay_filtered_btn.setToolTip(
-            self.tr("Re-inject all chunks matching the current status filter")
-        )
-        row.addWidget(self._replay_filtered_btn)
-        self._assemble_btn = QPushButton(self.tr("Assemble output…"))
-        self._assemble_btn.clicked.connect(self._on_assemble)
-        row.addWidget(self._assemble_btn)
-        row.addStretch(1)
+        # Status bar.
         self._status = QLabel("")
-        row.addWidget(self._status)
-        layout.addLayout(row)
+        self._status.setProperty("role", "muted")
+        layout.addWidget(self._status)
 
     def set_project(self, proj: dict[str, Any]) -> None:
         """Set the active project and refresh the file list."""
         self._project = proj
+        self._title.setText(
+            self.tr("📁 Fichiers — {name}").format(
+                name=proj.get("name", proj.get("project_id", "?")[:8])
+            )
+        )
         self.refresh()
 
     def refresh(self) -> None:
         self._table.setRowCount(0)
         self._status.setText("")
-        filter_status = self._status_filter.currentData() or None
+        if self._project is None:
+            self._folder_label.setText(self.tr("Aucun projet actif."))
+            self._status.setText(self.tr("Sélectionnez un projet d'abord."))
+            return
+
+        project_dir = self._project.get("project_dir", "")
+        self._folder_label.setText(
+            self.tr("Dossier: {dir}").format(dir=project_dir)
+        )
+
+        # Fetch chunk statuses from the backend.
+        self._file_statuses = {}
         try:
-            params = {"limit": 200}
-            if filter_status:
-                params["status"] = filter_status
-            data = self._client.get("/chunks", params=params, timeout=5.0) or {}
-        except BackendError as exc:
-            self._status.setText(
-                self.tr("Backend unavailable: {err}").format(err=exc)
+            data = self._client.get("/chunks", params={"limit": 500}, timeout=5.0) or {}
+            chunks = data.get("chunks") or data.get("items") or []
+            for c in chunks:
+                src_file = c.get("source_file", "")
+                if src_file:
+                    fname = Path(src_file).name
+                    status = c.get("status", "parsed")
+                    group = STATUS_GROUPS.get(status, "Working")
+                    # Only upgrade: don't downgrade a done file to working.
+                    current = self._file_statuses.get(fname)
+                    if current is None or (group == "Done" and current != "Done"):
+                        self._file_statuses[fname] = group
+        except BackendError:
+            pass
+
+        # Scan the project directory.
+        all_files: list[Path] = []
+        try:
+            root = Path(project_dir)
+            if root.is_dir():
+                all_files = sorted(
+                    [f for f in root.iterdir() if f.is_file()],
+                    key=lambda f: f.stat().st_mtime,
+                    reverse=True,
+                )
+        except OSError:
+            self._status.setText(self.tr("Dossier inaccessible."))
+            return
+
+        # Also include source files tracked in the DB but not on disk.
+        db_files = set(self._file_statuses.keys())
+        disk_files = {f.name for f in all_files}
+
+        # Map status group for display.
+        filter_group = self._status_filter.currentData()
+
+        row = 0
+        for filepath in all_files:
+            fname = filepath.name
+            status_group = self._file_statuses.get(fname, "")
+            # Determine emoji + label.
+            if status_group == "Done":
+                icon = "✅"
+                label = self.tr("Terminé")
+            elif status_group == "Error":
+                icon = "❌"
+                label = self.tr("Erreur")
+            elif status_group == "Paused":
+                icon = "⏸️"
+                label = self.tr("En pause")
+            elif status_group == "Working":
+                icon = "🔄"
+                label = self.tr("En cours")
+            else:
+                # File not tracked by backend — show as untranslated.
+                icon = "📄"
+                label = self.tr("Non traduit")
+
+            if filter_group and filter_group != "All":
+                display_group = status_group or "Untranslated"
+                if filter_group == "Error":
+                    if status_group != "Error":
+                        continue
+                elif filter_group == "Paused":
+                    if status_group != "Paused":
+                        continue
+                elif display_group not in (filter_group,):
+                    continue
+
+            try:
+                size_bytes = filepath.stat().st_size
+            except OSError:
+                size_bytes = 0
+            size_str = _format_size(size_bytes)
+
+            self._table.insertRow(row)
+            self._table.setItem(row, 0, QTableWidgetItem(fname))
+            self._table.item(row, 0).setData(Qt.ItemDataRole.UserRole, str(filepath))
+            self._table.setItem(row, 1, QTableWidgetItem(f"{icon} {label}"))
+            self._table.setItem(row, 2, QTableWidgetItem(size_str))
+
+            # Action buttons.
+            action_widget = QWidget()
+            action_row = QHBoxLayout(action_widget)
+            action_row.setContentsMargins(0, 0, 0, 0)
+            action_row.setSpacing(4)
+
+            view_btn = QPushButton(self.tr("👁 Voir"))
+            view_btn.clicked.connect(lambda checked, fp=str(filepath): self._open_file(fp))
+            action_row.addWidget(view_btn)
+
+            retry_btn = QPushButton(self.tr("🔄 Réessayer"))
+            retry_btn.setToolTip(self.tr("Relancer la traduction pour ce fichier"))
+            retry_btn.clicked.connect(lambda checked, fp=str(filepath): self._retry_file(fp))
+            action_row.addWidget(retry_btn)
+
+            self._table.setCellWidget(row, 3, action_widget)
+            row += 1
+
+        # Count statuses.
+        counts: dict[str, int] = {}
+        for group in self._file_statuses.values():
+            counts[group] = counts.get(group, 0) + 1
+        parts = [f"{len(all_files)} fichiers"]
+        if counts:
+            details = ", ".join(f"{v} {k.lower()}" for k, v in sorted(counts.items()))
+            parts.append(details)
+        self._status.setText(" · ".join(parts))
+
+    def _apply_filter(self) -> None:
+        self.refresh()
+
+    def _open_file(self, filepath: str) -> None:
+        """Open the file in the default system editor."""
+        try:
+            os.startfile(filepath)
+            self.fileOpened.emit(filepath)
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                self.tr("Erreur"),
+                self.tr("Impossible d'ouvrir: {err}").format(err=exc),
             )
-            return
-        chunks = data.get("chunks") or []
-        for c in chunks:
-            r = self._table.rowCount()
-            self._table.insertRow(r)
-            cid = c.get("id", "")
-            self._table.setItem(r, 0, QTableWidgetItem(cid[:12]))
-            self._table.item(r, 0).setData(Qt.ItemDataRole.UserRole, cid)
-            status = c.get("status", "")
-            status_item = QTableWidgetItem(status)
-            if status in self._REPLAYABLE_STATUSES:
-                status_item.setForeground(Qt.GlobalColor.red)
-            self._table.setItem(r, 1, status_item)
-            self._table.setItem(r, 2, QTableWidgetItem(c.get("chapter_title") or c.get("chapter_id") or ""))
-            open_item = QTableWidgetItem(self.tr("View"))
-            open_item.setData(Qt.ItemDataRole.UserRole, cid)
-            open_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(r, 3, open_item)
-        self._status.setText(self.tr("{n} chunks").format(n=len(chunks)))
 
-    def _selected_chunk_ids(self) -> list[str]:
-        ids: list[str] = []
-        for index in self._table.selectionModel().selectedRows():
-            row = index.row()
-            item = self._table.item(row, 0)
-            cid = item.data(Qt.ItemDataRole.UserRole) if item else None
-            if cid:
-                ids.append(str(cid))
-        return ids
-
-    def _on_double_click(self, row: int, col: int) -> None:
-        if col != 3:
-            return
-        item = self._table.item(row, 3)
-        cid = item.data(Qt.ItemDataRole.UserRole) if item else None
-        if cid:
-            self.chunkActivated.emit(str(cid))
-
-    def _replay(self, chunk_ids: list[str]) -> None:
-        if not chunk_ids:
-            self._status.setText(self.tr("No chunks selected for replay."))
-            return
+    def _retry_file(self, filepath: str) -> None:
+        """Re-inject the file for translation."""
+        fname = Path(filepath).name
         try:
+            # Find chunk IDs for this file.
+            data = self._client.get(
+                "/chunks",
+                params={"limit": 500},
+                timeout=5.0,
+            ) or {}
+            chunks = data.get("chunks") or data.get("items") or []
+            chunk_ids = [
+                c["id"] for c in chunks
+                if Path(c.get("source_file", "")).name == fname
+            ]
+            if not chunk_ids:
+                self._status.setText(
+                    self.tr("Aucun chunk trouvé pour {f}").format(f=fname)
+                )
+                return
             res = self._client.post(
                 "/pipeline/replay-chunks",
                 body={"chunk_ids": chunk_ids},
                 timeout=10.0,
-            )
+            ) or {}
             replayed = res.get("replayed", 0)
             self._status.setText(
-                self.tr("Replayed {n} chunk(s)").format(n=replayed)
+                self.tr("{n} chunk(s) relancé(s) pour {f}").format(
+                    n=replayed, f=fname
+                )
             )
             self.refresh()
         except BackendError as exc:
             self._status.setText(
-                self.tr("Replay failed: {err}").format(err=exc)
+                self.tr("Échec: {err}").format(err=exc)
             )
 
-    def _on_replay_selected(self) -> None:
-        self._replay(self._selected_chunk_ids())
-
-    def _on_replay_filtered(self) -> None:
-        try:
-            params: dict[str, Any] = {"limit": 200}
-            filter_status = self._status_filter.currentData() or None
-            if filter_status:
-                params["status"] = filter_status
-            data = self._client.get("/chunks", params=params, timeout=5.0) or {}
-            chunks = data.get("chunks") or []
-        except BackendError as exc:
-            self._status.setText(self.tr("Backend unavailable: {err}").format(err=exc))
+    def _on_double_click(self, row: int, col: int) -> None:
+        item = self._table.item(row, 0)
+        if item is None:
             return
-        self._replay([c["id"] for c in chunks])
+        filepath = item.data(Qt.ItemDataRole.UserRole)
+        if filepath:
+            self._open_file(str(filepath))
 
-    def _on_assemble(self) -> None:
-        from PyQt6.QtWidgets import QFileDialog
 
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            self.tr("Save assembled output"),
-            "output.txt",
-            self.tr(
-                "Text (*.txt);;EPUB (*.epub);;DOCX (*.docx);;SRT (*.srt)"
-            ),
-        )
-        if not path:
-            return
-        fmt = path.rsplit(".", 1)[-1].lower() or "txt"
-        try:
-            res = self._client.post(
-                "/assemble", body={"output_path": path, "format": fmt}, timeout=10.0
-            )
-        except BackendError as exc:
-            self._status.setText(
-                self.tr("Assemble failed: {err}").format(err=exc)
-            )
-            return
-        self._status.setText(
-            self.tr("Dispatched ({n} chunks → {path})").format(
-                n=res.get("chunk_count", 0), path=res.get("output_path")
-            )
-        )
+def _format_size(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
 
 
 __all__ = ["FilesTab"]
