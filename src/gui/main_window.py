@@ -145,15 +145,23 @@ class MainWindow(QMainWindow):
         # --- sidebar + stacked pages in a splitter ---
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._sidebar = QListWidget()
-        for _key, label in SIDEBAR_ITEMS:
+        self._sidebar_items: list[QListWidgetItem] = []
+        for i, (_key, label) in enumerate(SIDEBAR_ITEMS):
             item = QListWidgetItem(self.tr(label))
             self._sidebar.addItem(item)
+            self._sidebar_items.append(item)
+            # Disable project-dependent tabs until a project is activated.
+            if _key in ("pipeline", "glossary", "files"):
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
         self._sidebar.setFixedWidth(200)
         self._sidebar.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         configure(self._sidebar, name="Navigation")
         self._sidebar.currentRowChanged.connect(self._on_sidebar_changed)
 
         self._stack = QStackedWidget()
+        self._projects_tab = ProjectsTab(self._client)
+        self._projects_tab.projectActivated.connect(self._on_project_activated)
+        self._stack.addWidget(self._projects_tab)
         self._pipeline_tab = PipelineTab(
             default_target="fr", client=self._client
         )
@@ -167,9 +175,6 @@ class MainWindow(QMainWindow):
         self._pipeline_tab.fileRemoved.connect(self._on_remove_queued_file)
         self._pipeline_tab.queueCompleted.connect(self._on_queue_completed)
         self._stack.addWidget(self._pipeline_tab)
-        self._projects_tab = ProjectsTab(self._client)
-        self._projects_tab.projectActivated.connect(self._on_project_activated)
-        self._stack.addWidget(self._projects_tab)
         self._glossary_tab = GlossariesTab(self._client)
         self._stack.addWidget(self._glossary_tab)
         self._files_tab = FilesTab(self._client)
@@ -300,6 +305,12 @@ class MainWindow(QMainWindow):
                 self.tr("Could not activate project: {err}").format(err=exc), 4000
             )
             return
+        # Enable project-dependent sidebar items.
+        for i, (_key, _label) in enumerate(SIDEBAR_ITEMS):
+            if _key in ("pipeline", "glossary", "files"):
+                self._sidebar_items[i].setFlags(
+                    self._sidebar_items[i].flags() | Qt.ItemFlag.ItemIsEnabled
+                )
         # Refresh all project-scoped tabs.
         self._pipeline_tab.set_project(proj)
         if hasattr(self._files_tab, "set_project"):
@@ -748,6 +759,11 @@ class MainWindow(QMainWindow):
 
     def _on_sidebar_changed(self, idx: int) -> None:
         if idx < 0 or idx >= self._stack.count():
+            return
+        # Block navigation to disabled (project-dependent) tabs.
+        item = self._sidebar.item(idx)
+        if item and not (item.flags() & Qt.ItemFlag.ItemIsEnabled):
+            self._sidebar.setCurrentRow(0)  # force back to Projects
             return
         self._stack.setCurrentIndex(idx)
         if self._stack.currentWidget() is self._glossary_tab:
