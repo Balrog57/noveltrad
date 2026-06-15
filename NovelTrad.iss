@@ -9,10 +9,8 @@
 ; directive is added to both Sign and SignOnce. Otherwise the
 ; installer is built unsigned (developer machines).
 
-#if GetEnv("NOVELTRAD_VERSION") == ""
+#ifndef NOVELTRAD_VERSION
   #define NOVELTRAD_VERSION "0.0.0"
-#else
-  #define NOVELTRAD_VERSION GetEnv("NOVELTRAD_VERSION")
 #endif
 
 #ifndef MyAppId
