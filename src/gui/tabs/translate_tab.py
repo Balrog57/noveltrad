@@ -76,6 +76,7 @@ class TranslateTab(QWidget):
     replayHltlRequested = pyqtSignal()
     retryRequested = pyqtSignal(str)  # path of errored project
     assembleRequested = pyqtSignal(str)  # format
+    outputFolderRequested = pyqtSignal(str)  # output_path to open
     pauseRequested = pyqtSignal()
     resumeRequested = pyqtSignal()
     stopRequested = pyqtSignal()
@@ -97,6 +98,7 @@ class TranslateTab(QWidget):
         self._queue_by_path: dict[str, dict[str, Any]] = {}
         self._queue_by_project_id: dict[str, dict[str, Any]] = {}
         self._active_project_id: str | None = None
+        self._output_artifact_path: str = ""
 
         # Outer layout = vertical stack: header bar + stacked pages.
         outer = QVBoxLayout(self)
@@ -199,14 +201,18 @@ class TranslateTab(QWidget):
             )
         artifact = state.get("output_artifact") or {}
         if artifact.get("output_path"):
+            self._output_artifact_path = artifact["output_path"]
             self._assemble_btn.setEnabled(True)
             self._assemble_btn.setText(self.tr("Open output folder"))
+            self._assemble_btn.setToolTip(self.tr("Open the folder containing the translated file."))
         if any(counts.values()) and not self._user_requested_select:
             self.go_to_step(1)
 
     def on_artifact_ready(self, output_path: str) -> None:
+        self._output_artifact_path = output_path
         self._assemble_btn.setEnabled(True)
         self._assemble_btn.setText(self.tr("Open output folder"))
+        self._assemble_btn.setToolTip(self.tr("Open the folder containing the translated file."))
         active = self._active_queue_item()
         if active is not None:
             active["state"] = "done"
@@ -538,7 +544,7 @@ class TranslateTab(QWidget):
         # waiting for the auto-assemble when the penultimate
  # stage reaches 100%). Useful when an LLM chunk is stuck.
         self._assemble_btn = QPushButton(self.tr("Force assemble now"))
-        self._assemble_btn.clicked.connect(lambda: self.assembleRequested.emit(self._output_format.currentData() or "epub"))
+        self._assemble_btn.clicked.connect(self._on_assemble_or_open)
         self._assemble_btn.setEnabled(False)
         self._assemble_btn.setToolTip(
             self.tr("Build the output file from the current chunks without waiting for the pipeline to finish. Useful when an LLM chunk is stuck in the polish step.")
@@ -675,11 +681,19 @@ class TranslateTab(QWidget):
         if chunk:
             self.fileSelected.emit(chunk.get("id", ""))
 
+    def _on_assemble_or_open(self) -> None:
+        """Dispatch: open folder if artifact exists, otherwise force assemble."""
+        if self._output_artifact_path:
+            self.outputFolderRequested.emit(self._output_artifact_path)
+        else:
+            self.assembleRequested.emit(self._output_format.currentData() or "epub")
+
     def _reset_queue(self) -> None:
         self._queue_items.clear()
         self._queue_by_path.clear()
         self._queue_by_project_id.clear()
         self._active_project_id = None
+        self._output_artifact_path = ""
         self._queue_table.setRowCount(0)
         self._queue_counter.setText(self.tr("—"))
         self._queue_active_label.setText("")

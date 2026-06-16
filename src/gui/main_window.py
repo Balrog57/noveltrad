@@ -170,6 +170,7 @@ class MainWindow(QMainWindow):
         self._pipeline_tab.startRequested.connect(self._on_start_translation)
         self._pipeline_tab.replayHltlRequested.connect(self._on_replay_hltl)
         self._pipeline_tab.assembleRequested.connect(self._on_assemble_requested)
+        self._pipeline_tab.outputFolderRequested.connect(self._on_open_output_folder)
         self._pipeline_tab.retryRequested.connect(self._on_retry)
         self._pipeline_tab.pauseRequested.connect(self._on_pause)
         self._pipeline_tab.resumeRequested.connect(self._on_resume)
@@ -793,10 +794,22 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(title, 5000)
 
     def _on_assemble_requested(self, fmt: str) -> None:
+        """Force-assemble: call the backend with the correct output path."""
         try:
+            # Derive output path from the pipeline tab's project context
+            project_dir = self._pipeline_tab._project_dir if hasattr(self._pipeline_tab, '_project_dir') else ""
+            if not project_dir:
+                QMessageBox.warning(
+                    self, self.tr("Assemble failed"),
+                    self.tr("No active project directory. Select a project first.")
+                )
+                return
+            out_dir = Path(project_dir) / "target"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            output_path = str(out_dir / f"output.{fmt}")
             res = self._client.post(
-                "/projects/assemble",
-                body={"format": fmt},
+                "/assemble",
+                body={"output_path": output_path, "format": fmt},
                 timeout=10.0,
             ) or {}
         except BackendError as exc:
@@ -805,6 +818,29 @@ class MainWindow(QMainWindow):
         if res.get("output_path"):
             self.statusBar().showMessage(
                 self.tr("Output: {path}").format(path=res["output_path"]), 5000
+            )
+
+    def _on_open_output_folder(self, output_path: str) -> None:
+        """Open the directory containing the assembled file in the file explorer."""
+        path = Path(output_path)
+        target_dir = path.parent if path.is_file() else path
+        if not target_dir.exists():
+            QMessageBox.warning(
+                self, self.tr("Folder not found"),
+                self.tr("The output folder does not exist yet:\n{path}").format(path=str(target_dir))
+            )
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(target_dir))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(target_dir)])
+            else:
+                subprocess.Popen(["xdg-open", str(target_dir)])
+        except Exception as exc:
+            QMessageBox.warning(
+                self, self.tr("Could not open folder"),
+                self.tr("Failed to open folder:\n{err}").format(err=str(exc))
             )
 
     def _on_sidebar_changed(self, idx: int) -> None:
