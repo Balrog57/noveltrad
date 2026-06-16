@@ -51,7 +51,7 @@ class Worker(BaseWorker):
         written: list[str] = []
         try:
             for idx, (source_file, group_chunks) in enumerate(groups):
-                target = _derive_output_path(out, source_file, idx)
+                target = _derive_output_path(out, source_file, idx, len(groups))
                 if fmt == "epub" or fmt == "epub_bilingual":
                     _write_epub(
                         target,
@@ -108,11 +108,11 @@ def _grouped_by_source(
 
 
 def _derive_output_path(
-    template: Path, source_file: str, idx: int
+    template: Path, source_file: str, idx: int, total: int = 1
 ) -> Path:
     """If the payload holds chunks from multiple source files, append
     a per-source suffix to avoid clobbering siblings."""
-    if not source_file:
+    if not source_file or total <= 1:
         return template
     stem = Path(source_file).stem or f"file{idx}"
     suffix = template.suffix or ".txt"
