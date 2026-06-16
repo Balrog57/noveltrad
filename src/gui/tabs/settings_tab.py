@@ -37,6 +37,7 @@ from src.gui.updater import Updater, is_skipped
 
 class SettingsTab(QWidget):
     checkForUpdatesRequested = pyqtSignal()
+    restartBackendRequested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -226,8 +227,9 @@ class SettingsTab(QWidget):
 
     def _save_and_restart(self) -> None:
         self._save()
+        self.restartBackendRequested.emit()
         self._status.setText(
-            self.tr("Saved. Restart NovelTrad to apply backend changes.")
+            self.tr("Saved. Restarting backend…")
         )
 
 __all__ = ["SettingsTab"]

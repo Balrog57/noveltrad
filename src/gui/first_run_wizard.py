@@ -4,7 +4,7 @@ Walks the user through:
   1. Welcome
   2. Workspace location
   3. LLM provider — auto-detects Ollama + suggests cloud models
-  4. NLLB fast-draft
+  4. NLLB fast-draft — with dependency & model checks
   5. Theme
   6. Finish
 """
@@ -16,12 +16,51 @@ from PyQt6.QtWidgets import (QWizard, QWizardPage, QVBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
 import os
 import urllib.request
+from pathlib import Path
 from src.gui.app_config import ConfigManager
 from src.gui.llm_discovery import (
     ProviderChoice,
     fetch_provider_choices,
     refresh_router,
 )
+
+
+def _check_ctranslate2() -> tuple[bool, str]:
+    """Check if ctranslate2 + sentencepiece are importable."""
+    try:
+        import ctranslate2  # noqa: F401
+        import sentencepiece  # noqa: F401
+    except ImportError as exc:
+        return False, str(exc)
+    return True, ""
+
+
+def _find_nllb_model() -> str | None:
+    """Look for a CTranslate2 NLLB model in standard locations."""
+    candidates = [
+        # The default install path
+        Path(os.environ.get("APPDATA", "")) / ".." / "Local" / "NovelTrad" / "models" / "nllb-200-distilled-600M-ct2-int8",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "NovelTrad" / "models" / "nllb-200-distilled-600M-ct2-int8",
+        Path.home() / ".cache" / "nllb" / "models--nllb-200-distilled-600M-ct2-int8",
+        Path("C:/ProgramData/NovelTrad/models/nllb-200-distilled-600M-ct2-int8"),
+    ]
+    for p in candidates:
+        if p.exists() and (p / "sentencepiece.bpe.model").exists():
+            return str(p.resolve())
+    return None
+
+
+def _validate_nllb_model(path: str) -> tuple[bool, str]:
+    """Validate that path points to a valid CTranslate2 model directory."""
+    p = Path(path)
+    if not p.is_dir():
+        return False, "Not a directory"
+    required = ["sentencepiece.bpe.model", "model.bin", "config.json"]
+    missing = [f for f in required if not (p / f).exists()]
+    if missing:
+        return False, f"Missing: {', '.join(missing)}"
+    return True, ""
+
 
 class FirstRunWizard(QWizard):
     def __init__(self):
@@ -46,6 +85,7 @@ class FirstRunWizard(QWizard):
         if result == QWizard.DialogCode.Accepted:
             self.config.set_first_run_complete()
 
+
 class WelcomePage(QWizardPage):
     def __init__(self):
         super().__init__()
@@ -62,6 +102,7 @@ class WelcomePage(QWizardPage):
         label.setWordWrap(True)
         layout.addWidget(label)
         self.setLayout(layout)
+
 
 class WorkspacePage(QWizardPage):
     def __init__(self, config):
@@ -90,6 +131,7 @@ class WorkspacePage(QWizardPage):
         if directory:
             self.path_edit.setText(directory)
             self.config.set("workspace_dir", directory)
+
 
 class ThemePage(QWizardPage):
     def __init__(self, config):
@@ -365,37 +407,101 @@ class _DiscoveryWorker(QThread):
 
 
 class NLLBPage(QWizardPage):
+    """NLLB model path configuration with auto-detection and validation."""
+
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.setTitle(self.tr("NLLB Fast Draft"))
         self.setSubTitle(
             self.tr(
-                "Choose a local CTranslate2 NLLB model directory for hybrid mode."
+                "NLLB provides a fast, local translation draft. "
+                "The installer should have placed a CTranslate2 NLLB "
+                "model on your machine."
             )
         )
 
         layout = QVBoxLayout()
+
+        # Dependency check
+        ctranslate2_ok, ctranslate2_err = _check_ctranslate2()
+        dep_status = QLabel()
+        if ctranslate2_ok:
+            dep_status.setText(self.tr("✓ CTranslate2 + SentencePiece — available"))
+            dep_status.setStyleSheet("color: #7be395;")
+        else:
+            dep_status.setText(
+                self.tr("✗ CTranslate2 / SentencePiece not installed: {err}").format(
+                    err=ctranslate2_err
+                )
+            )
+            dep_status.setStyleSheet("color: #e3746b;")
+        dep_status.setWordWrap(True)
+        layout.addWidget(dep_status)
+
+        # Model path
         nllb = dict(self.config.get("nllb", {}) or {})
-        self.path_edit = QLineEdit(nllb.get("model", ""))
+        saved_path = nllb.get("model", "")
+        auto_path = _find_nllb_model()
+
+        layout.addWidget(QLabel(self.tr("NLLB model directory:")))
+        self.path_edit = QLineEdit()
+        # Prefer saved path; fall back to auto-detected; else empty.
+        prefill = saved_path or auto_path or ""
+        self.path_edit.setText(prefill)
+        self.path_edit.setPlaceholderText(
+            self.tr("e.g. facebook/nllb-200-distilled-600M")
+        )
         layout.addWidget(self.path_edit)
+
         browse = QPushButton(self.tr("Browse model directory..."))
         browse.clicked.connect(self.browse)
         layout.addWidget(browse)
+
+        # Validation status
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+
+        # Device selector
+        device_row = QHBoxLayout()
+        device_row.addWidget(QLabel(self.tr("Device:")))
         self.device = QComboBox()
         self.device.addItems(["cpu", "cuda", "auto"])
         idx = self.device.findText(nllb.get("device", "auto"))
         if idx >= 0:
             self.device.setCurrentIndex(idx)
-        layout.addWidget(self.device)
-        self.status = QLabel(
-            self.tr(
-                "The installer does not bundle large models. If this is left as a Hugging Face id, NovelTrad will report NLLB unavailable until a local model is configured."
-            )
-        )
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
+        device_row.addWidget(self.device)
+        device_row.addStretch(1)
+        layout.addLayout(device_row)
+
+        layout.addStretch(1)
+
+        # Run validation on path change
+        self.path_edit.textChanged.connect(self._validate)
+
         self.setLayout(layout)
+
+        # Initial validation
+        if prefill:
+            self._validate()
+
+    def _validate(self) -> None:
+        path = self.path_edit.text().strip()
+        if not path:
+            self.status.setText("")
+            return
+        valid, reason = _validate_nllb_model(path)
+        if valid:
+            self.status.setText(
+                self.tr("✓ Valid CTranslate2 model directory (NLLB-200)")
+            )
+            self.status.setStyleSheet("color: #7be395;")
+        else:
+            self.status.setText(
+                self.tr("⚠ {reason}").format(reason=reason)
+            )
+            self.status.setStyleSheet("color: #e9c46a;")
 
     def browse(self):
         directory = QFileDialog.getExistingDirectory(
@@ -414,6 +520,7 @@ class NLLBPage(QWizardPage):
         )
         self.config.set("nllb", nllb)
         return True
+
 
 class FinishPage(QWizardPage):
     def __init__(self):

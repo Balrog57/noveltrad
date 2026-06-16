@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
 
         self._config = ConfigManager()
         self._config.apply_environment()
+        self._was_offline = True  # track health transitions for auto-refresh
         backend_url = os.environ.get("NOVELTRAD_BACKEND", "http://127.0.0.1:8765")
         self._client = BackendClient(backend_url)
         self._backend_proc: subprocess.Popen | None = None
@@ -183,6 +184,9 @@ class MainWindow(QMainWindow):
         self._settings_tab = SettingsTab()
         self._settings_tab.checkForUpdatesRequested.connect(
             self._on_manual_check_for_updates
+        )
+        self._settings_tab.restartBackendRequested.connect(
+            self._restart_backend
         )
         self._stack.addWidget(self._settings_tab)
 
@@ -447,6 +451,29 @@ class MainWindow(QMainWindow):
         import threading
 
         threading.Thread(target=_wait, daemon=True).start()
+
+    def _restart_backend(self) -> None:
+        """Kill the running backend subprocess and start a fresh one.
+
+        Called when the user clicks "Save & Restart backend" in the
+        Settings tab so the new LLM / NLLB env vars take effect without
+        a full application restart.
+        """
+        if self._backend_proc is not None and self._backend_proc.poll() is None:
+            try:
+                self._backend_proc.terminate()
+                self._backend_proc.wait(timeout=5)
+            except Exception:
+                try:
+                    self._backend_proc.kill()
+                    self._backend_proc.wait(timeout=3)
+                except Exception:
+                    pass
+            self._backend_proc = None
+        # Give the old process time to release the port.
+        import time as _time
+        _time.sleep(0.5)
+        self._start_backend()
 
     def _post_startup(self) -> None:
         try:
@@ -778,10 +805,23 @@ class MainWindow(QMainWindow):
             h = self._client.health()
         except BackendError:
             self._set_badge(self.tr("● Offline"))
+            self._was_offline = True
             return
         if not h.get("ok"):
             self._set_badge(self.tr("● LLM: ?"))
+            self._was_offline = True
             return
+        # Backend is online — refresh the current page if we just
+        # recovered from an offline period (e.g. backend restart).
+        if self._was_offline:
+            self._was_offline = False
+            current = self._stack.currentWidget()
+            if current is self._projects_tab:
+                self._projects_tab.refresh()
+            elif current is self._glossary_tab:
+                self._glossary_tab.refresh()
+            elif current is self._files_tab:
+                self._files_tab.refresh()
         self._set_badge(self._format_llm_badge(h))
         self._update_statusbar_usage(h)
         self._refresh_pipeline_state()

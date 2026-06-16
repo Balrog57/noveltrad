@@ -1608,7 +1608,7 @@ class Orchestrator:
         """If all chunks have reached the penultimate stage in the current
         profile, kick off the assembler.
 
-        The output path is ``<project_dir>/target/<source_stem>.<fmt>``.
+        The output path is ``<project_dir>/.noveltrad/target/<source_stem>.<fmt>``.
         """
         threshold = self._penultimate_status()
         if threshold is None:
@@ -1623,7 +1623,7 @@ class Orchestrator:
         ready = self.store.count_chunks(status=threshold)
         if ready < total:
             return
-        out_dir = Path(proj.project_dir) / "target"
+        out_dir = Path(proj.project_dir) / ".noveltrad" / "target"
         out_dir.mkdir(parents=True, exist_ok=True)
         fmt = proj.output_format or "txt"
         out = out_dir / f"{Path(proj.source_path).stem}.{fmt}"
