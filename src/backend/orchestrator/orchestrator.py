@@ -328,8 +328,6 @@ class Orchestrator:
                         or stored.get("chapter_title"),
                         "source_text": source_text,
                         "neighbor_chars": 300,
-                        "use_llm": self._project is not None
-                        and self._project.profile == "premium",
                     },
                 )
             )
@@ -1173,6 +1171,7 @@ class Orchestrator:
         for field_name in (
             "raw_translation",
             "glossary_applied",
+            "llm_refined",
             "qa_checked",
             "grammar_checked",
             "polished_translation",
@@ -1399,6 +1398,7 @@ class Orchestrator:
             "target_lang",
             "raw_translation",
             "glossary_applied",
+            "llm_refined",
             "qa_checked",
             "grammar_checked",
             "polished_translation",
@@ -1414,6 +1414,9 @@ class Orchestrator:
             next_payload.setdefault("target_lang", ctx.target_lang)
 
         if next_stage == "glossary_applier":
+            next_payload["lexicon_terms"] = self.store.list_lexicon()
+
+        if next_stage == "llm_refiner":
             next_payload["lexicon_terms"] = self.store.list_lexicon()
 
         if next_stage in (
@@ -1444,6 +1447,7 @@ class Orchestrator:
     ) -> None:
         if next_stage not in (
             "glossary_applier",
+            "llm_refiner",
             "consistency_checker",
             "qa_validator",
             "grammar_proofer",
@@ -1454,6 +1458,7 @@ class Orchestrator:
         for key in (
             "raw_translation",
             "glossary_applied",
+            "llm_refined",
             "qa_checked",
             "grammar_checked",
             "polished_translation",

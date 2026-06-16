@@ -28,6 +28,7 @@ FAST_TRANSLATOR = "fast_translator"
 LEXICON_BUILDER = "lexicon_builder"
 TERMINOLOGY_RESEARCHER = "terminology_researcher"
 GLOSSARY_APPLIER = "glossary_applier"
+LLM_REFINER = "llm_refiner"
 CONSISTENCY_CHECKER = "consistency_checker"
 QA_VALIDATOR = "qa_validator"
 GRAMMAR_PROOFER = "grammar_proofer"
@@ -42,6 +43,7 @@ ALL_STAGES: tuple[str, ...] = (
     LEXICON_BUILDER,
     TERMINOLOGY_RESEARCHER,
     GLOSSARY_APPLIER,
+    LLM_REFINER,
     CONSISTENCY_CHECKER,
     QA_VALIDATOR,
     GRAMMAR_PROOFER,
@@ -58,6 +60,7 @@ DEFAULT_PIPELINE_ORDER: tuple[str, ...] = (
     LEXICON_BUILDER,
     TERMINOLOGY_RESEARCHER,
     GLOSSARY_APPLIER,
+    LLM_REFINER,
     CONSISTENCY_CHECKER,
     QA_VALIDATOR,
     GRAMMAR_PROOFER,
@@ -70,7 +73,7 @@ DEFAULT_PIPELINE_ORDER: tuple[str, ...] = (
 # Stages that are safe to run with >1 worker concurrently.
 # FastTranslator and LLMPolisher are parallelizable per the plan.
 PARALLELIZABLE_STAGES: frozenset[str] = frozenset(
-    {FAST_TRANSLATOR, LLM_POLISHER, CONSISTENCY_CHECKER}
+    {FAST_TRANSLATOR, LLM_POLISHER, LLM_REFINER, CONSISTENCY_CHECKER}
 )
 
 
@@ -163,12 +166,19 @@ def build_stages() -> dict[str, StageSpec]:
             key=GLOSSARY_APPLIER,
             agent_module="src.backend.agents.glossary_applier",
             input_channel=f"{TERMINOLOGY_RESEARCHER}__to__{GLOSSARY_APPLIER}",
-            output_channel=f"{GLOSSARY_APPLIER}__to__{CONSISTENCY_CHECKER}",
+            output_channel=f"{GLOSSARY_APPLIER}__to__{LLM_REFINER}",
+        ),
+        LLM_REFINER: StageSpec(
+            key=LLM_REFINER,
+            agent_module="src.backend.agents.llm_refiner",
+            input_channel=f"{GLOSSARY_APPLIER}__to__{LLM_REFINER}",
+            output_channel=f"{LLM_REFINER}__to__{CONSISTENCY_CHECKER}",
+            parallelizable=True,
         ),
         CONSISTENCY_CHECKER: StageSpec(
             key=CONSISTENCY_CHECKER,
             agent_module="src.backend.agents.consistency_checker",
-            input_channel=f"{GLOSSARY_APPLIER}__to__{CONSISTENCY_CHECKER}",
+            input_channel=f"{LLM_REFINER}__to__{CONSISTENCY_CHECKER}",
             output_channel=f"{CONSISTENCY_CHECKER}__to__{QA_VALIDATOR}",
             parallelizable=True,
         ),
@@ -210,6 +220,7 @@ def build_stages() -> dict[str, StageSpec]:
 # Mirrors the SQLite CHECK-style list in the plan.
 STATUS_PARSED = "parsed"
 STATUS_FAST_TRANSLATED = "fast_translated"
+STATUS_LLM_REFINED = "llm_refined"
 STATUS_GLOSSARY_APPLIED = "glossary_applied"
 STATUS_CONSISTENCY_CHECKED = "consistency_checked"
 STATUS_QA_CHECKED = "qa_checked"
@@ -226,6 +237,7 @@ STAGE_TO_STATUS: dict[str, str] = {
     FAST_TRANSLATOR: STATUS_FAST_TRANSLATED,
     TERMINOLOGY_RESEARCHER: "lexicon_ready",
     GLOSSARY_APPLIER: STATUS_GLOSSARY_APPLIED,
+    LLM_REFINER: STATUS_LLM_REFINED,
     CONSISTENCY_CHECKER: STATUS_CONSISTENCY_CHECKED,
     QA_VALIDATOR: STATUS_QA_CHECKED,
     GRAMMAR_PROOFER: STATUS_GRAMMAR_CHECKED,

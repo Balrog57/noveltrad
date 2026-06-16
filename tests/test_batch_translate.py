@@ -246,7 +246,7 @@ class AssemblerMultiFileTests(unittest.TestCase):
         self.assertEqual([k for k, _ in groups], ["C:/book1.txt", "C:/book2.txt"])
         self.assertEqual([len(v) for _, v in groups], [1, 2])
 
-        out = _derive_output_path(Path("/tmp/out.txt"), "C:/book1.txt", 0)
+        out = _derive_output_path(Path("/tmp/out.txt"), "C:/book1.txt", 0, 2)
         self.assertEqual(out.name, "out_book1.txt")
         out2 = _derive_output_path(Path("/tmp/out.txt"), "", 0)
         self.assertEqual(out2.name, "out.txt")
@@ -285,7 +285,7 @@ class AssemblerMultiFileTests(unittest.TestCase):
             self.assertEqual(len(groups), 2)
             out_template = tmp_path / "out.txt"
             for source_file, group in groups:
-                target = _derive_output_path(out_template, source_file, 0)
+                target = _derive_output_path(out_template, source_file, 0, 2)
                 _write_txt(target, group)
             self.assertTrue((tmp_path / "out_alpha.txt").exists())
             self.assertTrue((tmp_path / "out_beta.txt").exists())

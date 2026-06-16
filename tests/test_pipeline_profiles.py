@@ -41,8 +41,8 @@ class ProfileOrderTests(unittest.TestCase):
         self.assertNotIn(TERMINOLOGY_RESEARCHER, PROFILE_BALANCED)
         self.assertEqual(PROFILE_BALANCED[-1], ASSEMBLER)
 
-    def test_profile_premium_has_all_eleven_stages(self) -> None:
-        self.assertEqual(len(PROFILE_PREMIUM), 11)
+    def test_profile_premium_has_all_twelve_stages(self) -> None:
+        self.assertEqual(len(PROFILE_PREMIUM), 12)
         self.assertIn(TERMINOLOGY_RESEARCHER, PROFILE_PREMIUM)
         self.assertIn(REVIEWER, PROFILE_PREMIUM)
         self.assertEqual(PROFILE_PREMIUM[-1], ASSEMBLER)
