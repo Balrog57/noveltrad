@@ -97,7 +97,18 @@ class Worker(BaseWorker):
         tgt_lang = payload.get("target_lang") or os.environ.get(
             "NOVELTRAD_TGT_LANG", "fr"
         )
-        if self._engine is None:
+        # ``use_llm`` payload flag: when set, skip NLLB entirely and
+        # translate with the LLM router directly (premium profile).
+        if payload.get("use_llm"):
+            translated = self._fallback_translate(source, src_lang, tgt_lang)
+            if translated is None:
+                return self._emit_error(
+                    chunk_id,
+                    "llm_translation_unavailable",
+                    "fast_translator: LLM translation unavailable",
+                )
+            engine_name = "llm"
+        elif self._engine is None:
             # Test mode: engine was skipped at setup(); go straight to
             # the deterministic fallback (e.g. echo source with target
             # language tag, per NOVELTRAD_TRANSLATION_TEST_MODE).

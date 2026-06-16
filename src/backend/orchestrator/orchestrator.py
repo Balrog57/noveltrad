@@ -328,6 +328,8 @@ class Orchestrator:
                         or stored.get("chapter_title"),
                         "source_text": source_text,
                         "neighbor_chars": 300,
+                        "use_llm": self._project is not None
+                        and self._project.profile == "premium",
                     },
                 )
             )
