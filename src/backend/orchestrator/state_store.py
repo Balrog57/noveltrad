@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     output_hash TEXT,
     raw_translation TEXT,
     glossary_applied TEXT,
+    llm_refined TEXT,
     qa_checked TEXT,
     grammar_checked TEXT,
     polished_translation TEXT,
@@ -325,11 +326,11 @@ class StateStore:
                 INSERT OR REPLACE INTO chunks (
                     id, chapter_id, chapter_title, chunk_index, source_text,
                     source_hash, glossary_version, output_hash,
-                    raw_translation, glossary_applied, qa_checked,
+                    raw_translation, glossary_applied, llm_refined, qa_checked,
                     grammar_checked, polished_translation,
                     status, error_message, metadata_json, source_file,
                     review_score, review_annotations
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chunk["id"],
@@ -342,6 +343,7 @@ class StateStore:
                     chunk.get("output_hash"),
                     chunk.get("raw_translation"),
                     chunk.get("glossary_applied"),
+                    chunk.get("llm_refined"),
                     chunk.get("qa_checked"),
                     chunk.get("grammar_checked"),
                     chunk.get("polished_translation"),
@@ -365,6 +367,7 @@ class StateStore:
         allowed = {
             "raw_translation",
             "glossary_applied",
+            "llm_refined",
             "qa_checked",
             "grammar_checked",
             "polished_translation",
@@ -935,6 +938,7 @@ def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
         "output_hash": row["output_hash"],
         "raw_translation": row["raw_translation"],
         "glossary_applied": row["glossary_applied"],
+        "llm_refined": row["llm_refined"],
         "qa_checked": row["qa_checked"],
         "grammar_checked": row["grammar_checked"],
         "polished_translation": row["polished_translation"],
