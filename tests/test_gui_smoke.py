@@ -212,6 +212,145 @@ class MainWindowSmokeTests(unittest.TestCase):
             self.assertIn(needed, sequences, f"missing shortcut {needed}")
 
 
+class ProjectsTabTests(unittest.TestCase):
+    def test_refresh_caps_history_at_ten_rows(self) -> None:
+        app = _ensure_app()
+
+        class FakeClient:
+            def get(self, path, timeout=5.0, params=None):
+                if path == "/projects/active":
+                    return {"active_project_id": "p29", "project": None}
+                return {
+                    "projects": [
+                        {
+                            "project_id": f"p{i}",
+                            "name": f"Project {i}",
+                            "project_dir": f"C:/tmp/project_{i}",
+                        }
+                        for i in range(30)
+                    ]
+                }
+
+        from src.gui.tabs.projects_tab import ProjectsTab
+
+        tab = ProjectsTab(FakeClient())
+        try:
+            tab.refresh()
+            self.assertEqual(tab._table.rowCount(), 10)
+            self.assertEqual(len(tab._projects), 10)
+        finally:
+            tab.deleteLater()
+
+    def test_new_project_emits_backend_canonical_project(self) -> None:
+        app = _ensure_app()
+        from src.gui.tabs import projects_tab as projects_tab_module
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.posts: list[dict] = []
+
+            def get(self, path, timeout=5.0, params=None):
+                if path == "/projects/active":
+                    return {"active_project_id": "canonical-id", "project": None}
+                return {"projects": []}
+
+            def post(self, path, body=None, timeout=5.0):
+                self.posts.append(body or {})
+                return {
+                    "project_id": "canonical-id",
+                    "project": {
+                        "project_id": "canonical-id",
+                        "name": "Backend Name",
+                        "project_dir": "C:/backend/project",
+                    },
+                }
+
+        class FakeProjectDialog:
+            class DialogCode:
+                Accepted = 1
+
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def exec(self) -> int:
+                return self.DialogCode.Accepted
+
+            def project_name(self) -> str:
+                return "Typed Name"
+
+            def project_folder(self) -> str:
+                return "C:/typed/project"
+
+        original_dialog = projects_tab_module.ProjectDialog
+        projects_tab_module.ProjectDialog = FakeProjectDialog
+        client = FakeClient()
+        tab = projects_tab_module.ProjectsTab(client)
+        captured: list[dict] = []
+        tab.projectActivated.connect(lambda project: captured.append(dict(project)))
+        try:
+            tab._on_new()
+            self.assertEqual(client.posts[0]["name"], "Typed Name")
+            self.assertEqual(captured[0]["name"], "Backend Name")
+            self.assertEqual(captured[0]["project_dir"], "C:/backend/project")
+        finally:
+            projects_tab_module.ProjectDialog = original_dialog
+            tab.deleteLater()
+
+
+class ProjectActivationTests(unittest.TestCase):
+    def test_local_activation_enables_project_tabs(self) -> None:
+        app = _ensure_app()
+        from PyQt6.QtWidgets import QListWidgetItem
+        from src.gui.main_window import MainWindow, SIDEBAR_ITEMS
+
+        class FakeTab:
+            def __init__(self) -> None:
+                self.project: dict | None = None
+
+            def set_project(self, project: dict) -> None:
+                self.project = project
+
+        class FakeStatusBar:
+            def __init__(self) -> None:
+                self.messages: list[str] = []
+
+            def showMessage(self, message: str, timeout: int = 0) -> None:
+                self.messages.append(message)
+
+        class FakeWindow:
+            def __init__(self) -> None:
+                self._sidebar_items = []
+                for key, label in SIDEBAR_ITEMS:
+                    item = QListWidgetItem(label)
+                    if key in ("pipeline", "glossary", "files"):
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+                    self._sidebar_items.append(item)
+                self._pipeline_tab = FakeTab()
+                self._files_tab = FakeTab()
+                self._glossary_tab = FakeTab()
+                self._status = FakeStatusBar()
+
+            def statusBar(self) -> FakeStatusBar:
+                return self._status
+
+            def tr(self, text: str) -> str:
+                return text
+
+        fake = FakeWindow()
+        project = {
+            "project_id": "p1",
+            "name": "Canonical Project",
+            "project_dir": "C:/tmp/project",
+        }
+        MainWindow._activate_project_locally(fake, project)  # type: ignore[arg-type]
+
+        for idx in (1, 2, 3):
+            self.assertTrue(fake._sidebar_items[idx].flags() & Qt.ItemFlag.ItemIsEnabled)
+        self.assertEqual(fake._pipeline_tab.project, project)
+        self.assertEqual(fake._files_tab.project, project)
+        self.assertEqual(fake._glossary_tab.project, project)
+
+
 class EventDebouncerTests(unittest.TestCase):
     def test_collapses_progress_per_chunk_stage(self) -> None:
         app = _ensure_app()

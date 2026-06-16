@@ -41,6 +41,17 @@ from contextlib import contextmanager
 logger = logging.getLogger(__name__)
 
 
+def _project_created_sort_key(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS chunks (
     id TEXT PRIMARY KEY,
@@ -744,14 +755,13 @@ class StateStore:
     def list_projects(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return past projects persisted in pipeline_state (project:<id> keys).
 
-        Results are ordered by key (which embeds project_id), newest-last.
-        Capped at ``limit`` rows (default 50) to avoid unbounded growth.
+        Results are ordered newest-first by ``created_at`` and capped at
+        ``limit`` rows (default 50) to avoid unbounded growth.
         """
         with self._lock:
             rows = self._conn.execute(
                 "SELECT key, value FROM pipeline_state WHERE key LIKE 'project:%' "
-                "AND key != 'project_manifest_path' ORDER BY key DESC LIMIT ? OFFSET ?",
-                (limit, offset),
+                "AND key != 'project_manifest_path'",
             ).fetchall()
         projects: list[dict[str, Any]] = []
         for row in rows:
@@ -771,7 +781,11 @@ class StateStore:
                 })
             except (json.JSONDecodeError, KeyError, ValueError):
                 logger.warning("Skipping corrupt project record: %s", row["key"], exc_info=True)
-        return projects
+        projects.sort(
+            key=lambda project: _project_created_sort_key(project.get("created_at")),
+            reverse=True,
+        )
+        return projects[offset : offset + limit]
 
     def get_project(self, project_id: str) -> dict[str, Any] | None:
         """Return one persisted project metadata record."""

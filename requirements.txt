@@ -28,4 +28,5 @@ pygrammalecte>=1.5.0  # French grammar checker (GPLv3) — optional, graceful fa
 packaging>=23.0
 
 # Packaging
+build>=1.2.0
 pyinstaller>=6.3.0

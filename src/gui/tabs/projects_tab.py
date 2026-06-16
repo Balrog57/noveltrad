@@ -100,7 +100,7 @@ class ProjectsTab(QWidget):
         self._status.setText("")
         try:
             data = self._client.get("/projects", params={"limit": 10}, timeout=5.0) or {}
-            items = data.get("projects") or []
+            items = (data.get("projects") or [])[:10]
         except BackendError as exc:
             self._status.setText(self.tr("Erreur: {err}").format(err=exc))
             return
@@ -189,10 +189,9 @@ class ProjectsTab(QWidget):
         except BackendError as exc:
             self._status.setText(self.tr("Échec: {err}").format(err=exc))
             return
-        pid = res.get("project_id", "")
-        proj = {"project_id": pid, "name": name, "project_dir": folder}
-        self.refresh()
+        proj = self._project_from_create_response(res, name, folder)
         self.projectActivated.emit(proj)
+        self.refresh()
 
     def _on_open_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
@@ -211,10 +210,9 @@ class ProjectsTab(QWidget):
         except BackendError as exc:
             self._status.setText(self.tr("Échec: {err}").format(err=exc))
             return
-        pid = res.get("project_id", "")
-        proj = {"project_id": pid, "name": name, "project_dir": folder}
-        self.refresh()
+        proj = self._project_from_create_response(res, name, folder)
         self.projectActivated.emit(proj)
+        self.refresh()
 
     def _on_rename(self, proj: dict[str, Any]) -> None:
         pid = proj.get("project_id", "")
@@ -263,6 +261,15 @@ class ProjectsTab(QWidget):
     def _on_double_click(self, row: int, _col: int) -> None:
         if 0 <= row < len(self._projects):
             self.projectActivated.emit(self._projects[row])
+
+    def _project_from_create_response(
+        self, response: dict[str, Any], fallback_name: str, fallback_folder: str
+    ) -> dict[str, Any]:
+        project = response.get("project")
+        if isinstance(project, dict) and project.get("project_id"):
+            return project
+        pid = response.get("project_id", "")
+        return {"project_id": pid, "name": fallback_name, "project_dir": fallback_folder}
 
 
 __all__ = ["ProjectsTab"]

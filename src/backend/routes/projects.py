@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Query
 
 from src.backend.orchestrator.orchestrator import ProjectContext
 
@@ -25,8 +25,11 @@ def register(app: Any, deps: Deps) -> None:
     ReplayChunksRequest = schemas["ReplayChunksRequest"]
 
     @app.get("/projects")
-    def list_projects() -> dict[str, Any]:
-        items = deps.store.list_projects()
+    def list_projects(
+        limit: int = Query(default=50, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+    ) -> dict[str, Any]:
+        items = deps.store.list_projects(limit=limit, offset=offset)
         return {"projects": items}
 
     @app.get("/projects/active")
@@ -83,16 +86,23 @@ def register(app: Any, deps: Deps) -> None:
         elif req.source_path:
             paths = [str(req.source_path)]
         ctx = _build_context(project_id, req, source_paths=paths)
-        # Inject the human-readable name into the context for persistence.
-        if req.name:
-            ctx.name = req.name  # type: ignore[attr-defined]
-        _persist_project_metadata(deps, project_id, ctx)
+        _persist_project_metadata(deps, project_id, ctx, name=req.name)
         # If no source files provided, just create the project (empty).
         if not paths or not req.parse:
+            try:
+                _ensure_empty_project_dirs(ctx.project_dir)
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Could not create project directory: {exc}",
+                ) from exc
             deps.store.set_active_project(project_id)
+            proj = deps.store.get_project(project_id)
             return {
                 "project_id": project_id,
                 "status": "created",
+                "active_project_id": project_id,
+                "project": proj,
                 "queue_position": 0,
                 "source_paths": paths,
             }
@@ -106,6 +116,8 @@ def register(app: Any, deps: Deps) -> None:
         return {
             "project_id": project_id,
             "status": "queued" if not started else "running",
+            "active_project_id": deps.store.get_active_project(),
+            "project": deps.store.get_project(project_id),
             "queue_position": qpos,
             "source_paths": paths,
         }
@@ -220,11 +232,13 @@ def _build_context(
     )
 
 
-def _persist_project_metadata(deps: Deps, project_id: str, ctx: ProjectContext) -> None:
+def _persist_project_metadata(
+    deps: Deps, project_id: str, ctx: ProjectContext, name: str | None = None
+) -> None:
     deps.store.set_state(
         f"project:{project_id}",
         {
-            "name": getattr(ctx, "name", None) or f"Project-{project_id[:8]}",
+            "name": name or f"Project-{project_id[:8]}",
             "project_dir": str(ctx.project_dir),
             "source_path": str(ctx.source_path),
             "source_lang": ctx.source_lang,
@@ -235,6 +249,12 @@ def _persist_project_metadata(deps: Deps, project_id: str, ctx: ProjectContext) 
             "output_format": ctx.output_format,
         },
     )
+
+
+def _ensure_empty_project_dirs(project_dir: Path) -> None:
+    project = project_dir.expanduser().resolve()
+    for name in ("source", "target", ".noveltrad"):
+        (project / name).mkdir(parents=True, exist_ok=True)
 
 
 def _kickoff_parser(

@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
         self._client = BackendClient(backend_url)
         self._backend_proc: subprocess.Popen | None = None
         self._active_hitl: dict[str, HITLPopup] = {}
+        self._closing = False
         self._notifier = Notifier(self)
         # Auto-updater. We never auto-update when the env var disables
         # it or when we're running from the dev checkout (Updater
@@ -303,11 +304,19 @@ class MainWindow(QMainWindow):
         self._sidebar.setCurrentRow(0)  # stay on Projects
         try:
             # Tell the backend this is the active project.
-            self._client.post(f"/projects/{pid}/activate", timeout=5.0)
+            data = self._client.post(f"/projects/{pid}/activate", timeout=5.0) or {}
         except BackendError as exc:
             self.statusBar().showMessage(
                 self.tr("Could not activate project: {err}").format(err=exc), 4000
             )
+            return
+        canonical = data.get("project") if isinstance(data.get("project"), dict) else proj
+        self._activate_project_locally(canonical)
+        self._projects_tab.refresh()
+
+    def _activate_project_locally(self, proj: dict[str, Any]) -> None:
+        pid = proj.get("project_id", "")
+        if not pid:
             return
         # Enable project-dependent sidebar items.
         for i, (_key, _label) in enumerate(SIDEBAR_ITEMS):
@@ -476,11 +485,25 @@ class MainWindow(QMainWindow):
         self._start_backend()
 
     def _post_startup(self) -> None:
+        if self._closing:
+            return
         try:
             self._client.open_websocket(self._on_ws_event)
         except Exception as exc:
             logger.warning("WebSocket open failed: %s", exc)
+        self._restore_active_project_context()
         self._refresh_status()
+
+    def _restore_active_project_context(self) -> None:
+        try:
+            data = self._client.get("/projects/active", timeout=3.0) or {}
+        except BackendError:
+            return
+        project = data.get("project")
+        if isinstance(project, dict) and project.get("project_id"):
+            self._activate_project_locally(project)
+            if self._stack.currentWidget() is self._projects_tab:
+                self._projects_tab.refresh()
 
     def _on_ws_event(self, event: dict[str, Any]) -> None:
         # Marshal to GUI thread and into the debouncer.
@@ -801,6 +824,8 @@ class MainWindow(QMainWindow):
             self._projects_tab.refresh()
 
     def _refresh_status(self) -> None:
+        if self._closing:
+            return
         try:
             h = self._client.health()
         except BackendError:
@@ -888,8 +913,12 @@ class MainWindow(QMainWindow):
                 pass
         page = self._settings.value("MainWindow/currentPage", 0, type=int)
         if 0 <= page < self._stack.count():
-            self._sidebar.setCurrentRow(page)
-            self._stack.setCurrentIndex(page)
+            previous = self._sidebar.blockSignals(True)
+            try:
+                self._sidebar.setCurrentRow(page)
+                self._stack.setCurrentIndex(page)
+            finally:
+                self._sidebar.blockSignals(previous)
         # Theme already restored by ThemeManager.restore_from.
 
     # ----- auto-update -----
@@ -901,6 +930,8 @@ class MainWindow(QMainWindow):
         and on no-update it stays silent. Skipped entirely in dev mode
         and when ``NOVELTRAD_SKIP_UPDATE=1``.
         """
+        if self._closing:
+            return
         try:
             if is_skipped() or not self._updater.should_check():
                 return
@@ -962,6 +993,9 @@ class MainWindow(QMainWindow):
         self._pending_update_dialog = None
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._closing = True
+        if hasattr(self, "_timer"):
+            self._timer.stop()
         self._settings.setValue("MainWindow/geometry", self.saveGeometry())
         self._settings.setValue("MainWindow/state", self.saveState())
         self._settings.setValue(

@@ -1,5 +1,6 @@
 """Test multi-source parser dispatch + schema accepts source_paths."""
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -63,8 +64,10 @@ class MultiSourceSchemaTest(unittest.TestCase):
     def test_empty_source_accepted_creates_empty_project(self) -> None:
         """Empty source_paths now creates an empty project (valid in
         the project-centric workflow — you add files later via Pipeline)."""
+        project_dir = self.tmpdir / "out"
         body = {
-            "project_dir": str(self.tmpdir / "out"),
+            "name": "Empty Project",
+            "project_dir": str(project_dir),
             "source_lang": "en",
             "target_lang": "fr",
             "profile": "balanced",
@@ -76,6 +79,32 @@ class MultiSourceSchemaTest(unittest.TestCase):
         data = res.json()
         self.assertEqual(data["status"], "created")
         self.assertEqual(data["source_paths"], [])
+        self.assertEqual(data["active_project_id"], data["project_id"])
+        self.assertEqual(data["project"]["name"], "Empty Project")
+        self.assertEqual(data["project"]["project_dir"], str(project_dir))
+        self.assertTrue((project_dir / "source").is_dir())
+        self.assertTrue((project_dir / "target").is_dir())
+        self.assertTrue((project_dir / ".noveltrad").is_dir())
+
+    def test_project_list_limit_and_newest_first(self) -> None:
+        for idx in range(12):
+            res = self.client.post(
+                "/projects",
+                json={
+                    "name": f"Project {idx:02d}",
+                    "project_dir": str(self.tmpdir / f"project_{idx:02d}"),
+                    "parse": False,
+                },
+            )
+            self.assertEqual(res.status_code, 200, res.text)
+            time.sleep(0.002)
+
+        res = self.client.get("/projects?limit=10")
+        self.assertEqual(res.status_code, 200, res.text)
+        projects = res.json()["projects"]
+        self.assertEqual(len(projects), 10)
+        self.assertEqual(projects[0]["name"], "Project 11")
+        self.assertEqual(projects[-1]["name"], "Project 02")
 
 
 class ParserMultiSourceTest(unittest.TestCase):

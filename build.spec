@@ -20,7 +20,6 @@ binaries = []
 hiddenimports = [
     # v4 backend (the GUI spawns these as a subprocess)
     'src.backend.server',
-    'src.backend.server.app',
     'src.backend.orchestrator.orchestrator',
     'src.backend.orchestrator.state_store',
     'src.backend.orchestrator.worker_manager',
