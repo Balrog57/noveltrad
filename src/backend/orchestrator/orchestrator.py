@@ -1645,6 +1645,7 @@ def _default_action_for(stage: str) -> str:
         "lexicon_builder": "build_lexicon",
         "terminology_researcher": "research_terms",
         "glossary_applier": "apply_glossary",
+        "llm_refiner": "refine",
         "consistency_checker": "check_consistency",
         "qa_validator": "qa_check",
         "grammar_proofer": "proofread",
