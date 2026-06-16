@@ -1,0 +1,3 @@
+## 2024-05-24 - Accessibility for dynamically generated table elements
+**Learning:** Secondary actions and dynamic table elements (like per-row buttons and progress bars) often miss accessibility metadata. In a PyQt6 context with a centralized `configure()` utility for a11y, it's crucial to apply this configuration to widgets constructed iteratively in table loops, not just top-level static page buttons.
+**Action:** When building Qt table rows with nested widgets or per-row actions, ensure the global accessibility configuration utility (e.g., `configure()`) is applied immediately upon instantiation.

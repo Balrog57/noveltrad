@@ -530,8 +530,10 @@ class TranslateTab(QWidget):
         self._replay_btn = QPushButton(self.tr("Replay HITL questions"))
         self._replay_btn.setEnabled(False)
         self._replay_btn.clicked.connect(self.replayHltlRequested.emit)
-        self._replay_btn.setToolTip(
-            self.tr("Human-In-The-Loop: re-inject every chunk waiting for a human answer (unknown term, ambiguous translation) into the pipeline.")
+        configure(
+            self._replay_btn,
+            name=self.tr("Replay HITL questions"),
+            tooltip=self.tr("Human-In-The-Loop: re-inject every chunk waiting for a human answer (unknown term, ambiguous translation) into the pipeline.")
         )
         actions.addWidget(self._replay_btn)
         # Force the Assembler stage to run right now (instead of
@@ -540,8 +542,10 @@ class TranslateTab(QWidget):
         self._assemble_btn = QPushButton(self.tr("Force assemble now"))
         self._assemble_btn.clicked.connect(lambda: self.assembleRequested.emit(self._output_format.currentData() or "epub"))
         self._assemble_btn.setEnabled(False)
-        self._assemble_btn.setToolTip(
-            self.tr("Build the output file from the current chunks without waiting for the pipeline to finish. Useful when an LLM chunk is stuck in the polish step.")
+        configure(
+            self._assemble_btn,
+            name=self.tr("Force assemble now"),
+            tooltip=self.tr("Build the output file from the current chunks without waiting for the pipeline to finish. Useful when an LLM chunk is stuck in the polish step.")
         )
         actions.addWidget(self._assemble_btn)
         actions.addStretch(1)
@@ -707,6 +711,7 @@ class TranslateTab(QWidget):
         self._queue_table.setItem(row, 0, name_item)
         self._queue_table.setItem(row, 1, status_item)
         self._queue_table.setItem(row, 2, stage_item)
+        configure(bar, name=self.tr("File translation progress"))
         self._queue_table.setCellWidget(row, 3, bar)
         self._queue_table.setItem(row, 4, detail_item)
         # Per-row remove button (column 5). Always enabled so the user
@@ -723,7 +728,11 @@ class TranslateTab(QWidget):
         remove_btn = QPushButton(self.tr("✕"))
         remove_btn.setFixedSize(32, 28)
         remove_btn.setStyleSheet("font-size: 14pt; font-weight: 600;")
-        remove_btn.setToolTip(self.tr("Remove this file from the queue"))
+        configure(
+            remove_btn,
+            name=self.tr("Remove this file from the queue"),
+            tooltip=self.tr("Remove this file from the queue")
+        )
         remove_btn.clicked.connect(
             lambda _checked=False, p=path: self._on_remove_file(p)
         )
@@ -732,8 +741,10 @@ class TranslateTab(QWidget):
         retry_btn = QPushButton(self.tr("Retry"))
         retry_btn.setProperty("role", "primary")
         retry_btn.setFixedHeight(28)
-        retry_btn.setToolTip(
-            self.tr("Re-submit errored chunks to the pipeline")
+        configure(
+            retry_btn,
+            name=self.tr("Retry errored chunks"),
+            tooltip=self.tr("Re-submit errored chunks to the pipeline")
         )
         retry_btn.clicked.connect(
             lambda _checked=False, p=path: self.retryRequested.emit(p)
