@@ -1,0 +1,3 @@
+## 2024-06-17 - Configure Requirements for Dynamic Widgets
+**Learning:** In the NovelTrad v4 project, dynamically generated widgets (like buttons added per-row in `QTableWidget` items) and icon-only buttons in secondary dialogs do not automatically receive the accessibility baseline. Screen readers cannot properly interact with them unless they are explicitly passed through the custom `src.gui.a11y.configure` utility.
+**Action:** Always verify that newly created buttons, especially those that are icon-only or instantiated dynamically inside tables or loops, have an explicit `configure(widget, name="...", tooltip="...")` call immediately after their creation to ensure ARIA-like labels and keyboard focus policies are applied.
