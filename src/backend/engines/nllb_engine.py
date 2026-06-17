@@ -249,10 +249,16 @@ class NLLBEngine:
         # Batch translate all paragraphs
         src_code = to_nllb_code(source_lang)
         tgt_code = to_nllb_code(target_lang)
-        source_batch = []
-        for pt in para_texts:
-            tokens = self._sp.encode(pt, out_type=str)  # type: ignore[union-attr]
-            source_batch.append([src_code, *tokens, "</s>"])
+
+        # Tokenize natively in batch
+        all_tokens = self._sp.encode(para_texts, out_type=str)  # type: ignore[union-attr]
+        # if a single text is passed to encode, it returns a list of strings instead of list of list of strings.
+        # we check the type to support both lists of multiple paragraphs and single paragraphs
+        if all_tokens and isinstance(all_tokens[0], str):
+            all_tokens = [all_tokens]
+        source_batch = [
+            [src_code] + tokens + ["</s>"] for tokens in all_tokens
+        ]
 
         results = self._translator.translate_batch(  # type: ignore[union-attr]
             source_batch,
@@ -262,13 +268,22 @@ class NLLBEngine:
             max_decoding_length=max_decoding_length,
         )
 
-        # Fill in translated paragraphs
-        for j, idx in enumerate(para_indices):
-            out_tokens = results[j].hypotheses[0]
+        # Decode all paragraphs natively in batch
+        out_tokens_batch = []
+        for res in results:
+            out_tokens = res.hypotheses[0]
             if out_tokens and out_tokens[0] == tgt_code:
                 out_tokens = out_tokens[1:]
-            translated = self._sp_target.decode(out_tokens)  # type: ignore[union-attr]
-            output_parts[idx] = translated
+            out_tokens_batch.append(out_tokens)
+
+        translated_texts = self._sp_target.decode(out_tokens_batch)  # type: ignore[union-attr]
+        # if a single text is passed to decode, it returns a single string instead of a list of strings
+        if isinstance(translated_texts, str):
+            translated_texts = [translated_texts]
+
+        # Fill in translated paragraphs
+        for j, idx in enumerate(para_indices):
+            output_parts[idx] = translated_texts[j]
 
         # Fill in any remaining empty separators
         for idx, sep in separators.items():
@@ -308,12 +323,11 @@ class NLLBEngine:
                 src_code = to_nllb_code(source_lang)
                 tgt_code = to_nllb_code(target_lang)
 
-                # Tokenize all non-empty texts
-                source_tokens_batch = []
-
-                for text in non_empty_texts:
-                    tokens = self._sp.encode(text.strip(), out_type=str)  # type: ignore[union-attr]
-                    source_tokens_batch.append([src_code, *tokens, "</s>"])
+                # Tokenize all non-empty texts natively in batch
+                all_tokens = self._sp.encode([t.strip() for t in non_empty_texts], out_type=str)  # type: ignore[union-attr]
+                source_tokens_batch = [
+                    [src_code] + tokens + ["</s>"] for tokens in all_tokens
+                ]
 
                 # Call CTranslate2 translate_batch natively
                 results = self._translator.translate_batch(  # type: ignore[union-attr]
@@ -324,14 +338,15 @@ class NLLBEngine:
                     max_decoding_length=256,
                 )
 
-                # Decode all results
-                decoded_results = []
+                # Decode all results natively in batch
+                out_tokens_batch = []
                 for res in results:
                     out_tokens = res.hypotheses[0]
                     # Strip the language token at the start
                     if out_tokens and out_tokens[0] == tgt_code:
                         out_tokens = out_tokens[1:]
-                    decoded_results.append(self._sp_target.decode(out_tokens))  # type: ignore[union-attr]
+                    out_tokens_batch.append(out_tokens)
+                decoded_results = self._sp_target.decode(out_tokens_batch)  # type: ignore[union-attr]
             except Exception as exc:
                 logger.exception("NLLB translate_batch failed")
                 return texts
