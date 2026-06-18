@@ -250,8 +250,10 @@ class NLLBEngine:
         src_code = to_nllb_code(source_lang)
         tgt_code = to_nllb_code(target_lang)
         source_batch = []
-        for pt in para_texts:
-            tokens = self._sp.encode(pt, out_type=str)  # type: ignore[union-attr]
+        # Optimization: Pass a list of texts directly to SentencePiece encode
+        # to maximize throughput instead of iterating in Python.
+        all_tokens = self._sp.encode(para_texts, out_type=str)  # type: ignore[union-attr]
+        for tokens in all_tokens:
             source_batch.append([src_code, *tokens, "</s>"])
 
         results = self._translator.translate_batch(  # type: ignore[union-attr]
@@ -263,12 +265,17 @@ class NLLBEngine:
         )
 
         # Fill in translated paragraphs
-        for j, idx in enumerate(para_indices):
-            out_tokens = results[j].hypotheses[0]
+        hypotheses = []
+        for res in results:
+            out_tokens = res.hypotheses[0]
             if out_tokens and out_tokens[0] == tgt_code:
                 out_tokens = out_tokens[1:]
-            translated = self._sp_target.decode(out_tokens)  # type: ignore[union-attr]
-            output_parts[idx] = translated
+            hypotheses.append(out_tokens)
+        # Optimization: Pass all hypotheses directly to SentencePiece decode
+        # to avoid native C++ transition overhead in Python loops.
+        decoded_translations = self._sp_target.decode(hypotheses)  # type: ignore[union-attr]
+        for j, idx in enumerate(para_indices):
+            output_parts[idx] = decoded_translations[j]
 
         # Fill in any remaining empty separators
         for idx, sep in separators.items():
@@ -311,8 +318,11 @@ class NLLBEngine:
                 # Tokenize all non-empty texts
                 source_tokens_batch = []
 
-                for text in non_empty_texts:
-                    tokens = self._sp.encode(text.strip(), out_type=str)  # type: ignore[union-attr]
+                stripped_texts = [text.strip() for text in non_empty_texts]
+                # Optimization: encode the entire list at once using the C++ native method
+                # rather than inside a Python list comprehension.
+                all_tokens = self._sp.encode(stripped_texts, out_type=str)  # type: ignore[union-attr]
+                for tokens in all_tokens:
                     source_tokens_batch.append([src_code, *tokens, "</s>"])
 
                 # Call CTranslate2 translate_batch natively
@@ -325,13 +335,15 @@ class NLLBEngine:
                 )
 
                 # Decode all results
-                decoded_results = []
+                hypotheses = []
                 for res in results:
                     out_tokens = res.hypotheses[0]
                     # Strip the language token at the start
                     if out_tokens and out_tokens[0] == tgt_code:
                         out_tokens = out_tokens[1:]
-                    decoded_results.append(self._sp_target.decode(out_tokens))  # type: ignore[union-attr]
+                    hypotheses.append(out_tokens)
+                # Optimization: decode all tokens simultaneously rather than looping over them.
+                decoded_results = self._sp_target.decode(hypotheses)  # type: ignore[union-attr]
             except Exception as exc:
                 logger.exception("NLLB translate_batch failed")
                 return texts
