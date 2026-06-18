@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
+from src.gui.a11y import configure
 
 
 class ProjectDialog(QDialog):
@@ -41,6 +42,7 @@ class ProjectDialog(QDialog):
         name_row.addWidget(QLabel(self.tr("Nom:")))
         self._name = QLineEdit(initial_name)
         self._name.setPlaceholderText(self.tr("Ex: Renegade Immortal"))
+        configure(self._name, name=self.tr("Nom du projet"))
         name_row.addWidget(self._name)
         layout.addLayout(name_row)
 
@@ -49,10 +51,12 @@ class ProjectDialog(QDialog):
         folder_row.addWidget(QLabel(self.tr("Dossier:")))
         self._folder = QLineEdit(initial_folder)
         self._folder.setPlaceholderText(self.tr("C:\\Novels\\Renegade\\"))
+        configure(self._folder, name=self.tr("Dossier de travail"))
         folder_row.addWidget(self._folder)
         browse_btn = QPushButton(self.tr("📂"))
         browse_btn.setFixedWidth(36)
         browse_btn.clicked.connect(self._browse)
+        configure(browse_btn, name=self.tr("Browse folders"), tooltip=self.tr("Select a folder"))
         folder_row.addWidget(browse_btn)
         layout.addLayout(folder_row)
 
