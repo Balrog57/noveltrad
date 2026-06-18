@@ -10,7 +10,7 @@ class MockSP:
             return [["1", "2"] for _ in x]
         return ["1", "2"]
     def decode(self, x, *args, **kwargs):
-        if isinstance(x, list) and isinstance(x[0], list):
+        if isinstance(x, list) and len(x) > 0 and isinstance(x[0], list):
             return ["decoded" for _ in x]
         return "decoded"
 

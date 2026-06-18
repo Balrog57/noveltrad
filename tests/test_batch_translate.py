@@ -167,7 +167,7 @@ class StateStoreSourceFileTests(unittest.TestCase):
                 glossary_version TEXT, output_hash TEXT,
                 raw_translation TEXT, glossary_applied TEXT,
                 qa_checked TEXT, grammar_checked TEXT,
-                polished_translation TEXT, status TEXT DEFAULT 'parsed',
+                llm_refined TEXT, polished_translation TEXT, status TEXT DEFAULT 'parsed',
                 error_message TEXT, metadata_json TEXT
             );
             """
