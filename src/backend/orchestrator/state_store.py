@@ -191,6 +191,7 @@ class StateStore:
     def _apply_migrations(self) -> None:
         """Idempotent column-level migrations for pre-4.0.1 DBs."""
         with self._lock:
+            self._safe_add_column("chunks", "llm_refined", "TEXT DEFAULT NULL")
             self._safe_add_column("chunks", "source_file", "TEXT DEFAULT ''")
             self._safe_add_column("chunks", "review_score", "REAL DEFAULT NULL")
             self._safe_add_column("chunks", "review_annotations", "TEXT DEFAULT NULL")
@@ -938,7 +939,7 @@ def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
         "output_hash": row["output_hash"],
         "raw_translation": row["raw_translation"],
         "glossary_applied": row["glossary_applied"],
-        "llm_refined": row["llm_refined"],
+        "llm_refined": row["llm_refined"] if "llm_refined" in row.keys() else None,
         "qa_checked": row["qa_checked"],
         "grammar_checked": row["grammar_checked"],
         "polished_translation": row["polished_translation"],
