@@ -1,0 +1,3 @@
+## 2024-05-24 - Contextual Accessible Names for Dynamic Qt Table Actions
+**Learning:** When using dynamic per-row widgets in QTableWidget (like "Delete" or "Rename" icon buttons), relying purely on visual placement or generic tooltips fails accessibility standards. Screen readers announce generic icon-only buttons like "🗑" ambiguously without the context of the row data.
+**Action:** Always use the custom utility `src.gui.a11y.configure()` to assign explicit, context-aware accessible names (e.g., "Delete {item_name}") immediately upon instantiation for any dynamically generated row actions. Secondary dialogs and per-row items do not auto-configure.
