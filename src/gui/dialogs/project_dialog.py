@@ -16,6 +16,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.gui.a11y import configure
+
 
 class ProjectDialog(QDialog):
     """Minimal dialog: project name + working folder."""
@@ -41,6 +43,7 @@ class ProjectDialog(QDialog):
         name_row.addWidget(QLabel(self.tr("Nom:")))
         self._name = QLineEdit(initial_name)
         self._name.setPlaceholderText(self.tr("Ex: Renegade Immortal"))
+        configure(self._name, name=self.tr("Project Name"), description=self.tr("Enter the name of the new project."))
         name_row.addWidget(self._name)
         layout.addLayout(name_row)
 
@@ -49,10 +52,16 @@ class ProjectDialog(QDialog):
         folder_row.addWidget(QLabel(self.tr("Dossier:")))
         self._folder = QLineEdit(initial_folder)
         self._folder.setPlaceholderText(self.tr("C:\\Novels\\Renegade\\"))
+        configure(self._folder, name=self.tr("Project Folder"), description=self.tr("Enter the path for the project working directory."))
         folder_row.addWidget(self._folder)
         browse_btn = QPushButton(self.tr("📂"))
         browse_btn.setFixedWidth(36)
         browse_btn.clicked.connect(self._browse)
+        configure(
+            browse_btn,
+            name=self.tr("Browse Folders"),
+            tooltip=self.tr("Open a dialog to choose the working folder.")
+        )
         folder_row.addWidget(browse_btn)
         layout.addLayout(folder_row)
 

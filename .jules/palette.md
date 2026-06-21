@@ -1,0 +1,3 @@
+## 2024-06-21 - Accessible Emojis and Form Labels in Dialogs
+**Learning:** Secondary dialogs and dynamically generated elements (like `QFileDialog` triggers or modal inputs) do not auto-configure for accessibility. Icon-only buttons (even if using emojis like `📂`) and text fields (`QLineEdit`) in these dialogs need explicit `configure()` calls immediately upon instantiation. Without this, screen readers fail to read the fields' purpose or the button's action.
+**Action:** Always import and apply `src.gui.a11y.configure` on new QLineEdits and icon-only buttons in secondary dialogs, providing translated `name`, `description`, and `tooltip` parameters.
