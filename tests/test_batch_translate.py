@@ -165,10 +165,11 @@ class StateStoreSourceFileTests(unittest.TestCase):
                 chapter_title TEXT, chunk_index INTEGER NOT NULL,
                 source_text TEXT NOT NULL, source_hash TEXT,
                 glossary_version TEXT, output_hash TEXT,
-                raw_translation TEXT, glossary_applied TEXT,
+                raw_translation TEXT, glossary_applied TEXT, llm_refined TEXT,
                 qa_checked TEXT, grammar_checked TEXT,
                 polished_translation TEXT, status TEXT DEFAULT 'parsed',
-                error_message TEXT, metadata_json TEXT
+                error_message TEXT, metadata_json TEXT, review_score INTEGER,
+                review_annotations TEXT
             );
             """
         )
