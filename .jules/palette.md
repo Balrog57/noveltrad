@@ -1,0 +1,3 @@
+## 2025-02-20 - Adding Context to Iterative Row Actions
+**Learning:** When configuring ARIA-like accessibility names for icon-only action buttons inside table rows or lists (like 'Rename ✏' or 'Delete 🗑'), static names are insufficient and confuse screen reader users who cannot visually associate the button with the row's primary text.
+**Action:** Always append the context (e.g., the item's name) to the accessible name dynamically inside the render/refresh loop (e.g., `configure(del_btn, name=f"{self.tr('Delete')} {item_name}")`) so that screen readers announce "Delete [Item Name]" instead of just "Delete".
