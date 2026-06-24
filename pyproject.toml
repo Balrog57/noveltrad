@@ -1,30 +1,16 @@
 [project]
 name = "noveltrad"
-version = "4.2.7"
+version = "4.4.1"
 description = "Pipeline de traduction multi-agent pour romans et web novels"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [
-    {name = "NovelTrad Team"},
-]
-dependencies = [
-    "PyQt6",
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic>=2.0.0",
-    "EbookLib",
-    "beautifulsoup4",
-    "python-docx",
-    "ctranslate2",
-    "sentencepiece",
-    "openai",
-    "httpx",
-    "language-tool-python",
-    "lancedb",
-    "pyinstaller",
-]
+dependencies = [ "PyQt6", "fastapi", "uvicorn[standard]", "pydantic>=2.0.0", "EbookLib", "beautifulsoup4", "python-docx", "ctranslate2", "sentencepiece", "openai", "httpx", "language-tool-python", "lancedb", "pyinstaller",]
+[[project.authors]]
+name = "NovelTrad Team"
 
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = [ "setuptools", "wheel",]
 build-backend = "setuptools.build_meta"
+
+[project.license]
+text = "MIT"
