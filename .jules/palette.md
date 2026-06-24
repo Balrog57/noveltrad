@@ -1,0 +1,3 @@
+## 2024-05-24 - Accessibility config pattern for dynamic widgets
+**Learning:** In PyQt6, dynamically generated rows in table widgets often contain utility buttons (e.g. Open, Rename, Delete) represented by icons or single characters without accompanying text. These buttons must be explicitly configured for accessibility as soon as they are instantiated because they aren't part of the primary static UI layout and thus might skip automatic passes.
+**Action:** Always call `src.gui.a11y.configure(btn, name=self.tr("Action {item_name}").format(item_name=item_name))` directly within the loop that generates the dynamic widgets to ensure per-row actions include context in their accessible name.

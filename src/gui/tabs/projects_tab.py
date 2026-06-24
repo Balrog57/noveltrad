@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.a11y import configure
 from src.gui.backend_client import BackendClient, BackendError
 from src.gui.dialogs.project_dialog import ProjectDialog
 
@@ -132,18 +133,21 @@ class ProjectsTab(QWidget):
 
             open_btn = QPushButton(self.tr("Open"))
             open_btn.clicked.connect(lambda checked, p=proj: self.projectActivated.emit(p))
+            configure(open_btn, name=self.tr("Open {name}").format(name=name))
             action_row.addWidget(open_btn)
 
             rename_btn = QPushButton(self.tr("✏"))
             rename_btn.setToolTip(self.tr("Renommer"))
             rename_btn.setFixedWidth(30)
             rename_btn.clicked.connect(lambda checked, p=proj: self._on_rename(p))
+            configure(rename_btn, name=self.tr("Rename {name}").format(name=name))
             action_row.addWidget(rename_btn)
 
             del_btn = QPushButton(self.tr("🗑"))
             del_btn.setToolTip(self.tr("Supprimer"))
             del_btn.setFixedWidth(30)
             del_btn.clicked.connect(lambda checked, p=proj: self._on_delete(p))
+            configure(del_btn, name=self.tr("Delete {name}").format(name=name))
             action_row.addWidget(del_btn)
 
             self._table.setCellWidget(row, 3, action_widget)

@@ -16,6 +16,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.gui.a11y import configure
+
 
 class ProjectDialog(QDialog):
     """Minimal dialog: project name + working folder."""
@@ -53,6 +55,11 @@ class ProjectDialog(QDialog):
         browse_btn = QPushButton(self.tr("📂"))
         browse_btn.setFixedWidth(36)
         browse_btn.clicked.connect(self._browse)
+        configure(
+            browse_btn,
+            name=self.tr("Parcourir les dossiers"),
+            tooltip=self.tr("Sélectionner le dossier de travail"),
+        )
         folder_row.addWidget(browse_btn)
         layout.addLayout(folder_row)
 
