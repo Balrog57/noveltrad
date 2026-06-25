@@ -194,6 +194,9 @@ class StateStore:
             self._safe_add_column("chunks", "source_file", "TEXT DEFAULT ''")
             self._safe_add_column("chunks", "review_score", "REAL DEFAULT NULL")
             self._safe_add_column("chunks", "review_annotations", "TEXT DEFAULT NULL")
+            self._safe_add_column("chunks", "llm_refined", "TEXT DEFAULT NULL")
+            self._safe_add_column("chunks", "qa_checked", "TEXT DEFAULT NULL")
+            self._safe_add_column("chunks", "grammar_checked", "TEXT DEFAULT NULL")
 
     def _safe_add_column(
         self, table: str, column: str, definition: str
@@ -925,29 +928,30 @@ class StateStore:
 
 
 def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
-    meta_raw = row["metadata_json"]
+    keys = row.keys()
+    meta_raw = row["metadata_json"] if "metadata_json" in keys else None
     metadata = json.loads(meta_raw) if meta_raw else {}
     return {
-        "id": row["id"],
-        "chapter_id": row["chapter_id"],
-        "chapter_title": row["chapter_title"],
-        "chunk_index": row["chunk_index"],
-        "source_text": row["source_text"],
-        "source_hash": row["source_hash"],
-        "glossary_version": row["glossary_version"],
-        "output_hash": row["output_hash"],
-        "raw_translation": row["raw_translation"],
-        "glossary_applied": row["glossary_applied"],
-        "llm_refined": row["llm_refined"],
-        "qa_checked": row["qa_checked"],
-        "grammar_checked": row["grammar_checked"],
-        "polished_translation": row["polished_translation"],
-        "status": row["status"],
-        "error_message": row["error_message"],
+        "id": row["id"] if "id" in keys else None,
+        "chapter_id": row["chapter_id"] if "chapter_id" in keys else None,
+        "chapter_title": row["chapter_title"] if "chapter_title" in keys else None,
+        "chunk_index": row["chunk_index"] if "chunk_index" in keys else None,
+        "source_text": row["source_text"] if "source_text" in keys else None,
+        "source_hash": row["source_hash"] if "source_hash" in keys else None,
+        "glossary_version": row["glossary_version"] if "glossary_version" in keys else None,
+        "output_hash": row["output_hash"] if "output_hash" in keys else None,
+        "raw_translation": row["raw_translation"] if "raw_translation" in keys else None,
+        "glossary_applied": row["glossary_applied"] if "glossary_applied" in keys else None,
+        "llm_refined": row["llm_refined"] if "llm_refined" in keys else None,
+        "qa_checked": row["qa_checked"] if "qa_checked" in keys else None,
+        "grammar_checked": row["grammar_checked"] if "grammar_checked" in keys else None,
+        "polished_translation": row["polished_translation"] if "polished_translation" in keys else None,
+        "status": row["status"] if "status" in keys else None,
+        "error_message": row["error_message"] if "error_message" in keys else None,
         "metadata": metadata,
-        "source_file": row["source_file"] if "source_file" in row.keys() else "",
-        "review_score": row["review_score"] if "review_score" in row.keys() else None,
-        "review_annotations": json.loads(row["review_annotations"]) if row["review_annotations"] else None,
+        "source_file": row["source_file"] if "source_file" in keys else "",
+        "review_score": row["review_score"] if "review_score" in keys else None,
+        "review_annotations": json.loads(row["review_annotations"]) if "review_annotations" in keys and row["review_annotations"] else None,
     }
 
 
