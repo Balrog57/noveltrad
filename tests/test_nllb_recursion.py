@@ -5,9 +5,14 @@ from src.backend.engines.nllb_engine import NLLBEngine
 
 class MockSP:
     """Mock SentencePiece processor — returns identity tokens."""
-    def encode(self, *args, **kwargs):
+    def encode(self, text_or_list, *args, **kwargs):
+        if isinstance(text_or_list, list):
+            return [["1", "2"] for _ in text_or_list]
         return ["1", "2"]
-    def decode(self, *args, **kwargs):
+
+    def decode(self, text_or_list, *args, **kwargs):
+        if isinstance(text_or_list, list) and len(text_or_list) > 0 and isinstance(text_or_list[0], list):
+            return ["decoded" for _ in text_or_list]
         return "decoded"
 
 
