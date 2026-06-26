@@ -1,0 +1,3 @@
+## 2024-10-24 - Contextual accessible names for per-row action buttons
+**Learning:** Dynamically generated per-row action buttons (like icon-only "Remove" or "Retry" buttons in a list or table) lack context for screen reader users if they only have generic labels like "Remove" or "Retry". This makes it ambiguous *which* item the action applies to.
+**Action:** When instantiating per-row action buttons, always use explicit `configure` calls to set contextual accessible names, incorporating the specific item's identifier (e.g. `self.tr("Remove {name} from queue").format(name=Path(path).name)`). This provides necessary context for accessibility and enhances the user experience for those relying on screen readers.

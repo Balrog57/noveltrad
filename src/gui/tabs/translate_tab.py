@@ -737,7 +737,11 @@ class TranslateTab(QWidget):
         remove_btn = QPushButton(self.tr("✕"))
         remove_btn.setFixedSize(32, 28)
         remove_btn.setStyleSheet("font-size: 14pt; font-weight: 600;")
-        remove_btn.setToolTip(self.tr("Remove this file from the queue"))
+        configure(
+            remove_btn,
+            name=self.tr("Remove {name} from queue").format(name=Path(path).name),
+            tooltip=self.tr("Remove this file from the queue")
+        )
         remove_btn.clicked.connect(
             lambda _checked=False, p=path: self._on_remove_file(p)
         )
@@ -746,8 +750,10 @@ class TranslateTab(QWidget):
         retry_btn = QPushButton(self.tr("Retry"))
         retry_btn.setProperty("role", "primary")
         retry_btn.setFixedHeight(28)
-        retry_btn.setToolTip(
-            self.tr("Re-submit errored chunks to the pipeline")
+        configure(
+            retry_btn,
+            name=self.tr("Retry {name}").format(name=Path(path).name),
+            tooltip=self.tr("Re-submit errored chunks to the pipeline")
         )
         retry_btn.clicked.connect(
             lambda _checked=False, p=path: self.retryRequested.emit(p)

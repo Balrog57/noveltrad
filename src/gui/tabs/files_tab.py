@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.a11y import configure
 from src.gui.backend_client import BackendClient, BackendError
 
 
@@ -240,11 +241,20 @@ class FilesTab(QWidget):
             action_row.setSpacing(4)
 
             view_btn = QPushButton(self.tr("👁 Voir"))
+            configure(
+                view_btn,
+                name=self.tr("Voir {name}").format(name=filepath.name),
+                tooltip=self.tr("Ouvrir ce fichier")
+            )
             view_btn.clicked.connect(lambda checked, fp=str(filepath): self._open_file(fp))
             action_row.addWidget(view_btn)
 
             retry_btn = QPushButton(self.tr("🔄 Réessayer"))
-            retry_btn.setToolTip(self.tr("Relancer la traduction pour ce fichier"))
+            configure(
+                retry_btn,
+                name=self.tr("Réessayer {name}").format(name=filepath.name),
+                tooltip=self.tr("Relancer la traduction pour ce fichier")
+            )
             retry_btn.clicked.connect(lambda checked, fp=str(filepath): self._retry_file(fp))
             action_row.addWidget(retry_btn)
 

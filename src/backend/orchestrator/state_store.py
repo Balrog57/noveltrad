@@ -194,6 +194,12 @@ class StateStore:
             self._safe_add_column("chunks", "source_file", "TEXT DEFAULT ''")
             self._safe_add_column("chunks", "review_score", "REAL DEFAULT NULL")
             self._safe_add_column("chunks", "review_annotations", "TEXT DEFAULT NULL")
+            self._safe_add_column("chunks", "llm_refined", "TEXT")
+            self._safe_add_column("chunks", "qa_checked", "TEXT")
+            self._safe_add_column("chunks", "grammar_checked", "TEXT")
+            self._safe_add_column("chunks", "polished_translation", "TEXT")
+            self._safe_add_column("chunks", "glossary_applied", "TEXT")
+            self._safe_add_column("chunks", "raw_translation", "TEXT")
 
     def _safe_add_column(
         self, table: str, column: str, definition: str
@@ -936,12 +942,12 @@ def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
         "source_hash": row["source_hash"],
         "glossary_version": row["glossary_version"],
         "output_hash": row["output_hash"],
-        "raw_translation": row["raw_translation"],
-        "glossary_applied": row["glossary_applied"],
-        "llm_refined": row["llm_refined"],
-        "qa_checked": row["qa_checked"],
-        "grammar_checked": row["grammar_checked"],
-        "polished_translation": row["polished_translation"],
+        "raw_translation": row["raw_translation"] if "raw_translation" in row.keys() else None,
+        "glossary_applied": row["glossary_applied"] if "glossary_applied" in row.keys() else None,
+        "llm_refined": row["llm_refined"] if "llm_refined" in row.keys() else None,
+        "qa_checked": row["qa_checked"] if "qa_checked" in row.keys() else None,
+        "grammar_checked": row["grammar_checked"] if "grammar_checked" in row.keys() else None,
+        "polished_translation": row["polished_translation"] if "polished_translation" in row.keys() else None,
         "status": row["status"],
         "error_message": row["error_message"],
         "metadata": metadata,
