@@ -1,0 +1,3 @@
+## 2024-10-27 - Contextualizing per-row action buttons for screen readers
+**Learning:** When building list or table views with icon-only action buttons per row, standard generic labels like "Delete" or "Rename" are insufficient for screen reader users as they lack context. Using dynamically interpolated item names in `configure()` ensures the accessible name properly identifies *which* item is being affected (e.g. "Delete Project A" vs just "Delete").
+**Action:** Always inject the associated item's name or title into the `name` argument when calling `configure()` on per-row action buttons to maintain a11y context.
