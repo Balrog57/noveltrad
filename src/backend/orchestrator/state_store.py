@@ -194,6 +194,9 @@ class StateStore:
             self._safe_add_column("chunks", "source_file", "TEXT DEFAULT ''")
             self._safe_add_column("chunks", "review_score", "REAL DEFAULT NULL")
             self._safe_add_column("chunks", "review_annotations", "TEXT DEFAULT NULL")
+            self._safe_add_column("chunks", "llm_refined", "TEXT")
+            self._safe_add_column("chunks", "qa_checked", "TEXT")
+            self._safe_add_column("chunks", "grammar_checked", "TEXT")
 
     def _safe_add_column(
         self, table: str, column: str, definition: str
@@ -938,7 +941,7 @@ def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
         "output_hash": row["output_hash"],
         "raw_translation": row["raw_translation"],
         "glossary_applied": row["glossary_applied"],
-        "llm_refined": row["llm_refined"],
+        "llm_refined": row["llm_refined"] if "llm_refined" in row.keys() else None,
         "qa_checked": row["qa_checked"],
         "grammar_checked": row["grammar_checked"],
         "polished_translation": row["polished_translation"],
@@ -947,7 +950,7 @@ def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
         "metadata": metadata,
         "source_file": row["source_file"] if "source_file" in row.keys() else "",
         "review_score": row["review_score"] if "review_score" in row.keys() else None,
-        "review_annotations": json.loads(row["review_annotations"]) if row["review_annotations"] else None,
+        "review_annotations": json.loads(row["review_annotations"]) if "review_annotations" in row.keys() and row["review_annotations"] else None,
     }
 
 
