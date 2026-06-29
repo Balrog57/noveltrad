@@ -12,7 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-The currently published v4.4.3 release was a real release, but the source `__version__` was not bumped when the tag was cut, so the v4.4.3 GitHub release shipped a 4.4.1 installer under the name `Setup_NovelTrad-v4.4.1.exe`. The fix for this drift is in this `[Unreleased]` block: bumping the source to match the latest published tag, hardening the updater with a SHA256-equality check, and adding a release-workflow guard that fails the build if the tag does not match the source. When the next patch version is cut, promote this section to `## [X.Y.Z] - DATE` and bump `src.__version__` in the same commit.
+## [4.4.4] - 2026-06-29
+
+The currently published v4.4.3 release was a real release, but the source `__version__` was not bumped when the tag was cut, so the v4.4.3 GitHub release shipped a 4.4.1 installer under the name `Setup_NovelTrad-v4.4.1.exe`. The fix for this drift is in this `[4.4.4]` block: bumping the source to match the latest published tag, hardening the updater with a SHA256-equality check, and adding a release-workflow guard that fails the build if the tag does not match the source.
 
 ### Fixed
 
@@ -21,6 +23,15 @@ The currently published v4.4.3 release was a real release, but the source `__ver
 - Release workflow now fails the build if `github.ref_name` does not match `src.__version__`, preventing future tag/source drift.
 - Release workflow trigger is now restricted to stable semver tags (`v[0-9]+.[0-9]+.[0-9]+`), so prerelease tags like `v4.4.4-rc1` no longer trigger a release.
 - The repo-root `latest.json` manifest is now uploaded as a release asset, so the updater's manifest enrichment is no longer dead code.
+
+### Changed
+
+- **Backend refactor** — five monolithic modules split into focused collaborators (public API unchanged, 177 tests green):
+  - `state_store.py` 972 → 514 (facade) + `repositories.py` 788 (7 repos: ChunkRepo, LexiconRepo, IssueRepo, HltlRepo, ProjectRepo, StateKV, SnapshotReader)
+  - `orchestrator.py` 1662 → 1127 (facade) + `collaborators.py` 932 (ChunkPersister, MessageDispatcher, ProjectQueue, ReflectionController, Watchdog)
+  - `cli.py` 806 → 101 (dispatcher) + `cli_client.py` 153 + `cli_commands/` 10 modules (one per subcommand)
+  - `main_window.py` 1060 → 591 (facade) + `main_window_collaborators.py` 750 (BackendLifecycle, EventRouter, PipelineActions, StatusRefresh, UpdateChecker)
+  - `translate_tab.py` 1063 → 669 (facade) + `translate_tab_helpers.py` 486 (ProgressMath, StateLabels, 3 page builders)
 
 ## [4.1.16] - 2026-06-15
 
