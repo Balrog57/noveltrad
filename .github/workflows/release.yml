@@ -3,7 +3,7 @@ name: Build & Release
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: write
@@ -28,6 +28,16 @@ jobs:
           pip install -e .
           pip install pyinstaller
 
+      - name: Verify tag matches source version
+        run: |
+          $tagVersion = "${{ github.ref_name }}".TrimStart('v')
+          $srcVersion = python -c "import src; print(src.__version__, end='')"
+          if ($tagVersion -ne $srcVersion) {
+            Write-Error "Tag ${{ github.ref_name }} (=$tagVersion) does not match src.__version__ (=$srcVersion). Bump src/__init__.py first."
+            exit 1
+          }
+          Write-Host "Tag matches source version: $tagVersion"
+
       - name: Build with PyInstaller
         run: pyinstaller build.spec --noconfirm
 
@@ -47,3 +57,13 @@ jobs:
           $setup_exe = "Setup_NovelTrad-v$env:NOVELTRAD_VERSION.exe"
           gh release create ${{ github.ref_name }} --title "${{ github.ref_name }}" --notes "Build automatique" --latest || true
           gh release upload ${{ github.ref_name }} "$setup_exe" --clobber
+
+      - name: Upload latest.json manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (Test-Path -LiteralPath "latest.json") {
+            gh release upload ${{ github.ref_name }} "latest.json" --clobber
+          } else {
+            Write-Host "latest.json not found in repo root; skipping manifest upload."
+          }

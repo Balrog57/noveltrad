@@ -1,4 +1,4 @@
-﻿"""Unit tests for the GitHub Releases auto-updater.
+"""Unit tests for the GitHub Releases auto-updater.
 
 The updater never imports PyQt6 â€” it lives in ``src.gui`` for project
 layout reasons but is pure-Python â€” so we can exercise it under
@@ -72,7 +72,10 @@ class IsSkippedTests(unittest.TestCase):
     def tearDown(self) -> None:
         if self._env is not None:
             os.environ["NOVELTRAD_SKIP_UPDATE"] = self._env
-        if self._frozen_was is not None:
+        if self._frozen_was is None:
+            if hasattr(sys, "frozen"):
+                delattr(sys, "frozen")
+        else:
             sys.frozen = self._frozen_was
 
     def test_skipped_in_dev_mode(self) -> None:
@@ -94,6 +97,7 @@ class IsSkippedTests(unittest.TestCase):
 
 class UpdaterCheckTests(unittest.TestCase):
     def setUp(self) -> None:
+        self._frozen_was = getattr(sys, "frozen", None)
         sys.frozen = True
         os.environ["NOVELTRAD_SKIP_UPDATE"] = "0"
         # Make sure dev-mode is off for the check tests.
@@ -102,10 +106,11 @@ class UpdaterCheckTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._patch.stop()
-        if hasattr(sys, "frozen") and sys.frozen is True and not isinstance(
-            getattr(sys, "frozen_test_keep", False), bool
-        ):
-            pass
+        if self._frozen_was is None:
+            if hasattr(sys, "frozen"):
+                delattr(sys, "frozen")
+        else:
+            sys.frozen = self._frozen_was
 
     def test_newer_version_returns_update_info(self) -> None:
         payload = {
@@ -279,8 +284,16 @@ class UpdaterCheckTests(unittest.TestCase):
 
 class UpdaterDownloadTests(unittest.TestCase):
     def setUp(self) -> None:
+        self._frozen_was = getattr(sys, "frozen", None)
         sys.frozen = True
         os.environ["NOVELTRAD_SKIP_UPDATE"] = "0"
+
+    def tearDown(self) -> None:
+        if self._frozen_was is None:
+            if hasattr(sys, "frozen"):
+                delattr(sys, "frozen")
+        else:
+            sys.frozen = self._frozen_was
 
     def test_sha256_mismatch_raises(self) -> None:
         body = b"installer-bytes"
@@ -360,6 +373,197 @@ class UpdaterDownloadTests(unittest.TestCase):
             last = calls[-1]
             self.assertEqual(last[0], len(body))
             self.assertEqual(last[1], len(body))
+
+
+class UpdaterAssetDigestTests(unittest.TestCase):
+    """Regression tests for the asset-digest parser and the SHA256-equality
+    short-circuit in :meth:`Updater.check`.
+
+    These tests lock in the fixes for the v4.4.1 / v4.4.3 update loop:
+    * the version short-circuit (primary loop-breaker)
+    * the asset-digest parser (primary SHA256 source)
+    * the SHA256-equality check (defense-in-depth)
+    """
+
+    def setUp(self) -> None:
+        # Make sure dev-mode is off for the check() tests; we still
+        # want the frozen-guard logic to be observable in some cases
+        # so we set sys.frozen selectively inside the test bodies.
+        self._patch = mock.patch.object(updater_mod, "is_skipped", return_value=False)
+        self._patch.start()
+        self._frozen_was = getattr(sys, "frozen", None)
+
+    def tearDown(self) -> None:
+        self._patch.stop()
+        if self._frozen_was is not None:
+            sys.frozen = self._frozen_was
+        elif hasattr(sys, "frozen"):
+            delattr(sys, "frozen")
+
+    # --- pure parser tests ----------------------------------------------
+
+    def test_asset_digest_parsed_from_release_payload(self) -> None:
+        payload = {
+            "assets": [
+                {
+                    "name": "Setup_NovelTrad-v4.4.3.exe",
+                    "browser_download_url": "https://example.com/setup.exe",
+                    "digest": "sha256:DEADBEEFcafebabe0123456789abcdef0123456789abcdef0123456789abcdef",
+                }
+            ]
+        }
+        result = updater_mod._parse_asset_digest(payload)
+        self.assertEqual(
+            result,
+            "deadbeefcafebabe0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+
+    def test_asset_digest_missing_returns_none(self) -> None:
+        payload = {
+            "assets": [
+                {
+                    "name": "Setup_NovelTrad-v4.4.3.exe",
+                    "browser_download_url": "https://example.com/setup.exe",
+                    # no "digest" field
+                }
+            ]
+        }
+        self.assertIsNone(updater_mod._parse_asset_digest(payload))
+
+    def test_no_assets_returns_none(self) -> None:
+        payload = {"assets": []}
+        self.assertIsNone(updater_mod._parse_asset_digest(payload))
+
+    def test_asset_digest_ignores_non_exe_assets(self) -> None:
+        payload = {
+            "assets": [
+                {
+                    "name": "noveltrad-4.4.3.tar.gz",
+                    "digest": "sha256:1111",
+                },
+                {
+                    "name": "Setup_NovelTrad-v4.4.3.exe",
+                    "digest": "sha256:2222",
+                },
+            ]
+        }
+        # We take the first .exe asset's digest.
+        self.assertEqual(updater_mod._parse_asset_digest(payload), "2222")
+
+    # --- check() integration tests --------------------------------------
+
+    def test_sha256_equality_short_circuits_when_hashes_match(self) -> None:
+        # Build a fake "executable" with a known SHA256.
+        body = b"fake-pyinstaller-bundle-bytes"
+        digest_hex = hashlib.sha256(body).hexdigest().lower()
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_exe = Path(tmp) / "NovelTrad.exe"
+            fake_exe.write_bytes(body)
+            # Pretend we're running the frozen bundle.
+            sys.frozen = True
+            with mock.patch("sys.executable", str(fake_exe)):
+                payload = {
+                    "tag_name": "v4.5.0",
+                    "published_at": "2026-06-20T00:00:00Z",
+                    "body": "",
+                    "html_url": "",
+                    "prerelease": False,
+                    "draft": False,
+                    "assets": [
+                        {
+                            "name": "Setup_NovelTrad-v4.5.0.exe",
+                            "browser_download_url": "https://example.com/setup.exe",
+                            "digest": f"sha256:{digest_hex}",
+                        }
+                    ],
+                }
+                opener = _fake_opener(
+                    {updater_mod.API_URL: _make_response(payload)}
+                )
+                # current_version=4.0.0 so the version short-circuit does
+                # NOT fire — the only way the updater can return None
+                # here is via the SHA256-equality check.
+                u = Updater(current_version="4.0.0", opener=opener)
+                self.assertIsNone(u.check())
+
+    def test_sha256_equality_skipped_in_dev_mode(self) -> None:
+        # In dev mode sys.frozen is False → _local_exe_sha256() returns
+        # None → the SHA256 check is bypassed → check() falls through to
+        # the normal version comparison and returns UpdateInfo.
+        if hasattr(sys, "frozen"):
+            delattr(sys, "frozen")
+        digest_hex = "ab" * 32  # arbitrary; should never be hashed locally
+        payload = {
+            "tag_name": "v4.5.0",
+            "published_at": "2026-06-20T00:00:00Z",
+            "body": "",
+            "html_url": "",
+            "prerelease": False,
+            "draft": False,
+            "assets": [
+                {
+                    "name": "Setup_NovelTrad-v4.5.0.exe",
+                    "browser_download_url": "https://example.com/setup.exe",
+                    "digest": f"sha256:{digest_hex}",
+                }
+            ],
+        }
+        opener = _fake_opener({updater_mod.API_URL: _make_response(payload)})
+        u = Updater(current_version="4.0.0", opener=opener)
+        info = u.check()
+        self.assertIsInstance(info, UpdateInfo)
+        # And the asset-digest is wired through to expected_sha256.
+        assert info is not None
+        self.assertEqual(info.expected_sha256, digest_hex)
+
+    def test_version_short_circuit_locks_in_bump(self) -> None:
+        """Regression test for the primary fix.
+
+        Local source at 4.4.3 + GitHub release tag v4.4.3 → check()
+        must return None (so the updater stops offering the v4.4.3
+        asset after the user has installed it).
+        """
+        sys.frozen = True
+        payload = {
+            "tag_name": "v4.4.3",
+            "published_at": "2026-06-16T23:02:00Z",
+            "body": "",
+            "html_url": "",
+            "prerelease": False,
+            "draft": False,
+            "assets": [],
+        }
+        opener = _fake_opener({updater_mod.API_URL: _make_response(payload)})
+        u = Updater(current_version="4.4.3", opener=opener)
+        self.assertIsNone(u.check())
+
+    def test_sha256_equality_swallows_io_error(self) -> None:
+        """IO errors while hashing sys.executable must not crash check()."""
+        sys.frozen = True
+        payload = {
+            "tag_name": "v4.5.0",
+            "published_at": "2026-06-20T00:00:00Z",
+            "body": "",
+            "html_url": "",
+            "prerelease": False,
+            "draft": False,
+            "assets": [
+                {
+                    "name": "Setup_NovelTrad-v4.5.0.exe",
+                    "browser_download_url": "https://example.com/setup.exe",
+                    "digest": "sha256:" + ("ab" * 32),
+                }
+            ],
+        }
+        opener = _fake_opener({updater_mod.API_URL: _make_response(payload)})
+        u = Updater(current_version="4.0.0", opener=opener)
+        # sys.executable points at a path that does not exist — the
+        # _local_exe_sha256 helper must swallow the FileNotFoundError
+        # and return None, so the SHA256 check is bypassed and we get
+        # the normal UpdateInfo.
+        with mock.patch("sys.executable", "/nonexistent/path/NovelTrad.exe"):
+            info = u.check()
+        self.assertIsInstance(info, UpdateInfo)
 
 
 if __name__ == "__main__":

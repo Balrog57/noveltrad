@@ -96,6 +96,58 @@ def _normalize_current(version: str) -> str:
     return version.lstrip("v").strip() or "0.0.0"
 
 
+def _parse_asset_digest(payload: dict) -> Optional[str]:
+    """Return the lowercase SHA256 hex of the first ``.exe`` asset.
+
+    Scans ``payload["assets"]`` for the first entry that has a ``digest``
+    field of the form ``sha256:HEX`` and returns the lowercase hex
+    (without the ``sha256:`` prefix). Returns ``None`` when no asset
+    carries a digest.
+
+    The GitHub Releases API started populating
+    ``assets[].digest = "sha256:<hex>"`` in mid-2022, so this is the
+    most authoritative source for the expected installer SHA256 and is
+    preferred over the ``latest.json`` manifest fallback.
+    """
+    assets = payload.get("assets") or []
+    for a in assets:
+        if not isinstance(a, dict):
+            continue
+        name = str(a.get("name") or "")
+        if not name.lower().endswith(".exe"):
+            continue
+        digest = a.get("digest")
+        if not isinstance(digest, str):
+            continue
+        digest = digest.strip()
+        if digest.lower().startswith("sha256:"):
+            return digest.split(":", 1)[1].strip().lower()
+    return None
+
+
+def _local_exe_sha256() -> Optional[str]:
+    """Best-effort SHA256 of the running ``sys.executable``.
+
+    Only meaningful in a frozen build (PyInstaller bundle / Inno Setup
+    installed payload). Returns ``None`` in dev mode, on any IO error,
+    or when ``sys.executable`` cannot be opened. Never raises.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    try:
+        h = hashlib.sha256()
+        with open(sys.executable, "rb") as f:
+            while True:
+                buf = f.read(CHUNK)
+                if not buf:
+                    break
+                h.update(buf)
+        return h.hexdigest().lower()
+    except Exception as exc:  # noqa: BLE001 - never raise
+        logger.debug("updater: local exe sha256 failed: %s", exc)
+        return None
+
+
 class Updater:
     """Sparkle-like auto-updater for the NovelTrad desktop app."""
 
@@ -176,6 +228,34 @@ class Updater:
                     info.download_url = url
         except Exception:  # noqa: BLE001 - manifest is optional
             pass
+        # The GitHub API's ``assets[].digest`` field is more authoritative
+        # than the ``latest.json`` manifest (which may be stale or missing),
+        # so prefer it whenever it's available.
+        asset_sha = _parse_asset_digest(payload)
+        if asset_sha:
+            info.expected_sha256 = asset_sha
+        # Defense-in-depth short-circuit: if the remote installer has the
+        # same SHA256 as the running executable, the user has already
+        # installed this build under a different version tag. Skip the
+        # update offer to avoid a downgrade-loop.
+        #
+        # This is a defense-in-depth check, not the primary loop-breaker.
+        # The primary fix is the version bump + the existing
+        # ``remote_v <= local_v`` short-circuit above. In the current
+        # Inno-Setup-installer workflow, ``sys.executable`` (the
+        # PyInstaller bundle) and the installer asset have different
+        # SHA256s, so this check usually returns False. It guards
+        # against a future regression where someone re-tags the same
+        # build with a different version.
+        if info.expected_sha256:
+            local_sha = _local_exe_sha256()
+            if local_sha and local_sha == info.expected_sha256.lower():
+                logger.info(
+                    "updater: remote asset is bit-identical to local build "
+                    "(sha256=%s); skipping update offer",
+                    local_sha,
+                )
+                return None
         return info
 
     # --- download + verify --------------------------------------------

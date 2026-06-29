@@ -1,5 +1,6 @@
 {
-    "download_url":  "https://github.com/Balrog57/noveltrad/releases/download/v4.1.0/Setup_NovelTrad-v4.1.0.exe",
-    "sha256":  "33a088c7b6c9e6428885a19082c092efab5400ea1a3b0e1c7efcdb6757c0ba09",
-    "version":  "4.1.0"
+  "version": "4.4.3",
+  "release_date": "2026-06-16T23:02:00Z",
+  "download_url": "https://github.com/Balrog57/noveltrad/releases/download/v4.4.3/Setup_NovelTrad-v4.4.1.exe",
+  "sha256": "0850b35e472d9a8986ac63b62c9d95373dc9ab5972ee8e79dbabc451dbc7f5fc"
 }

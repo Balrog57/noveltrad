@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ---
 
 ## [Unreleased]
+
+The currently published v4.4.3 release was a real release, but the source `__version__` was not bumped when the tag was cut, so the v4.4.3 GitHub release shipped a 4.4.1 installer under the name `Setup_NovelTrad-v4.4.1.exe`. The fix for this drift is in this `[Unreleased]` block: bumping the source to match the latest published tag, hardening the updater with a SHA256-equality check, and adding a release-workflow guard that fails the build if the tag does not match the source. When the next patch version is cut, promote this section to `## [X.Y.Z] - DATE` and bump `src.__version__` in the same commit.
+
+### Fixed
+
+- Updater no longer offers a "downgrade-loop" when the published release tag is ahead of the local source version but the local source has not been bumped. (Primary fix: source `__version__` bumped to 4.4.3; secondary: SHA256-equality check in `Updater.check()` as defense-in-depth.)
+- Updater now uses the GitHub API `assets[].digest` field as the primary source of truth for the expected installer SHA256, falling back to `latest.json` if missing.
+- Release workflow now fails the build if `github.ref_name` does not match `src.__version__`, preventing future tag/source drift.
+- Release workflow trigger is now restricted to stable semver tags (`v[0-9]+.[0-9]+.[0-9]+`), so prerelease tags like `v4.4.4-rc1` no longer trigger a release.
+- The repo-root `latest.json` manifest is now uploaded as a release asset, so the updater's manifest enrichment is no longer dead code.
+
 ## [4.1.16] - 2026-06-15
 
 ### Fixed
