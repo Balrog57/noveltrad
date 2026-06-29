@@ -58,6 +58,24 @@ jobs:
           gh release create ${{ github.ref_name }} --title "${{ github.ref_name }}" --notes "Build automatique" --latest || true
           gh release upload ${{ github.ref_name }} "$setup_exe" --clobber
 
+      - name: Generate latest.json manifest
+        run: |
+          # Regenerate latest.json from the freshly built installer so the
+          # auto-updater sees the correct version + sha256 + download_url
+          # on every release. We do NOT trust the repo-root latest.json
+          # because it is always at least one release behind.
+          $setupExe = "Setup_NovelTrad-v$env:NOVELTRAD_VERSION.exe"
+          $sha = (Get-FileHash -LiteralPath $setupExe -Algorithm SHA256).Hash.ToLower()
+          $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $json = @{
+            version       = $env:NOVELTRAD_VERSION
+            release_date  = $now
+            download_url  = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$setupExe"
+            sha256        = $sha
+          } | ConvertTo-Json -Depth 5
+          $json | Out-File -FilePath latest.json -Encoding utf8 -NoNewline
+          Write-Host "Generated latest.json: $json"
+
       - name: Upload latest.json manifest
         env:
           GH_TOKEN: ${{ github.token }}
