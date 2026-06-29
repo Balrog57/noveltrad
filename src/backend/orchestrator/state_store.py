@@ -9,7 +9,7 @@ Design (see .kilo/plans/multi-agent-pipeline-rewrite.md §3.1, §3.2):
 - LanceDB is optional; the store degrades gracefully if it is missing
   (ConsistencyChecker falls back to TF-IDF cosine similarity, see §9).
 
-Public surface used by the orchestrator:
+Public surface used by the orchestrator (unchanged by the v4 split):
     store = StateStore(db_path, vector_dir=...)
     store.add_chunk(chunk_dict)
     store.get_chunk(chunk_id) -> dict | None
@@ -26,6 +26,23 @@ Public surface used by the orchestrator:
 
 The store is NOT thread-safe across processes. It must be created
 fresh in the orchestrator process; child agents must not import it.
+
+Implementation note
+-------------------
+This module used to be a 972-line monolith with 44 methods on one class.
+It is now a thin facade (~300 lines) that wires per-table repositories
+defined in :mod:`.repositories`. The repositories share the store's
+single ``sqlite3.Connection`` and ``threading.RLock``; they never open
+their own connection. Splitting this up gives us:
+
+  * One file per logical area (chunks / lexicon / issues / hltl / kv /
+    projects / snapshot) -- each ~50-150 lines, easy to navigate.
+  * StateStore becomes a focused facade: it owns the connection
+    lifetime, the migrations, the optional vector store, the
+    ``transaction()`` context manager, and the ``clear_project_data``
+    cross-table reset. Everything else is a one-line delegate.
+  * Tests and future contributors can target one repository at a time
+    without paging through unrelated SQL.
 """
 
 from __future__ import annotations
@@ -34,22 +51,21 @@ import json
 import logging
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
-from contextlib import contextmanager
+
+from .repositories import (
+    ChunkRepo,
+    HltlRepo,
+    IssueRepo,
+    LexiconRepo,
+    ProjectRepo,
+    SnapshotReader,
+    StateKV,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _project_created_sort_key(value: Any) -> float:
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return 0.0
-    return 0.0
 
 
 SCHEMA_SQL = """
@@ -148,6 +164,11 @@ CREATE INDEX IF NOT EXISTS idx_hltl_unresolved
 class StateStore:
     """Single-writer SQLite wrapper for the orchestrator.
 
+    Owns the SQLite connection lifetime, the migration runner, the
+    optional LanceDB vector layer, and the ``transaction()`` context
+    manager. Per-table CRUD lives in :mod:`.repositories`; the public
+    methods here are one-line delegates to the matching repository.
+
     The orchestrator process is expected to instantiate one StateStore
     and never share it across process boundaries. For thread-safety
     within the orchestrator (FastAPI handlers + background loop), a
@@ -188,12 +209,35 @@ class StateStore:
         if self.vector_dir is not None:
             self._init_vector_store()
 
+        # Wire the repositories. They share this store's connection and
+        # lock; they never open their own. Adding a new repo? Build it
+        # in repositories.py and instantiate it here.
+        self.chunks = ChunkRepo(self._conn, self._lock)
+        self.lexicon = LexiconRepo(self._conn, self._lock)
+        self.issues = IssueRepo(self._conn, self._lock)
+        self.hltl = HltlRepo(self._conn, self._lock)
+        self.kv = StateKV(self._conn, self._lock)
+        self.projects = ProjectRepo(self._conn, self._lock, self.kv)
+        # ``vector_status`` is a property on this class, so passing it
+        # as ``vector_status=self.vector_status`` would evaluate the
+        # property once at construction and freeze the result. Wrap it
+        # in a lambda so SnapshotReader reads the live status on every
+        # build.
+        self._snapshot = SnapshotReader(
+            self._conn, self._lock, vector_status=lambda: self.vector_status
+        )
+
+    # ------------------------------------------------------------------
+    # Connection lifecycle
+    # ------------------------------------------------------------------
+
     def _apply_migrations(self) -> None:
         """Idempotent column-level migrations for pre-4.0.1 DBs."""
         with self._lock:
             self._safe_add_column("chunks", "source_file", "TEXT DEFAULT ''")
             self._safe_add_column("chunks", "review_score", "REAL DEFAULT NULL")
             self._safe_add_column("chunks", "review_annotations", "TEXT DEFAULT NULL")
+            self._safe_add_column("chunks", "llm_refined", "TEXT DEFAULT NULL")
 
     def _safe_add_column(
         self, table: str, column: str, definition: str
@@ -205,8 +249,8 @@ class StateStore:
             logger.info("Migration: added %s.%s", table, column)
         except sqlite3.OperationalError as exc:
             msg = str(exc).lower()
-            # "duplicate column name" → already migrated (idempotent OK).
-            # "no such table" → fresh DB, SCHEMA_SQL will create the
+            # "duplicate column name" -> already migrated (idempotent OK).
+            # "no such table" -> fresh DB, SCHEMA_SQL will create the
             # column from the CREATE TABLE statement; no migration needed.
             if "duplicate column" in msg or "no such table" in msg:
                 return
@@ -295,6 +339,9 @@ class StateStore:
         process. Until the schema carries project_id on every table,
         starting a new project must clear old chunks/issues so the
         assembler cannot mix content from previous runs.
+
+        This is a cross-table reset, so it intentionally lives on the
+        facade rather than in any one repository.
         """
         with self._lock:
             self._conn.execute("DELETE FROM consistency_flags")
@@ -316,76 +363,18 @@ class StateStore:
                 """
             )
 
-    # ---------- chunks ----------
+    # ------------------------------------------------------------------
+    # chunks (delegate to ChunkRepo)
+    # ------------------------------------------------------------------
 
     def add_chunk(self, chunk: dict[str, Any]) -> None:
-        meta = chunk.get("metadata") or {}
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT OR REPLACE INTO chunks (
-                    id, chapter_id, chapter_title, chunk_index, source_text,
-                    source_hash, glossary_version, output_hash,
-                    raw_translation, glossary_applied, llm_refined, qa_checked,
-                    grammar_checked, polished_translation,
-                    status, error_message, metadata_json, source_file,
-                    review_score, review_annotations
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    chunk["id"],
-                    chunk["chapter_id"],
-                    chunk.get("chapter_title"),
-                    chunk["chunk_index"],
-                    chunk["source_text"],
-                    chunk.get("source_hash"),
-                    chunk.get("glossary_version"),
-                    chunk.get("output_hash"),
-                    chunk.get("raw_translation"),
-                    chunk.get("glossary_applied"),
-                    chunk.get("llm_refined"),
-                    chunk.get("qa_checked"),
-                    chunk.get("grammar_checked"),
-                    chunk.get("polished_translation"),
-                    chunk.get("status", "parsed"),
-                    chunk.get("error_message"),
-                    json.dumps(meta, ensure_ascii=False) if meta else None,
-                    chunk.get("source_file", ""),
-                    chunk.get("review_score"),
-                    json.dumps(chunk.get("review_annotations"), ensure_ascii=False) if chunk.get("review_annotations") else None,
-                ),
-            )
+        self.chunks.add(chunk)
 
     def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM chunks WHERE id = ?", (chunk_id,)
-            ).fetchone()
-        return _row_to_chunk(row) if row else None
+        return self.chunks.get(chunk_id)
 
     def update_chunk_field(self, chunk_id: str, field: str, value: Any) -> None:
-        allowed = {
-            "raw_translation",
-            "glossary_applied",
-            "llm_refined",
-            "qa_checked",
-            "grammar_checked",
-            "polished_translation",
-            "status",
-            "error_message",
-            "source_hash",
-            "glossary_version",
-            "output_hash",
-            "review_score",
-            "review_annotations",
-            "metadata_json",
-        }
-        if field not in allowed:
-            raise ValueError(f"Refusing to update non-allowlisted field: {field}")
-        with self._lock:
-            self._conn.execute(
-                f"UPDATE chunks SET {field} = ? WHERE id = ?", (value, chunk_id)
-            )
+        self.chunks.update_field(chunk_id, field, value)
 
     def list_chunks(
         self,
@@ -395,307 +384,77 @@ class StateStore:
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[dict[str, Any]]:
-        query = "SELECT * FROM chunks"
-        clauses: list[str] = []
-        params: list[Any] = []
-        if status is not None:
-            clauses.append("status = ?")
-            params.append(status)
-        if chapter_id is not None:
-            clauses.append("chapter_id = ?")
-            params.append(chapter_id)
-        if source_file is not None:
-            clauses.append("source_file = ?")
-            params.append(source_file)
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY source_file, chapter_id, chunk_index"
-        if limit is not None:
-            query += f" LIMIT {int(limit)}"
-        if offset is not None and offset > 0:
-            query += f" OFFSET {int(offset)}"
-        with self._lock:
-            rows = self._conn.execute(query, params).fetchall()
-        return [_row_to_chunk(r) for r in rows]
+        return self.chunks.list(
+            status=status,
+            chapter_id=chapter_id,
+            source_file=source_file,
+            limit=limit,
+            offset=offset,
+        )
 
     def count_chunks(self, status: str | None = None) -> int:
-        with self._lock:
-            if status is None:
-                row = self._conn.execute("SELECT COUNT(*) AS n FROM chunks").fetchone()
-            else:
-                row = self._conn.execute(
-                    "SELECT COUNT(*) AS n FROM chunks WHERE status = ?", (status,)
-                ).fetchone()
-        return int(row["n"]) if row else 0
+        return self.chunks.count(status=status)
 
-    # ---------- lexicon ----------
+    # ------------------------------------------------------------------
+    # lexicon (delegate to LexiconRepo)
+    # ------------------------------------------------------------------
 
     def add_lexicon_term(self, term: dict[str, Any]) -> None:
-        aliases = term.get("aliases") or []
-        evidence = term.get("evidence_refs") or []
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT OR REPLACE INTO lexicon_terms (
-                    id, source, target, aliases_json, category, gender,
-                    confidence, evidence_refs_json, notes,
-                    validated_by_user, chapter_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    term["id"],
-                    term["source"],
-                    term["target"],
-                    json.dumps(aliases, ensure_ascii=False) if aliases else None,
-                    term.get("category"),
-                    term.get("gender", "unknown"),
-                    float(term.get("confidence", 0.0)),
-                    (
-                        json.dumps(evidence, ensure_ascii=False)
-                        if evidence
-                        else None
-                    ),
-                    term.get("notes"),
-                    1 if term.get("validated_by_user") else 0,
-                    term.get("chapter_id"),
-                ),
-            )
+        self.lexicon.add(term)
 
     def list_lexicon(self) -> list[dict[str, Any]]:
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM lexicon_terms ORDER BY source"
-            ).fetchall()
-        return [_row_to_lexicon(r) for r in rows]
+        return self.lexicon.list()
 
     def find_lexicon_by_source(self, source: str) -> dict[str, Any] | None:
-        """Return the lexicon entry for *source*, or None if not found."""
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM lexicon_terms WHERE source = ?", (source,)
-            ).fetchone()
-        return _row_to_lexicon(row) if row else None
+        return self.lexicon.find_by_source(source)
 
     def upsert_lexicon_term(self, term: dict[str, Any]) -> None:
-        """Insert or update a lexicon term, merging by *source*.
-
-        - If a term with the same *source* already exists, keep the higher
-          confidence value, update the target if the new entry has higher
-          confidence, and merge aliases/evidence_refs.
-        - If no existing term, insert with a new UUID.
-        """
-        existing = self.find_lexicon_by_source(term.get("source", ""))
-        if existing is None:
-            # New term — generate id if missing
-            if "id" not in term or not term["id"]:
-                import uuid as _uuid
-                term["id"] = _uuid.uuid4().hex[:12]
-            self.add_lexicon_term(term)
-            return
-
-        new_conf = float(term.get("confidence", 0.0))
-        old_conf = float(existing.get("confidence", 0.0))
-
-        if new_conf <= old_conf and term.get("target", existing.get("target")) == existing.get("target"):
-            # Nothing to improve
-            return
-
-        updates: dict[str, Any] = {}
-        if new_conf > old_conf:
-            updates["confidence"] = new_conf
-            # Take the new target only when confidence is higher
-            updates["target"] = term.get("target", existing.get("target", ""))
-            updates["category"] = term.get("category") or existing.get("category")
-            updates["gender"] = term.get("gender") or existing.get("gender", "unknown")
-            updates["notes"] = term.get("notes") or existing.get("notes")
-
-        if updates:
-            self.update_lexicon_term(existing["id"], updates)
+        self.lexicon.upsert(term)
 
     def update_lexicon_term(self, term_id: str, updates: dict[str, Any]) -> None:
-        if not updates:
-            return
-        allowed = {
-            "source",
-            "target",
-            "category",
-            "gender",
-            "confidence",
-            "notes",
-            "validated_by_user",
-        }
-        cols = []
-        params: list[Any] = []
-        for key, value in updates.items():
-            if key not in allowed:
-                continue
-            if key == "validated_by_user":
-                value = 1 if value else 0
-            cols.append(f"{key} = ?")
-            params.append(value)
-        if not cols:
-            return
-        params.append(term_id)
-        with self._lock:
-            self._conn.execute(
-                f"UPDATE lexicon_terms SET {', '.join(cols)} WHERE id = ?", params
-            )
+        self.lexicon.update(term_id, updates)
 
     def delete_lexicon_term(self, term_id: str) -> bool:
-        """Hard-delete a lexicon term. Returns True if a row was removed."""
-        with self._lock:
-            cur = self._conn.execute(
-                "DELETE FROM lexicon_terms WHERE id = ?", (term_id,)
-            )
-            self._conn.commit()
-            return cur.rowcount > 0
+        return self.lexicon.delete(term_id)
 
-    # ---------- QA / grammar / consistency ----------
+    # ------------------------------------------------------------------
+    # qa / grammar / consistency issues (delegate to IssueRepo)
+    # ------------------------------------------------------------------
 
     def add_qa_issue(self, issue: dict[str, Any]) -> None:
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT OR REPLACE INTO qa_issues (
-                    id, chunk_id, issue_type, severity, message, auto_fixed
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    issue["id"],
-                    issue["chunk_id"],
-                    issue["issue_type"],
-                    issue["severity"],
-                    issue["message"],
-                    1 if issue.get("auto_fixed") else 0,
-                ),
-            )
+        self.issues.add_qa(issue)
 
     def add_grammar_issue(self, issue: dict[str, Any]) -> None:
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT OR REPLACE INTO grammar_issues (
-                    id, chunk_id, start_pos, end_pos, message,
-                    suggestion, applied, rule_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    issue["id"],
-                    issue["chunk_id"],
-                    issue.get("start_pos"),
-                    issue.get("end_pos"),
-                    issue["message"],
-                    issue.get("suggestion"),
-                    1 if issue.get("applied") else 0,
-                    issue.get("rule_id"),
-                ),
-            )
+        self.issues.add_grammar(issue)
 
     def add_consistency_flag(self, flag: dict[str, Any]) -> None:
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT OR REPLACE INTO consistency_flags (
-                    id, chunk_id, source_term, expected_translation,
-                    found_translation, confidence, resolved
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    flag["id"],
-                    flag["chunk_id"],
-                    flag.get("source_term"),
-                    flag.get("expected_translation"),
-                    flag.get("found_translation"),
-                    float(flag.get("confidence", 0.0)),
-                    1 if flag.get("resolved") else 0,
-                ),
-            )
+        self.issues.add_consistency(flag)
 
     def list_qa_issues(self, chunk_id: str) -> list[dict[str, Any]]:
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM qa_issues WHERE chunk_id = ? ORDER BY id",
-                (chunk_id,),
-            ).fetchall()
-        return [
-            {
-                "id": r["id"],
-                "chunk_id": r["chunk_id"],
-                "issue_type": r["issue_type"],
-                "severity": r["severity"],
-                "message": r["message"],
-                "auto_fixed": bool(r["auto_fixed"]),
-            }
-            for r in rows
-        ]
+        return self.issues.list_qa(chunk_id)
 
     def list_grammar_issues(self, chunk_id: str) -> list[dict[str, Any]]:
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM grammar_issues WHERE chunk_id = ? ORDER BY id",
-                (chunk_id,),
-            ).fetchall()
-        return [
-            {
-                "id": r["id"],
-                "chunk_id": r["chunk_id"],
-                "start_pos": r["start_pos"],
-                "end_pos": r["end_pos"],
-                "message": r["message"],
-                "suggestion": r["suggestion"],
-                "applied": bool(r["applied"]),
-                "rule_id": r["rule_id"],
-            }
-            for r in rows
-        ]
+        return self.issues.list_grammar(chunk_id)
 
     def list_consistency_flags(self, chunk_id: str) -> list[dict[str, Any]]:
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM consistency_flags WHERE chunk_id = ? ORDER BY id",
-                (chunk_id,),
-            ).fetchall()
-        return [
-            {
-                "id": r["id"],
-                "chunk_id": r["chunk_id"],
-                "source_term": r["source_term"],
-                "expected_translation": r["expected_translation"],
-                "found_translation": r["found_translation"],
-                "confidence": r["confidence"],
-                "resolved": bool(r["resolved"]),
-            }
-            for r in rows
-        ]
+        return self.issues.list_consistency(chunk_id)
 
-    # ---------- pipeline state key/value ----------
+    # ------------------------------------------------------------------
+    # pipeline_state key/value (delegate to StateKV)
+    # ------------------------------------------------------------------
 
     def set_state(self, key: str, value: Any) -> None:
-        if not isinstance(value, str):
-            value = json.dumps(value, ensure_ascii=False)
-        with self._lock:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO pipeline_state (key, value) VALUES (?, ?)",
-                (key, value),
-            )
+        self.kv.set(key, value)
 
     def get_state(self, key: str) -> str | None:
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT value FROM pipeline_state WHERE key = ?", (key,)
-            ).fetchone()
-        return row["value"] if row else None
+        return self.kv.get(key)
 
     def get_state_json(self, key: str, default: Any = None) -> Any:
-        raw = self.get_state(key)
-        if raw is None:
-            return default
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return default
+        return self.kv.get_json(key, default)
 
-    # ---------- pending_hltl (persistent HITL queue) ----------
+    # ------------------------------------------------------------------
+    # pending_hltl (delegate to HltlRepo)
+    # ------------------------------------------------------------------
 
     def register_hltl_record(
         self,
@@ -705,267 +464,51 @@ class StateStore:
         issue: dict[str, Any],
         received_at: str,
     ) -> None:
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT OR REPLACE INTO pending_hltl (
-                    request_id, chunk_id, stage, issue_json, received_at, resolved_at
-                ) VALUES (?, ?, ?, ?, ?, NULL)
-                """,
-                (
-                    request_id,
-                    chunk_id,
-                    stage,
-                    json.dumps(issue, ensure_ascii=False),
-                    received_at,
-                ),
-            )
+        self.hltl.register(request_id, chunk_id, stage, issue, received_at)
 
     def resolve_hltl_record(self, request_id: str, resolved_at: str) -> None:
-        with self._lock:
-            self._conn.execute(
-                "UPDATE pending_hltl SET resolved_at = ? WHERE request_id = ?",
-                (resolved_at, request_id),
-            )
+        self.hltl.resolve(request_id, resolved_at)
 
     def list_unresolved_hltl(self) -> list[dict[str, Any]]:
-        with self._lock:
-            rows = self._conn.execute(
-                """
-                SELECT request_id, chunk_id, stage, issue_json, received_at
-                FROM pending_hltl
-                WHERE resolved_at IS NULL
-                ORDER BY received_at
-                """
-            ).fetchall()
-        out: list[dict[str, Any]] = []
-        for r in rows:
-            try:
-                issue = json.loads(r["issue_json"])
-            except json.JSONDecodeError:
-                issue = {}
-            out.append(
-                {
-                    "request_id": r["request_id"],
-                    "chunk_id": r["chunk_id"],
-                    "stage": r["stage"],
-                    "issue": issue,
-                    "received_at": r["received_at"],
-                }
-            )
-        return out
-
-    def list_projects(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
-        """Return past projects persisted in pipeline_state (project:<id> keys).
-
-        Results are ordered newest-first by ``created_at`` and capped at
-        ``limit`` rows (default 50) to avoid unbounded growth.
-        """
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT key, value FROM pipeline_state WHERE key LIKE 'project:%' "
-                "AND key != 'project_manifest_path'",
-            ).fetchall()
-        projects: list[dict[str, Any]] = []
-        for row in rows:
-            try:
-                data = json.loads(row["value"])
-                project_id = row["key"].split(":", 1)[1]
-                projects.append({
-                    "project_id": project_id,
-                    "name": data.get("name", f"Project-{project_id[:8]}"),
-                    "source_path": data.get("source_path", ""),
-                    "project_dir": data.get("project_dir", ""),
-                    "source_lang": data.get("source_lang", ""),
-                    "target_lang": data.get("target_lang", ""),
-                    "profile": data.get("profile", "balanced"),
-                    "output_format": data.get("output_format", "txt"),
-                    "created_at": data.get("created_at", ""),
-                })
-            except (json.JSONDecodeError, KeyError, ValueError):
-                logger.warning("Skipping corrupt project record: %s", row["key"], exc_info=True)
-        projects.sort(
-            key=lambda project: _project_created_sort_key(project.get("created_at")),
-            reverse=True,
-        )
-        return projects[offset : offset + limit]
-
-    def get_project(self, project_id: str) -> dict[str, Any] | None:
-        """Return one persisted project metadata record."""
-        raw = self.get_state(f"project:{project_id}")
-        if raw is None:
-            return None
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning("Skipping corrupt project record: project:%s", project_id)
-            return None
-        return {
-            "project_id": project_id,
-            "name": data.get("name", f"Project-{project_id[:8]}"),
-            "source_path": data.get("source_path", ""),
-            "project_dir": data.get("project_dir", ""),
-            "source_lang": data.get("source_lang", ""),
-            "target_lang": data.get("target_lang", ""),
-            "profile": data.get("profile", "balanced"),
-            "output_format": data.get("output_format", "txt"),
-            "created_at": data.get("created_at", ""),
-        }
-
-    def update_project(self, project_id: str, updates: dict[str, Any]) -> bool:
-        """Update persisted project metadata. Returns True if project existed."""
-        existing = self.get_project(project_id)
-        if existing is None:
-            return False
-        # Merge updates into existing data
-        raw = self.get_state(f"project:{project_id}")
-        data = json.loads(raw) if raw else {}
-        for key in ("name", "project_dir"):
-            if key in updates and updates[key] is not None:
-                data[key] = updates[key]
-        self.set_state(f"project:{project_id}", data)
-        return True
-
-    def delete_project(self, project_id: str) -> bool:
-        """Delete project metadata and its chunks/lexicon data. Returns True if existed."""
-        existing = self.get_project(project_id)
-        if existing is None:
-            return False
-        # Clear active project if it was this one
-        active = self.get_active_project()
-        if active == project_id:
-            self.clear_active_project()
-        # Forget metadata
-        self.forget_project(project_id)
-        return True
-
-    def set_active_project(self, project_id: str) -> None:
-        """Set the currently active project for the GUI context."""
-        self.set_state("active_project", project_id)
-
-    def get_active_project(self) -> str | None:
-        """Get the currently active project ID, or None."""
-        return self.get_state("active_project")
-
-    def clear_active_project(self) -> None:
-        """Clear the active project."""
-        with self._lock:
-            self._conn.execute(
-                "DELETE FROM pipeline_state WHERE key = ?",
-                ("active_project",),
-            )
-
-    def forget_project(self, project_id: str) -> None:
-        """Remove the persisted project metadata entry."""
-        with self._lock:
-            self._conn.execute(
-                "DELETE FROM pipeline_state WHERE key = ?",
-                (f"project:{project_id}",),
-            )
+        return self.hltl.list_unresolved()
 
     def clear_hltl_records(self) -> None:
-        with self._lock:
-            self._conn.execute("DELETE FROM pending_hltl")
+        self.hltl.clear()
 
-    # ---------- diagnostics ----------
+    # ------------------------------------------------------------------
+    # projects (delegate to ProjectRepo)
+    # ------------------------------------------------------------------
+
+    def list_projects(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        return self.projects.list(limit=limit, offset=offset)
+
+    def get_project(self, project_id: str) -> dict[str, Any] | None:
+        return self.projects.get(project_id)
+
+    def update_project(self, project_id: str, updates: dict[str, Any]) -> bool:
+        return self.projects.update(project_id, updates)
+
+    def delete_project(self, project_id: str) -> bool:
+        return self.projects.delete(project_id)
+
+    def set_active_project(self, project_id: str) -> None:
+        self.projects.set_active(project_id)
+
+    def get_active_project(self) -> str | None:
+        return self.projects.get_active()
+
+    def clear_active_project(self) -> None:
+        self.projects.clear_active()
+
+    def forget_project(self, project_id: str) -> None:
+        self.projects.forget(project_id)
+
+    # ------------------------------------------------------------------
+    # diagnostics
+    # ------------------------------------------------------------------
 
     def snapshot(self) -> dict[str, Any]:
-        """Cheap summary used by GET /pipeline/state."""
-        expected_statuses = (
-            "parsed",
-            "fast_translated",
-            "lexicon_ready",
-            "lexicon_skipped",
-            "glossary_applied",
-            "consistency_checked",
-            "qa_checked",
-            "grammar_checked",
-            "reviewed",
-            "polished",
-            "assembled",
-            "waiting_for_human",
-            "error",
-        )
-        chunks_by_status = {s: 0 for s in expected_statuses}
-        chunks_total = 0
-
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT status, COUNT(*) as n FROM chunks GROUP BY status"
-            ).fetchall()
-            for r in rows:
-                status = r["status"]
-                count = int(r["n"])
-                if status in chunks_by_status:
-                    chunks_by_status[status] = count
-                chunks_total += count
-
-        return {
-            "chunks_total": chunks_total,
-            "chunks_by_status": chunks_by_status,
-            "lexicon_terms": self._scalar("SELECT COUNT(*) FROM lexicon_terms"),
-            "qa_issues": self._scalar("SELECT COUNT(*) FROM qa_issues"),
-            "grammar_issues": self._scalar("SELECT COUNT(*) FROM grammar_issues"),
-            "consistency_flags": self._scalar(
-                "SELECT COUNT(*) FROM consistency_flags"
-            ),
-            "pending_hltl": self._scalar(
-                "SELECT COUNT(*) FROM pending_hltl WHERE resolved_at IS NULL"
-            ),
-            "vector_store": self.vector_status,
-        }
-
-    def _scalar(self, sql: str) -> int:
-        with self._lock:
-            row = self._conn.execute(sql).fetchone()
-        return int(row[0]) if row else 0
+        return self._snapshot.build()
 
 
-# ---------- helpers ----------
-
-
-def _row_to_chunk(row: sqlite3.Row) -> dict[str, Any]:
-    meta_raw = row["metadata_json"]
-    metadata = json.loads(meta_raw) if meta_raw else {}
-    return {
-        "id": row["id"],
-        "chapter_id": row["chapter_id"],
-        "chapter_title": row["chapter_title"],
-        "chunk_index": row["chunk_index"],
-        "source_text": row["source_text"],
-        "source_hash": row["source_hash"],
-        "glossary_version": row["glossary_version"],
-        "output_hash": row["output_hash"],
-        "raw_translation": row["raw_translation"],
-        "glossary_applied": row["glossary_applied"],
-        "llm_refined": row["llm_refined"],
-        "qa_checked": row["qa_checked"],
-        "grammar_checked": row["grammar_checked"],
-        "polished_translation": row["polished_translation"],
-        "status": row["status"],
-        "error_message": row["error_message"],
-        "metadata": metadata,
-        "source_file": row["source_file"] if "source_file" in row.keys() else "",
-        "review_score": row["review_score"] if "review_score" in row.keys() else None,
-        "review_annotations": json.loads(row["review_annotations"]) if row["review_annotations"] else None,
-    }
-
-
-def _row_to_lexicon(row: sqlite3.Row) -> dict[str, Any]:
-    aliases = json.loads(row["aliases_json"]) if row["aliases_json"] else []
-    evidence = (
-        json.loads(row["evidence_refs_json"]) if row["evidence_refs_json"] else []
-    )
-    return {
-        "id": row["id"],
-        "source": row["source"],
-        "target": row["target"],
-        "aliases": aliases,
-        "category": row["category"],
-        "gender": row["gender"],
-        "confidence": row["confidence"],
-        "evidence_refs": evidence,
-        "notes": row["notes"],
-        "validated_by_user": bool(row["validated_by_user"]),
-        "chapter_id": row["chapter_id"],
-    }
+__all__ = ["StateStore", "SCHEMA_SQL"]
