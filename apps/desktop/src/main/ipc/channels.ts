@@ -4,6 +4,7 @@ export const IPC_CHANNELS = [
   "project:list-recent",
   "project:path",
   "project:delete",
+  "project:stats",
   "ollama:list-models",
   "ollama:pull-model",
   "ollama:is-available",

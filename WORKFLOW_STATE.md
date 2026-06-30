@@ -1147,6 +1147,7 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 ## Current Status
 - Phase 1-37 : ✅ Complété (tous les items précédents)
 - **Phase 38 (Implementor - Import DOCX/EPUB + Drag-and-drop)** : ✅ Complété — En attente de review
+- **Phase 40 (Implementor - Project dashboard stats)** : ✅ Complété — NtStatCard, ProjectView enhance, project:stats IPC, store loadStats
 
 ## SDD Gap Analysis — Remaining Work
 
@@ -1160,7 +1161,7 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 | 4 | Drag-and-drop import (SDD §5.9) | 🔴 HIGH | ✅ Implémenté |
 | 5 | Language detection franc (SDD §5.7) | 🟡 MEDIUM | ✅ Implémenté |
 | 6 | Chapter splitting by patterns (SDD §5.5) | 🟡 MEDIUM | ✅ Implémenté |
-| 7 | Project dashboard stats (SDD §4.6) | 🟡 MEDIUM | ❌ Manquant |
+| 7 | Project dashboard stats (SDD §4.6) | 🟡 MEDIUM | ✅ Implémenté |
 | 8 | Batch processing (SDD §7.9) | 🟢 LOW | ❌ Manquant |
 | 9 | Translation Memory TMX (SDD §9.7) | 🟢 LOW | ❌ Manquant |
 | 10 | UI Components manquants (SDD §4.13) | 🟡 MEDIUM | ⚠️ Partiel |
@@ -1197,16 +1198,83 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 | Language detection (franc) | §5.7 | ✅ |
 | Chapter splitting (patterns + config) | §5.5 | ✅ |
 | source:import-files IPC handler | §5.9 | ✅ |
+| Project dashboard stats (NtStatCard, ProjectView, IPC) | §4.6 | ✅ |
 
 ### Prochaines phases recommandées
 
 1. ~~**Phase 37** : WorkflowView + ConsoleView (SDD §4.9, §4.12)~~ ✅
 2. ~~**Phase 38** : Import DOCX/EPUB + Drag-and-drop (SDD §5.4, §5.9)~~ ✅
 3. ~~**Phase 39** : Language detection + Chapter splitting (SDD §5.5, §5.7)~~ ✅
-4. **Phase 40** : Project dashboard stats (SDD §4.6)
+4. ~~**Phase 40** : Project dashboard stats (SDD §4.6)~~ ✅
 
 ## Next Agent
-implementor
+reviewer
+
+## Implementation Notes — Project dashboard stats (SDD §4.6)
+
+### Files Created
+| Fichier | Rôle |
+|---|---|
+| `apps/desktop/src/renderer/src/components/ui/NtStatCard.vue` | Composant carte statistique réutilisable : icône, valeur, label, couleur d'accent optionnelle. CSS tokens uniquement. |
+| `apps/desktop/tests/unit/project-stats.spec.ts` | 7 tests : store loadStats (succès, erreur, non-Error, re-init) + structure des propriétés stats |
+
+### Files Modified
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/main/ipc/channels.ts` | Ajout canal `project:stats` |
+| `apps/desktop/src/main/ipc/handlers/project.ts` | Ajout handler `project:stats` : requêtes SQL pour chapitres, paragraphes, mots, score qualité moyen, dernier statut workflow. Interface `ProjectStats` ajoutée. |
+| `apps/desktop/src/renderer/src/stores/project.ts` | Ajout interface `ProjectStats`, ref `stats`, méthode `loadStats(projectId)` |
+| `apps/desktop/src/renderer/src/views/ProjectView.vue` | Refonte complète : en-tête projet (titre, auteur, date, langues), section statistiques avec 6 NtStatCards, actions rapides (Traduire, Lexique, Importer, Exporter), navigation |
+
+### Design Decisions
+- **NtStatCard** : composant pur (props uniquement, pas de state interne), CSS tokens, sans Tailwind
+- **Stats IPC** : résolution du projet via `resolveProjectPath` pattern (même code que export handler), requêtes SQL directes (pas de repository supplémentaire)
+- **Word count** : estimation par espaces (`LENGTH - LENGTH(REPLACE(' ', '')) + 1`), approximation suffisante pour le MVP
+- **Score qualité** : `AVG(js.score)` depuis `job_steps`, arrondi à 2 décimales
+- **Dernier workflow** : `ORDER BY created_at DESC LIMIT 1` sur `jobs`
+- **UI labels** : tous en français (SDD)
+- **CSS tokens** : `var(--bg-secondary)`, `var(--bg-tertiary)`, `var(--text-primary)`, `var(--text-secondary)`, `var(--accent)`, `var(--success)`, `var(--warning)`, `var(--error)`, `var(--border-radius)`
+
+### Verification
+- ✅ `npm run type-check --workspace=apps/desktop` : passe (0 erreur)
+- ✅ `npm run test` : **131/131 passent** (9 suites, 0 régression)
+- ✅ Aucune régression sur les tests existants
+
+## Test Results — Project dashboard stats (SDD §4.6)
+
+### Commands Run
+| Commande | Résultat |
+|---|---|
+| `npm run type-check --workspace=apps/desktop` (`vue-tsc --noEmit`) | ✅ PASS (0 erreur) |
+| `npm run test` (`vitest run`) | ✅ **ALL 131 PASS** (0 régression) |
+
+### Verification Summary
+| Suite | Fichier | Tests | Statut |
+|---|---|---|---|
+| Engines | `tests/unit/engines.spec.ts` | 4 | ✅ |
+| Editor | `tests/unit/editor.spec.ts` | 13 | ✅ |
+| Lexicon | `tests/unit/lexicon.spec.ts` | 16 | ✅ |
+| Export | `tests/unit/export-dialog.spec.ts` | 12 | ✅ |
+| History | `tests/unit/history.spec.ts` | 13 | ✅ |
+| Prompts | `tests/unit/prompts.spec.ts` | 37 | ✅ |
+| WorkflowView | `tests/unit/workflow-view.spec.ts` | 11 | ✅ |
+| Import | `tests/unit/import.spec.ts` | 18 | ✅ |
+| **ProjectStats** | `tests/unit/project-stats.spec.ts` | **7** | **✅** |
+| **Total** | **9 fichiers** | **131** | **✅ 131/131** |
+
+### Detailed Test Breakdown — ProjectStats
+| # | Suite | Test | Statut |
+|---|---|---|---|
+| 1 | ProjectStats | devrait commencer avec stats à null | ✅ |
+| 2 | ProjectStats | devrait charger les statistiques depuis l'IPC | ✅ |
+| 3 | ProjectStats | devrait gérer une erreur de chargement des stats | ✅ |
+| 4 | ProjectStats | devrait gérer un rejet non-Error lors du chargement des stats | ✅ |
+| 5 | ProjectStats | devrait stocker correctement toutes les proprietes de stats | ✅ |
+| 6 | ProjectStats | devrait accepter averageQualityScore null | ✅ |
+| 7 | ProjectStats | devrait reinitialiser stats a null si le chargement echoue apres succes | ✅ |
+
+### Regression Check
+- ✅ **124/124 tests existants** — aucune régression
 
 ## Implementation Notes — SDD Items D/E (Phase 35)
 

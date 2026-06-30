@@ -2,10 +2,22 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { Project, Chapter } from "@shared/types/index.js";
 
+/** Statistiques d'un projet (SDD §4.6) */
+export interface ProjectStats {
+  chapterCount: number;
+  totalParagraphs: number;
+  translatedParagraphs: number;
+  sourceWordCount: number;
+  targetWordCount: number;
+  averageQualityScore: number | null;
+  lastWorkflowStatus: string | null;
+}
+
 export const useProjectStore = defineStore("project", () => {
   const recentProjects = ref<Project[]>([]);
   const currentProject = ref<Project | null>(null);
   const chapters = ref<Chapter[]>([]);
+  const stats = ref<ProjectStats | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -66,14 +78,32 @@ export const useProjectStore = defineStore("project", () => {
     }
   }
 
+  /**
+   * Charge les statistiques du projet depuis la base de données.
+   * SDD §4.6 — Tableau de bord projet.
+   */
+  async function loadStats(projectId: string): Promise<void> {
+    try {
+      stats.value = await window.novelTradAPI.invoke<ProjectStats>(
+        "project:stats",
+        projectId,
+      );
+    } catch (err) {
+      console.error("[project store] loadStats error:", err);
+      stats.value = null;
+    }
+  }
+
   return {
     recentProjects,
     currentProject,
     chapters,
+    stats,
     loading,
     error,
     loadRecent,
     create,
     open,
+    loadStats,
   };
 });
