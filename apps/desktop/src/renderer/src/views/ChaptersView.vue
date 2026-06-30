@@ -1,43 +1,66 @@
 <script setup lang="ts">
-import { useRoute } from 'vue-router'
-import { ref, onMounted } from 'vue'
-import { useWorkflowStore } from '../stores/workflow'
-import type { Chapter } from '@shared/types/index.js'
+import { useRoute, useRouter } from "vue-router";
+import { ref, onMounted } from "vue";
+import { useProjectStore } from "../stores/project";
+import { useWorkflowStore } from "../stores/workflow";
+import type { Chapter } from "@shared/types/index.js";
 
-const route = useRoute()
-const workflowStore = useWorkflowStore()
-const chapters = ref<Chapter[]>([])
-const translatingId = ref<string | null>(null)
+const route = useRoute();
+const router = useRouter();
+const projectStore = useProjectStore();
+const workflowStore = useWorkflowStore();
+const chapters = ref<Chapter[]>([]);
+const translatingId = ref<string | null>(null);
+
+const projectId = (route.params.projectId as string) || "";
 
 onMounted(async () => {
-  chapters.value = await window.novelTradAPI.invoke('chapter:list', route.params.id)
-})
+  chapters.value = await window.novelTradAPI.invoke("chapter:list", projectId);
+  projectStore.chapters = chapters.value;
+});
+
+/** Naviguer vers l'éditeur pour un chapitre */
+function openEditor(chapter: Chapter): void {
+  router.push({
+    name: "chapter-editor",
+    params: { projectId, chapterId: chapter.id },
+  });
+}
 
 async function translateChapter(chapter: Chapter) {
-  if (!route.params.id || Array.isArray(route.params.id)) return
-  const projectPath = await window.novelTradAPI.invoke<string>('project:path', route.params.id)
-  translatingId.value = chapter.id
+  if (!projectId) return;
+  const projectPath = await window.novelTradAPI.invoke<string>(
+    "project:path",
+    projectId,
+  );
+  translatingId.value = chapter.id;
   try {
-    await workflowStore.start(projectPath, chapter.id)
+    await workflowStore.start(projectPath, chapter.id);
   } finally {
-    translatingId.value = null
+    translatingId.value = null;
   }
 }
 
 function progressFor(chapterId: string): string {
-  if (workflowStore.progress?.chapterId !== chapterId) return ''
-  const { step, totalSteps } = workflowStore.progress
-  return `${step.name} (${step.orderIndex + 1}/${totalSteps})`
+  if (workflowStore.progress?.chapterId !== chapterId) return "";
+  const { step, totalSteps } = workflowStore.progress;
+  return `${step.name} (${step.orderIndex + 1}/${totalSteps})`;
 }
 </script>
 
 <template>
   <div>
     <h1>Chapitres</h1>
-    <p v-if="!chapters.length" class="empty">Aucun chapitre importe.</p>
+    <p v-if="!chapters.length" class="empty">Aucun chapitre importé.</p>
     <ul class="chapter-list">
       <li v-for="ch in chapters" :key="ch.id" class="chapter-item">
-        <div class="chapter-info">
+        <div
+          class="chapter-info"
+          @click="openEditor(ch)"
+          role="button"
+          tabindex="0"
+          @keydown.enter="openEditor(ch)"
+        >
           <strong>{{ ch.title || ch.id }}</strong>
           <span class="badge" :class="ch.status">{{ ch.status }}</span>
         </div>
@@ -49,7 +72,9 @@ function progressFor(chapterId: string): string {
           >
             Traduire
           </button>
-          <span v-if="progressFor(ch.id)" class="progress">{{ progressFor(ch.id) }}</span>
+          <span v-if="progressFor(ch.id)" class="progress">{{
+            progressFor(ch.id)
+          }}</span>
         </div>
       </li>
     </ul>
@@ -82,6 +107,11 @@ function progressFor(chapterId: string): string {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  cursor: pointer;
+}
+
+.chapter-info:hover strong {
+  color: var(--accent);
 }
 
 .chapter-actions {

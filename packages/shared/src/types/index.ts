@@ -1,232 +1,237 @@
 export interface Project {
-  id: string
-  name: string
-  author?: string
-  sourceLanguage: string
-  targetLanguage: string
-  path: string
-  createdAt: string
-  updatedAt: string
+  id: string;
+  name: string;
+  author?: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  path: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Chapter {
-  id: string
-  projectId: string
-  title?: string
-  sourcePath?: string
-  orderIndex: number
-  status: 'pending' | 'processing' | 'completed' | 'error'
-  createdAt: string
-  updatedAt: string
+  id: string;
+  projectId: string;
+  title?: string;
+  sourcePath?: string;
+  orderIndex: number;
+  status: "pending" | "processing" | "completed" | "error";
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Paragraph {
-  id: string
-  chapterId: string
-  indexInChapter: number
-  sourceText: string
-  translatedText?: string
-  preTranslatedText?: string
-  status: 'pending' | 'translated' | 'reviewed'
-  metadata?: Record<string, unknown>
+  id: string;
+  chapterId: string;
+  indexInChapter: number;
+  sourceText: string;
+  translatedText?: string;
+  preTranslatedText?: string;
+  status: "pending" | "translated" | "reviewed";
+  metadata?: Record<string, unknown>;
 }
 
 export interface LexiconEntry {
-  id: string
-  projectId: string
-  term: string
-  translation: string
-  category: string
-  aliases: string[]
-  locked: boolean
-  forbidden?: string[]
-  priority: number
-  description?: string
-  notes?: string
+  id: string;
+  projectId: string;
+  term: string;
+  translation: string;
+  category: string;
+  aliases: string[];
+  locked: boolean;
+  forbidden?: string[];
+  priority: number;
+  description?: string;
+  notes?: string;
 }
 
 export interface TranslationMemoryMatch {
-  sourceText: string
-  targetText: string
-  similarity: number
-  usageCount: number
+  sourceText: string;
+  targetText: string;
+  similarity: number;
+  usageCount: number;
 }
 
 export type WorkflowStage =
-  | 'split'
-  | 'pre_translate'
-  | 'translate'
-  | 'consistency'
-  | 'lexicon'
-  | 'grammar'
-  | 'style'
-  | 'polish'
-  | 'qa'
-  | 'export'
+  | "split"
+  | "pre_translate"
+  | "translate"
+  | "consistency"
+  | "lexicon"
+  | "grammar"
+  | "style"
+  | "polish"
+  | "qa"
+  | "export";
 
 export interface Job {
-  id: string
-  projectId: string
-  chapterId?: string
-  type: 'single' | 'batch'
-  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
-  startedAt?: string
-  finishedAt?: string
-  errorMessage?: string
-  createdAt: string
+  id: string;
+  projectId: string;
+  chapterId?: string;
+  type: "single" | "batch";
+  status:
+    "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+  startedAt?: string;
+  finishedAt?: string;
+  errorMessage?: string;
+  createdAt: string;
 }
 
 export interface Step {
-  id: string
-  jobId: string
-  agentId: string
-  name: string
-  stage: WorkflowStage
-  orderIndex: number
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
-  inputSnapshot?: string
-  outputSnapshot?: string
-  score?: number
-  tokensIn?: number
-  tokensOut?: number
-  durationMs?: number
-  startedAt?: string
-  finishedAt?: string
-  errorMessage?: string
-  createdAt: string
+  id: string;
+  jobId: string;
+  agentId: string;
+  name: string;
+  stage: WorkflowStage;
+  orderIndex: number;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  inputSnapshot?: string;
+  outputSnapshot?: string;
+  score?: number;
+  tokensIn?: number;
+  tokensOut?: number;
+  durationMs?: number;
+  startedAt?: string;
+  finishedAt?: string;
+  errorMessage?: string;
+  createdAt: string;
 }
 
 export interface AgentInput {
-  projectId: string
-  chapterId?: string
-  paragraphs?: Paragraph[]
-  text?: string
-  previousOutput?: string
-  lexicon?: LexiconEntry[]
-  memoryMatches?: TranslationMemoryMatch[]
-  options?: Record<string, unknown>
+  projectId: string;
+  chapterId?: string;
+  paragraphs?: Paragraph[];
+  text?: string;
+  previousOutput?: string;
+  lexicon?: LexiconEntry[];
+  memoryMatches?: TranslationMemoryMatch[];
+  options?: Record<string, unknown>;
 }
 
 export interface AgentOutput {
-  text?: string
-  paragraphs?: Paragraph[]
-  report?: unknown
-  score?: number
-  substitutions?: Array<{ before: string; after: string; locked: boolean }>
-  corrections?: Array<{ before: string; after: string; rule: string }>
-  metadata?: Record<string, unknown>
+  text?: string;
+  paragraphs?: Paragraph[];
+  report?: unknown;
+  score?: number;
+  substitutions?: Array<{ before: string; after: string; locked: boolean }>;
+  corrections?: Array<{ before: string; after: string; rule: string }>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ConsistencyReport {
-  metrics: Array<{ name: string; source: number; target: number; ok: boolean }>
-  warnings: Array<{ severity: 'low' | 'medium' | 'high'; message: string }>
-  globalScore: number
+  metrics: Array<{ name: string; source: number; target: number; ok: boolean }>;
+  warnings: Array<{ severity: "low" | "medium" | "high"; message: string }>;
+  globalScore: number;
 }
 
 export interface QualityReport {
-  consistency: number
-  grammar: number
-  fluency: number
-  style: number
-  lexicon: number
-  hallucination: number
-  length: number
-  dialogue: number
-  globalScore: number
-  comments: string
+  consistency: number;
+  grammar: number;
+  fluency: number;
+  style: number;
+  lexicon: number;
+  hallucination: number;
+  length: number;
+  dialogue: number;
+  globalScore: number;
+  comments: string;
 }
 
-export type ExportFormat = 'markdown' | 'txt' | 'html' | 'docx' | 'epub'
+export type ExportFormat = "markdown" | "txt" | "html" | "docx" | "epub";
 
 export interface ExportInput {
-  chapterId?: string
-  projectId: string
-  title: string
-  author?: string
-  paragraphs: Paragraph[]
-  format: ExportFormat
-  outputPath?: string
+  chapterId?: string;
+  projectId: string;
+  title: string;
+  author?: string;
+  paragraphs: Paragraph[];
+  format: ExportFormat;
+  outputPath?: string;
   options?: {
-    includeTitle?: boolean
-    includeParagraphNumbers?: boolean
-    bilingual?: boolean
-  }
+    includeTitle?: boolean;
+    includeParagraphNumbers?: boolean;
+    bilingual?: boolean;
+  };
 }
 
 export interface OllamaModelInfo {
-  name: string
-  size?: number
-  parameterSize?: string
-  quantizationLevel?: string
+  name: string;
+  size?: number;
+  parameterSize?: string;
+  quantizationLevel?: string;
 }
 
 export interface AiProviderConfig {
-  id: string
-  provider: 'ollama' | 'openai' | 'anthropic' | 'gemini' | 'openrouter' | 'lmstudio' | 'custom'
-  name: string
-  model: string
-  host?: string
-  apiKey?: string
-  isDefault: boolean
-  isFallback: boolean
+  id: string;
+  provider:
+    | "ollama"
+    | "openai"
+    | "anthropic"
+    | "gemini"
+    | "openrouter"
+    | "lmstudio"
+    | "custom";
+  name: string;
+  model: string;
+  host?: string;
+  apiKey?: string;
+  isDefault: boolean;
+  isFallback: boolean;
 }
 
 export interface AppSettings {
-  firstRunCompleted: boolean
-  ollamaHost: string
-  defaultModel: string
-  defaultPreTranslateModel: string
-  sourceLanguage: string
-  targetLanguage: string
-  defaultProjectsPath: string
-  theme: 'dark' | 'light' | 'system'
-  updateChannel: 'latest' | 'beta' | 'alpha'
+  firstRunCompleted: boolean;
+  ollamaHost: string;
+  defaultModel: string;
+  defaultPreTranslateModel: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  defaultProjectsPath: string;
+  theme: "dark" | "light" | "system";
+  updateChannel: "latest" | "beta" | "alpha";
 }
 
 export interface CreateProjectPayload {
-  name: string
-  author?: string
-  sourceLanguage: string
-  targetLanguage: string
-  parentPath: string
+  name: string;
+  author?: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  parentPath: string;
 }
 
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
+  role: "system" | "user" | "assistant";
+  content: string;
 }
 
 export interface ChatOptions {
-  temperature?: number
-  maxTokens?: number
-  jsonMode?: boolean
+  temperature?: number;
+  maxTokens?: number;
+  jsonMode?: boolean;
 }
 
 export interface AiProvider {
-  readonly id: string
-  readonly name: string
-  readonly host?: string
-  readonly apiKey?: string
-  listModels(): Promise<string[]>
-  chat(messages: ChatMessage[], options?: ChatOptions): Promise<string>
-  streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncIterable<string>
-  embeddings(texts: string[]): Promise<number[][]>
-  isAvailable(): Promise<boolean>
+  readonly id: string;
+  readonly name: string;
+  readonly host?: string;
+  readonly apiKey?: string;
+  listModels(): Promise<string[]>;
+  chat(messages: ChatMessage[], options?: ChatOptions): Promise<string>;
+  streamChat(
+    messages: ChatMessage[],
+    options?: ChatOptions,
+  ): AsyncIterable<string>;
+  embeddings(texts: string[]): Promise<number[][]>;
+  isAvailable(): Promise<boolean>;
 }
 
 export interface Substitution {
-  before: string
-  after: string
-  locked: boolean
+  before: string;
+  after: string;
+  locked: boolean;
 }
 
 export interface LexiconApplyResult {
-  text: string
-  substitutions: Array<{ before: string; after: string; locked: boolean }>
+  text: string;
+  substitutions: Array<{ before: string; after: string; locked: boolean }>;
 }
-
-
-
-
-
-

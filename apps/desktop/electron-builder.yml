@@ -36,5 +36,4 @@ nsis:
   uninstallDisplayName: NovelTrad
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  artifactName: '${productName}-${version}-setup.${ext}'
-
+  artifactName: "${productName}-${version}-setup.${ext}"

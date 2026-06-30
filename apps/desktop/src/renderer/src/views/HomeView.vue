@@ -1,29 +1,34 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useProjectStore } from '../stores/project'
-import { useOllamaStore } from '../stores/ollama'
+import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useProjectStore } from "../stores/project";
+import { useOllamaStore } from "../stores/ollama";
 
-const router = useRouter()
-const projectStore = useProjectStore()
-const ollamaStore = useOllamaStore()
+const router = useRouter();
+const projectStore = useProjectStore();
+const ollamaStore = useOllamaStore();
 
-const showCreate = ref(false)
-const newProject = ref({ name: '', sourceLanguage: 'zh', targetLanguage: 'fr', parentPath: '~/NovelTrad Projects' })
+const showCreate = ref(false);
+const newProject = ref({
+  name: "",
+  sourceLanguage: "zh",
+  targetLanguage: "fr",
+  parentPath: "~/NovelTrad Projects",
+});
 
 onMounted(async () => {
-  await projectStore.loadRecent()
-  await ollamaStore.check()
-})
+  await projectStore.loadRecent();
+  await ollamaStore.check();
+});
 
 async function create() {
-  const project = await projectStore.create(newProject.value)
-  router.push({ name: 'project', params: { id: project.id } })
+  const project = await projectStore.create(newProject.value);
+  router.push({ name: "project", params: { projectId: project.id } });
 }
 
 async function open(path: string) {
-  const project = await projectStore.open(path)
-  router.push({ name: 'project', params: { id: project.id } })
+  const project = await projectStore.open(path);
+  router.push({ name: "project", params: { projectId: project.id } });
 }
 </script>
 
@@ -33,12 +38,18 @@ async function open(path: string) {
       <h1>NovelTrad 2.0</h1>
       <p>Moteur de traduction de romans assiste par IA multi-agent.</p>
       <div class="ollama-status" :class="{ ok: ollamaStore.available }">
-        {{ ollamaStore.available ? '✅ Ollama disponible' : '❌ Ollama non detecte' }}
+        {{
+          ollamaStore.available
+            ? "✅ Ollama disponible"
+            : "❌ Ollama non detecte"
+        }}
       </div>
     </header>
 
     <section class="actions">
-      <button class="btn-primary" @click="showCreate = true">+ Nouveau projet</button>
+      <button class="btn-primary" @click="showCreate = true">
+        + Nouveau projet
+      </button>
     </section>
 
     <section v-if="showCreate" class="card">
@@ -63,7 +74,11 @@ async function open(path: string) {
           <option value="en">Anglais</option>
         </select>
       </label>
-      <button class="btn-primary" :disabled="!newProject.name || projectStore.loading" @click="create">
+      <button
+        class="btn-primary"
+        :disabled="!newProject.name || projectStore.loading"
+        @click="create"
+      >
         Creer
       </button>
     </section>
@@ -71,9 +86,16 @@ async function open(path: string) {
     <section class="card">
       <h2>Projets recents</h2>
       <ul v-if="projectStore.recentProjects.length">
-        <li v-for="p in projectStore.recentProjects" :key="p.id" class="project-item" @click="open(p.path)">
+        <li
+          v-for="p in projectStore.recentProjects"
+          :key="p.id"
+          class="project-item"
+          @click="open(p.path)"
+        >
           <strong>{{ p.name }}</strong>
-          <span class="meta">{{ p.sourceLanguage }} → {{ p.targetLanguage }}</span>
+          <span class="meta"
+            >{{ p.sourceLanguage }} → {{ p.targetLanguage }}</span
+          >
         </li>
       </ul>
       <p v-else class="empty">Aucun projet recent.</p>
@@ -131,7 +153,8 @@ label {
   margin-bottom: 12px;
 }
 
-input, select {
+input,
+select {
   display: block;
   width: 100%;
   margin-top: 4px;

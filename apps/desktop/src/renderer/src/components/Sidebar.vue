@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute } from "vue-router";
 
-const router = useRouter()
-const route = useRoute()
+const router = useRouter();
+const route = useRoute();
 
 const links = [
-  { name: 'home', label: 'Accueil', icon: '🏠' },
-  { name: 'settings', label: 'Paramètres', icon: '⚙️' }
-]
+  { name: "home", label: "Accueil", icon: "🏠" },
+  { name: "settings", label: "Paramètres", icon: "⚙️" },
+];
 
 function isActive(name: string) {
-  return route.name === name
+  return route.name === name;
 }
 </script>
 

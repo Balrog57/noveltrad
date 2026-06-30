@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { useSettingsStore } from '../stores/settings'
-import { useOllamaStore } from '../stores/ollama'
-import { useUpdateStore } from '../stores/update'
+import { useSettingsStore } from "../stores/settings";
+import { useOllamaStore } from "../stores/ollama";
+import { useUpdateStore } from "../stores/update";
 
-const settings = useSettingsStore()
-const ollama = useOllamaStore()
-const update = useUpdateStore()
+const settings = useSettingsStore();
+const ollama = useOllamaStore();
+const update = useUpdateStore();
 </script>
 
 <template>
@@ -18,9 +18,14 @@ const update = useUpdateStore()
         Hote Ollama
         <input v-model="settings.data.ollamaHost" />
       </label>
-      <button class="btn-primary" @click="ollama.check(settings.data.ollamaHost)">Tester</button>
+      <button
+        class="btn-primary"
+        @click="ollama.check(settings.data.ollamaHost)"
+      >
+        Tester
+      </button>
       <p :class="{ ok: ollama.available }">
-        {{ ollama.available ? 'Connecte' : 'Non disponible' }}
+        {{ ollama.available ? "Connecte" : "Non disponible" }}
       </p>
       <ul v-if="ollama.models.length">
         <li v-for="m in ollama.models" :key="m.name">{{ m.name }}</li>
@@ -43,16 +48,35 @@ const update = useUpdateStore()
       <h2>Mises a jour</h2>
       <label>
         Canal
-        <select v-model="settings.data.updateChannel" @change="update.setChannel(settings.data.updateChannel ?? 'latest')">
+        <select
+          v-model="settings.data.updateChannel"
+          @change="update.setChannel(settings.data.updateChannel ?? 'latest')"
+        >
           <option value="latest">Stable</option>
           <option value="beta">Beta</option>
           <option value="alpha">Alpha</option>
         </select>
       </label>
-      <button class="btn-primary" @click="update.check">Verifier maintenant</button>
-      <p v-if="update.available" class="ok">Nouvelle version disponible : {{ update.info?.version }}</p>
-      <button v-if="update.available && !update.downloaded" class="btn-primary" @click="update.download">Telecharger</button>
-      <button v-if="update.downloaded" class="btn-primary" @click="update.install">Installer et redemarrer</button>
+      <button class="btn-primary" @click="update.check">
+        Verifier maintenant
+      </button>
+      <p v-if="update.available" class="ok">
+        Nouvelle version disponible : {{ update.info?.version }}
+      </p>
+      <button
+        v-if="update.available && !update.downloaded"
+        class="btn-primary"
+        @click="update.download"
+      >
+        Telecharger
+      </button>
+      <button
+        v-if="update.downloaded"
+        class="btn-primary"
+        @click="update.install"
+      >
+        Installer et redemarrer
+      </button>
       <p v-if="update.error" class="error">Erreur : {{ update.error }}</p>
     </section>
   </div>
@@ -108,5 +132,3 @@ select {
   color: var(--error);
 }
 </style>
-
-

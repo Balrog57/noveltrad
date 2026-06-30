@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useSettingsStore } from './stores/settings'
-import Sidebar from './components/Sidebar.vue'
+import { onMounted } from "vue";
+import { useSettingsStore } from "./stores/settings";
+import Sidebar from "./components/Sidebar.vue";
 
-const settings = useSettingsStore()
+const settings = useSettingsStore();
 
 onMounted(async () => {
-  await settings.load()
-})
+  await settings.load();
+});
 </script>
 
 <template>

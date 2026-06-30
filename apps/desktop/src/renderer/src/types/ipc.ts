@@ -1,12 +1,12 @@
 interface NovelTradAPI {
-  invoke: <T = unknown>(channel: string, ...args: unknown[]) => Promise<T>
-  on: (channel: string, callback: (...args: unknown[]) => void) => () => void
+  invoke: <T = unknown>(channel: string, ...args: unknown[]) => Promise<T>;
+  on: (channel: string, callback: (...args: unknown[]) => void) => () => void;
 }
 
 declare global {
   interface Window {
-    novelTradAPI: NovelTradAPI
+    novelTradAPI: NovelTradAPI;
   }
 }
 
-export {}
+export {};

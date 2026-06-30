@@ -1,4 +1,4 @@
-import log from 'electron-log'
+import log from "electron-log";
 
-export const logger = log
-logger.initialize()
+export const logger = log;
+logger.initialize();

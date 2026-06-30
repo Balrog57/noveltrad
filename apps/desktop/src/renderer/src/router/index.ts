@@ -1,24 +1,47 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
+import { createRouter, createWebHashHistory } from "vue-router";
+import HomeView from "../views/HomeView.vue";
 
 const routes = [
-  { path: '/', name: 'home', component: HomeView },
+  { path: "/", name: "home", component: HomeView },
   {
-    path: '/project/:id',
-    name: 'project',
-    component: () => import('../views/ProjectView.vue')
+    path: "/project/:projectId",
+    name: "project",
+    component: () => import("../views/ProjectView.vue"),
   },
   {
-    path: '/project/:id/chapters',
-    name: 'chapters',
-    component: () => import('../views/ChaptersView.vue')
+    path: "/project/:projectId/chapters",
+    name: "chapters",
+    component: () => import("../views/ChaptersView.vue"),
   },
-  { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') }
-]
+  {
+    path: "/project/:projectId/chapters/:chapterId",
+    name: "chapter-editor",
+    component: () => import("../views/ChapterEditorView.vue"),
+  },
+  {
+    path: "/settings",
+    name: "settings",
+    component: () => import("../views/SettingsView.vue"),
+  },
+];
 
 const router = createRouter({
   history: createWebHashHistory(),
-  routes
-})
+  routes,
+});
 
-export default router
+/**
+ * Garde de navigation : si l'utilisateur tente d'accéder à une route `/project/*`
+ * sans projet ouvert, redirige vers la page d'accueil.
+ */
+router.beforeEach(async (to) => {
+  if (to.path.startsWith("/project")) {
+    // Import dynamique pour éviter les dépendances circulaires
+    const { useProjectStore } = await import("../stores/project");
+    if (!useProjectStore().currentProject) {
+      return "/";
+    }
+  }
+});
+
+export default router;

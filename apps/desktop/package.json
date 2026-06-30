@@ -16,8 +16,10 @@
   },
   "dependencies": {
     "@noveltrad/shared": "*",
+    "@vueuse/core": "^14.3.0",
     "adm-zip": "^0.5.16",
     "chardet": "^2.0.0",
+    "diff-match-patch": "^1.0.5",
     "docx": "^8.5.0",
     "electron-log": "^5.1.7",
     "electron-updater": "^6.3.0",
@@ -37,6 +39,7 @@
   "devDependencies": {
     "@playwright/test": "^1.45.0",
     "@types/adm-zip": "^0.5.8",
+    "@types/diff-match-patch": "^1.0.36",
     "@vitejs/plugin-vue": "^5.0.5",
     "@vitest/coverage-v8": "^2.0.0",
     "electron": "^31.1.0",
