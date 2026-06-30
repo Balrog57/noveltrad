@@ -14,6 +14,7 @@ export const appSettingsSchema = z.object({
   theme: z.enum(["dark", "light", "system"]).default("dark"),
   recentProjects: z.array(z.string()).default([]),
   updateChannel: z.enum(["latest", "beta", "alpha"]).default("latest"),
+  ragEnabled: z.boolean().default(true),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;

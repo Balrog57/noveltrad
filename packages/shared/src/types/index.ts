@@ -188,6 +188,13 @@ export interface AiProviderConfig {
   isFallback: boolean;
 }
 
+export interface RagMatch {
+  paragraphId: string;
+  sourceText: string;
+  translatedText: string;
+  similarity: number;
+}
+
 export interface AppSettings {
   firstRunCompleted: boolean;
   ollamaHost: string;
@@ -198,6 +205,7 @@ export interface AppSettings {
   defaultProjectsPath: string;
   theme: "dark" | "light" | "system";
   updateChannel: "latest" | "beta" | "alpha";
+  ragEnabled: boolean;
 }
 
 export interface CreateProjectPayload {

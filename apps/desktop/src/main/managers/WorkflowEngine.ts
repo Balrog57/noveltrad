@@ -8,6 +8,7 @@ import type {
   Job,
   Paragraph,
   Project,
+  RagMatch,
   Step,
   WorkflowStage,
 } from "@shared/types/index.js";
@@ -30,6 +31,7 @@ import { ConsistencyChecker } from "../services/ConsistencyChecker.js";
 import { QualityChecker } from "../services/QualityChecker.js";
 import { ExportEngine } from "../services/ExportEngine.js";
 import { HistoryRepository } from "../db/repositories/HistoryRepository.js";
+import { RagEngine } from "../services/RagEngine.js";
 import { OllamaProvider } from "../services/providers/OllamaProvider.js";
 import { logger } from "../utils/logger.js";
 
@@ -68,6 +70,7 @@ class WorkflowRunner extends EventEmitter {
   private paragraphRepo: ParagraphRepository;
   private chapterRepo: ChapterRepository;
   private lexiconRepo: LexiconRepository;
+  private ragEngine?: RagEngine;
   private sourceLanguage: string;
   private targetLanguage: string;
 
@@ -108,6 +111,12 @@ class WorkflowRunner extends EventEmitter {
     const lexiconEngine = new LexiconEngine();
     const tmEngine = new TranslationMemoryEngine();
     tmEngine.setDatabase(this.db);
+
+    // Initialiser le moteur RAG si activé dans les paramètres
+    const ragEnabled = this.settings.get("ragEnabled");
+    if (ragEnabled) {
+      this.ragEngine = new RagEngine(this.db, ollamaHost);
+    }
 
     this.factory = new AgentFactory({
       aiRouter,
@@ -296,7 +305,7 @@ class WorkflowRunner extends EventEmitter {
         temperature: 0.7,
       });
 
-      const input = this.buildAgentInput(step.stage);
+      const input = await this.buildAgentInput(step.stage);
       step.inputSnapshot = JSON.stringify(input);
       this.jobRepo.updateStep(step);
 
@@ -307,6 +316,15 @@ class WorkflowRunner extends EventEmitter {
       step.status = "completed";
       step.score = output.score;
       step.outputSnapshot = JSON.stringify(output);
+
+      // Stocker les embeddings après la traduction d'un chapitre
+      if (
+        step.stage === "translate" &&
+        this.ragEngine &&
+        this.settings.get("ragEnabled")
+      ) {
+        await this.storeEmbeddingsForChapter();
+      }
     } catch (err) {
       logger.error(`Step ${step.stage} failed`, err);
       step.status = "failed";
@@ -336,7 +354,7 @@ class WorkflowRunner extends EventEmitter {
     return output;
   }
 
-  private buildAgentInput(stage: WorkflowStage): AgentInput {
+  private async buildAgentInput(stage: WorkflowStage): Promise<AgentInput> {
     const lexicon = this.lexiconRepo.listByProject(this.project.id);
     const base: AgentInput = {
       projectId: this.project.id,
@@ -357,6 +375,38 @@ class WorkflowRunner extends EventEmitter {
           text: this.paragraphs.map((p) => p.sourceText).join("\n\n"),
           paragraphs: undefined,
         };
+      case "translate":
+        // Enrichir le contexte avec les paragraphes similaires déjà traduits (RAG)
+        if (this.ragEngine && this.settings.get("ragEnabled")) {
+          try {
+            const ragContext: Record<string, RagMatch[]> = {};
+            for (const paragraph of this.paragraphs) {
+              const matches = await this.ragEngine.findSimilar(
+                paragraph.sourceText,
+                this.project.id,
+                3,
+              );
+              if (matches.length > 0) {
+                ragContext[paragraph.id] = matches;
+              }
+            }
+            if (Object.keys(ragContext).length > 0) {
+              return {
+                ...base,
+                options: {
+                  ...base.options,
+                  ragContext,
+                },
+              };
+            }
+          } catch (err) {
+            logger.warn(
+              "RAG: impossible d'enrichir le contexte, poursuite sans RAG.",
+              err,
+            );
+          }
+        }
+        return base;
       case "lexicon":
       case "grammar":
       case "style":
@@ -406,6 +456,29 @@ class WorkflowRunner extends EventEmitter {
       }));
       if (this.chapter) {
         this.paragraphRepo.updateMany(this.paragraphs);
+      }
+    }
+  }
+
+  /**
+   * Calcule et stocke les embeddings pour tous les paragraphes
+   * traduits du chapitre courant.
+   */
+  private async storeEmbeddingsForChapter(): Promise<void> {
+    if (!this.chapter || !this.ragEngine) return;
+
+    for (const paragraph of this.paragraphs) {
+      if (!paragraph.translatedText) continue;
+      try {
+        const embedding = await this.ragEngine.computeEmbedding(
+          paragraph.sourceText,
+        );
+        this.ragEngine.storeEmbedding(this.chapter.id, paragraph.id, embedding);
+      } catch (err) {
+        logger.warn(
+          `RAG: impossible de stocker l'embedding pour le paragraphe ${paragraph.id}`,
+          err,
+        );
       }
     }
   }
