@@ -249,9 +249,11 @@ class NLLBEngine:
         # Batch translate all paragraphs
         src_code = to_nllb_code(source_lang)
         tgt_code = to_nllb_code(target_lang)
+
+        # Batch encode paragraphs directly (reduces Python iteration overhead over SP boundaries)
+        encoded_tokens = self._sp.encode(para_texts, out_type=str)  # type: ignore[union-attr]
         source_batch = []
-        for pt in para_texts:
-            tokens = self._sp.encode(pt, out_type=str)  # type: ignore[union-attr]
+        for tokens in encoded_tokens:
             source_batch.append([src_code, *tokens, "</s>"])
 
         results = self._translator.translate_batch(  # type: ignore[union-attr]
@@ -262,13 +264,20 @@ class NLLBEngine:
             max_decoding_length=max_decoding_length,
         )
 
-        # Fill in translated paragraphs
-        for j, idx in enumerate(para_indices):
-            out_tokens = results[j].hypotheses[0]
+        # Collect output tokens for batch decoding
+        out_tokens_batch = []
+        for res in results:
+            out_tokens = res.hypotheses[0]
             if out_tokens and out_tokens[0] == tgt_code:
                 out_tokens = out_tokens[1:]
-            translated = self._sp_target.decode(out_tokens)  # type: ignore[union-attr]
-            output_parts[idx] = translated
+            out_tokens_batch.append(out_tokens)
+
+        # Batch decode paragraphs
+        translated_batch = self._sp_target.decode(out_tokens_batch)  # type: ignore[union-attr]
+
+        # Fill in translated paragraphs
+        for j, idx in enumerate(para_indices):
+            output_parts[idx] = translated_batch[j]
 
         # Fill in any remaining empty separators
         for idx, sep in separators.items():
@@ -308,11 +317,11 @@ class NLLBEngine:
                 src_code = to_nllb_code(source_lang)
                 tgt_code = to_nllb_code(target_lang)
 
-                # Tokenize all non-empty texts
-                source_tokens_batch = []
+                # Tokenize all non-empty texts in batch directly (reduces Python loop overhead)
+                encoded_tokens = self._sp.encode([t.strip() for t in non_empty_texts], out_type=str)  # type: ignore[union-attr]
 
-                for text in non_empty_texts:
-                    tokens = self._sp.encode(text.strip(), out_type=str)  # type: ignore[union-attr]
+                source_tokens_batch = []
+                for tokens in encoded_tokens:
                     source_tokens_batch.append([src_code, *tokens, "</s>"])
 
                 # Call CTranslate2 translate_batch natively
@@ -324,14 +333,17 @@ class NLLBEngine:
                     max_decoding_length=256,
                 )
 
-                # Decode all results
-                decoded_results = []
+                # Collect output tokens for batch decoding
+                out_tokens_batch = []
                 for res in results:
                     out_tokens = res.hypotheses[0]
                     # Strip the language token at the start
                     if out_tokens and out_tokens[0] == tgt_code:
                         out_tokens = out_tokens[1:]
-                    decoded_results.append(self._sp_target.decode(out_tokens))  # type: ignore[union-attr]
+                    out_tokens_batch.append(out_tokens)
+
+                # Decode all results in batch
+                decoded_results = self._sp_target.decode(out_tokens_batch)  # type: ignore[union-attr]
             except Exception as exc:
                 logger.exception("NLLB translate_batch failed")
                 return texts
