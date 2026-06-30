@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from ..a11y import configure
 from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -241,11 +242,13 @@ class FilesTab(QWidget):
 
             view_btn = QPushButton(self.tr("👁 Voir"))
             view_btn.clicked.connect(lambda checked, fp=str(filepath): self._open_file(fp))
+            configure(view_btn, name=self.tr("View {file}").format(file=fname))
             action_row.addWidget(view_btn)
 
             retry_btn = QPushButton(self.tr("🔄 Réessayer"))
             retry_btn.setToolTip(self.tr("Relancer la traduction pour ce fichier"))
             retry_btn.clicked.connect(lambda checked, fp=str(filepath): self._retry_file(fp))
+            configure(retry_btn, name=self.tr("Retry {file}").format(file=fname))
             action_row.addWidget(retry_btn)
 
             self._table.setCellWidget(row, 3, action_widget)

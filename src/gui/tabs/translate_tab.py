@@ -26,6 +26,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..a11y import configure
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QProgressBar,
@@ -430,6 +432,8 @@ class TranslateTab(QWidget):
         remove_btn.clicked.connect(
             lambda _checked=False, p=path: self._on_remove_file(p)
         )
+        file_name = Path(path).name
+        configure(remove_btn, name=self.tr("Remove {file}").format(file=file_name))
         actions_layout.addWidget(remove_btn)
 
         retry_btn = QPushButton(self.tr("Retry"))
@@ -439,6 +443,7 @@ class TranslateTab(QWidget):
         retry_btn.clicked.connect(
             lambda _checked=False, p=path: self.retryRequested.emit(p)
         )
+        configure(retry_btn, name=self.tr("Retry {file}").format(file=file_name))
         retry_btn.hide()
         actions_layout.addWidget(retry_btn)
 
