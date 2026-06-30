@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test
+      - name: Build and publish
+        run: npm run build --workspace=apps/desktop
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noveltrad-${{ github.ref_name }}
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/latest.yml
