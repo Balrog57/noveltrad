@@ -160,7 +160,7 @@ export class ProjectManager {
     db.prepare(`
       INSERT INTO chapters (id, project_id, title, source_path, order_index, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `).run([
       chapterId,
       projectId,
       fileName,
@@ -169,14 +169,14 @@ export class ProjectManager {
       'pending',
       new Date().toISOString(),
       new Date().toISOString()
-    )
+    ])
 
     const insertParagraph = db.prepare(`
       INSERT INTO paragraphs (id, chapter_id, index_in_chapter, source_text, translated_text, status)
       VALUES (?, ?, ?, ?, ?, ?)
     `)
     for (const p of paragraphs) {
-      insertParagraph.run(p.id, p.chapter_id, p.index_in_chapter, p.source_text, p.translated_text, p.status)
+      insertParagraph.run([p.id, p.chapter_id, p.index_in_chapter, p.source_text, p.translated_text, p.status])
     }
 
     db.close()
@@ -207,7 +207,7 @@ export class ProjectManager {
     }
 
     const db = createProjectDatabase(projectPath)
-    const rows = db.prepare('SELECT * FROM chapters WHERE project_id = ? ORDER BY order_index').all(projectId) as Record<string, unknown>[]
+    const rows = db.prepare('SELECT * FROM chapters WHERE project_id = ? ORDER BY order_index').all([projectId]) as Record<string, unknown>[]
     db.close()
 
     return rows.map((row) => ({

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS paragraphs (
   index_in_chapter INTEGER NOT NULL,
   source_text TEXT NOT NULL,
   translated_text TEXT,
+  pre_translated_text TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   metadata TEXT
 );
@@ -76,3 +77,4 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE INDEX IF NOT EXISTS idx_paragraphs_chapter ON paragraphs(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_lexicon_project ON lexicon(project_id);
 CREATE INDEX IF NOT EXISTS idx_tm_project_text ON translation_memory(project_id, source_text);
+

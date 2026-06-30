@@ -12,7 +12,8 @@ export const appSettingsSchema = z.object({
   targetLanguage: z.string().length(2).default('fr'),
   defaultProjectsPath: z.string().default('~/NovelTrad Projects'),
   theme: z.enum(['dark', 'light', 'system']).default('dark'),
-  recentProjects: z.array(z.string()).default([])
+  recentProjects: z.array(z.string()).default([]),
+  updateChannel: z.enum(['latest', 'beta', 'alpha']).default('latest')
 })
 
 export type AppSettings = z.infer<typeof appSettingsSchema>
@@ -48,3 +49,4 @@ export class SettingsManager {
     fs.writeFileSync(this.configPath, JSON.stringify(next, null, 2), 'utf-8')
   }
 }
+

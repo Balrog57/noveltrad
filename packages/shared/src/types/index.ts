@@ -26,6 +26,7 @@ export interface Paragraph {
   indexInChapter: number
   sourceText: string
   translatedText?: string
+  preTranslatedText?: string
   status: 'pending' | 'translated' | 'reviewed'
   metadata?: Record<string, unknown>
 }
@@ -72,6 +73,7 @@ export interface Job {
   startedAt?: string
   finishedAt?: string
   errorMessage?: string
+  createdAt: string
 }
 
 export interface Step {
@@ -91,6 +93,7 @@ export interface Step {
   startedAt?: string
   finishedAt?: string
   errorMessage?: string
+  createdAt: string
 }
 
 export interface AgentInput {
@@ -107,7 +110,7 @@ export interface AgentInput {
 export interface AgentOutput {
   text?: string
   paragraphs?: Paragraph[]
-  report?: Record<string, unknown>
+  report?: unknown
   score?: number
   substitutions?: Array<{ before: string; after: string; locked: boolean }>
   corrections?: Array<{ before: string; after: string; rule: string }>
@@ -177,6 +180,7 @@ export interface AppSettings {
   targetLanguage: string
   defaultProjectsPath: string
   theme: 'dark' | 'light' | 'system'
+  updateChannel: 'latest' | 'beta' | 'alpha'
 }
 
 export interface CreateProjectPayload {
@@ -186,4 +190,43 @@ export interface CreateProjectPayload {
   targetLanguage: string
   parentPath: string
 }
+
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatOptions {
+  temperature?: number
+  maxTokens?: number
+  jsonMode?: boolean
+}
+
+export interface AiProvider {
+  readonly id: string
+  readonly name: string
+  readonly host?: string
+  readonly apiKey?: string
+  listModels(): Promise<string[]>
+  chat(messages: ChatMessage[], options?: ChatOptions): Promise<string>
+  streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncIterable<string>
+  embeddings(texts: string[]): Promise<number[][]>
+  isAvailable(): Promise<boolean>
+}
+
+export interface Substitution {
+  before: string
+  after: string
+  locked: boolean
+}
+
+export interface LexiconApplyResult {
+  text: string
+  substitutions: Array<{ before: string; after: string; locked: boolean }>
+}
+
+
+
+
+
 

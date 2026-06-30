@@ -1,4 +1,4 @@
-import Database from 'node-sqlite3-wasm'
+import { Database } from 'node-sqlite3-wasm'
 import path from 'node:path'
 import fs from 'node:fs'
 
@@ -24,15 +24,15 @@ export function runMigrations(db: Database, migrationsDir: string): void {
 
   for (const file of files) {
     const version = parseInt(file.split('_')[0], 10)
-    const applied = db.prepare('SELECT 1 FROM __migrations WHERE version = ?').get(version)
+    const applied = db.prepare('SELECT 1 FROM __migrations WHERE version = ?').get([version])
     if (applied) continue
 
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8')
     db.exec(sql)
-    db.prepare('INSERT INTO __migrations (version, name, applied_at) VALUES (?, ?, ?)').run(
+    db.prepare('INSERT INTO __migrations (version, name, applied_at) VALUES (?, ?, ?)').run([
       version,
       file,
       new Date().toISOString()
-    )
+    ])
   }
 }

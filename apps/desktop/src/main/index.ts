@@ -1,13 +1,16 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import { registerIpcRouter } from './ipc/router.js'
 import { SettingsManager } from './managers/SettingsManager.js'
+import { UpdateManager } from './managers/UpdateManager.js'
 import { logger } from './utils/logger.js'
 
 const settings = new SettingsManager()
+let mainWindow: BrowserWindow | null = null
+let updateManager: UpdateManager | null = null
 
 async function createWindow(): Promise<BrowserWindow> {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
@@ -33,10 +36,21 @@ async function createWindow(): Promise<BrowserWindow> {
   return mainWindow
 }
 
+function getMainWindow(): BrowserWindow | null {
+  return mainWindow
+}
+
 app.whenReady().then(async () => {
   logger.info('NovelTrad starting...')
   registerIpcRouter()
   await createWindow()
+
+  updateManager = new UpdateManager(settings.get('updateChannel'), getMainWindow)
+  setTimeout(() => {
+    updateManager?.check().catch((err) => {
+      logger.warn('Initial update check failed', err)
+    })
+  }, 30_000)
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

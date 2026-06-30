@@ -2,6 +2,7 @@ export const IPC_CHANNELS = [
   'project:create',
   'project:open',
   'project:list-recent',
+  'project:path',
   'project:delete',
   'ollama:list-models',
   'ollama:pull-model',
@@ -11,14 +12,29 @@ export const IPC_CHANNELS = [
   'workflow:start',
   'workflow:pause',
   'workflow:resume',
+  'workflow:cancel',
   'workflow:retry-step',
+  'workflow:retry-from',
+  'workflow:list',
+  'workflow:progress',
   'lexicon:list',
   'lexicon:save',
   'chapter:list',
   'chapter:import',
   'export:run',
-  'dialog:open-file'
+  'dialog:open-file',
+  'update:check',
+  'update:download',
+  'update:install',
+  'update:set-channel',
+  'update:checking',
+  'update:available',
+  'update:not-available',
+  'update:progress',
+  'update:downloaded',
+  'update:error'
 ] as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number]
+
 

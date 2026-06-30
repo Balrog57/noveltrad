@@ -3,6 +3,8 @@ productName: NovelTrad
 icon: build/icon.png
 copyright: Copyright © 2026 Balrog57
 asar: true
+electronVersion: 31.1.0
+forceCodeSigning: false
 directories:
   output: dist
   buildResources: build
@@ -11,15 +13,15 @@ files:
   - "build/**/*"
   - "resources/**/*"
 publish:
-  provider: github
-  owner: Balrog57
-  repo: noveltrad
-  releaseType: release
-  channel: latest
-  generateUpdatesFilesForAllChannels: true
+  - provider: github
+    owner: Balrog57
+    repo: noveltrad
+    releaseType: release
 win:
   target:
     - nsis
+  verifyUpdateCodeSignature: false
+  signAndEditExecutable: false
 mac:
   target:
     - dmg
@@ -34,3 +36,5 @@ nsis:
   uninstallDisplayName: NovelTrad
   createDesktopShortcut: always
   createStartMenuShortcut: true
+  artifactName: '${productName}-${version}-setup.${ext}'
+
