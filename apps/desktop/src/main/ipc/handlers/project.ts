@@ -16,6 +16,11 @@ const createProjectSchema = z.object({
   parentPath: z.string().min(1),
 });
 
+const importFilesSchema = z.object({
+  projectId: z.string().uuid(),
+  filePaths: z.array(z.string().min(1)).min(1).max(50),
+});
+
 export function registerProjectHandlers(): void {
   ipcMain.handle("project:create", async (_event, payload) => {
     const parsed = createProjectSchema.parse(payload);
@@ -58,6 +63,41 @@ export function registerProjectHandlers(): void {
     "chapter:import",
     async (_event, projectId: string, filePath: string) => {
       return projectManager.importSource(projectId, filePath);
+    },
+  );
+
+  /**
+   * Import multiple fichiers (drag-and-drop ou sélection multiple).
+   * SDD §5.4, §5.9 — Import DOCX/EPUB/TXT/MD avec drag-and-drop.
+   */
+  ipcMain.handle(
+    "source:import-files",
+    async (_event, payload: { projectId: string; filePaths: string[] }) => {
+      const parsed = importFilesSchema.parse(payload);
+      const results: Array<{
+        filePath: string;
+        success: boolean;
+        chapters?: Awaited<ReturnType<ProjectManager["importSource"]>>;
+        error?: string;
+      }> = [];
+
+      for (const filePath of parsed.filePaths) {
+        try {
+          const chapters = await projectManager.importSource(
+            parsed.projectId,
+            filePath,
+          );
+          results.push({ filePath, success: true, chapters });
+        } catch (err) {
+          const message =
+            err instanceof Error
+              ? err.message
+              : "Erreur inconnue lors de l'import";
+          results.push({ filePath, success: false, error: message });
+        }
+      }
+
+      return results;
     },
   );
 

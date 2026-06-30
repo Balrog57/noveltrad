@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from "vue-router";
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { useProjectStore } from "../stores/project";
 import { useWorkflowStore } from "../stores/workflow";
 import ExportDialog from "../components/export/ExportDialog.vue";
@@ -13,6 +13,14 @@ const workflowStore = useWorkflowStore();
 const chapters = ref<Chapter[]>([]);
 const translatingId = ref<string | null>(null);
 const exportChapterId = ref<string | null>(null);
+
+// Drag-and-drop (SDD §5.9)
+const isDragging = ref(false);
+const importProgress = ref(false);
+const importMessage = ref<string | null>(null);
+const importMessageType = ref<"success" | "error">("success");
+let dragCounter = 0;
+let messageTimer: ReturnType<typeof setTimeout> | null = null;
 
 const projectId = (route.params.projectId as string) || "";
 
@@ -48,12 +56,206 @@ function progressFor(chapterId: string): string {
   const { step, totalSteps } = workflowStore.progress;
   return `${step.name} (${step.orderIndex + 1}/${totalSteps})`;
 }
+
+// --- Drag-and-drop handlers (SDD §5.9) ---
+
+function onDragEnter(e: DragEvent): void {
+  e.preventDefault();
+  dragCounter++;
+  isDragging.value = true;
+}
+
+function onDragOver(e: DragEvent): void {
+  e.preventDefault();
+  e.dataTransfer!.dropEffect = "copy";
+}
+
+function onDragLeave(e: DragEvent): void {
+  e.preventDefault();
+  dragCounter--;
+  if (dragCounter <= 0) {
+    isDragging.value = false;
+    dragCounter = 0;
+  }
+}
+
+function onDrop(e: DragEvent): void {
+  e.preventDefault();
+  isDragging.value = false;
+  dragCounter = 0;
+
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+
+  // Extraire les chemins natifs (Electron expose .path sur File)
+  const filePaths: string[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]!;
+    const filePath = (file as unknown as { path?: string }).path;
+    if (filePath) {
+      filePaths.push(filePath);
+    }
+  }
+
+  if (filePaths.length === 0) {
+    showImportMessage("Aucun fichier valide detecte.", "error");
+    return;
+  }
+
+  importFiles(filePaths);
+}
+
+async function importFiles(filePaths: string[]): Promise<void> {
+  importProgress.value = true;
+  importMessage.value = null;
+
+  try {
+    const results = await window.novelTradAPI.invoke<
+      Array<{
+        filePath: string;
+        success: boolean;
+        chapters?: Chapter[];
+        error?: string;
+      }>
+    >("source:import-files", { projectId, filePaths });
+
+    const successes = results.filter((r) => r.success);
+    const failures = results.filter((r) => !r.success);
+
+    if (successes.length > 0) {
+      const totalChapters = successes.reduce(
+        (sum, r) => sum + (r.chapters?.length ?? 0),
+        0,
+      );
+      showImportMessage(
+        `${totalChapters} chapitre${totalChapters > 1 ? "s" : ""} importe${totalChapters > 1 ? "s" : ""} avec succes.`,
+        "success",
+      );
+    }
+
+    if (failures.length > 0) {
+      const errorMessages = failures.map(
+        (r) => `${r.filePath.split(/[/\\]/).pop()}: ${r.error}`,
+      );
+      showImportMessage(
+        `${failures.length} echec${failures.length > 1 ? "s" : ""} : ${errorMessages.join("; ")}`,
+        "error",
+      );
+    }
+
+    // Recharger la liste des chapitres
+    chapters.value = await window.novelTradAPI.invoke(
+      "chapter:list",
+      projectId,
+    );
+    projectStore.chapters = chapters.value;
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Erreur lors de l'import";
+    showImportMessage(message, "error");
+  } finally {
+    importProgress.value = false;
+  }
+}
+
+function showImportMessage(message: string, type: "success" | "error"): void {
+  if (messageTimer) {
+    clearTimeout(messageTimer);
+    messageTimer = null;
+  }
+  importMessage.value = message;
+  importMessageType.value = type;
+  // Auto-masquer après 6 secondes pour les succès
+  if (type === "success") {
+    messageTimer = setTimeout(() => {
+      importMessage.value = null;
+    }, 6000);
+  }
+}
+
+/** Ouvre le dialogue natif de sélection de fichiers pour l'import */
+async function openImportDialog(): Promise<void> {
+  const result = await window.novelTradAPI.invoke<{
+    canceled: boolean;
+    filePaths: string[];
+  }>("dialog:open-file", {
+    title: "Importer des fichiers source",
+    filters: [
+      { name: "Texte", extensions: ["txt", "md"] },
+      { name: "Word", extensions: ["docx"] },
+      { name: "EPUB", extensions: ["epub"] },
+      { name: "Tous les fichiers", extensions: ["*"] },
+    ],
+    properties: ["openFile", "multiSelections"],
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    importFiles(result.filePaths);
+  }
+}
+
+// Nettoyage des timers à l'unmount
+onUnmounted(() => {
+  if (messageTimer) {
+    clearTimeout(messageTimer);
+  }
+  importMessage.value = null;
+});
 </script>
 
 <template>
-  <div>
+  <div
+    class="chapters-container"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <h1>Chapitres</h1>
-    <p v-if="!chapters.length" class="empty">Aucun chapitre importé.</p>
+
+    <!-- Zone de drop (SDD §5.9) -->
+    <div class="drop-zone" :class="{ dragging: isDragging }">
+      <div v-if="isDragging" class="drop-overlay">
+        <span class="drop-icon">&#x1F4C4;</span>
+        <span class="drop-text">Deposez vos fichiers ici</span>
+        <span class="drop-formats"
+          >Formats supportes : TXT, MD, DOCX, EPUB</span
+        >
+      </div>
+      <div v-else class="drop-hint">
+        <span
+          >Glissez-deposez des fichiers (TXT, MD, DOCX, EPUB) pour les
+          importer</span
+        >
+      </div>
+    </div>
+
+    <!-- Barre de progression import -->
+    <div v-if="importProgress" class="import-progress">
+      <span class="spinner"></span>
+      <span>Import en cours...</span>
+    </div>
+
+    <!-- Message d'import -->
+    <div
+      v-if="importMessage"
+      class="import-message"
+      :class="importMessageType"
+      role="alert"
+    >
+      {{ importMessage }}
+    </div>
+
+    <!-- Import button (backup for drag-and-drop) -->
+    <div class="import-actions">
+      <button class="btn-import" @click="openImportDialog">
+        + Importer des fichiers
+      </button>
+    </div>
+
+    <p v-if="!chapters.length && !importProgress" class="empty">
+      Aucun chapitre importé.
+    </p>
     <ul class="chapter-list">
       <li v-for="ch in chapters" :key="ch.id" class="chapter-item">
         <div
@@ -161,5 +363,116 @@ function progressFor(chapterId: string): string {
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Drag-and-drop zone */
+.drop-zone {
+  border: 2px dashed var(--border-color, var(--bg-tertiary));
+  border-radius: var(--border-radius);
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 16px;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.drop-zone.dragging {
+  border-color: var(--accent);
+  background-color: var(--bg-accent, var(--accent));
+  opacity: 0.15;
+}
+
+.drop-hint {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.drop-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.drop-icon {
+  font-size: 32px;
+}
+
+.drop-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.drop-formats {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Import progress */
+.import-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  margin-bottom: 12px;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--bg-tertiary);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Import message */
+.import-message {
+  padding: 10px 16px;
+  border-radius: var(--border-radius);
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.import-message.success {
+  background-color: var(--success);
+  color: white;
+}
+
+.import-message.error {
+  background-color: var(--error);
+  color: white;
+}
+
+/* Import actions */
+.import-actions {
+  margin-bottom: 12px;
+}
+
+.btn-import {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color, var(--bg-tertiary));
+  padding: 8px 16px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-import:hover {
+  background-color: var(--bg-tertiary);
 }
 </style>

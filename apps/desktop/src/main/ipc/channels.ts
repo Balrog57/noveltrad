@@ -27,6 +27,7 @@ export const IPC_CHANNELS = [
   "chapter:import",
   "chapter:get-paragraphs",
   "chapter:save",
+  "source:import-files",
   "export:run",
   "dialog:open-file",
   "update:check",

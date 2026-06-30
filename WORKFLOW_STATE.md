@@ -1142,6 +1142,11 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 - **Phase 35 (Implementor - SDD Items D/E)** : ✅ Complété — Snapshot types Record<string, unknown> + Coverage thresholds
 - **Phase 36 (SDD Gap Analysis)** : ✅ Complété — Analyse des écarts SDD restants identifiés
 - **Phase 37 (Implementor - WorkflowView + ConsoleView)** : ✅ Complété — SDD §4.9, §4.12 implémentés
+- **Phase 38 (Implementor - Import DOCX/EPUB + Drag-and-drop + Langue + Chapitres)** : ✅ Complété — SDD §5.4, §5.5, §5.7, §5.9
+
+## Current Status
+- Phase 1-37 : ✅ Complété (tous les items précédents)
+- **Phase 38 (Implementor - Import DOCX/EPUB + Drag-and-drop)** : ✅ Complété — En attente de review
 
 ## SDD Gap Analysis — Remaining Work
 
@@ -1151,10 +1156,10 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 |---|---------|----------|--------|
 | 1 | WorkflowView — Visualisation du workflow (SDD §4.9, §7.6) | 🔴 HIGH | ✅ Implémenté |
 | 2 | ConsoleView — Logs temps réel (SDD §4.12) | 🟡 MEDIUM | ✅ Implémenté |
-| 3 | Import DOCX/EPUB (SDD §5.4, §5.9) | 🔴 HIGH | ❌ Manquant |
-| 4 | Drag-and-drop import (SDD §5.9) | 🔴 HIGH | ❌ Manquant |
-| 5 | Language detection franc (SDD §5.7) | 🟡 MEDIUM | ❌ Manquant |
-| 6 | Chapter splitting by patterns (SDD §5.5) | 🟡 MEDIUM | ❌ Manquant |
+| 3 | Import DOCX/EPUB (SDD §5.4, §5.9) | 🔴 HIGH | ✅ Implémenté |
+| 4 | Drag-and-drop import (SDD §5.9) | 🔴 HIGH | ✅ Implémenté |
+| 5 | Language detection franc (SDD §5.7) | 🟡 MEDIUM | ✅ Implémenté |
+| 6 | Chapter splitting by patterns (SDD §5.5) | 🟡 MEDIUM | ✅ Implémenté |
 | 7 | Project dashboard stats (SDD §4.6) | 🟡 MEDIUM | ❌ Manquant |
 | 8 | Batch processing (SDD §7.9) | 🟢 LOW | ❌ Manquant |
 | 9 | Translation Memory TMX (SDD §9.7) | 🟢 LOW | ❌ Manquant |
@@ -1187,12 +1192,17 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 | DB tables lexicon_aliases/exports/prompts/stats | §6.2-6.3 | ✅ |
 | Snapshot types Record | §7.2-7.3 | ✅ |
 | Coverage thresholds | §19.6 | ✅ |
+| Import DOCX/EPUB (mammoth, adm-zip, cheerio) | §5.4, §5.9 | ✅ |
+| Drag-and-drop import (UI ChaptersView) | §5.9 | ✅ |
+| Language detection (franc) | §5.7 | ✅ |
+| Chapter splitting (patterns + config) | §5.5 | ✅ |
+| source:import-files IPC handler | §5.9 | ✅ |
 
 ### Prochaines phases recommandées
 
-1. **Phase 37** : WorkflowView + ConsoleView (SDD §4.9, §4.12)
-2. **Phase 38** : Import DOCX/EPUB + Drag-and-drop (SDD §5.4, §5.9)
-3. **Phase 39** : Language detection + Chapter splitting (SDD §5.5, §5.7)
+1. ~~**Phase 37** : WorkflowView + ConsoleView (SDD §4.9, §4.12)~~ ✅
+2. ~~**Phase 38** : Import DOCX/EPUB + Drag-and-drop (SDD §5.4, §5.9)~~ ✅
+3. ~~**Phase 39** : Language detection + Chapter splitting (SDD §5.5, §5.7)~~ ✅
 4. **Phase 40** : Project dashboard stats (SDD §4.6)
 
 ## Next Agent
@@ -2893,6 +2903,137 @@ Aucun de ces correctifs n'est bloquant pour le passage au tester. L'implémentat
 - ✅ **12/12 export tests** — aucune régression
 - ✅ **13/13 history tests** — aucune régression
 - ✅ **37/37 prompts tests** — aucune régression
+
+## Implementation Notes — Import DOCX/EPUB + Drag-and-drop + Language detection + Chapter splitting (Phase 38, SDD §5.4, §5.5, §5.7, §5.9)
+
+### TASK 1 — Dependencies
+
+| Package | Statut | Notes |
+|---------|--------|-------|
+| `mammoth` | ✅ Déjà installé | DOCX → HTML conversion |
+| `adm-zip` | ✅ Déjà installé | EPUB ZIP extraction |
+| `franc` | ✅ Déjà installé | Language detection (ISO 639-3) |
+| `cheerio` | ✅ Installé (nouveau) | HTML parsing for EPUB content extraction |
+
+### TASK 2 + 5 + 6 — Enhanced ProjectManager.importSource()
+
+#### Files Modified
+| Fichier | Changement |
+|---------|------------|
+| `apps/desktop/src/main/managers/ProjectManager.ts` | Refonte majeure : formats supportés (.txt/.md/.docx/.epub), extraction DOCX (mammoth), extraction EPUB (adm-zip + cheerio), htmlToMarkdown (regex-based), détection langue (franc + francAll), découpage chapitres (patterns + config.json), resolveProjectPath extrait, multi-chapitre par fichier |
+
+#### Design Decisions
+- **`htmlToMarkdown`** : approche regex-based (pas cheerio `.text()`) car `$.text()` écrase tout le markdown formaté. Les balises sont supprimées puis les entités HTML décodées.
+- **`extractDocx`** : `mammoth.convertToHtml({ buffer })` → `htmlToMarkdown()` → texte brut
+- **`extractEpub`** : `AdmZip` lit les entries XHTML/HTML → `cheerio.load()` supprime nav/header/footer/script/style → `$.text()` extrait le texte
+- **`detectLanguage`** : `francAll()` retourne les 3 meilleures candidats. Si score < 0.8, warning logué mais import continue. Code `und` = indéterminé.
+- **`getLanguageName`** : mapping ISO 639-3 → nom français (50+ langues)
+- **`splitIntoChapters`** : 4 patterns par défaut (`Chapter N`, `Chapitre N`, `第 N 章`, `CHAPTER N`). Priorité au pattern `parser.chapterSeparator` du config.json du projet.
+- **Multi-chapitre** : un fichier peut contenir plusieurs chapitres. Chaque chapitre est créé dans la DB avec un title dérivé du nom de fichier + numéro.
+- **Order index** : calculé à partir des chapitres existants (`max + 1`) pour éviter les collisions.
+
+### TASK 3 — source:import-files IPC Handler
+
+#### Files Created
+| Fichier | Rôle |
+|---------|------|
+| (aucun — ajouté dans `handlers/project.ts`) | — |
+
+#### Files Modified
+| Fichier | Changement |
+|---------|------------|
+| `apps/desktop/src/main/ipc/channels.ts` | Ajout canal `source:import-files` |
+| `apps/desktop/src/main/ipc/handlers/project.ts` | Ajout handler `source:import-files` : Zod schema `importFilesSchema` (projectId UUID + filePaths array min 1 max 50), boucle sur chaque fichier avec try/catch individuel, retour array résultats (success/chapters/error) |
+
+#### Design Decisions
+- **Import séquentiel** : les fichiers sont importés un par un (pas de parallélisation) pour éviter les conflits DB
+- **Error per-file** : chaque échec est isolé — un fichier échoué n'empêche pas les autres
+- **Zod validation** : `projectId: z.string().uuid()`, `filePaths: z.array(z.string().min(1)).min(1).max(50)`
+- **Retour structuré** : `Array<{ filePath, success, chapters?, error? }>` pour permettre à l'UI d'afficher un résumé détaillé
+
+### TASK 4 — Drag-and-drop UI (ChaptersView.vue)
+
+#### Files Modified
+| Fichier | Changement |
+|---------|------------|
+| `apps/desktop/src/renderer/src/views/ChaptersView.vue` | Refonte template : zone drag-and-drop, overlay visuel pendant drag, barre de progression import, messages succès/erreur avec auto-dismiss, bouton "+ Importer des fichiers" (dialogue natif Electron multi-sélection) |
+
+#### Design Decisions
+- **`dragCounter`** : compteur pour gérer correctement les événements `dragenter`/`dragleave` sur les éléments enfants (évite le flickering)
+- **Electron `.path`** : `File.path` est une propriété Electron-specific qui expose le chemin natif du fichier
+- **File dialog backup** : bouton "+ Importer des fichiers" utilise `dialog:open-file` avec `multiSelections` (réutilise le handler existant)
+- **Auto-dismiss** : messages de succès disparaissent après 6 secondes ; erreurs persistent
+- **Timer cleanup** : `messageTimer` nettoyé dans `onUnmounted` (pattern défensif — fix MS3 du reviewer Item 3)
+- **CSS tokens uniquement** : pas de Tailwind. `var(--bg-secondary)`, `var(--accent)`, `var(--border-radius)`, etc.
+- **UI en français** : "Glissez-deposez", "Import en cours...", "formats supportes", etc.
+
+### TASK 5 — Language Detection (SDD §5.7)
+
+- Intégré dans `ProjectManager.extractDocx()`, `extractEpub()`, `extractPlainText()` via `detectLanguage()`
+- Utilise `francAll(text, { minLength: 20 })` pour la détection multilingue
+- Seuil de confiance : 0.8 — si inférieur, un warning est logué mais l'import continue
+- Code `und` (undetermined) traité comme null
+- Mapping ISO 639-3 → nom français (50+ langues courantes)
+- Métadonnées stockées dans `metadata.detectedLanguage`, `metadata.detectedLanguageName`, `metadata.detectedLanguageConfidence`
+
+### TASK 6 — Chapter Splitting (SDD §5.5)
+
+- 4 patterns par défaut : `/^Chapter\s+\d+/im`, `/^Chapitre\s+\d+/im`, `/^第\s*\d+\s*章/im`, `/^CHAPTER\s+\d+/im`
+- Pattern personnalisable via `config.json → parser.chapterSeparator`
+- Priorité : config.json → patterns par défaut
+- Fallback : si aucun pattern ne matche, le fichier entier est un seul chapitre
+- Algorithme : itération ligne par ligne avec test regex, regroupement entre les séparateurs
+
+### TASK 7 — Tests
+
+#### Files Created
+| Fichier | Rôle |
+|---------|------|
+| `apps/desktop/tests/unit/import.spec.ts` | 18 tests : htmlToMarkdown (10) + splitIntoChapters (8) |
+
+#### Test Breakdown
+| # | Suite | Test | Statut |
+|---|-------|------|--------|
+| 1 | htmlToMarkdown | devrait convertir les titres HTML en markdown | ✅ |
+| 2 | htmlToMarkdown | devrait convertir les paragraphes HTML | ✅ |
+| 3 | htmlToMarkdown | devrait convertir le gras en markdown | ✅ |
+| 4 | htmlToMarkdown | devrait convertir l'italique en markdown | ✅ |
+| 5 | htmlToMarkdown | devrait convertir les listes en markdown | ✅ |
+| 6 | htmlToMarkdown | devrait supprimer les balises script et style | ✅ |
+| 7 | htmlToMarkdown | devrait gerer les sauts de ligne | ✅ |
+| 8 | htmlToMarkdown | devrait nettoyer les espaces multiples | ✅ |
+| 9 | htmlToMarkdown | devrait gerer un HTML vide | ✅ |
+| 10 | htmlToMarkdown | devrait conserver le texte brut sans balises HTML | ✅ |
+| 11 | splitIntoChapters | devrait retourner le texte entier si aucun pattern ne correspond | ✅ |
+| 12 | splitIntoChapters | devrait separer selon le pattern Chapter N | ✅ |
+| 13 | splitIntoChapters | devrait separer selon le pattern Chapitre N | ✅ |
+| 14 | splitIntoChapters | devrait separer selon le pattern 第 N 章 | ✅ |
+| 15 | splitIntoChapters | devrait separer selon CHAPTER N (majuscules) | ✅ |
+| 16 | splitIntoChapters | devrait respecter un pattern personnalise via config | ✅ |
+| 17 | splitIntoChapters | devrait gerer un texte avec plusieurs sauts de ligne | ✅ |
+| 18 | splitIntoChapters | devrait retourner un seul element pour un texte court sans chapitres | ✅ |
+
+### Verification
+- ✅ `npm run type-check --workspace=apps/desktop` : passe (0 erreur)
+- ✅ `npm run test` : **124/124 passent** (8 suites, 0 régression)
+- ✅ Prettier : 4 fichiers auto-fixés (ProjectManager.ts, handlers/project.ts, ChaptersView.vue, import.spec.ts), tous conformes
+- ✅ Aucune régression sur les tests existants (Items 1-7 + Phase 37)
+
+### Regression Check
+- ✅ **4/4 engines tests** — aucune régression
+- ✅ **13/13 editor tests** — aucune régression
+- ✅ **16/16 lexicon tests** — aucune régression
+- ✅ **12/12 export tests** — aucune régression
+- ✅ **13/13 history tests** — aucune régression
+- ✅ **37/37 prompts tests** — aucune régression
+- ✅ **11/11 workflow-view tests** — aucune régression
+
+### Test Results — Phase 38
+
+| Commande | Résultat |
+|----------|----------|
+| `npm run type-check --workspace=apps/desktop` | ✅ PASS (0 erreur) |
+| `npm run test` | ✅ **ALL 124 PASS** (0 régression) |
 
 ## Next Agent
 reviewer
