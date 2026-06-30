@@ -33,6 +33,7 @@ function isActive(name: string) {
         :key="link.name"
         class="nav-item"
         :class="{ active: isActive(link.name) }"
+        :aria-label="link.label"
         @click="router.push({ name: link.name })"
       >
         <span class="icon">{{ link.icon }}</span>
@@ -47,6 +48,7 @@ function isActive(name: string) {
           :key="link.name"
           class="nav-item"
           :class="{ active: isActive(link.name) }"
+          :aria-label="link.label"
           @click="
             router.push({
               name: link.name,

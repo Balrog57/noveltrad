@@ -35,6 +35,27 @@ export class ProjectManager {
     fs.mkdirSync(path.join(projectDir, "cache"));
     fs.mkdirSync(path.join(projectDir, "logs"));
 
+    // SDD §5.1 — Écrire le fichier de configuration du projet
+    const projectConfig = {
+      id: crypto.randomUUID(),
+      name: payload.name,
+      author: payload.author ?? "",
+      sourceLanguage: payload.sourceLanguage,
+      targetLanguage: payload.targetLanguage,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: "1.0.0",
+      parser: {
+        chapterSeparator: "^Chapter\\s+\\d+",
+        paragraphSeparator: "\\n\\n",
+      },
+    };
+    fs.writeFileSync(
+      path.join(projectDir, "config.json"),
+      JSON.stringify(projectConfig, null, 2),
+      "utf-8",
+    );
+
     const db = createProjectDatabase(projectDir);
     runMigrations(db, migrationsDir);
 

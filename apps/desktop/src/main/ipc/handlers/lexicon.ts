@@ -16,6 +16,7 @@ import type { LexiconEntry } from "@shared/types/index.js";
 import type { Database as SqliteDatabase } from "node-sqlite3-wasm";
 import path from "node:path";
 import fs from "node:fs";
+import { assertWithinProject } from "../../utils/paths.js";
 
 const settings = new SettingsManager();
 const migrationsDir = path.join(__dirname, "../../db/migrations");
@@ -34,6 +35,19 @@ function resolveProjectPath(projectId: string): string {
     return found !== undefined;
   });
   if (!projectPath) throw new Error(`Projet non trouvé : ${projectId}`);
+  // SDD §21.3 — Vérifier que le chemin projet est dans un répertoire légitime
+  const allRecent = (settings.get("recentProjects") as string[] | undefined) ?? [];
+  const validBase = allRecent.find((base) => {
+    try {
+      assertWithinProject(path.dirname(base), projectPath);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (!validBase) {
+    throw new Error(`Path traversal détecté pour le projet : ${projectPath}`);
+  }
   return projectPath;
 }
 

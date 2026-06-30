@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import {
   Document,
   Packer,
@@ -10,10 +11,24 @@ import {
 } from "docx";
 import AdmZip from "adm-zip";
 import type { ExportInput, ExportFormat } from "@shared/types/index.js";
+import type { ProjectDatabase } from "../db/connection.js";
+import { assertWithinProject } from "../utils/paths.js";
 
 export class ExportEngine {
+  private db?: ProjectDatabase;
+
+  /** Définit la base de données projet pour le traçage des exports (SDD §6.2) */
+  setDatabase(db: ProjectDatabase): void {
+    this.db = db;
+  }
   async export(input: ExportInput): Promise<string> {
     const outputPath = input.outputPath ?? this.defaultOutputPath(input);
+
+    // SDD §21.3 — Protection contre le path traversal
+    const basePath = input.outputPath
+      ? path.dirname(path.resolve(input.outputPath))
+      : path.resolve(".");
+    assertWithinProject(basePath, outputPath);
 
     // Créer le dossier parent si nécessaire
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
@@ -37,6 +52,24 @@ export class ExportEngine {
     // Validation EPUB structurelle (SDD §13.8)
     if (input.format === "epub") {
       this.validateEpub(outputPath);
+    }
+
+    // SDD §6.2 : traçage des exports dans la table `exports`
+    if (this.db) {
+      const stmt = this.db.prepare(
+        `INSERT INTO exports (id, project_id, chapter_id, format, output_path, file_size, bilingual, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      stmt.run([
+        randomUUID(),
+        input.projectId,
+        input.chapterId ?? null,
+        input.format,
+        outputPath,
+        stat.size,
+        input.options?.bilingual ? 1 : 0,
+        new Date().toISOString(),
+      ]);
     }
 
     return outputPath;

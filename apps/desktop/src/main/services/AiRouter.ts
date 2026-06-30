@@ -3,12 +3,19 @@ import type {
   ChatMessage,
   ChatOptions,
 } from "@shared/types/index.js";
+import type { AiCache } from "./AiCache.js";
 
 export class AiRouter {
   private providers: Map<string, AiProvider> = new Map();
+  private aiCache?: AiCache;
 
   register(provider: AiProvider): void {
     this.providers.set(provider.id, provider);
+  }
+
+  /** Active le cache des réponses IA (SDD §22.1) */
+  setCache(cache: AiCache): void {
+    this.aiCache = cache;
   }
 
   get(id: string): AiProvider {
@@ -22,7 +29,30 @@ export class AiRouter {
     messages: ChatMessage[],
     options?: ChatOptions,
   ): Promise<string> {
-    return this.get(providerId).chat(messages, options);
+    const provider = this.get(providerId);
+
+    // SDD §22.1 : vérifier le cache avant d'appeler le LLM
+    if (this.aiCache) {
+      const prompt = messages.map((m) => m.content).join("\n");
+      const temperature = options?.temperature ?? 0.7;
+      const cacheKey = this.aiCache.generateKey(
+        prompt,
+        provider.model ?? "unknown",
+        temperature,
+      );
+      const cached = this.aiCache.get(cacheKey);
+      if (cached !== null) {
+        return cached;
+      }
+
+      const response = await provider.chat(messages, options);
+
+      // Stocker la réponse dans le cache pour les appels futurs
+      this.aiCache.set(cacheKey, response);
+      return response;
+    }
+
+    return provider.chat(messages, options);
   }
 
   async *streamChat(

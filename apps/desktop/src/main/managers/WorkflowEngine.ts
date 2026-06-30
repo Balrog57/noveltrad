@@ -32,6 +32,7 @@ import { QualityChecker } from "../services/QualityChecker.js";
 import { ExportEngine } from "../services/ExportEngine.js";
 import { HistoryRepository } from "../db/repositories/HistoryRepository.js";
 import { RagEngine } from "../services/RagEngine.js";
+import { AiCache } from "../services/AiCache.js";
 import { OllamaProvider } from "../services/providers/OllamaProvider.js";
 import { logger } from "../utils/logger.js";
 
@@ -108,6 +109,10 @@ class WorkflowRunner extends EventEmitter {
       ),
     );
 
+    // SDD §22.1 : activer le cache des réponses IA
+    const aiCache = new AiCache(this.db);
+    aiRouter.setCache(aiCache);
+
     const lexiconEngine = new LexiconEngine();
     const tmEngine = new TranslationMemoryEngine();
     tmEngine.setDatabase(this.db);
@@ -118,13 +123,16 @@ class WorkflowRunner extends EventEmitter {
       this.ragEngine = new RagEngine(this.db, ollamaHost);
     }
 
+    const exportEngine = new ExportEngine();
+    exportEngine.setDatabase(this.db);
+
     this.factory = new AgentFactory({
       aiRouter,
       lexiconEngine,
       tmEngine,
       consistencyChecker: new ConsistencyChecker(),
       qualityChecker: new QualityChecker(),
-      exportEngine: new ExportEngine(),
+      exportEngine,
     });
   }
 

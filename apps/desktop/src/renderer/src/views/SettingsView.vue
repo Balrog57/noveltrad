@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, watch, ref } from "vue";
 import { useSettingsStore } from "../stores/settings";
 import { useOllamaStore } from "../stores/ollama";
 import { useUpdateStore } from "../stores/update";
@@ -6,11 +7,96 @@ import { useUpdateStore } from "../stores/update";
 const settings = useSettingsStore();
 const ollama = useOllamaStore();
 const update = useUpdateStore();
+
+const themeValue = ref<string>(
+  settings.data.theme ?? "system",
+);
+
+// SDD §4.14 — Appliquer le thème sur l'élément <html>
+function applyTheme(theme: "dark" | "light" | "system"): void {
+  const root = document.documentElement;
+  if (theme === "light") {
+    root.classList.add("theme-light");
+  } else if (theme === "dark") {
+    root.classList.remove("theme-light");
+  } else {
+    // system : détecter la préférence OS
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)",
+    ).matches;
+    if (prefersDark) {
+      root.classList.remove("theme-light");
+    } else {
+      root.classList.add("theme-light");
+    }
+  }
+}
+
+// Media query listener pour le mode système
+let mediaQuery: MediaQueryList | null = null;
+
+function setupSystemThemeListener(): void {
+  mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const handler = () => {
+    if (
+      (settings.data.theme ?? themeValue.value) === "system"
+    ) {
+      applyTheme("system");
+    }
+  };
+  mediaQuery.addEventListener("change", handler);
+}
+
+async function onThemeChange(value: string): Promise<void> {
+  const theme = value as "dark" | "light" | "system";
+  themeValue.value = theme;
+  applyTheme(theme);
+  await settings.set("theme", theme);
+}
+
+watch(
+  () => settings.data.theme,
+  (newTheme) => {
+    if (newTheme) {
+      themeValue.value = newTheme;
+      applyTheme(newTheme);
+    }
+  },
+);
+
+onMounted(() => {
+  applyTheme(
+    (settings.data.theme as "dark" | "light" | "system") ??
+      "system",
+  );
+  setupSystemThemeListener();
+});
+
+onUnmounted(() => {
+  if (mediaQuery) {
+    mediaQuery.removeEventListener("change", () => {});
+  }
+});
 </script>
 
 <template>
   <div class="settings">
     <h1>Parametres</h1>
+
+    <section class="card">
+      <h2>Theme</h2>
+      <label>
+        Apparence
+        <select
+          :value="themeValue"
+          @change="onThemeChange(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="system">Systeme (auto)</option>
+          <option value="dark">Sombre</option>
+          <option value="light">Clair</option>
+        </select>
+      </label>
+    </section>
 
     <section class="card">
       <h2>Ollama</h2>
@@ -25,10 +111,14 @@ const update = useUpdateStore();
         Tester
       </button>
       <p :class="{ ok: ollama.available }">
-        {{ ollama.available ? "Connecte" : "Non disponible" }}
+        {{
+          ollama.available ? "Connecte" : "Non disponible"
+        }}
       </p>
       <ul v-if="ollama.models.length">
-        <li v-for="m in ollama.models" :key="m.name">{{ m.name }}</li>
+        <li v-for="m in ollama.models" :key="m.name">
+          {{ m.name }}
+        </li>
       </ul>
     </section>
 
@@ -50,7 +140,11 @@ const update = useUpdateStore();
         Canal
         <select
           v-model="settings.data.updateChannel"
-          @change="update.setChannel(settings.data.updateChannel ?? 'latest')"
+          @change="
+            update.setChannel(
+              settings.data.updateChannel ?? 'latest',
+            )
+          "
         >
           <option value="latest">Stable</option>
           <option value="beta">Beta</option>
@@ -61,7 +155,8 @@ const update = useUpdateStore();
         Verifier maintenant
       </button>
       <p v-if="update.available" class="ok">
-        Nouvelle version disponible : {{ update.info?.version }}
+        Nouvelle version disponible :
+        {{ update.info?.version }}
       </p>
       <button
         v-if="update.available && !update.downloaded"
@@ -77,7 +172,9 @@ const update = useUpdateStore();
       >
         Installer et redemarrer
       </button>
-      <p v-if="update.error" class="error">Erreur : {{ update.error }}</p>
+      <p v-if="update.error" class="error">
+        Erreur : {{ update.error }}
+      </p>
     </section>
   </div>
 </template>

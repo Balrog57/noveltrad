@@ -230,6 +230,7 @@ export interface ChatOptions {
 export interface AiProvider {
   readonly id: string;
   readonly name: string;
+  readonly model: string;
   readonly host?: string;
   readonly apiKey?: string;
   listModels(): Promise<string[]>;

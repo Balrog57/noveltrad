@@ -1137,9 +1137,81 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 - **Phase 30 (Implementor - Item 8)** : ✅ Complété — CI + Release workflows créés
 - **Phase 31 (Implementor - Item 6)** : ✅ Complété — Prompts agents : JSON fallback, refus éthique, qwen compat
 - **Phase 32 (Implementor - Item 7)** : ✅ Complété — RAG interne léger (embeddings, similarité cosinus, enrichissement contexte)
+- **Phase 33 (Implementor - SDD compliance fixes)** : ✅ Complété — 6 fixes SDD (CSP, path traversal, theme, shortcuts, ARIA labels, config.json)
+- **Phase 34 (Implementor - SDD Items A/B/C)** : ✅ Complété — Wizard premier lancement + tables DB + cache IA
 
 ## Next Agent
 reviewer
+
+## Implementation Notes — SDD Items A/B/C (Phase 34)
+
+### ITEM A — Wizard premier lancement (SDD §2, §4.18)
+
+#### Files Created
+| Fichier | Rôle |
+|---|---|
+| `apps/desktop/src/renderer/src/components/wizard/WizardDialog.vue` | Wizard 5 étapes : Bienvenue → Ollama → Modèle → Config → Prêt. Multi-step modal avec progression, barre d'étapes, CSS tokens, UI en français. |
+
+#### Files Modified
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/renderer/src/App.vue` | Ajout `WizardDialog` conditionnel : affiché si `settings.data.firstRunCompleted === false`. Chargement settings dans `onMounted`, puis contrôle d'affichage. |
+
+#### Spécifications
+- **Étape 1** : Logo 📖 + "Bienvenue dans NovelTrad 2.0" + bouton "Démarrer"
+- **Étape 2** : Détection Ollama via `useOllamaStore`. 3 états : checking (spinner), available (✅ + nb modèles), unavailable (❌ + boutons "Réessayer" / "Installer Ollama")
+- **Étape 3** : Détection `qwen3.5:9b`. Si absent, bouton "Télécharger qwen3.5:9b" via `ollama:pull-model`
+- **Étape 4** : Langue source (zh/ja/ko/en/fr), langue cible (fr/en), dossier projets. Sauvegarde via `settings:set` à l'étape suivante
+- **Étape 5** : Résumé config + bouton "Commencer" → `settings:set firstRunCompleted true` + fermeture
+- **Skip** : bouton "Passer" à toutes les étapes → saute directement à l'étape 5
+- **Navigation** : ← Retour entre étapes
+- **CSS tokens** uniquement (pas de Tailwind), barre de progression animée, Teleport to body
+
+### ITEM B — Database: lexicon_aliases + exports/prompts/statistics (SDD §6.2-6.3)
+
+#### Files Created
+| Fichier | Rôle |
+|---|---|
+| `apps/desktop/src/main/db/migrations/005_alias_export_prompts_stats.sql` | Création 4 tables : `lexicon_aliases` (FK lexicon, ON DELETE CASCADE), `exports` (traçage exports), `prompts` (templates versionnés), `statistics` (métriques agrégées) |
+
+#### Files Modified
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/main/db/repositories/LexiconRepository.ts` | `create()` : INSERT dans `lexicon_aliases` pour chaque alias via `syncAliases()`. `update()` : DELETE + INSERT aliases. `listByProject()` : LEFT JOIN `lexicon_aliases` + GROUP_CONCAT → agrégation. `getById()` : même JOIN. `map()` : `parseAliases()` priorise `aliases_agg` (JOIN), fallback `aliases` (colonne inline rétro-compat). Import `randomUUID` de `node:crypto`. |
+| `apps/desktop/src/main/services/ExportEngine.ts` | + `setDatabase(db: ProjectDatabase)`. + INSERT dans `exports` après export réussi (id, project_id, chapter_id, format, output_path, file_size, bilingual, created_at). + Import `randomUUID` et `ProjectDatabase`. |
+| `apps/desktop/src/main/ipc/handlers/export.ts` | + `resolveProjectPath(projectId)` pour trouver la DB projet. + `exportEngine.setDatabase(db)` avant export. + Imports `fs`, `SettingsManager`, `createProjectDatabase`, `ProjectRepository`. |
+| `apps/desktop/src/main/managers/WorkflowEngine.ts` | `exportEngine` créé avant `AgentFactory`, `setDatabase(db)` appelé. |
+
+#### Design Decisions
+- **Rétro-compatibilité** : la colonne `lexicon.aliases` (pipe-separated) est toujours maintenue. `parseAliases()` préfère la table normalisée `lexicon_aliases`, fallback sur l'ancienne colonne pour les anciennes données.
+- **Traçage exports** : si la DB projet est introuvable dans le handler IPC (projet non dans `recentProjects`), l'export continue sans traçage. Mode dégradé.
+- **Migration sans doublon** : une seule migration (`005_*.sql`) crée les 4 tables d'un coup.
+
+### ITEM C — AI Cache (SDD §22.1)
+
+#### Files Created
+| Fichier | Rôle |
+|---|---|
+| `apps/desktop/src/main/services/AiCache.ts` | Cache LLM dans SQLite. `ensureTable()` (ai_cache), `get(key)` avec vérification TTL + suppression entrées expirées, `set(key, response, ttlDays)`, `generateKey(prompt, model, temperature)` via SHA-256. |
+
+#### Files Modified
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/main/services/AiRouter.ts` | + `aiCache?: AiCache`. + `setCache(cache)`. `chat()` : si cache présent → génère clé (messages concaténés + provider.model + temperature) → `get()` → si trouvé, retourne directement. Sinon appelle le provider → `set()` la réponse. `streamChat()` non caché (MVP). |
+| `apps/desktop/src/main/managers/WorkflowEngine.ts` | + `import { AiCache }`. + `const aiCache = new AiCache(this.db); aiRouter.setCache(aiCache)`. |
+| `packages/shared/src/types/index.ts` | + `readonly model: string` à l'interface `AiProvider` (requis pour le cache key). |
+
+#### Design Decisions
+- **Clé de cache** : SHA-256 de `model:temperature:prompt`. Déterministe, pas de collision pratique.
+- **TTL** : 7 jours par défaut, configurable par appel. Expiration vérifiée à chaque `get()`, entrées expirées supprimées automatiquement.
+- **Cache uniquement `chat()`** (pas `streamChat()`) : le streaming est trop complexe à cacher pour le MVP.
+- **Fallback gracieux** : si pas de `AiCache` sur le `AiRouter`, le comportement est inchangé (bypass complet).
+
+### Verification
+- ✅ `npm run type-check --workspace=apps/desktop` : passe (0 erreur)
+- ✅ `npm run test` : **95/95 passent** (6 suites, 0 régression)
+- ✅ Prettier : tous les fichiers conformes (4 fichiers auto-fixés)
+- ✅ Aucune régression sur les tests Items 1-7
 
 ## Lint Results — Item 3 (Dialogue d'export complet)
 
