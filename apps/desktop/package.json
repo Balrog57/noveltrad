@@ -1,0 +1,53 @@
+{
+  "name": "@noveltrad/desktop",
+  "version": "2.0.0",
+  "private": true,
+  "main": "out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run type-check && electron-vite build && electron-builder",
+    "preview": "electron-vite preview",
+    "type-check": "vue-tsc --noEmit --project tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "lint": "eslint . --ext .ts,.vue",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@noveltrad/shared": "*",
+    "adm-zip": "^0.5.16",
+    "node-sqlite3-wasm": "^0.8.59",
+    "chardet": "^2.0.0",
+    "docx": "^8.5.0",
+    "electron-log": "^5.1.7",
+    "electron-updater": "^6.3.0",
+    "franc": "^6.2.0",
+    "iconv-lite": "^0.6.3",
+    "jsdom": "^24.1.0",
+    "mammoth": "^1.8.0",
+    "ollama": "^0.5.2",
+    "pinia": "^2.1.7",
+    "uuid": "^10.0.0",
+    "vue": "^3.4.31",
+    "vue-router": "^4.4.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0",
+    "@vitejs/plugin-vue": "^5.0.5",
+    "@vitest/coverage-v8": "^2.0.0",
+    "electron": "^31.1.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.0",
+    "vite": "^5.3.2",
+    "vitest": "^2.0.0",
+    "vue-tsc": "^2.0.24"
+  }
+}
+
+
+

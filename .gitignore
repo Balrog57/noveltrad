@@ -1,101 +1,42 @@
-# NovelTrad OmegaT-compliant Project - .gitignore
-# Generated for v1.1 project structure
+# Dependencies
+node_modules/
+.pnpm-store/
 
-# ============================================
-# Project-Specific Files (Never Commit)
-# ============================================
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
 
-# Project metadata
-project.json
-config.json
-
-# Translation Memory (may contain sensitive data)
-project_save.tmx
-project_save.tmx.bak
-project_save.tmx.timestamp.bak
-tm/**/*.tmx
-
-# User-specific UILayout
-uiLayout.xml
-
-# Last position marker
-last_entry.properties
-
-# ============================================
-# Backup & Snapshots (Local Only)
-# ============================================
-
-# Automatic backups
-backup/
-snapshots/
-!snapshots/.gitkeep
-
-# ============================================
-# Temporary & Cache Files
-# ============================================
-
-*.tmp
-*.temp
-*.swp
-*.swo
-*~
-.cache/
-__pycache__/
-.pytest_cache/
-
-# ============================================
-# IDE & Editor Files
-# ============================================
-
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-.DS_Store
-Thumbs.db
-
-# ============================================
-# Log Files
-# ============================================
-
-*.log
-logs/
-
-# Local pipeline / smoke-test state stores
+# Local project files
+.projects/
 *.db
 *.db-shm
 *.db-wal
 
-# ============================================
-# build_script.py & Deployment
-# ============================================
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-build/
-dist/
-*.spec
-!build.spec
-
-# ============================================
-# AI Agents & Virtual Environments
-.agents/
-.gemini/
-.kilo/
-tasks/
-OmegaT_Doc/
+# Environment
 .env
-.venv/
-env/
-venv/
-*.egg-info/
-.noveltrad/
-.noveltrad_vectors/
-*.ntrad
-Setup_NovelTrad.exe
-Setup_NovelTrad-v*.exe
+.env.local
 
-# Project-specific
-.playwright-cli/
-test_project/
-tools/
-noveltrad-logo.png
-noveltrad-logo-512.png
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tests
+test-results/
+playwright-report/
+coverage/
