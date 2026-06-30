@@ -43,6 +43,15 @@ export interface LexiconEntry {
   priority: number;
   description?: string;
   notes?: string;
+  gender?: string;
+  pronunciation?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CandidateTerm {
+  term: string;
+  occurrences: number;
+  suggestedCategory?: string;
 }
 
 export interface TranslationMemoryMatch {

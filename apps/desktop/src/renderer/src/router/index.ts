@@ -19,6 +19,11 @@ const routes = [
     component: () => import("../views/ChapterEditorView.vue"),
   },
   {
+    path: "/project/:projectId/lexicon",
+    name: "lexicon",
+    component: () => import("../views/LexiconView.vue"),
+  },
+  {
     path: "/settings",
     name: "settings",
     component: () => import("../views/SettingsView.vue"),

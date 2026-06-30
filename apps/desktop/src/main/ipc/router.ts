@@ -6,6 +6,7 @@ import { registerSettingsHandlers } from "./handlers/settings.js";
 import { registerWorkflowHandlers } from "./handlers/workflow.js";
 import { registerUpdateHandlers } from "./handlers/update.js";
 import { registerParagraphHandlers } from "./handlers/paragraph.js";
+import { registerLexiconHandlers } from "./handlers/lexicon.js";
 
 export function registerIpcRouter(): void {
   registerProjectHandlers();
@@ -14,6 +15,7 @@ export function registerIpcRouter(): void {
   registerWorkflowHandlers();
   registerUpdateHandlers();
   registerParagraphHandlers();
+  registerLexiconHandlers();
 
   ipcMain.on("message", (event, channel) => {
     if (!IPC_CHANNELS.includes(channel)) {

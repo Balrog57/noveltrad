@@ -8,8 +8,8 @@ export class LexiconRepository {
     this.db
       .prepare(
         `
-      INSERT INTO lexicon (id, project_id, term, translation, category, aliases, locked, forbidden, priority, description, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO lexicon (id, project_id, term, translation, category, aliases, locked, forbidden, priority, description, notes, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run([
@@ -24,7 +24,15 @@ export class LexiconRepository {
         entry.priority,
         entry.description ?? null,
         entry.notes ?? null,
+        entry.metadata ? JSON.stringify(entry.metadata) : null,
       ]);
+  }
+
+  getById(id: string): LexiconEntry | null {
+    const row = this.db
+      .prepare("SELECT * FROM lexicon WHERE id = ?")
+      .get([id]) as Record<string, unknown> | undefined;
+    return row ? this.map(row) : null;
   }
 
   listByProject(projectId: string): LexiconEntry[] {
@@ -40,7 +48,7 @@ export class LexiconRepository {
     this.db
       .prepare(
         `
-      UPDATE lexicon SET term = ?, translation = ?, category = ?, aliases = ?, locked = ?, forbidden = ?, priority = ?, description = ?, notes = ?
+      UPDATE lexicon SET term = ?, translation = ?, category = ?, aliases = ?, locked = ?, forbidden = ?, priority = ?, description = ?, notes = ?, metadata = ?
       WHERE id = ?
     `,
       )
@@ -54,6 +62,7 @@ export class LexiconRepository {
         entry.priority,
         entry.description ?? null,
         entry.notes ?? null,
+        entry.metadata ? JSON.stringify(entry.metadata) : null,
         entry.id,
       ]);
   }
@@ -75,6 +84,9 @@ export class LexiconRepository {
       priority: Number(row.priority),
       description: row.description ? String(row.description) : undefined,
       notes: row.notes ? String(row.notes) : undefined,
+      metadata: row.metadata
+        ? (JSON.parse(String(row.metadata)) as Record<string, unknown>)
+        : undefined,
     };
   }
 }
