@@ -12,8 +12,7 @@ let mainWindow: BrowserWindow | null = null;
 let updateManager: UpdateManager | null = null;
 
 function getCrashReportsDir(): string {
-  const appData =
-    process.env.APPDATA || path.join(os.homedir(), ".config");
+  const appData = process.env.APPDATA || path.join(os.homedir(), ".config");
   return path.join(appData, "NovelTrad", "crash-reports");
 }
 
@@ -23,10 +22,7 @@ function setupErrorHandlers(): void {
     const crashDir = getCrashReportsDir();
     fs.mkdirSync(crashDir, { recursive: true });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const crashFile = path.join(
-      crashDir,
-      `crash-${timestamp}.json`,
-    );
+    const crashFile = path.join(crashDir, `crash-${timestamp}.json`);
     fs.writeFileSync(
       crashFile,
       JSON.stringify(
@@ -44,18 +40,14 @@ function setupErrorHandlers(): void {
   });
 
   process.on("unhandledRejection", (reason: unknown) => {
-    const err =
-      reason instanceof Error
-        ? reason
-        : new Error(String(reason));
+    const err = reason instanceof Error ? reason : new Error(String(reason));
     logger.error("Unhandled rejection", err);
   });
 }
 
 function setupCspHeaders(): void {
   // SDD §1.1 — Content Security Policy
-  const devServerUrl =
-    process.env.VITE_DEV_SERVER_URL || "";
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL || "";
 
   const connectSrc = [
     "'self'",
@@ -79,16 +71,53 @@ function setupCspHeaders(): void {
     "font-src 'self'",
   ].join("; ");
 
-  session.defaultSession.webRequest.onHeadersReceived(
-    (details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          "Content-Security-Policy": [csp],
-        },
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [csp],
+      },
+    });
+  });
+}
+
+function setupLogForwarding(): void {
+  /**
+   * SDD §4.12 — Transfert des logs main process vers le renderer.
+   * Intercepte console.log/warn/error et les envoie via IPC 'log'.
+   */
+  const sendToRenderer = (
+    level: "debug" | "info" | "warn" | "error",
+    message: string,
+  ): void => {
+    const win = mainWindow;
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("log", {
+        level,
+        message,
+        source: "main",
       });
-    },
-  );
+    }
+  };
+
+  const origLog = console.log;
+  const origWarn = console.warn;
+  const origError = console.error;
+
+  console.log = (...args: unknown[]) => {
+    origLog.apply(console, args);
+    sendToRenderer("info", args.map(String).join(" "));
+  };
+
+  console.warn = (...args: unknown[]) => {
+    origWarn.apply(console, args);
+    sendToRenderer("warn", args.map(String).join(" "));
+  };
+
+  console.error = (...args: unknown[]) => {
+    origError.apply(console, args);
+    sendToRenderer("error", args.map(String).join(" "));
+  };
 }
 
 function registerGlobalShortcuts(): void {
@@ -101,19 +130,13 @@ function registerGlobalShortcuts(): void {
 
   globalShortcut.register("Control+O", () => {
     if (mainWindow?.isFocused()) {
-      mainWindow.webContents.send(
-        "menu",
-        "open-project",
-      );
+      mainWindow.webContents.send("menu", "open-project");
     }
   });
 
   globalShortcut.register("Control+Shift+T", () => {
     if (mainWindow?.isFocused()) {
-      mainWindow.webContents.send(
-        "menu",
-        "translate-current",
-      );
+      mainWindow.webContents.send("menu", "translate-current");
     }
   });
 }
@@ -142,12 +165,11 @@ async function createWindow(): Promise<BrowserWindow> {
     await mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
   } else {
-    await mainWindow.loadFile(
-      path.join(__dirname, "../renderer/index.html"),
-    );
+    await mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
 
   registerGlobalShortcuts();
+  setupLogForwarding();
 
   return mainWindow;
 }

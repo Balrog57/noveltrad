@@ -19,6 +19,11 @@ const routes = [
     component: () => import("../views/ChapterEditorView.vue"),
   },
   {
+    path: "/project/:projectId/workflow",
+    name: "workflow",
+    component: () => import("../views/WorkflowView.vue"),
+  },
+  {
     path: "/project/:projectId/lexicon",
     name: "lexicon",
     component: () => import("../views/LexiconView.vue"),
@@ -37,6 +42,11 @@ const routes = [
     path: "/settings",
     name: "settings",
     component: () => import("../views/SettingsView.vue"),
+  },
+  {
+    path: "/console",
+    name: "console",
+    component: () => import("../views/ConsoleView.vue"),
   },
 ];
 

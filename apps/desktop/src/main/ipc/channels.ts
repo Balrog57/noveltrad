@@ -43,6 +43,7 @@ export const IPC_CHANNELS = [
   "history:diff",
   "history:rollback",
   "history:create-snapshot",
+  "log",
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

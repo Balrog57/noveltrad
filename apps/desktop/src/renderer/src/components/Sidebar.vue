@@ -8,11 +8,13 @@ const projectStore = useProjectStore();
 
 const links = [
   { name: "home", label: "Accueil", icon: "🏠" },
+  { name: "console", label: "Console", icon: "🖥" },
   { name: "settings", label: "Paramètres", icon: "⚙️" },
 ];
 
 /** Liens visibles seulement quand un projet est ouvert */
 const projectLinks = [
+  { name: "workflow", label: "Workflow", icon: "⚙" },
   { name: "lexicon", label: "Lexique", icon: "📚" },
   { name: "history", label: "Historique", icon: "🕐" },
 ];

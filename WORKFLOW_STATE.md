@@ -1140,9 +1140,63 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 - **Phase 33 (Implementor - SDD compliance fixes)** : ✅ Complété — 6 fixes SDD (CSP, path traversal, theme, shortcuts, ARIA labels, config.json)
 - **Phase 34 (Implementor - SDD Items A/B/C)** : ✅ Complété — Wizard premier lancement + tables DB + cache IA
 - **Phase 35 (Implementor - SDD Items D/E)** : ✅ Complété — Snapshot types Record<string, unknown> + Coverage thresholds
+- **Phase 36 (SDD Gap Analysis)** : ✅ Complété — Analyse des écarts SDD restants identifiés
+- **Phase 37 (Implementor - WorkflowView + ConsoleView)** : ✅ Complété — SDD §4.9, §4.12 implémentés
+
+## SDD Gap Analysis — Remaining Work
+
+### Gaps identifiés (par priorité)
+
+| # | Gap SDD | Priorité | Statut |
+|---|---------|----------|--------|
+| 1 | WorkflowView — Visualisation du workflow (SDD §4.9, §7.6) | 🔴 HIGH | ✅ Implémenté |
+| 2 | ConsoleView — Logs temps réel (SDD §4.12) | 🟡 MEDIUM | ✅ Implémenté |
+| 3 | Import DOCX/EPUB (SDD §5.4, §5.9) | 🔴 HIGH | ❌ Manquant |
+| 4 | Drag-and-drop import (SDD §5.9) | 🔴 HIGH | ❌ Manquant |
+| 5 | Language detection franc (SDD §5.7) | 🟡 MEDIUM | ❌ Manquant |
+| 6 | Chapter splitting by patterns (SDD §5.5) | 🟡 MEDIUM | ❌ Manquant |
+| 7 | Project dashboard stats (SDD §4.6) | 🟡 MEDIUM | ❌ Manquant |
+| 8 | Batch processing (SDD §7.9) | 🟢 LOW | ❌ Manquant |
+| 9 | Translation Memory TMX (SDD §9.7) | 🟢 LOW | ❌ Manquant |
+| 10 | UI Components manquants (SDD §4.13) | 🟡 MEDIUM | ⚠️ Partiel |
+
+### Ce qui est IMPLEMENTÉ ✅
+
+| Feature | SDD Ref | Statut |
+|---------|---------|--------|
+| Éditeur côte à côte | §4.7 | ✅ |
+| Lexique CRUD | §4.8 | ✅ |
+| Export 5 formats | §4.13 | ✅ |
+| Historique/diff/rollback | §4.10 | ✅ |
+| WorkflowEngine pipeline | §7.1-7.11 | ✅ |
+| WorkflowView pipeline graph | §4.9, §7.6 | ✅ |
+| ConsoleView logs temps réel | §4.12 | ✅ |
+| Log forwarding main→renderer | §4.12 | ✅ |
+| 10 agents spécialisés | §8 | ✅ |
+| Prompts versionnés | §25 | ✅ |
+| RAG embeddings | §22 | ✅ |
+| AI Cache TTL 7j | §22.1 | ✅ |
+| CI/CD GitHub Actions | §20 | ✅ |
+| CSP + crash handler | §1.1, §18.4 | ✅ |
+| Path traversal protection | §21.3 | ✅ |
+| Theme toggle dark/light | §4.14 | ✅ |
+| Keyboard shortcuts | §4.15 | ✅ |
+| ARIA labels | §4.15 | ✅ |
+| Project config.json | §5.1 | ✅ |
+| Wizard premier lancement | §2, §4.18 | ✅ |
+| DB tables lexicon_aliases/exports/prompts/stats | §6.2-6.3 | ✅ |
+| Snapshot types Record | §7.2-7.3 | ✅ |
+| Coverage thresholds | §19.6 | ✅ |
+
+### Prochaines phases recommandées
+
+1. **Phase 37** : WorkflowView + ConsoleView (SDD §4.9, §4.12)
+2. **Phase 38** : Import DOCX/EPUB + Drag-and-drop (SDD §5.4, §5.9)
+3. **Phase 39** : Language detection + Chapter splitting (SDD §5.5, §5.7)
+4. **Phase 40** : Project dashboard stats (SDD §4.6)
 
 ## Next Agent
-reviewer
+implementor
 
 ## Implementation Notes — SDD Items D/E (Phase 35)
 
@@ -2781,3 +2835,64 @@ Aucun de ces correctifs n'est bloquant pour le passage au tester. L'implémentat
 
 ### Known Issue
 - **Build cassé** : `node-sqlite3-wasm` ne supporte pas les named ESM exports. Le fichier construit `out/main/index.js` utilise `import { Database } from "node-sqlite3-wasm"` qui échoue au runtime avec `SyntaxError: Named export 'Database' not found`. À corriger dans le build (Item séparé ou fix build config). En attendant, tous les tests E2E skip correctement.
+
+## Implementation Notes — WorkflowView + ConsoleView (Phase 37, SDD §4.9, §4.12)
+
+### Files Created
+| Fichier | Rôle |
+|---|---|
+| `apps/desktop/src/renderer/src/views/WorkflowView.vue` | Vue workflow : pipeline graph avec statuts (⏳/▶️/✅/❌/⏭️), panneau détail étape (nom, agent, modèle, tokens, durée, erreur), logs temps réel, boutons Pause/Reprendre/Annuler/Réessayer |
+| `apps/desktop/src/renderer/src/views/ConsoleView.vue` | Vue console : logs temps réel, filtres debug/info/warn/error, recherche texte, bouton Effacer, bouton Copier (export presse-papiers) |
+| `apps/desktop/src/renderer/src/stores/logs.ts` | Store Pinia : entries, filter, search, addEntry(), clear(), computed filtered (applique filtre + recherche), écoute IPC `log` |
+| `apps/desktop/tests/unit/workflow-view.spec.ts` | 11 tests : WorkflowView rendering (3) + WorkflowStore methods (8) |
+
+### Files Modified
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/renderer/src/components/Sidebar.vue` | Ajout lien "🖥 Console" dans main links + lien "⚙ Workflow" dans projectLinks (conditionnel) |
+| `apps/desktop/src/renderer/src/router/index.ts` | Ajout routes `/project/:projectId/workflow` → WorkflowView + `/console` → ConsoleView |
+| `apps/desktop/src/main/index.ts` | Ajout `setupLogForwarding()` : intercepte console.log/warn/error → envoie `webContents.send("log", ...)` au renderer |
+| `apps/desktop/src/main/ipc/channels.ts` | Ajout canal `"log"` à `IPC_CHANNELS` |
+
+### Key Design Decisions
+- **`setupLogForwarding()`** intercepte les 3 méthodes console (log/warn/error) et les transfère au renderer via `webContents.send("log", { level, message, source: "main" })`.
+- **Le store `logs.ts`** écoute automatiquement l'événement `log` via `window.novelTradAPI.on()` au moment de la création du store.
+- **WorkflowView** utilise le `useWorkflowStore` existant (progress, start, pause, resume, cancel, retryStep, retryFrom) pour piloter les workflows.
+- **Les statuts d'étape** sont affichés avec des icônes Unicode : ⏳ (pending), ▶️ (running), ✅ (completed), ❌ (failed), ⏭️ (skipped).
+- **Les boutons Pause/Reprendre/Annuler** n'apparaissent que quand le job est dans l'état correspondant.
+- **CSS tokens uniquement** : aucun Tailwind. `var(--bg-primary)`, `var(--accent)`, `var(--text-primary)`, etc.
+- **UI en français** : tous les labels, messages, boutons en français.
+- **ConsoleView** utilise `navigator.clipboard.writeText()` pour l'export (pas de `dialog:open-file` — suffisant pour des logs texte).
+- **Le toast dans ConsoleView** utilise un `<Transition>` CSS simple (pas de NtToast — pas besoin d'auto-dismiss).
+
+### Verification
+- ✅ `npm run type-check --workspace=apps/desktop` : passe (0 erreur)
+- ✅ `npm run test` : **106/106 passent** (0 régression — 95 existants + 11 nouveaux)
+- ✅ Prettier : 4 fichiers auto-fixés (WorkflowView, ConsoleView, main/index.ts, workflow-view.spec.ts), tous conformes
+- ✅ Aucune régression sur les tests existants (Items 1-7)
+
+### Test Breakdown — WorkflowView (Phase 37)
+| # | Suite | Test | Statut |
+|---|---|---|---|
+| 1 | WorkflowView rendering | should create useWorkflowStore with expected methods | ✅ |
+| 2 | WorkflowView rendering | should display correct status icons for step statuses | ✅ |
+| 3 | WorkflowView rendering | should have workflow stages as defined in the shared types | ✅ |
+| 4 | WorkflowStore | should start with empty state | ✅ |
+| 5 | WorkflowStore | should call invoke for start | ✅ |
+| 6 | WorkflowStore | should call invoke for pause | ✅ |
+| 7 | WorkflowStore | should call invoke for resume | ✅ |
+| 8 | WorkflowStore | should call invoke for cancel | ✅ |
+| 9 | WorkflowStore | should call invoke for retryStep | ✅ |
+| 10 | WorkflowStore | should call invoke for retryFrom | ✅ |
+| 11 | WorkflowStore | should call invoke for list | ✅ |
+
+### Regression Check (Items 1-7)
+- ✅ **4/4 engines tests** — aucune régression
+- ✅ **13/13 editor tests** — aucune régression
+- ✅ **16/16 lexicon tests** — aucune régression
+- ✅ **12/12 export tests** — aucune régression
+- ✅ **13/13 history tests** — aucune régression
+- ✅ **37/37 prompts tests** — aucune régression
+
+## Next Agent
+reviewer
