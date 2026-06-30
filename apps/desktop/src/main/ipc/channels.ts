@@ -39,6 +39,10 @@ export const IPC_CHANNELS = [
   "update:progress",
   "update:downloaded",
   "update:error",
+  "history:list",
+  "history:diff",
+  "history:rollback",
+  "history:create-snapshot",
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

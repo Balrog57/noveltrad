@@ -12,7 +12,10 @@ const links = [
 ];
 
 /** Liens visibles seulement quand un projet est ouvert */
-const projectLinks = [{ name: "lexicon", label: "Lexique", icon: "📚" }];
+const projectLinks = [
+  { name: "lexicon", label: "Lexique", icon: "📚" },
+  { name: "history", label: "Historique", icon: "🕐" },
+];
 
 function isActive(name: string) {
   return route.name === name;

@@ -1118,9 +1118,16 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 - Phase 12-17 (Item 2 — Lexique) : ✅ Complété (implémenté, revu, corrigé, testé, linté, commit)
 - Phase 18 (Implementor - Item 3 v1) : ✅ Complété — Dialogue d'export complet implémenté
 - Phase 19 (Reviewer - Item 3) : ✅ Complété — 1 CRITICAL, 2 HIGH, 3 MEDIUM, 4 LOW
-- **Phase 20 (Implementor - Item 3 v2)** : ✅ Complété — C1, H1, H2, M1, M2, M3 fixes appliqués
-- **Phase 21 (Tester - Item 3 v2)** : ✅ Complété — 45/45 tests passent, 0 régression, type-check OK
-- **Phase 22 (Security-reviewer - Item 3)** : ✅ Complété — 0 CRITICAL, 0 HIGH, 4 MEDIUM, 5 LOW
+- Phase 20 (Implementor - Item 3 v2) : ✅ Complété — C1, H1, H2, M1, M2, M3 fixes appliqués
+- Phase 21 (Tester - Item 3 v2) : ✅ Complété — 45/45 tests passent, 0 régression, type-check OK
+- Phase 22 (Security-reviewer - Item 3) : ✅ Complété — 0 CRITICAL, 0 HIGH, 4 MEDIUM, 5 LOW
+- Phase 23 (Linter - Item 3) : ✅ Complété — Prettier auto-fix, ESLint non configuré (INFO)
+- Phase 24 (Commit-message - Item 3) : ✅ Complété — commit atomique créé
+- Phase 25 (Implementor - Item 4) : ✅ Complété — Vue historique / versions implémentée
+- Phase 26 (Reviewer - Item 4) : ✅ Complété — 0 CRITICAL, 0 HIGH, 3 MEDIUM, 5 LOW
+- **Phase 27 (Tester - Item 4)** : ✅ Complété — 58/58 tests passent, 0 régression, type-check OK
+- **Phase 28 (Linter - Item 4)** : ✅ Complété — 6 fichiers auto-fixés, tout passe
+- **Phase 29 (Security-reviewer - Item 4)** : ✅ Complété — 0 CRITICAL, 0 HIGH, 3 MEDIUM, 6 LOW
 
 ## Next Agent
 linter
@@ -1185,6 +1192,271 @@ linter
 | **Vue SFC** | ✅ | `<script setup lang="ts">` sur tous les composants |
 | **Trailing commas** | ✅ | Cohérents partout |
 | **Zod schemas** | ✅ | Types valides, pas d'erreur de compilation |
+
+---
+
+## Lint Results — Item 4 (Vue historique / versions)
+
+### Verdict : ✅ PASS — Aucun problème bloquant. Formatting auto-fixé avec succès.
+
+---
+
+### Commands Run
+
+| Commande | Résultat |
+|---|---|
+| `npx prettier --check` (15 fichiers Item 4) | ⚠️ 6 fichiers non conformes (avant fix) |
+| `npx prettier --write` (6 fichiers) | ✅ 6 fichiers corrigés |
+| `npx prettier --check` (vérification finale 15 fichiers) | ✅ **Tous les fichiers conformes** |
+| `npm run type-check --workspace=apps/desktop` (post-fix) | ✅ **Passe (0 erreur)** |
+| `npm run test` (post-fix) | ✅ **58/58 passent (5 suites)** |
+
+### Fichiers formatés par Prettier
+
+| # | Fichier | Nature |
+|---|---|---|
+| 1 | `apps/desktop/src/main/db/repositories/HistoryRepository.ts` | Nouveau (Item 4) |
+| 2 | `apps/desktop/src/main/ipc/handlers/history.ts` | Nouveau (Item 4) |
+| 3 | `apps/desktop/src/renderer/src/stores/history.ts` | Nouveau (Item 4) |
+| 4 | `apps/desktop/src/renderer/src/components/history/NtDiffViewer.vue` | Nouveau (Item 4) |
+| 5 | `apps/desktop/src/renderer/src/views/HistoryView.vue` | Nouveau (Item 4) |
+| 6 | `apps/desktop/tests/unit/history.spec.ts` | Nouveau (Item 4) |
+
+### Fichiers déjà conformes (0 changement)
+
+| Fichier | Nature |
+|---|---|
+| `packages/shared/src/schemas/history.ts` | Nouveau (Item 4) |
+| `packages/shared/src/types/index.ts` | Modifié (Item 4) |
+| `packages/shared/src/schemas/index.ts` | Modifié (Item 4) |
+| `apps/desktop/src/main/ipc/channels.ts` | Modifié (Item 4) |
+| `apps/desktop/src/main/ipc/router.ts` | Modifié (Item 4) |
+| `apps/desktop/src/renderer/src/router/index.ts` | Modifié (Item 4) |
+| `apps/desktop/src/renderer/src/components/Sidebar.vue` | Modifié (Item 4) |
+| `apps/desktop/src/renderer/src/views/ChapterEditorView.vue` | Modifié (Item 4) |
+| `apps/desktop/src/main/managers/WorkflowEngine.ts` | Modifié (Item 4) |
+
+### Observations (non bloquantes)
+
+| # | Sévérité | Description |
+|---|---|---|
+| 1 | INFO | **ESLint** : non configuré dans le projet. Aucun fichier `.eslintrc.*` ni `eslint.config.*`. Le script `npm run lint` échoue. Pattern pré-existant. À traiter dans Item 8 (CI). |
+| 2 | INFO | **`ipcChannelSchema` désynchronisé** : `packages/shared/src/schemas/index.ts` manque les canaux history (`history:list`, `history:diff`, `history:rollback`, `history:create-snapshot`). Déjà noté Reviewer L1. Non bloquant — le schéma n'est pas utilisé par les handlers. |
+| 3 | INFO | **EPUB validation warnings** : les tests `export-dialog.spec.ts` émettent 2 warnings EPUB non-critiques (mimetype position + compression). Pré-existant Item 3 — non spécifique à Item 4. |
+
+### Ce qui est BON ✅
+
+| Critère | Statut | Notes |
+|---|---|---|
+| **Prettier** | ✅ | Tous les 15 fichiers passent `--check` |
+| **TypeScript types** | ✅ | `vue-tsc --noEmit` passe sans erreur |
+| **Tests unitaires** | ✅ | 58/58 passent (0 régression) |
+| **Indentation / quotes** | ✅ | Cohérent partout (double quotes, 2 espaces) |
+| **Semicolons** | ✅ | Présents sur toutes les statements |
+| **Vue SFC** | ✅ | `<script setup lang="ts">` sur tous les composants |
+| **Trailing commas** | ✅ | Cohérents partout |
+| **Zod schemas** | ✅ | Types valides, histoire 4 schemas bien formés |
+| **`diff-match-patch`** | ✅ | Import propre, pas de problème de formatting |
+| **CSS tokens** | ✅ | Zéro Tailwind dans `NtDiffViewer.vue` et `HistoryView.vue` |
+
+---
+
+## Security Review Findings — Item 4 (Vue historique / versions)
+
+### Verdict : ✅ PASS — Aucune vulnérabilité CRITICAL ou HIGH. 3 MEDIUM, 6 LOW.
+
+Tous les handlers IPC utilisent Zod `.parse()` + `try/finally` DB close. Le `NtDiffViewer` est propre (zéro `v-html`, tout en interpolation `{{ }}`). Le `HistoryRepository` utilise 100% de requêtes paramétrées. Les 3 findings MEDIUM sont des renforcements défensifs sur l'intégrité des données (rollback transactionnel, validation cross-chapitre, exposition d'erreurs). Aucun bloquant.
+
+---
+
+### Résumé par checklist
+
+| # | Catégorie | Statut | Notes |
+|---|---|---|---|
+| 1 | **IPC Security / Zod** | ✅ | `.parse()` sur les 4 handlers (`history:list`, `history:diff`, `history:rollback`, `history:create-snapshot`). UUIDs, enums, tableaux validés. |
+| 2 | **Input Sanitization / XSS** | ✅ | **NtDiffViewer : zéro `v-html`**. Tous les contenus (`sourceBefore`, `targetAfter`, `seg.text`) rendus via `{{ }}`. `diff-match-patch` sur données trusted. HistoryView : interpolation exclusive. |
+| 3 | **Path Traversal** | ✅ | `resolveProjectPath()` : itère `recentProjects` depuis SettingsManager (config locale), `fs.existsSync` + `path.join`. Pas d'entrée utilisateur dans le chemin. |
+| 4 | **SQL Injection** | ✅ | 100% requêtes paramétrées (`?`) dans `HistoryRepository`. 5 méthodes vérifiées : `create`, `listByProject`, `listByChapter`, `getById`, `getLatest`. |
+| 5 | **Context Isolation** | ✅ | `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. Preload : `invoke` + `on` uniquement. |
+| 6 | **Rollback Safety** | ⚠️ | 2 findings MEDIUM : non-transactionnel (MS2) + pas de validation cross-chapitre (MS3). Voir détails ci-dessous. |
+| 7 | **Snapshot Integrity** | ⚠️ | `JSON.parse` défensif dans `HistoryRepository.mapRow()` — try/catch pour `metadata` et `paragraphs`. Aucune corruption ne bloque. |
+| 8 | **Error Handling** | ⚠️ | 1 finding MEDIUM (MS1) : `err.message` bruts exposés. Pattern récurrent Items 1-3. 1 finding LOW (LS6) : format non-SDD §16.7. |
+| 9 | **Secrets/Credentials** | ✅ | Aucune clé API, token, mot de passe. |
+| 10 | **Cryptography** | ✅ | Aucune opération cryptographique. `crypto.randomUUID()` pour les IDs. |
+| 11 | **Command Injection** | ✅ | Aucune exécution shell (`child_process`). |
+| 12 | **DoS / Resource Exhaustion** | ⚠️ | 1 finding LOW (LS4) : `paragraphs` array + `sourceText`/`translatedText` sans `.max()` dans `historyCreateSchema`. |
+| 13 | **WorkflowEngine Snapshot** | ✅ | Créé après `job.status = "completed"`, seulement si `chapter && paragraphs.length > 0`, `triggeredBy: "workflow"`. |
+| 14 | **NtDiffViewer Security** | ✅ | `lineDiff()` opère sur les données de paragraphes (trusted). Aucun `dangerouslySetInnerHTML`, `innerHTML`, `eval`. `changeClass()` dérivée d'enum, pas d'input utilisateur. |
+
+---
+
+### 🟡 MEDIUM
+
+#### MS1 — Messages d'erreur bruts exposés à l'UI (information disclosure)
+
+- **Fichier** : `apps/desktop/src/renderer/src/stores/history.ts`, lignes 39-42, 63-66, 90-93, 117-120
+- **Fichier** : `apps/desktop/src/renderer/src/views/HistoryView.vue`, ligne 181 (`{{ historyStore.error }}`)
+- **Description** : Toutes les méthodes du store (`loadHistory`, `loadDiff`, `rollback`, `createManualSnapshot`) transmettent `err.message` brut à l'UI. En cas d'erreur SQLite, de corruption JSON, ou d'exception système, le message pourrait exposer des chemins de fichiers, noms de tables, ou structure DB interne. Pattern identique à Item 1 S1, Item 2 MS1, Item 3 (déjà documenté).
+- **Impact** : Faible pour une app desktop locale avec sandbox. S'aggrave si l'utilisateur partage des screenshots d'erreur.
+- **Suggestion** :
+  ```ts
+  // Remplacer :
+  error.value = err instanceof Error ? err.message : "Erreur lors du chargement de l'historique"
+  // par :
+  error.value = "Erreur lors du chargement de l'historique"
+  console.error("[history store] loadHistory error:", err)
+  ```
+
+#### MS2 — Rollback non transactionnel — risque d'état incohérent (Reviewer M3)
+
+- **Fichier** : `apps/desktop/src/main/db/repositories/ParagraphRepository.ts`, lignes 47-59 (`updateMany`)
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`, lignes 162-183
+- **Description** : Lors du rollback, `paragraphRepo.updateMany(snapshot.paragraphs)` itère avec des `UPDATE` individuels sans transaction SQLite. Si le processus crashe ou si une erreur survient à mi-parcours, certains paragraphes sont restaurés et d'autres non. Le snapshot de rollback est créé **après** `updateMany`, donc une erreur bloque la création du snapshot — mais les paragraphes partiellement modifiés persistent.
+- **Impact** : État incohérent de la DB en cas d'erreur système pendant le rollback. L'utilisateur voit un mélange d'anciens et nouveaux paragraphes, sans snapshot de rollback pour référence.
+- **Suggestion** :
+  ```ts
+  // Dans ParagraphRepository.updateMany :
+  updateMany(paragraphs: Paragraph[]): void {
+    this.db.exec("BEGIN");
+    try {
+      const update = this.db.prepare(
+        "UPDATE paragraphs SET translated_text = ?, status = ?, metadata = ? WHERE id = ?"
+      );
+      for (const p of paragraphs) {
+        update.run([p.translatedText ?? null, p.status, p.metadata ? JSON.stringify(p.metadata) : null, p.id]);
+      }
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+  ```
+  Idéalement, wrapper tout le bloc rollback (restore + snapshot) dans une transaction pour garantir l'atomicité complète.
+
+#### MS3 — Rollback ne valide pas `snapshot.chapterId === chapterId` (Reviewer M1)
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`, lignes 143-163
+- **Description** : Le handler `history:rollback` accepte `chapterId` et `snapshotId` indépendamment. Il vérifie que le snapshot existe (`getById`) mais **ne vérifie pas** que `snapshot.chapterId === chapterId`. Un renderer compromis (sandbox contourné) ou un bug dans le code renderer pourrait restaurer les paragraphes d'un snapshot du chapitre A sur le chapitre B, écrasant les paragraphes de B avec ceux de A.
+- **Impact** : Corruption silencieuse des données de traduction. Nécessite un renderer compromis ou un bug applicatif.
+- **Suggestion** :
+  ```ts
+  const snapshot = historyRepo.getById(snapshotId);
+  if (!snapshot) throw new Error(`Snapshot introuvable : ${snapshotId}`);
+  // Ajouter :
+  if (snapshot.chapterId && snapshot.chapterId !== chapterId) {
+    throw new Error(`Le snapshot ${snapshotId} n'appartient pas au chapitre ${chapterId}`);
+  }
+  ```
+
+---
+
+### 🟢 LOW
+
+#### LS1 — Pas de snapshot pré-rollback de l'état courant
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`, lignes 143-189
+- **Description** : Le rollback crée un snapshot de l'état **restauré** (`triggeredBy: "rollback"`) mais **ne sauvegarde pas l'état courant avant restauration**. Si l'utilisateur veut annuler le rollback, il doit retrouver le snapshot workflow précédent manuellement. Les données ne sont pas perdues (le snapshot workflow existe encore), mais l'opération n'est pas réversible en un clic.
+- **Impact** : UX dégradée. Pas de perte de données.
+- **Suggestion** : Optionnel — créer un snapshot `triggeredBy: "pre-rollback"` de l'état courant avant d'appeler `updateMany`.
+
+#### LS2 — `triggeredBy` client-controlled dans `history:create-snapshot`
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`, lignes 191-223
+- **Description** : Le handler `history:create-snapshot` accepte `triggeredBy` du renderer. Le Zod enum `z.enum(["workflow", "manual", "rollback"])` valide la valeur, mais le renderer peut créer un snapshot avec `triggeredBy: "workflow"` alors qu'aucun workflow n'a été exécuté. Cela pourrait fausser l'affichage des déclencheurs dans l'UI.
+- **Impact** : Négligeable — le renderer est du code trusted dans le sandbox Electron. Aucune élévation de privilège.
+- **Suggestion** : Optionnel — forcer `triggeredBy: "manual"` dans `history:create-snapshot` (ignorer la valeur du renderer).
+
+#### LS3 — `stage: z.string()` sans contrainte dans `historyCreateSchema` (Reviewer L2)
+
+- **Fichier** : `packages/shared/src/schemas/history.ts`, ligne 17
+- **Description** : `stage: z.string()` accepte n'importe quelle chaîne. Le type `WorkflowStage` a ~10 valeurs possibles. Une valeur arbitraire pourrait causer des incohérences d'affichage.
+- **Impact** : Faible — les valeurs sont générées par le code (WorkflowEngine, handlers). Pas d'entrée utilisateur directe.
+- **Suggestion** : `stage: z.string().min(1).max(50)` ou utiliser `z.enum()` avec les stages connus.
+
+#### LS4 — Pas de `.max()` sur `paragraphs`, `sourceText`, `translatedText` (DoS potentiel)
+
+- **Fichier** : `packages/shared/src/schemas/history.ts`, lignes 18-29
+- **Description** : `paragraphs: z.array(...)` sans `.max()`, `sourceText: z.string()` et `translatedText: z.string().optional()` sans `.max()`. Un renderer compromis pourrait envoyer un tableau de 500 000 paragraphes avec des textes de plusieurs Mo chacun, causant un crash OOM du main process.
+- **Impact** : DoS local. Nécessite un renderer compromis. Pattern identique à Item 3 MS1/LS5.
+- **Suggestion** :
+  ```ts
+  paragraphs: z.array(...).max(50_000),
+  sourceText: z.string().max(100_000),
+  translatedText: z.string().max(100_000).optional(),
+  ```
+
+#### LS5 — `loadDiff` utilise `projectId` vide si snapshots non chargés
+
+- **Fichier** : `apps/desktop/src/renderer/src/stores/history.ts`, ligne 57
+- **Description** : `loadDiff` utilise `snapshots.value[0]?.projectId ?? ""` comme `projectId`. Si `loadHistory` n'a pas encore été appelé ou a retourné un tableau vide, `projectId` sera `""`, ce qui échoue à la validation Zod `.uuid()`. Le message d'erreur sera confus pour l'utilisateur.
+- **Impact** : UX — message d'erreur peu clair. Pas de fuite de données.
+- **Suggestion** : Passer `projectId` en paramètre à `loadDiff` (comme pour `loadHistory` et `rollback`).
+
+#### LS6 — Format d'erreur non conforme au SDD §16.7 (Reviewer L5)
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`
+- **Description** : Les handlers history lancent des `Error` bruts (`throw new Error("Snapshot introuvable")`) au lieu de retourner `{ error: { code, message, details? } }`. Pattern cohérent avec `paragraph.ts` et `lexicon.ts`. Seul `export:run` (Item 3 H2) utilise le format structuré.
+- **Impact** : Le renderer ne peut pas différencier les types d'erreur. Le message brut est affiché tel quel (aggravé par MS1).
+- **Suggestion** : Aligner sur le SDD §16.7 (optionnel — pattern existant dans 3/4 modules IPC).
+
+---
+
+### Ce qui est BON ✅ (sécurité)
+
+| Critère | Statut | Notes |
+|---|---|---|
+| **Electron sandbox** | ✅ | `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false` |
+| **Web security** | ✅ | `webSecurity: true`, `allowRunningInsecureContent: false` |
+| **Preload minimal** | ✅ | Seulement `invoke` + `on` via `contextBridge` |
+| **Zod validation** | ✅ | 4 handlers, 4 schémas. `.parse()` sur tous les payloads entrants. UUIDs, enums, types stricts. |
+| **SQL paramétré** | ✅ | 100% des requêtes `HistoryRepository` utilisent `?`. JOIN `job_steps` propre. |
+| **XSS prevention** | ✅ | **NtDiffViewer : zéro `v-html`**. Tout en interpolation `{{ }}`. `diff-match-patch` sur données DB (trusted). HistoryView : idem. |
+| **NtDiffViewer safety** | ✅ | `changeClass()` basée sur enum `"added"|"removed"|"modified"`, pas d'input utilisateur. `lineDiff()` opère sur les textes de paragraphes. CSS tokens uniquement. |
+| **Pas de secrets hardcodés** | ✅ | Aucune clé API, token, ou mot de passe. |
+| **DB connection cleanup** | ✅ | `try/finally { if (db) db.close() }` dans les 4 handlers. |
+| **JSON.parse défensif** | ✅ | `HistoryRepository.mapRow()` : try/catch pour `metadata` et `paragraphs`. Corruption → `{}` / `[]` au lieu de crash. |
+| **Path traversal prevention** | ✅ | `resolveProjectPath()` : `fs.existsSync` + `path.join` avec config locale (SettingsManager). Pas d'entrée utilisateur. |
+| **WorkflowEngine snapshot** | ✅ | Auto-save uniquement si `chapter && paragraphs.length > 0`. `triggeredBy: "workflow"`. |
+| **Rollback confirmation** | ✅ | Dialogue modal avec prévention "Les paragraphes actuels seront remplacés". Bouton désactivé pendant loading. |
+| **`crypto.randomUUID()`** | ✅ | Pour les IDs de snapshot (Node.js 19+ dans main process). |
+| **Navigation guard** | ✅ | `beforeEach` bloque `/project/*` si pas de projet (hérité Item 1). |
+| **`formatDate()` fr-FR** | ✅ | `toLocaleString("fr-FR", ...)` — pas d'injection de format. |
+| **Tests** | ✅ | 13 tests : computeDiff (8 cas), types (3), rollback logic (2). 58/58 passent. |
+
+---
+
+### Comparaison avec les items précédents
+
+| Finding | Item 1 | Item 2 | Item 3 | Item 4 | Notes |
+|---|---|---|---|---|---|
+| Raw error messages exposed | S1 (MEDIUM) | MS1 (MEDIUM) | ✅ Résolu | MS1 (MEDIUM) | Pattern récurrent dans stores/renderer |
+| No channel whitelist | S2 (LOW) | LS1 (LOW) | ⚠️ Persiste | ⚠️ Persiste | Pré-existant |
+| Nav guard projectId | S3 (LOW) | ✅ Résolu | ✅ Résolu | ✅ Résolu | Hérité Item 1 |
+| `os.homedir()` | S4 (LOW) | ⚠️ Persiste | ⚠️ Persiste | ⚠️ Persiste | SettingsManager |
+| DoS: no array max | — | MS2 (MEDIUM) | MS1 (MEDIUM) | LS4 (LOW) | Même pattern |
+| DoS: no string max | — | — | MS2, LS5 | LS4 (LOW) | Même pattern |
+| Non-transactional DB writes | — | — | — | MS2 (MEDIUM) | Nouveau, spécifique rollback |
+| Cross-resource validation | — | — | — | MS3 (MEDIUM) | Nouveau, spécifique rollback |
+| Info disclosure (Zod details) | — | — | MS4 (MEDIUM) | — | Non applicable (history handlers lancent des Error bruts) |
+| Error format non-SDD §16.7 | ⚠️ | ⚠️ | ✅ Résolu | LS6 (LOW) | Pattern existant dans 3/4 modules |
+| XSS in diff viewer | — | — | — | ✅ CLEAN | Spécifique Item 4 |
+
+---
+
+### Résumé pour l'implementor (optionnel — aucun bloquant)
+
+1. **MS1 (MEDIUM)** — `stores/history.ts` : messages d'erreur génériques + `console.error`
+2. **MS2 (MEDIUM)** — `ParagraphRepository.ts` / `handlers/history.ts` : wrapper `updateMany` dans une transaction SQLite (BEGIN/COMMIT/ROLLBACK)
+3. **MS3 (MEDIUM)** — `handlers/history.ts` : valider `snapshot.chapterId === chapterId` dans le handler rollback
+4. **LS1 (LOW)** — `handlers/history.ts` : optionnel, sauvegarder l'état courant avant rollback
+5. **LS2 (LOW)** — `handlers/history.ts` : optionnel, forcer `triggeredBy: "manual"` dans `history:create-snapshot`
+6. **LS3 (LOW)** — `schemas/history.ts` : `.min(1).max(50)` sur `stage`
+7. **LS4 (LOW)** — `schemas/history.ts` : `.max()` sur `paragraphs`, `sourceText`, `translatedText`
+8. **LS5 (LOW)** — `stores/history.ts` : passer `projectId` en paramètre à `loadDiff`
+9. **LS6 (LOW)** — `handlers/history.ts` : adopter le format d'erreur SDD §16.7
+
+Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité de l'Item 4 est solide. ✅
 
 ---
 
@@ -1920,5 +2192,239 @@ commit-message
 4. **LS1 (LOW)** — `NtModal.vue` : `clearTimeout` dans `onUnmounted`
 5. **LS2 (LOW)** — `LexiconEngine.ts` : échappement formules CSV dans `escapeCsv()`
 6. **LS4 (LOW)** — `handlers/lexicon.ts` : ajouter `gender`/`pronunciation` dans le cas CSV/TSV de `parseImportData()`
+7. **LS5 (LOW)** — `NtTable.vue` : `@contextmenu.prevent` déjà présent
 
 Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité de l'app est solide.
+
+## Implementation Notes — Item 4 (Vue historique / versions)
+
+### Files Created
+| Fichier | Rôle |
+|---|---|
+| `packages/shared/src/schemas/history.ts` | Schémas Zod : `historyListSchema`, `historyCreateSchema`, `historyRollbackSchema`, `historyDiffSchema` |
+| `apps/desktop/src/main/db/repositories/HistoryRepository.ts` | Repository : INSERT/GET/LIST sur `history_snapshots` existante, JOIN `job_steps` pour score, dérivation `versionNumber` + `triggeredBy` |
+| `apps/desktop/src/main/ipc/handlers/history.ts` | 4 handlers IPC : `history:list`, `history:diff`, `history:rollback`, `history:create-snapshot` — tous avec Zod + try/finally DB close |
+| `apps/desktop/src/renderer/src/stores/history.ts` | Store Pinia : snapshots, diffResult, loadHistory, loadDiff, rollback, createManualSnapshot |
+| `apps/desktop/src/renderer/src/components/history/NtDiffViewer.vue` | Composant diff : côte à côte / unifié, toggle ligne à ligne (`diff-match-patch`), badges Ajouté/Supprimé/Modifié, CSS tokens |
+| `apps/desktop/src/renderer/src/views/HistoryView.vue` | Vue historique : NtTable (listes), NtDiffViewer, confirmation rollback, bouton "Snapshot manuel", mode projet ou chapitre |
+| `apps/desktop/tests/unit/history.spec.ts` | 13 tests : computeDiff (8), HistorySnapshot types (3), rollback logic (2) |
+
+### Files Modified
+| Fichier | Changement |
+|---|---|
+| `packages/shared/src/types/index.ts` | Ajout `HistorySnapshot`, `DiffResult`, `ParagraphChange`, `SnapshotTrigger` |
+| `packages/shared/src/schemas/index.ts` | Export `* from "./history.js"` |
+| `apps/desktop/src/main/ipc/channels.ts` | Ajout `history:list`, `history:diff`, `history:rollback`, `history:create-snapshot` |
+| `apps/desktop/src/main/ipc/router.ts` | Import + appel `registerHistoryHandlers()` |
+| `apps/desktop/src/renderer/src/router/index.ts` | Ajout routes `/project/:projectId/history` et `/project/:projectId/history/:chapterId` |
+| `apps/desktop/src/renderer/src/components/Sidebar.vue` | Ajout lien "🕐 Historique" dans projectLinks |
+| `apps/desktop/src/renderer/src/views/ChapterEditorView.vue` | Bouton "Historique" câblé → `goToHistory()`, navigation vers history-chapter |
+| `apps/desktop/src/main/managers/WorkflowEngine.ts` | Import `HistoryRepository`, sauvegarde snapshot automatique à la fin d'un workflow réussi (`triggeredBy: 'workflow'`) |
+
+### Key Design Decisions
+- **Pas de migration** — la table `history_snapshots` existe dans `002_jobs.sql`
+- **`versionNumber` dérivé** de l'ordre `created_at` (inversé), pas stocké
+- **`qualityScore` via JOIN** LEFT JOIN `job_steps.score`
+- **`triggeredBy` dans `metadata`** JSON, mappé en enum `SnapshotTrigger`
+- **Diff positionnel** — basé sur les indices du tableau, pas sur l'ID des paragraphes
+- **Rollback** crée un nouveau snapshot `triggeredBy: 'rollback'` avant de restaurer
+- **Réutilisation** de `NtSplitPane` (Item 1) et `NtTable` (Item 2)
+- **`diff-match-patch`** pour le diff ligne à ligne (déjà dans les dépendances)
+- **try/finally DB close** sur tous les handlers (pattern existant)
+
+### Verification
+- ✅ `npm run type-check --workspace=apps/desktop` : passe (0 erreur)
+- ✅ `npm run test` : 58/58 passent (4 engines + 13 editor + 16 lexicon + 12 export + 13 history)
+- ✅ Aucune régression sur les tests existants
+
+---
+
+## Review Findings — Item 4 (Vue historique / versions)
+
+### Verdict : ✅ APPROVED — 0 CRITICAL, 0 HIGH, 3 MEDIUM, 5 LOW
+
+L'implémentation est correcte et fonctionnelle. Tous les points clés sont validés : table existante réutilisée, versionnage dérivé, score qualité via JOIN, rollback avec snapshot, auto-save WorkflowEngine, NtSplitPane réutilisé, UI en français, CSS tokens, Zod sur tous les handlers. Les 3 problèmes MEDIUM sont des améliorations défensives ou d'UX, les 5 LOW sont cosmétiques.
+
+---
+
+### Ce qui est BON ✅
+
+| Critère | Statut | Notes |
+|---|---|---|
+| **Table `history_snapshots` existante** | ✅ | Aucune nouvelle migration. SQL `002_jobs.sql` lignes 42-52 réutilisé tel quel. |
+| **Version numbers from `created_at` order** | ✅ | Dérivés dans `mapRows()` : `total - index` sur résultat trié `DESC`. Correct dans le scope de chaque requête. |
+| **Quality score via JOIN** | ✅ | `LEFT JOIN job_steps js ON hs.step_id = js.id` → `js.score` → `qualityScore`. |
+| **Rollback creates new snapshot** | ✅ | `history:rollback` crée un snapshot `triggeredBy: "rollback"` + `stage: "rollback"`. |
+| **WorkflowEngine auto-save** | ✅ | Lignes 249-263 : après workflow `completed`, snapshot créé via `HistoryRepository`. |
+| **NtDiffViewer reuses NtSplitPane** | ✅ | Import `NtSplitPane` dans le mode côte à côte. |
+| **French UI** | ✅ | Tous les labels, messages, badges (Ajouté/Supprimé/Modifié, Workflow/Manuel/Rollback). |
+| **CSS tokens** | ✅ | Zéro Tailwind. `var(--bg-secondary)`, `var(--accent)`, `var(--success)`, etc. |
+| **Zod on all IPC handlers** | ✅ | 4 handlers, 4 schémas Zod : `.parse()` appelé avant toute logique métier. |
+| **try/finally DB close** | ✅ | Pattern cohérent sur les 4 handlers + `resolveProjectPath` utilise `db.close()`. |
+| **TypeScript / types** | ✅ | `HistorySnapshot`, `DiffResult`, `ParagraphChange`, `SnapshotTrigger` bien typés. Aucun `any`. |
+| **NtTable reuse** | ✅ | Colonnes définies, slots `#cell-*`, tri, `#empty`. |
+| **Tests** | ✅ | 13 tests : computeDiff (8 cas), type validation (3), rollback logic (2). |
+| **`type-check`** | ✅ | `vue-tsc --noEmit` passe 0 erreur. |
+| **`test`** | ✅ | 58/58 passent (0 régression Items 1-3). |
+| **Sidebar link** | ✅ | "🕐 Historique" dans `projectLinks` (conditionnel au projet ouvert). |
+| **Editor "Historique" button** | ✅ | `goToHistory()` navigue vers `history-chapter` avec `projectId` + `chapterId`. |
+| **Modal rollback confirmation** | ✅ | Overlay + boîte de dialogue avec message de prévention + boutons Annuler/Restaurer. |
+| **`diff-match-patch` usage** | ✅ | `diff_main` + `diff_cleanupSemantic` pour le mode ligne à ligne. |
+| **`formatDate()` fr-FR** | ✅ | `toLocaleString("fr-FR", ...)` avec jour/mois/année/heure/minute. |
+| **Error handling dans le store** | ✅ | `loading`, `error`, `finally` blocks dans toutes les actions asynchrones. |
+| **`createManualSnapshot` loadChapter guard** | ✅ | Vérifie `editorStore.chapterId !== chapterId.value` avant de charger. |
+| **Watch chapterId changes** | ✅ | Recharge l'historique quand l'utilisateur change de chapitre. |
+| **Back navigation** | ✅ | "← Retour" → éditeur si `chapterId`, sinon → projet. |
+
+---
+
+### 🟡 MEDIUM
+
+#### M1 — Rollback handler ne valide pas que `snapshot.chapterId === chapterId`
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`, lignes 143-189
+- **Description** : Le handler accepte `chapterId` et `snapshotId` indépendamment. Il vérifie que le snapshot existe (`getById(snapshotId)`) mais **ne vérifie pas** que `snapshot.chapterId === chapterId`. Un renderer compromis pourrait restaurer les paragraphes d'un snapshot du chapitre A sur le chapitre B, écrasant les paragraphes de B avec ceux de A.
+- **Impact** : Corrompre les données de traduction d'un chapitre avec celles d'un autre. Nécessite un renderer compromis (sandbox contourné) ou un bug dans le code renderer.
+- **Fix suggéré** :
+  ```ts
+  const snapshot = historyRepo.getById(snapshotId);
+  if (!snapshot) throw new Error(`Snapshot introuvable : ${snapshotId}`);
+  // Ajouter :
+  if (snapshot.chapterId && snapshot.chapterId !== chapterId) {
+    throw new Error(`Le snapshot ${snapshotId} n'appartient pas au chapitre ${chapterId}`);
+  }
+  ```
+
+#### M2 — Toggle "Diff ligne à ligne" sans effet en mode côte à côte
+
+- **Fichier** : `apps/desktop/src/renderer/src/components/history/NtDiffViewer.vue`
+- **Description** : La checkbox "Diff ligne à ligne" est dans la toolbar (ligne 107), visible dans les deux modes. Mais les segments de diff ligne à ligne (lignes 203-218) sont **uniquement rendus dans le bloc `v-else`** (mode unifié, ligne 166). En mode côte à côte (lignes 119-164), aucun `paragraphLineDiffs()` n'est appelé. Cocher la checkbox en mode côte à côte ne produit aucun effet visible.
+- **Impact** : Confusion utilisateur — le toggle semble cassé en mode côte à côte. L'utilisateur peut penser que la fonctionnalité ne marche pas.
+- **Fix suggéré** : Soit :
+  1. **Option A** (simple) : Masquer la checkbox quand `currentMode === 'side-by-side'` : `v-if="currentMode === 'unified'"`.
+  2. **Option B** (complète) : Ajouter le rendu des segments ligne à ligne dans les deux panneaux du mode côte à côte (avant/après), en dupliquant le bloc `v-if="showLineLevel"` avec `paragraphLineDiffs(change)` dans chaque panneau.
+
+#### M3 — `updateMany` non transactionnel — risque d'état incohérent si échec partiel
+
+- **Fichier** : `apps/desktop/src/main/db/repositories/ParagraphRepository.ts`, lignes 47-59
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`, ligne 163
+- **Description** : Lors du rollback, `paragraphRepo.updateMany(snapshot.paragraphs)` itère sur les paragraphes avec des `UPDATE` individuels (pas de transaction SQLite). Si le processus crashe ou si une erreur survient à mi-parcours, certains paragraphes sont restaurés et d'autres non. Le nouveau snapshot de rollback est créé **après** l'appel à `updateMany`, donc une erreur bloquerait la création du snapshot — mais les paragraphes partiellement mis à jour restent en DB.
+- **Impact** : État incohérent de la DB en cas d'erreur système pendant le rollback. Peu probable en utilisation normale.
+- **Fix suggéré** : Wrapper `updateMany` dans une transaction SQLite :
+  ```ts
+  // Dans ParagraphRepository :
+  updateMany(paragraphs: Paragraph[]): void {
+    this.db.exec("BEGIN");
+    try {
+      const update = this.db.prepare("UPDATE paragraphs SET ... WHERE id = ?");
+      for (const p of paragraphs) { update.run([...]); }
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+  ```
+  Ou dans le handler history, wrapper tout le bloc rollback (restore + snapshot) dans une transaction.
+
+---
+
+### 🟢 LOW
+
+#### L1 — `ipcChannelSchema` non synchronisé avec les nouveaux canaux history
+
+- **Fichier** : `packages/shared/src/schemas/index.ts`, lignes 38-57
+- **Description** : L'enum Zod `ipcChannelSchema` manque `history:list`, `history:diff`, `history:rollback`, `history:create-snapshot`. Problème pré-existant — déjà noté depuis Item 1 (Linter INFO), Item 2 (L1), et Item 3. Aucun handler n'utilise `ipcChannelSchema` pour valider les canaux (ils utilisent leurs propres schémas).
+- **Impact** : Aucun impact fonctionnel. Source de confusion uniquement.
+- **Fix** : Aligner `ipcChannelSchema` sur `IPC_CHANNELS` ou supprimer le schéma s'il n'est pas utilisé.
+
+#### L2 — `historyCreateSchema.stage: z.string()` sans contrainte
+
+- **Fichier** : `packages/shared/src/schemas/history.ts`, ligne 17
+- **Description** : `stage: z.string()` accepte n'importe quelle chaîne. Le type `WorkflowStage` a 10 valeurs possibles (`split`, `translate`, etc.). Permettre des valeurs arbitraires peut créer des incohérences dans l'affichage.
+- **Impact** : Faible — les valeurs sont générées par le code (WorkflowEngine, handlers). Pas d'entrée utilisateur directe.
+- **Fix suggéré** : `stage: z.string().min(1)` ou utiliser `z.enum()` avec les stages connus.
+
+#### L3 — `computeDiff` ignore `preTranslatedText`
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`, lignes 47-92
+- **Description** : La fonction `computeDiff` compare uniquement `sourceText` et `translatedText`. Si `preTranslatedText` change entre deux snapshots, ce changement n'est pas détecté.
+- **Impact** : Négligeable — `preTranslatedText` est un champ intermédiaire, rarement modifié après le stage `pre_translate`. L'utilisateur visualise principalement `sourceText`/`translatedText`.
+- **Fix** : Optionnel — ajouter `preTranslatedText` dans la comparaison si pertinent.
+
+#### L4 — `lineDiff()` recalculé à chaque rendu (pas de memoization)
+
+- **Fichier** : `apps/desktop/src/renderer/src/components/history/NtDiffViewer.vue`, lignes 29-39
+- **Description** : `paragraphLineDiffs()` est appelé dans le `v-for` pour chaque changement. `diff-match-patch` a une complexité O(N×M). Pour de longs paragraphes avec beaucoup de changements, cela peut ralentir le rendu.
+- **Impact** : Négligeable pour des cas d'usage normaux (paragraphes de quelques centaines de caractères, < 50 changements).
+- **Fix** : Optionnel — utiliser `computed` ou un cache simple (Map clé = `change.index`) pour éviter de recalculer.
+
+#### L5 — Format d'erreur non conforme au SDD §16.7 (pattern cohérent avec les autres handlers)
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/history.ts`
+- **Description** : Les handlers history lancent des `Error` bruts (ex: `throw new Error("Snapshot introuvable")`) au lieu de retourner `{ error: { code, message, details? } }` comme spécifié dans le SDD §16.7. Seul le handler `export:run` (Item 3 H2) utilise le format structuré. Les handlers `paragraph.ts` et `lexicon.ts` utilisent aussi des erreurs brutes.
+- **Impact** : Le renderer ne peut pas différencier les types d'erreur (validation vs système vs métier). Le message brut est affiché tel quel.
+- **Fix** : Aligner sur le SDD §16.7 (optionnel — pattern existant dans 3/4 modules IPC).
+
+---
+
+### Résumé pour l'implementor (optionnel — aucun bloquant)
+
+1. **M1 (MEDIUM)** — `handlers/history.ts` : ajouter validation `snapshot.chapterId === chapterId` dans le handler rollback
+2. **M2 (MEDIUM)** — `NtDiffViewer.vue` : masquer la checkbox "Diff ligne à ligne" en mode côte à côte OU implémenter le rendu dans les deux panneaux
+3. **M3 (MEDIUM)** — `ParagraphRepository.ts` / `handlers/history.ts` : wrapper `updateMany` dans une transaction SQLite
+4. **L1 (LOW)** — `schemas/index.ts` : aligner `ipcChannelSchema` (pré-existant)
+5. **L2 (LOW)** — `schemas/history.ts` : contraindre `stage` avec `.min(1)` ou `z.enum()`
+6. **L3 (LOW)** — `handlers/history.ts` : optionnel, ajouter `preTranslatedText` dans `computeDiff`
+7. **L4 (LOW)** — `NtDiffViewer.vue` : optionnel, memoization de `lineDiff`
+8. **L5 (LOW)** — `handlers/history.ts` : optionnel, adopter le format d'erreur SDD §16.7
+
+Aucun de ces correctifs n'est bloquant pour le passage au tester. L'implémentation est fonctionnelle et correcte. ✅
+
+---
+
+## Test Results — Item 4 (Vue historique / versions)
+
+### Commands Run (Phase 27 — Tester)
+| Commande | Résultat |
+|---|---|
+| `npm run type-check --workspace=apps/desktop` | ✅ PASS (0 erreur) |
+| `npm run test` | ✅ **ALL 58 PASS** (0 régression) |
+
+### Verification Summary
+| Suite | Fichier | Tests | Statut |
+|---|---|---|---|
+| Engines | `tests/unit/engines.spec.ts` | 4 | ✅ |
+| Editor | `tests/unit/editor.spec.ts` | 13 | ✅ |
+| Lexicon | `tests/unit/lexicon.spec.ts` | 16 | ✅ |
+| Export | `tests/unit/export-dialog.spec.ts` | 12 | ✅ |
+| History | `tests/unit/history.spec.ts` | 13 | ✅ |
+| **Total** | **5 fichiers** | **58** | **✅ 58/58** |
+
+### Detailed Test Breakdown — History (Item 4)
+| # | Suite | Test | Statut |
+|---|---|---|---|
+| 1 | DiffResult / computeDiff | devrait détecter un paragraphe ajouté | ✅ |
+| 2 | DiffResult / computeDiff | devrait détecter un paragraphe supprimé | ✅ |
+| 3 | DiffResult / computeDiff | devrait détecter un paragraphe modifié (source et cible) | ✅ |
+| 4 | DiffResult / computeDiff | devrait détecter uniquement la source modifiée | ✅ |
+| 5 | DiffResult / computeDiff | devrait détecter uniquement la cible modifiée | ✅ |
+| 6 | DiffResult / computeDiff | ne devrait pas signaler de changement si identique | ✅ |
+| 7 | DiffResult / computeDiff | devrait gérer plusieurs modifications simultanées | ✅ |
+| 8 | DiffResult / computeDiff | devrait gérer les suppressions et ajouts | ✅ |
+| 9 | HistorySnapshot / types | devrait valider un snapshot workflow | ✅ |
+| 10 | HistorySnapshot / types | devrait valider un snapshot manuel | ✅ |
+| 11 | HistorySnapshot / types | devrait valider un snapshot rollback | ✅ |
+| 12 | HistorySnapshot / rollback logic | devrait préserver les paragraphes lors d'un rollback | ✅ |
+| 13 | HistorySnapshot / rollback logic | devrait calculer la versionNumber correctement après rollback | ✅ |
+
+### Regression Check (Items 1, 2, 3)
+- ✅ **13/13 Item 1 tests** (Editor) — aucune régression
+- ✅ **16/16 Item 2 tests** (Lexicon) — aucune régression
+- ✅ **12/12 Item 3 tests** (Export) — aucune régression
+- ✅ **4/4 engines tests** — aucune régression
+
+### Observations
+- EPUB validation emits 2 non-critical warnings during test (mimetype not first ZIP entry, mimetype compressed) — expected, documented, automatically corrected by validation code
+- No new warnings, errors, or test failures
+- All 5 test files pass independently

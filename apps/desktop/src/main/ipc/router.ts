@@ -8,6 +8,7 @@ import { registerUpdateHandlers } from "./handlers/update.js";
 import { registerParagraphHandlers } from "./handlers/paragraph.js";
 import { registerLexiconHandlers } from "./handlers/lexicon.js";
 import { registerExportHandlers } from "./handlers/export.js";
+import { registerHistoryHandlers } from "./handlers/history.js";
 
 export function registerIpcRouter(): void {
   registerProjectHandlers();
@@ -18,6 +19,7 @@ export function registerIpcRouter(): void {
   registerParagraphHandlers();
   registerLexiconHandlers();
   registerExportHandlers();
+  registerHistoryHandlers();
 
   ipcMain.on("message", (event, channel) => {
     if (!IPC_CHANNELS.includes(channel)) {

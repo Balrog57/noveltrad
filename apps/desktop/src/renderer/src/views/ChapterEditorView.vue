@@ -236,6 +236,14 @@ function goBack(): void {
   router.push({ name: "chapters", params: { projectId: projectId.value } });
 }
 
+/** Navigue vers la vue historique pour ce chapitre */
+function goToHistory(): void {
+  router.push({
+    name: "history-chapter",
+    params: { projectId: projectId.value, chapterId: chapterId.value },
+  });
+}
+
 // --- Cycle de vie ---
 onMounted(async () => {
   await editorStore.loadChapter(chapterId.value);
@@ -277,7 +285,7 @@ onUnmounted(() => {
       <div class="toolbar-right">
         <button class="btn-toolbar">Traduire</button>
         <button class="btn-toolbar" @click="showExport = true">Exporter</button>
-        <button class="btn-toolbar">Historique</button>
+        <button class="btn-toolbar" @click="goToHistory">Historique</button>
         <button
           class="btn-toolbar btn-save"
           :class="{ 'has-changes': editorStore.hasUnsavedChanges }"

@@ -244,3 +244,37 @@ export interface LexiconApplyResult {
   text: string;
   substitutions: Array<{ before: string; after: string; locked: boolean }>;
 }
+
+/** Type de déclencheur d'un snapshot d'historique */
+export type SnapshotTrigger = "workflow" | "manual" | "rollback";
+
+/** Représente un snapshot de l'historique des versions */
+export interface HistorySnapshot {
+  id: string;
+  projectId: string;
+  chapterId?: string;
+  jobId?: string;
+  stepId?: string;
+  stage: string;
+  paragraphs: Paragraph[];
+  qualityScore?: number;
+  triggeredBy: SnapshotTrigger;
+  createdAt: string;
+  /** Numéro de version, dérivé de l'ordre chronologique (non stocké) */
+  versionNumber?: number;
+}
+
+/** Résultat d'une comparaison entre deux snapshots */
+export interface DiffResult {
+  changes: ParagraphChange[];
+}
+
+/** Représente un changement au niveau d'un paragraphe */
+export interface ParagraphChange {
+  index: number;
+  type: "added" | "removed" | "modified";
+  sourceBefore?: string;
+  sourceAfter?: string;
+  targetBefore?: string;
+  targetAfter?: string;
+}

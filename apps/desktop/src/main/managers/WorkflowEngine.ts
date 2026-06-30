@@ -29,6 +29,7 @@ import { TranslationMemoryEngine } from "../services/TranslationMemoryEngine.js"
 import { ConsistencyChecker } from "../services/ConsistencyChecker.js";
 import { QualityChecker } from "../services/QualityChecker.js";
 import { ExportEngine } from "../services/ExportEngine.js";
+import { HistoryRepository } from "../db/repositories/HistoryRepository.js";
 import { OllamaProvider } from "../services/providers/OllamaProvider.js";
 import { logger } from "../utils/logger.js";
 
@@ -244,6 +245,21 @@ class WorkflowRunner extends EventEmitter {
     this.jobRepo.updateJob(this.job);
     if (this.chapter) {
       this.chapterRepo.updateStatus(this.chapter.id, "completed");
+    }
+    // Sauvegarder un snapshot d'historique à la fin d'un workflow réussi
+    if (this.chapter && this.paragraphs.length > 0) {
+      const historyRepo = new HistoryRepository(this.db);
+      const lastStep = this.steps[this.steps.length - 1];
+      historyRepo.create({
+        id: crypto.randomUUID(),
+        projectId: this.project.id,
+        chapterId: this.chapter.id,
+        jobId: this.job.id,
+        stepId: lastStep?.id,
+        stage: lastStep?.stage ?? "completed",
+        paragraphs: this.paragraphs,
+        triggeredBy: "workflow",
+      });
     }
     this.db.close();
   }

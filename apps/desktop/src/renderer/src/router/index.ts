@@ -24,6 +24,16 @@ const routes = [
     component: () => import("../views/LexiconView.vue"),
   },
   {
+    path: "/project/:projectId/history",
+    name: "history",
+    component: () => import("../views/HistoryView.vue"),
+  },
+  {
+    path: "/project/:projectId/history/:chapterId",
+    name: "history-chapter",
+    component: () => import("../views/HistoryView.vue"),
+  },
+  {
     path: "/settings",
     name: "settings",
     component: () => import("../views/SettingsView.vue"),
