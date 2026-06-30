@@ -71,8 +71,8 @@ export class JobRepository {
         step.stage,
         step.orderIndex,
         step.status,
-        step.inputSnapshot ?? null,
-        step.outputSnapshot ?? null,
+        step.inputSnapshot ? JSON.stringify(step.inputSnapshot) : null,
+        step.outputSnapshot ? JSON.stringify(step.outputSnapshot) : null,
         step.score ?? null,
         step.tokensIn ?? null,
         step.tokensOut ?? null,
@@ -109,8 +109,8 @@ export class JobRepository {
       )
       .run([
         step.status,
-        step.inputSnapshot ?? null,
-        step.outputSnapshot ?? null,
+        step.inputSnapshot ? JSON.stringify(step.inputSnapshot) : null,
+        step.outputSnapshot ? JSON.stringify(step.outputSnapshot) : null,
         step.score ?? null,
         step.tokensIn ?? null,
         step.tokensOut ?? null,
@@ -146,10 +146,10 @@ export class JobRepository {
       orderIndex: Number(row.order_index),
       status: String(row.status) as Step["status"],
       inputSnapshot: row.input_snapshot
-        ? String(row.input_snapshot)
+        ? (JSON.parse(String(row.input_snapshot)) as Record<string, unknown>)
         : undefined,
       outputSnapshot: row.output_snapshot
-        ? String(row.output_snapshot)
+        ? (JSON.parse(String(row.output_snapshot)) as Record<string, unknown>)
         : undefined,
       score: row.score ? Number(row.score) : undefined,
       tokensIn: row.tokens_in ? Number(row.tokens_in) : undefined,

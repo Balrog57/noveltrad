@@ -314,7 +314,7 @@ class WorkflowRunner extends EventEmitter {
       });
 
       const input = await this.buildAgentInput(step.stage);
-      step.inputSnapshot = JSON.stringify(input);
+      step.inputSnapshot = input as unknown as Record<string, unknown>;
       this.jobRepo.updateStep(step);
 
       output = await agent.execute(input);
@@ -323,7 +323,7 @@ class WorkflowRunner extends EventEmitter {
 
       step.status = "completed";
       step.score = output.score;
-      step.outputSnapshot = JSON.stringify(output);
+      step.outputSnapshot = output as unknown as Record<string, unknown>;
 
       // Stocker les embeddings après la traduction d'un chapitre
       if (

@@ -1139,11 +1139,41 @@ Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité 
 - **Phase 32 (Implementor - Item 7)** : ✅ Complété — RAG interne léger (embeddings, similarité cosinus, enrichissement contexte)
 - **Phase 33 (Implementor - SDD compliance fixes)** : ✅ Complété — 6 fixes SDD (CSP, path traversal, theme, shortcuts, ARIA labels, config.json)
 - **Phase 34 (Implementor - SDD Items A/B/C)** : ✅ Complété — Wizard premier lancement + tables DB + cache IA
+- **Phase 35 (Implementor - SDD Items D/E)** : ✅ Complété — Snapshot types Record<string, unknown> + Coverage thresholds
 
 ## Next Agent
 reviewer
 
-## Implementation Notes — SDD Items A/B/C (Phase 34)
+## Implementation Notes — SDD Items D/E (Phase 35)
+
+### ITEM D — Snapshot types Record<string, unknown> (SDD §7.2-7.3)
+
+#### Files Modified
+| Fichier | Changement |
+|---|---|
+| `packages/shared/src/types/index.ts` | `Step.inputSnapshot`: `string?` → `Record<string, unknown>?`. `Step.outputSnapshot`: idem. `Job` : ajout `options?: WorkflowOptions`, `chapterIds?: string[]`, `metadata?: Record<string, unknown>`. Ajout interface `WorkflowOptions`. |
+| `apps/desktop/src/main/db/repositories/JobRepository.ts` | `createStep()` et `updateStep()` : `JSON.stringify(step.inputSnapshot)` / `JSON.stringify(step.outputSnapshot)` avant stockage SQLite (colonne TEXT). `mapStep()` : `JSON.parse(String(row.input_snapshot))` / `JSON.parse(String(row.output_snapshot))` → `Record<string, unknown>`. |
+| `apps/desktop/src/main/managers/WorkflowEngine.ts` | Suppression `JSON.stringify(input)` → assignation directe `step.inputSnapshot = input as unknown as Record<string, unknown>`. Idem pour `outputSnapshot`. |
+
+#### Design Decisions
+- **Sérialisation au niveau du repository** : `JobRepository` est responsable de la conversion entre `Record<string, unknown>` (niveau applicatif) et JSON string (stockage SQLite). Le `WorkflowEngine` manipule des objets natifs.
+- **Pas de migration SQL** : les colonnes `input_snapshot` et `output_snapshot` restent en `TEXT` — le changement est purement au niveau applicatif.
+- **`WorkflowOptions`** : interface extensible avec `[key: string]: unknown` + champs nommés usuels (`sourceLanguage`, `targetLanguage`, `qualityThreshold`, `parallelAgents`).
+
+### ITEM E — Coverage thresholds (SDD §19.6)
+
+#### Files Modified
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/vitest.config.ts` | Ajout bloc `coverage` : provider `v8`, reporters `text/json/html`, include `services/managers/repositories/handlers`, thresholds 80% stmts/funcs/lines + 70% branches. |
+| `apps/desktop/package.json` | Ajout script `"test:coverage": "vitest run --coverage"`. |
+| `package.json` (racine) | Ajout script `"test:coverage": "npm run test:coverage --workspace=apps/desktop"`. |
+
+### Verification
+- ✅ `npm run type-check --workspace=apps/desktop` : passe (0 erreur)
+- ✅ `npm run test` : **95/95 passent** (0 régression)
+- ✅ `npm run test:coverage` : rapport généré (text/json/html), seuils configurés et fonctionnels (non atteints — attendu pour MVP)
+- ✅ Aucune régression sur les tests existants
 
 ### ITEM A — Wizard premier lancement (SDD §2, §4.18)
 

@@ -73,16 +73,27 @@ export type WorkflowStage =
   | "qa"
   | "export";
 
+export interface WorkflowOptions {
+  sourceLanguage?: string;
+  targetLanguage?: string;
+  qualityThreshold?: number;
+  parallelAgents?: number;
+  [key: string]: unknown;
+}
+
 export interface Job {
   id: string;
   projectId: string;
   chapterId?: string;
+  chapterIds?: string[];
   type: "single" | "batch";
   status:
     "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
   startedAt?: string;
   finishedAt?: string;
   errorMessage?: string;
+  options?: WorkflowOptions;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -94,8 +105,8 @@ export interface Step {
   stage: WorkflowStage;
   orderIndex: number;
   status: "pending" | "running" | "completed" | "failed" | "skipped";
-  inputSnapshot?: string;
-  outputSnapshot?: string;
+  inputSnapshot?: Record<string, unknown>;
+  outputSnapshot?: Record<string, unknown>;
   score?: number;
   tokensIn?: number;
   tokensOut?: number;
