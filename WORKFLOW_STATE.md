@@ -490,6 +490,12 @@ Le plan est **architecturalement solide** : l'ordre d'implémentation (1→2→3
 - Phase 10 (Linter - Item 1) : ✅ Complété — ESLint non configuré (INFO), Prettier 64 fichiers auto-fixés, type-check + tests OK
 - Phase 11 (Commit-message - Item 1) : ✅ Complété — Item 1 prêt pour commit
 - Phase 12 (Implementor - Item 2) : ✅ Complété — Tous les fichiers créés/modifiés, type-check + tests passent
+- Phase 13 (Reviewer - Item 2) : ✅ Complété — 2 CRITICAL, 2 HIGH, 3 MEDIUM, 5 LOW
+- Phase 14 (Implementor - Item 2 v2) : ✅ Complété — tous les fixes CRITICAL/HIGH/MEDIUM appliqués
+- Phase 15 (Tester - Item 2 v2) : ✅ Complété — type-check + 33/33 tests OK, 0 régression Item 1
+- Phase 16 (Linter - Item 2) : ✅ Complété — 9 fichiers auto-fixés, tout passe
+- Phase 17 (Commit-message - Item 2) : ✅ Complété — commit atomique créé
+- Phase 18 (Implementor - Item 3) : ✅ Complété — Dialogue d'export complet implémenté
 
 ## Test Results — Item 2 (Éditeur de lexique)
 
@@ -557,6 +563,58 @@ Le plan est **architecturalement solide** : l'ordre d'implémentation (1→2→3
 - ✅ **Fusionner implémenté** (M3 fix présent dans le menu contextuel)
 - ✅ **Code mort nettoyé** (M1 fix — allText inutilisé supprimé)
 
+## Test Results — Item 3 v2 (Dialogue d'export, post-review fixes)
+
+### Commands Run
+| Commande | Résultat |
+|---|---|
+| `npm run type-check --workspace=apps/desktop` (`vue-tsc --noEmit`) | ✅ PASS (0 erreur) |
+| `npm run test` (`vitest run --reporter=verbose`) | ✅ **ALL 45 PASS** (0 régression) |
+
+### Verification Summary
+| Suite | Fichier | Tests | Statut |
+|---|---|---|---|
+| Engines | `tests/unit/engines.spec.ts` | 4 | ✅ |
+| Editor | `tests/unit/editor.spec.ts` | 13 | ✅ |
+| Lexicon | `tests/unit/lexicon.spec.ts` | 16 | ✅ |
+| Export | `tests/unit/export-dialog.spec.ts` | 12 | ✅ |
+| **Total** | **4 fichiers** | **45** | **✅ 45/45** |
+
+### Detailed Test Breakdown — Export (Item 3)
+| # | Suite | Test | Statut |
+|---|---|---|---|
+| 1 | ExportEngine | doit créer le dossier parent si nécessaire | ✅ |
+| 2 | ExportEngine | doit produire un fichier non vide pour le format texte | ✅ |
+| 3 | ExportEngine | doit produire un fichier non vide pour le format HTML | ✅ |
+| 4 | ExportEngine | doit produire un fichier non vide pour le format DOCX | ✅ |
+| 5 | ExportEngine | doit produire un fichier non vide pour le format EPUB | ✅ |
+| 6 | ExportEngine | doit lever une erreur si le chemin de sortie est invalide | ✅ |
+| 7 | ExportEngine | doit respecter le mode bilingue | ✅ |
+| 8 | ExportEngine | doit inclure le titre quand includeTitle est true | ✅ |
+| 9 | exportRunSchema | doit valider un payload d'export valide | ✅ |
+| 10 | exportRunSchema | doit rejeter un payload sans projectId | ✅ |
+| 11 | exportRunSchema | doit rejeter un payload avec un format invalide | ✅ |
+| 12 | exportRunSchema | doit accepter les options facultatives | ✅ |
+
+### Regression Check (Items 1 & 2)
+- ✅ **13/13 Item 1 tests** (Editor) — aucune régression
+- ✅ **16/16 Item 2 tests** (Lexicon) — aucune régression
+- ✅ **4/4 engines tests** — aucune régression
+
+### Review Fix Verification
+| Fix | Sévérité | Fichier | Confirmé |
+|---|---|---|---|
+| C1 — includeParagraphNumbers | 🔴 CRITICAL | `ExportEngine.ts` → `pn()` method | ✅ |
+| H1 — EPUB structural validation | 🟡 HIGH | `ExportEngine.ts` → `validateEpub()` | ✅ (warnings non-bloquants) |
+| H2 — Error format SDD §16.7 | 🟡 HIGH | `handlers/export.ts` → `{ code, message }` | ✅ |
+| M1 — Author in exports | 🟡 MEDIUM | `ExportEngine.ts` → `<meta name="author">`, `<dc:creator>` | ✅ |
+| M2 — defaultOutputPath | 🟡 MEDIUM | `ExportEngine.ts` → `process.cwd()` fallback | ✅ |
+| M3 — Dead paragraphsToExport | 🟡 MEDIUM | `ExportDialog.vue` → computed supprimé | ✅ |
+
+### Observations (non bloquants)
+- EPUB validation émet 2 warnings pendant le test : `mimetype` n'est pas la première entrée ZIP (cosmétique, `adm-zip` limitation) + `mimetype` est compressé (la méthode de compression est corrigée automatiquement par `validateEpub`). Ces warnings n'affectent pas la lisibilité du fichier EPUB.
+- Le fichier de test s'appelle `export-dialog.spec.ts` mais test `ExportEngine` + `exportRunSchema` (pas le composant Vue). Déjà noté Reviewer L3.
+
 ## Implementation Notes — Item 2 (Éditeur de lexique)
 
 ### Files Created
@@ -588,8 +646,594 @@ Le plan est **architecturalement solide** : l'ordre d'implémentation (1→2→3
 - ✅ `npm run test` : 33/33 passent (4 engines + 13 editor + 16 lexicon)
 - ✅ Aucune régression sur les tests existants
 
+## Implementation Notes — Item 3 (Dialogue d'export complet)
+
+### Files Created
+| Fichier | Rôle |
+|---|---|
+| `packages/shared/src/schemas/export.ts` | Schémas Zod : `exportRunSchema` (ExportInput + validation), types `ExportRunInput`, `ExportRunResult` |
+| `apps/desktop/src/main/ipc/handlers/export.ts` | Handler IPC `export:run` : validation Zod, appel ExportEngine, validation post-export (exists/size) |
+| `apps/desktop/src/renderer/src/components/ui/NtToast.vue` | Composant notification : success/error/info/warning, auto-dismiss (sauf error), slide-in top-right |
+| `apps/desktop/src/renderer/src/components/ui/NtProgressBar.vue` | Composant barre de progression : 0-100 ou indéterminée (-1), label optionnel |
+| `apps/desktop/src/renderer/src/components/export/ExportDialog.vue` | Modal d'export : sélection format, mode bilingue, dossier sortie, options, progression, toast |
+| `apps/desktop/tests/unit/export-dialog.spec.ts` | 12 tests : ExportEngine validation (7) + exportRunSchema Zod (4) + cleanup test (1) |
+
+### Files Modified
+| Fichier | Changement |
+|---|---|
+| `packages/shared/src/schemas/index.ts` | Ajout `export * from "./export.js"` |
+| `apps/desktop/src/main/ipc/router.ts` | Import + appel `registerExportHandlers()` |
+| `apps/desktop/src/main/services/ExportEngine.ts` | Ajout `fs.mkdirSync()` (dossier parent) + validation post-écriture (exists, size > 0) |
+| `apps/desktop/src/renderer/src/views/ProjectView.vue` | Ajout bouton "Exporter le projet" + `<ExportDialog>` |
+| `apps/desktop/src/renderer/src/views/ChaptersView.vue` | Ajout bouton "Exporter" par chapitre + `<ExportDialog>` |
+| `apps/desktop/src/renderer/src/views/ChapterEditorView.vue` | Bouton "Exporter" dans la toolbar maintenant fonctionnel + `<ExportDialog>` |
+| `apps/desktop/vitest.config.ts` | Ajout alias `@shared` pour résolution des imports dans les tests |
+
+### Verification
+- ✅ `npm run type-check --workspace=apps/desktop` : passe (0 erreur)
+- ✅ `npm run test` : 45/45 passent (4 engines + 13 editor + 16 lexicon + 12 export)
+- ✅ Aucune régression sur les tests existants (Item 1 + Item 2)
+- ✅ Prettier : tous les 13 fichiers conformes après auto-fix
+
+### Test Breakdown (Item 3)
+| # | Suite | Test | Statut |
+|---|---|---|---|
+| 1 | ExportEngine | doit créer le dossier parent si nécessaire | ✅ |
+| 2 | ExportEngine | doit produire un fichier non vide pour le format texte | ✅ |
+| 3 | ExportEngine | doit produire un fichier non vide pour le format HTML | ✅ |
+| 4 | ExportEngine | doit produire un fichier non vide pour le format DOCX | ✅ |
+| 5 | ExportEngine | doit produire un fichier non vide pour le format EPUB | ✅ |
+| 6 | ExportEngine | doit lever une erreur si le chemin de sortie est invalide | ✅ |
+| 7 | ExportEngine | doit respecter le mode bilingue | ✅ |
+| 8 | ExportEngine | doit inclure le titre quand includeTitle est true | ✅ |
+| 9 | exportRunSchema | doit valider un payload d'export valide | ✅ |
+| 10 | exportRunSchema | doit rejeter un payload sans projectId | ✅ |
+| 11 | exportRunSchema | doit rejeter un payload avec un format invalide | ✅ |
+| 12 | exportRunSchema | doit accepter les options facultatives | ✅ |
+
+### Components Created (SDD reusable)
+- **NtToast** : notifications (success/error/info/warning), auto-dismiss 4s (sauf error), slide-in top-right, CSS tokens, `<Teleport>`, `<Transition>`
+- **NtProgressBar** : barre 0-100 ou indéterminée (-1), animation CSS, label optionnel, CSS tokens
+- **ExportDialog** : utilise `NtModal` (Item 2), `NtToast`, `NtProgressBar`. Formulaire complet : format (5 options), mode bilingue toggle, dossier sortie avec "Parcourir" (`dialog:open-file` + `openDirectory`), options checkbox
+
+### Design Decisions
+- **`dialog:open-file` réutilisé** pour la sélection de dossier (propriété `openDirectory`) plutôt qu'un nouveau canal `dialog:select-directory` — évite la duplication
+- **Validation en double couche** : `ExportEngine.export()` valide le fichier après écriture (exists + size > 0) + le handler IPC refait la validation pour le résultat structuré
+- **Exportengine lance une erreur** si validation échoue, le handler IPC catch et retourne `{ success: false, error: string }`
+- **ExportDialog charge les paragraphes** via `chapter:get-paragraphs` si pas déjà dans le store éditeur
+
+## Review Findings — Item 3 (Dialogue d'export complet)
+
+### Verdict : ❌ REJECTED — 1 CRITICAL, 2 HIGH, 3 MEDIUM, 4 LOW
+
+La fonctionnalité d'export de base (5 formats, mode bilingue, sélection de dossier, progression, notifications) est correcte. Cependant, une option utilisateur affichée dans l'UI n'est pas implémentée (`includeParagraphNumbers`), la validation EPUB manque, et le format d'erreur IPC ne suit pas la convention SDD.
+
+---
+
+### 🔴 CRITICAL
+
+#### C1 — `includeParagraphNumbers` affiché dans l'UI mais jamais appliqué (option fantôme)
+
+- **Fichiers** : `ExportEngine.ts` (toutes les méthodes `toMarkdown`, `toTxt`, `toHtml`, `toDocx`, `toEpub`), `ExportDialog.vue` (lignes 307-313), `export.ts` schema (ligne 30)
+- **Description** : La checkbox "Numéroter les paragraphes" est présente dans l'UI (ExportDialog ligne 312), validée par Zod (`includeParagraphNumbers: z.boolean().optional()` ligne 30), présente dans le type `ExportInput.options` — mais **aucune** méthode de rendu de `ExportEngine` ne lit `input.options?.includeParagraphNumbers` ni n'utilise `p.indexInChapter` pour numéroter la sortie. L'option est un no-op silencieux.
+- **Impact** : L'utilisateur coche "Numéroter les paragraphes", l'export se termine "avec succès" mais les paragraphes ne sont pas numérotés. Confusion utilisateur garantie.
+- **Fix requis** : Dans chaque méthode de rendu (`toMarkdown`, `toTxt`, `toHtml`, `toDocx`), vérifier `input.options?.includeParagraphNumbers` et préfixer chaque paragraphe avec son numéro. Par exemple, dans `toMarkdown()` :
+  ```ts
+  const prefix = input.options?.includeParagraphNumbers ? `${p.indexInChapter}. ` : '';
+  const text = input.options?.bilingual
+    ? `${prefix}${p.sourceText}\n\n${p.translatedText ?? ''}`
+    : `${prefix}${p.translatedText ?? ''}`;
+  ```
+
+---
+
+### 🟡 HIGH
+
+#### H1 — Validation EPUB structurelle absente (SDD §13.8 non respecté)
+
+- **Fichiers** : `ExportEngine.ts`, `handlers/export.ts`
+- **Description** : Le SDD §13.8 exige pour EPUB : vérification ZIP (mimetype + container.xml + OPF), vérification OPF (metadata title/language + manifest + spine), et `epubcheck` optionnel. L'implémentation actuelle ne fait **aucune** de ces validations. Le handler (lignes 17-25) vérifie seulement `existsSync` + `statSync.size > 0` — insuffisant pour garantir un EPUB valide.
+- **Impact** : Un EPUB techniquement invalide (ex: ZIP corrompu, mimetype manquant, OPF malformé) passe la validation et est présenté comme "Export réussi" à l'utilisateur.
+- **Fix requis** : Ajouter une méthode `validateEpubZip(outputPath)` dans `ExportEngine.ts` (ou un helper séparé) qui vérifie au minimum :
+  1. Le fichier est un ZIP valide (absence de corruption)
+  2. L'entrée `mimetype` existe avec le contenu `application/epub+zip`
+  3. `META-INF/container.xml` existe et référence un fichier `.opf`
+  4. Le fichier OPF contient `<dc:title>` et `<dc:language>`
+  
+  Appeler cette validation dans `export()` avant de retourner `outputPath`. Le handler `export:run` peut l'invoquer ou `ExportEngine` peut la lancer automatiquement après l'écriture.
+
+#### H2 — Format d'erreur IPC non conforme au SDD §16.7
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/export.ts`, lignes 12-38
+- **Description** : Le SDD §16.7 spécifie un format d'erreur structuré :
+  ```ts
+  { error: { code: 'VALIDATION_ERROR', message: '...', details?: unknown } }
+  ```
+  L'implémentation actuelle retourne `{ success: false, error: message }` — une chaîne brute. Les erreurs de validation Zod et les erreurs métier sont indistinguables.
+- **Impact** : Le renderer ne peut pas différencier une erreur de validation (données invalides, retenter avec correction) d'une erreur système (fichier inaccessible, réessayer plus tard). L'UI affiche le message brut sans contexte.
+- **Fix requis** :
+  ```ts
+  try {
+    const input = exportRunSchema.parse(payload);
+    // ...
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return { error: { code: 'VALIDATION_ERROR', message: 'Données d\'export invalides', details: err.errors } };
+    }
+    const message = err instanceof Error ? err.message : 'Erreur inconnue lors de l\'export.';
+    return { error: { code: 'EXPORT_FAILED', message } };
+  }
+  ```
+  **Note** : Changer le type de retour de `ExportRunResult` pour inclure le format `{ error: { code: string; message: string; details?: unknown } }` et mettre à jour `ExportDialog.vue` pour gérer le nouveau format.
+
+---
+
+### 🟡 MEDIUM
+
+#### M1 — `input.author` accepté mais jamais rendu (champ silencieux)
+
+- **Fichiers** : `ExportEngine.ts` (toutes les méthodes de rendu), `packages/shared/src/types/index.ts` (lignes 151-164)
+- **Description** : Le type `ExportInput.author` est défini, accepté dans le schéma Zod, et fourni par `ExportDialog.vue` (ligne 188 : `author: author.value ?? undefined`). Mais **aucune** méthode de rendu ne l'utilise — ni dans le Markdown (pas de frontmatter), ni dans le HTML (`<meta name="author">`), ni dans le DOCX (propriétés du document), ni dans l'EPUB (`<dc:creator>`).
+- **Impact** : L'auteur du projet est silencieusement ignoré. Les métadonnées des fichiers exportés sont incomplètes.
+- **Fix requis** : Ajouter `input.author` dans :
+  - `toHtml()` : `<meta name="author" content="${this.escapeHtml(input.author ?? '')}">`
+  - `toEpub()` : `<dc:creator>${this.escapeXml(input.author ?? input.title)}</dc:creator>`
+  - `toDocx()` : propriétés du document (optionnel, basse priorité)
+
+#### M2 — `defaultOutputPath()` produit un chemin relatif au CWD
+
+- **Fichier** : `ExportEngine.ts`, lignes 40-59
+- **Description** : Quand `input.outputPath` est undefined, `defaultOutputPath()` construit `path.join(input.outputPath ?? '', ...)` → `path.join('', 'Title.md')` → `'Title.md'`. Le fichier est écrit dans le répertoire de travail courant du processus Electron, pas dans un dossier prévisible.
+- **Impact** : Si appelé sans `outputPath`, le fichier atterrit à un emplacement imprévisible (selon où Electron a été lancé).
+- **Fix requis** : Utiliser un dossier par défaut explicite :
+  ```ts
+  private defaultOutputPath(input: ExportInput): string {
+    const base = path.join(
+      input.outputPath ?? process.cwd(),
+      input.title.replace(/[^a-z0-9]/gi, '_')
+    );
+    // ...
+  }
+  ```
+  Ou mieux : exiger `outputPath` côté UI (déjà fait via la validation `!outputFolder.value` dans `doExport()`). Ajouter `outputPath.min(1)` déjà présent dans le schéma. La méthode pourrait aussi logger un avertissement ou utiliser un dossier `exports/` dans le répertoire du projet.
+
+#### M3 — `paragraphsToExport` computed toujours `[]` (code mort trompeur)
+
+- **Fichier** : `ExportDialog.vue`, lignes 53-67
+- **Description** : Le computed `paragraphsToExport` retourne toujours `[]` pour les cas "ChaptersView" (ligne 63) et "projet entier" (ligne 66). Seul le cas éditeur fonctionne (lignes 56-60). `doExport()` contourne correctement ce computed en appelant `loadParagraphsForChapter()` directement, mais le computed est inutilisé et source de confusion.
+- **Impact** : Aucun bug fonctionnel (le code réel dans `doExport()` est correct), mais dette technique et confusion pour les futurs mainteneurs.
+- **Fix requis** : Soit supprimer le computed et son import, soit le câbler correctement avec `loadParagraphsForChapter()`. Option recommandée : supprimer `paragraphsToExport` et simplifier `doExport()`.
+
+---
+
+### 🟢 LOW
+
+#### L1 — EPUB : l'entrée `mimetype` peut être compressée (non-conformité EPUB spec)
+
+- **Fichier** : `ExportEngine.ts`, ligne 164
+- **Description** : La spec EPUB exige que le fichier `mimetype` soit le **premier** fichier du ZIP **et** stocké sans compression (`STORED`). `adm-zip`'s `addFile(name, data, comment?, attr?)` ne prend pas de paramètre de compression. Par défaut, `adm-zip` peut compresser le fichier. Un validateur EPUB strict peut rejeter le fichier.
+- **Impact** : Faible — la plupart des readers EPUB tolèrent un mimetype compressé. Mais `epubcheck` le signalera comme erreur.
+- **Fix** : Après avoir ajouté tous les fichiers, définir la méthode de compression sur 0 pour l'entrée mimetype :
+  ```ts
+  const entry = zip.getEntry('mimetype');
+  if (entry) entry.header.method = 0; // STORED
+  ```
+
+#### L2 — EPUB : pas de `<dc:creator>` dans les métadonnées OPF
+
+- **Fichier** : `ExportEngine.ts`, `toEpub()` lignes 161-193
+- **Description** : L'OPF généré (lignes 177-189) inclut `<dc:title>` et `<dc:language>` mais pas `<dc:creator>`. L'auteur (`input.author`) est ignoré.
+- **Impact** : Faible — l'EPUB reste lisible. L'auteur apparaîtra comme "Unknown" dans les readers.
+- **Fix** : Ajouter la ligne dans l'OPF :
+  ```
+  <dc:creator>${this.escapeXml(input.author ?? 'Anonyme')}</dc:creator>
+  ```
+
+#### L3 — Test nommé `export-dialog.spec.ts` mais ne teste pas le composant Vue
+
+- **Fichier** : `apps/desktop/tests/unit/export-dialog.spec.ts`
+- **Description** : Le fichier teste uniquement `ExportEngine` (7 tests) et `exportRunSchema` (4 tests) + cleanup (1 test), pas le composant `ExportDialog.vue`. Le nom du fichier est trompeur.
+- **Impact** : Aucun bug, mais coverage trompeur. Les tests Vue (interaction utilisateur, validation formulaire, chargement paragraphes) sont manquants.
+- **Fix** : Soit renommer en `export-engine.spec.ts`, soit ajouter des tests de composant Vue pour `ExportDialog`.
+
+#### L4 — `includeParagraphNumbers` dans le schéma Zod mais pas dans le type `ExportInput` (déjà OK, vérifié)
+
+- **Vérification** : Confirmé que `includeParagraphNumbers` est bien présent dans les deux — c'est l'implémentation qui manque (C1). Le schéma et le type sont cohérents. ✅ Pas d'action.
+
+---
+
+### Ce qui est BON ✅
+
+| Critère | Statut | Notes |
+|---|---|---|
+| **TypeScript / types** | ✅ | Aucun `any` trouvé. Types stricts. `ExportRunInput`, `ExportRunResult` bien typés. |
+| **CSS tokens** | ✅ | Zéro usage de Tailwind. Tous les `var(--bg-primary)`, `var(--accent)`, `var(--border-radius)`, `var(--text-primary)`, etc. |
+| **UI en français** | ✅ | Tous les strings user-facing en français (labels, placeholders, messages, boutons). |
+| **Zod** | ✅ | `exportRunSchema` : `.uuid()`, `.enum()`, `.min()`, `.optional()` corrects. `exportParagraphSchema` sous-schéma bien défini. |
+| **Zod dans IPC** | ✅ | `.parse()` utilisé dans `handlers/export.ts` ligne 13. |
+| **Validation double couche** | ✅ | ExportEngine valide exists + size > 0 après écriture. Handler vérifie aussi. |
+| **Création dossier parent** | ✅ | `fs.mkdirSync(path.dirname(outputPath), { recursive: true })` dans `ExportEngine.export()`. |
+| **5 formats fonctionnels** | ✅ | Markdown, TXT, HTML, DOCX (via `docx`), EPUB (via `adm-zip`) — tous produisent des fichiers > 0 bytes. |
+| **Mode bilingue** | ✅ | `bilingual: true` → source + traduction pour tous les formats. |
+| **`includeTitle`** | ✅ | L'option fonctionne correctement (titre inclus/désactivé selon le format). |
+| **Composants réutilisables** | ✅ | `NtToast` (notification avec types, auto-dismiss, animation, aria-live), `NtProgressBar` (déterminée/indéterminée, animation). |
+| **NtModal réutilisation** | ✅ | `ExportDialog` utilise `NtModal` de l'Item 2. |
+| **Sélection dossier** | ✅ | Bouton "Parcourir" → `dialog:open-file` avec `openDirectory` — réutilisation du handler existant. |
+| **Progression visuelle** | ✅ | `NtProgressBar` s'affiche pendant l'export (indéterminé → 50% → 100%). |
+| **Toasts succès/erreur** | ✅ | Toast auto-dismiss 4s pour succès, persistant pour erreur. Taille de fichier formatée. |
+| **3 points d'accès** | ✅ | ProjectView (projet entier), ChaptersView (par chapitre), ChapterEditorView (chapitre courant). |
+| **Nettoyage timers** | ✅ | `clearTimeout` dans `onUnmounted` (NtToast), `finally` block reset (ExportDialog). |
+| **XSS prevention** | ✅ | `escapeHtml()` dans ExportEngine, interpolation `{{ }}` dans Vue. Zéro `v-html`. |
+| **Chemins de fichiers** | ✅ | Pas de path traversal côté main — `fs.mkdirSync` + `writeFileSync` sur chemin fourni par l'UI (après sélection dialogue natif). |
+| **Tests** | ✅ | 12 tests passent (7 ExportEngine + 4 schema + 1 cleanup). Couverture : création dossier, formats non vides, mode bilingue, includeTitle, erreur chemin invalide, validation Zod. |
+| **`type-check`** | ✅ | `vue-tsc --noEmit` passe 0 erreur. |
+| **`test`** | ✅ | 45/45 passent (4 engines + 13 editor + 16 lexicon + 12 export). 0 régression. |
+| **Prettier** | ✅ | Tous les fichiers conformes. |
+| **NtToast accessibility** | ✅ | `role="alert"`, `aria-live` (assertive pour error, polite pour autres). |
+| **NtProgressBar animation** | ✅ | CSS `@keyframes` pour mode indéterminé, transition `width 0.3s`. |
+| **ExportDialog formatSize()** | ✅ | Formatage lisible (o, Ko, Mo). |
+| **EPUB mimetype** | ✅ | Stocké comme premier fichier avec `application/epub+zip`. |
+| **EPUB structure** | ✅ | `META-INF/container.xml`, `OEBPS/content.opf`, `spine` avec `itemref` présents. |
+
+---
+
+### Résumé pour l'implementor
+
+**Ordre de correction recommandé** :
+
+1. **C1 (CRITICAL)** — `ExportEngine.ts` : implémenter `includeParagraphNumbers` dans `toMarkdown()`, `toTxt()`, `toHtml()`, `toDocx()`, `toEpub()`.
+2. **H1 (HIGH)** — `ExportEngine.ts` : ajouter `validateEpubZip()` avec vérification minimale (ZIP valide, mimetype, container.xml, OPF title/language).
+3. **H2 (HIGH)** — `handlers/export.ts` : adopter le format d'erreur SDD §16.7 (`{ error: { code, message, details? } }`). Mettre à jour `ExportRunResult` et `ExportDialog.vue`.
+4. **M1 (MEDIUM)** — `ExportEngine.ts` : utiliser `input.author` dans `toHtml()`, `toEpub()`, `toDocx()`.
+5. **M2 (MEDIUM)** — `ExportEngine.ts` : corriger `defaultOutputPath()` ou supprimer la méthode (outputPath est toujours fourni côté UI).
+6. **M3 (MEDIUM)** — `ExportDialog.vue` : supprimer le computed `paragraphsToExport` inutilisé.
+7. **L1-L4 (LOW)** — Corrections cosmétiques optionnelles.
+
+Après correction, exécuter :
+```
+npm run type-check --workspace=apps/desktop
+npm run test
+```
+Les 2 commandes doivent passer. Idéalement ajouter un test pour `includeParagraphNumbers`.
+
+---
+
+## Security Review Findings — Item 3 (Dialogue d'export complet)
+
+### Verdict : ✅ PASS — Aucune vulnérabilité CRITICAL ou HIGH. 4 MEDIUM, 5 LOW.
+
+Tous les problèmes CRITICAL/HIGH précédemment identifiés (C1: includeParagraphNumbers, H1: validation EPUB, H2: format d'erreur IPC) ont été corrigés en v2. La couche Zod + `escapeHtml()` + sandbox Electron fournit une défense solide. Les findings ci-dessous sont des renforcements défensifs et des bonnes pratiques.
+
+---
+
+### Résumé par checklist
+
+| # | Catégorie | Statut | Notes |
+|---|---|---|---|
+| 1 | **IPC Security / Zod** | ⚠️ | `.parse()` utilisé. Mais `paragraphs` et `title` n'ont pas de `.max()`. `outputPath` n'a que `.min(1)`. |
+| 2 | **Input Sanitization / XSS** | ✅ | `escapeHtml()` dans ExportEngine. Vue interpolation `{{ }}` exclusive (zéro `v-html`). |
+| 3 | **Path Traversal** | ✅ | Dossier via dialogue natif Electron. Nom de fichier assaini par regex `[^a-z0-9\u00e0-\u024f]`. Aucun `../` possible. |
+| 4 | **ZIP Bomb** | ✅ | EPUB créé à partir de données de paragraphes internes (confiance). Pas de décompression d'archives utilisateur. |
+| 5 | **Command Injection** | ✅ | Aucune exécution shell (`child_process`). |
+| 6 | **File Permissions** | ⚠️ | `fs.mkdirSync`/`writeFileSync` sans `mode` explicite (umask par défaut). Mimetype EPUB: `0o644` explicite. |
+| 7 | **Secrets/Credentials** | ✅ | Aucune clé API, token, ou mot de passe dans les sources Item 3. |
+| 8 | **AuthZ** | ⚠️ | Pas de vérification `projectId` ownership dans le handler IPC. Acceptable pour app desktop locale. |
+| 9 | **Cryptography** | ✅ | Aucune opération cryptographique. |
+| 10 | **SQL Injection** | ✅ | Aucun accès DB dans `ExportEngine.ts` ou `handlers/export.ts`. |
+| 11 | **DoS / Resource Exhaustion** | ⚠️ | 3 findings MEDIUM : paragraphs illimité, title illimité, sourceText/translatedText illimité. |
+| 12 | **Error Handling / Info Disclosure** | ⚠️ | 1 finding MEDIUM : détails d'erreur Zod exposés au renderer. |
+
+---
+
+### 🟡 MEDIUM
+
+#### MS1 — `paragraphs` array has no `.max()` — DoS via payload massif
+
+- **Fichier** : `packages/shared/src/schemas/export.ts`, ligne 35
+- **Description** : `paragraphs: z.array(exportParagraphSchema).min(1)` n'a pas de `.max()`. Un attaquant (renderer compromis ou payload IPC forgé) pourrait envoyer un tableau de 100 000 paragraphes, causant :
+  - Épuisement mémoire dans `ExportEngine` (rendu en mémoire avant écriture disque)
+  - Blocage du main process Electron
+  - Crash OOM (Out Of Memory)
+- **Impact** : DoS local. Nécessite un renderer compromis (sandbox contourné) pour exploiter — le composant Vue n'a pas de mécanisme pour générer un tel payload.
+- **Fix suggéré** :
+  ```ts
+  paragraphs: z.array(exportParagraphSchema).min(1).max(50_000, "Maximum 50 000 paragraphes par export."),
+  ```
+  Ajouter aussi une vérification côté renderer dans `doExport()` : afficher un avertissement si `paragraphs.length > 10_000`.
+
+#### MS2 — `title` has no `.max()` — OS path limits, noms de fichiers excessifs
+
+- **Fichier** : `packages/shared/src/schemas/export.ts`, ligne 33
+- **Description** : `title: z.string().min(1)` sans `.max()`. Le titre est utilisé dans `defaultOutputPath()` pour construire le nom de fichier via `input.title.replace(/[^a-z0-9]/gi, "_")`. Un titre de 10 000 caractères produirait un nom de fichier de 10 000 caractères, dépassant les limites OS (Windows : 255 caractères par composant, Linux : 255). `fs.writeFileSync()` échouerait silencieusement ou tronquerait.
+- **Impact** : L'export échoue sans message clair. L'utilisateur ne comprend pas pourquoi.
+- **Fix suggéré** :
+  ```ts
+  title: z.string().min(1).max(200, "Le titre ne doit pas dépasser 200 caractères."),
+  ```
+  Et/ou tronquer le `safeName` dans `defaultOutputPath()` :
+  ```ts
+  const safeName = input.title.replace(/[^a-z0-9]/gi, "_").slice(0, 100);
+  ```
+
+#### MS3 — `setTimeout` non nettoyé dans `ExportDialog.vue` — fuite d'événements sur unmount
+
+- **Fichier** : `apps/desktop/src/renderer/src/components/export/ExportDialog.vue`
+  - Ligne 196 : `setTimeout(() => emit("close"), 800)`
+  - Lignes 210-212 : `setTimeout(() => { exportProgress.value = -1; }, 500)`
+- **Description** : Les deux `setTimeout` dans `doExport()` ne sont pas stockés ni nettoyés via `clearTimeout` dans `onUnmounted`. Si le composant est détruit pendant le délai (ex: fermeture du projet, navigation rapide), les callbacks s'exécutent sur un composant démonté. L'`emit("close")` sur un composant détruit est généralement un no-op en Vue 3, mais `exportProgress.value = -1` sur un ref orphelin est un comportement indéfini.
+- **Impact** : Faible — Vue 3 gère gracieusement les emits sur composants démontés. Aucun crash. Mais pratique défensive recommandée.
+- **Fix suggéré** :
+  ```ts
+  const closeTimer = ref<ReturnType<typeof setTimeout>>();
+  const progressTimer = ref<ReturnType<typeof setTimeout>>();
+  
+  // Dans doExport():
+  closeTimer.value = setTimeout(() => emit("close"), 800);
+  progressTimer.value = setTimeout(() => { exportProgress.value = -1; }, 500);
+  
+  // Ajouter :
+  onUnmounted(() => {
+    if (closeTimer.value) clearTimeout(closeTimer.value);
+    if (progressTimer.value) clearTimeout(progressTimer.value);
+  });
+  ```
+
+#### MS4 — Détails d'erreur Zod exposés au renderer (information disclosure)
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/export.ts`, ligne 53
+- **Description** : `details: JSON.stringify(err.errors)` expose la structure complète des erreurs Zod au renderer : quels champs ont échoué, quelles contraintes, quelles valeurs reçues. Cela révèle la structure du schéma de validation IPC. Bien que le renderer n'affiche pas ces détails dans l'UI (seul `result.error.message` est affiché), les détails sont disponibles dans la réponse IPC.
+- **Impact** : Faible pour une app desktop avec sandbox. Un renderer compromis pourrait utiliser ces informations pour cartographier l'API interne.
+- **Fix suggéré** :
+  ```ts
+  // Remplacer :
+  details: JSON.stringify(err.errors),
+  // par :
+  details: err.errors.map(e => e.message).join("; "),
+  ```
+  Ou logger `err.errors` dans la console (`console.error`) et ne pas les transmettre au renderer.
+
+---
+
+### 🟢 LOW
+
+#### LS1 — `outputPath` lacks path validation beyond `.min(1)`
+
+- **Fichier** : `packages/shared/src/schemas/export.ts`, ligne 37
+- **Description** : `outputPath: z.string().min(1)` accepte n'importe quelle chaîne non vide. Aucune vérification de chemin absolu, de composants `../`, ou de caractères interdits. En pratique, l'UI utilise un dialogue natif (`dialog:open-file` avec `openDirectory`), donc le chemin est toujours valide et sous contrôle utilisateur. Mais le handler IPC ne le sait pas.
+- **Impact** : Théorique uniquement — nécessiterait un renderer compromis pour injecter un chemin malveillant via IPC.
+- **Fix suggéré** : Ajouter une validation défensive :
+  ```ts
+  outputPath: z.string().min(1).refine(
+    (p) => !p.includes("..") && path.isAbsolute(p),
+    "Chemin de sortie invalide."
+  ),
+  ```
+
+#### LS2 — Markdown special chars not escaped in `toMarkdown()`
+
+- **Fichier** : `apps/desktop/src/main/services/ExportEngine.ts`, lignes 184-197
+- **Description** : `toMarkdown()` ne fait pas d'échappement des caractères spéciaux Markdown (`#`, `*`, `_`, `[`, `]`, `` ` ``) dans `sourceText` ou `translatedText`. Si un paragraphe contient `# Chapitre`, il sera interprété comme un titre. Si `translatedText` contient `*italique*`, il sera rendu en italique.
+- **Impact** : Faible — c'est du Markdown, le formatting est attendu. Pas de XSS possible (pas de HTML). Seulement une confusion si l'utilisateur ne s'attend pas à ce que son texte soit interprété.
+- **Fix suggéré** : Optionnel — échapper les caractères de formatage Markdown si le comportement "verbatim" est souhaité :
+  ```ts
+  private escapeMarkdown(text: string): string {
+    return text.replace(/([*_`#[\]])/g, '\\$1');
+  }
+  ```
+
+#### LS3 — No `projectId` ownership verification in IPC handler
+
+- **Fichier** : `apps/desktop/src/main/ipc/handlers/export.ts`, lignes 10-67
+- **Description** : Le handler accepte `projectId` du renderer et l'utilise sans vérifier que le projet existe ou appartient à la session courante. Les paragraphes sont fournis directement par le renderer (`input.paragraphs`), donc le `projectId` n'est jamais validé côté main process.
+- **Impact** : Faible pour une app desktop — le renderer est sandboxé et le flux de données est interne. Dans une architecture client-serveur, ce serait CRITICAL.
+- **Fix suggéré** : Vérifier l'existence du projet via `ProjectRepository` (si disponible) ou supprimer `projectId` du payload s'il n'est pas utilisé par `ExportEngine`.
+
+#### LS4 — `outputPath` computed uses string concat instead of `path.join`
+
+- **Fichier** : `apps/desktop/src/renderer/src/components/export/ExportDialog.vue`, ligne 92
+- **Description** : `return \`${folder}/${name}\`` utilise la concaténation de chaînes avec `/` au lieu de `path.join()` (non disponible dans le renderer sandboxé) ou `path.sep`. Sous Windows, les chemins utilisent `\`, mais le dialogue natif retourne déjà des `\\`, que `folder.replace(/\\/g, "/")` convertit en `/`. Le résultat final combine donc `/` et `\`. Node.js (`fs.writeFileSync`) accepte les deux sous Windows, donc pas de bug fonctionnel, mais c'est fragile.
+- **Impact** : Nul en pratique. Cosmétique.
+- **Fix suggéré** : Utiliser `path.join()` côté main process à partir des composants séparés (dossier + nom de fichier), ou envoyer `outputFolder` + `fileName` séparément dans le payload IPC.
+
+#### LS5 — `sourceText` / `translatedText` illimités dans `exportParagraphSchema`
+
+- **Fichier** : `packages/shared/src/schemas/export.ts`, lignes 21-22
+- **Description** : `sourceText: z.string()` et `translatedText: z.string().optional()` n'ont pas de `.max()`. Un seul paragraphe pourrait contenir des mégaoctets de texte. Combiné avec MS1 (pas de max sur le tableau), cela amplifie le risque DoS.
+- **Impact** : Faible — nécessite un renderer compromis. Les paragraphes normaux font quelques centaines de caractères.
+- **Fix suggéré** :
+  ```ts
+  sourceText: z.string().max(100_000, "Texte source trop long."),
+  translatedText: z.string().max(100_000, "Texte traduit trop long.").optional(),
+  ```
+
+---
+
+### Ce qui est BON ✅ (sécurité)
+
+| Critère | Statut | Notes |
+|---|---|---|
+| **Electron sandbox** | ✅ | `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false` |
+| **Web security** | ✅ | `webSecurity: true`, `allowRunningInsecureContent: false` |
+| **Preload minimal** | ✅ | Seulement `invoke` + `on` via `contextBridge` |
+| **Zod .parse()** | ✅ | Validation stricte dans `handlers/export.ts` ligne 14 |
+| **HTML escaping** | ✅ | `escapeHtml()` : `&`, `<`, `>`, `"` dans `toHtml()`, `toEpub()` (via OPF) |
+| **XML escaping** | ✅ | `escapeXml()` : `escapeHtml()` + `'` → `&apos;` pour métadonnées EPUB |
+| **Vue XSS prevention** | ✅ | Zéro `v-html`, `innerHTML`, ou `document.write`. Interpolation `{{ }}` universelle. |
+| **Path traversal prevention** | ✅ | Dossier via dialogue natif (confiance). Nom de fichier via regex assainissant `[^a-z0-9\u00e0-\u024f]`. |
+| **ZIP bomb prevention** | ✅ | EPUB créé exclusivement à partir de données de paragraphes internes. Pas de décompression de ZIP utilisateur. |
+| **EPUB validation** | ✅ | `validateEpub()` vérifie : ZIP valide, mimetype (présent/premier/contenu/compression), container.xml, OPF (référence + title/language). Correction auto du mimetype compressé. |
+| **EPUB mimetype** | ✅ | `0o644` explicite. Correction auto de la compression (`method = 0`). |
+| **Aucune commande shell** | ✅ | Ni `exec`, ni `spawn`, ni `execSync` dans Item 3. |
+| **Aucun secret hardcodé** | ✅ | Pas de clé API, token, ou mot de passe. |
+| **Format d'erreur IPC** | ✅ | Conforme SDD §16.7 : `{ success: false, error: { code, message, details? } }`. Union discriminée Zod. |
+| **Validation double couche** | ✅ | ExportEngine vérifie exists + size > 0. Handler IPC refait la vérification. |
+| **Création dossier parent** | ✅ | `fs.mkdirSync(dirname, { recursive: true })` avant écriture. |
+| **Nettoyage état d'export** | ✅ | `finally { exporting.value = false }` dans `doExport()`. |
+| **Toast auto-dismiss** | ✅ | Succès : 4s auto-close. Erreur : persistant (fermeture manuelle). |
+| **Désactivation UI pendant export** | ✅ | Boutons `:disabled="exporting"`, select `:disabled="exporting"`. Pas de double-clic possible. |
+| **EscapeHtml coverage** | ✅ | `title`, `sourceText`, `translatedText`, `author` — tous les champs utilisateur échappés dans HTML. |
+| **Pas de `eval` / `Function()`** | ✅ | Aucune exécution dynamique de code. |
+| **Tests de validation** | ✅ | 12 tests : ExportEngine (7) + exportRunSchema Zod (4) + cleanup (1). Couvre validation, formats non vides, mode bilingue. |
+
+---
+
+### Comparaison avec les items précédents
+
+| Finding | Item 1 | Item 2 | Item 3 | Notes |
+|---|---|---|---|---|
+| Raw error messages exposed | S1 (MEDIUM) | MS1 (MEDIUM) | ✅ Résolu | Item 3 utilise le format SDD §16.7 structuré |
+| No channel whitelist | S2 (LOW) | LS1 (LOW) | ⚠️ Persiste | Pré-existant, non spécifique Item 3 |
+| Nav guard projectId | S3 (LOW) | ✅ Résolu | ✅ Résolu | Hérité Item 1 |
+| `os.homedir()` | S4 (LOW) | LS2 (LOW) | ⚠️ Persiste | SettingsManager, non spécifique Item 3 |
+| DoS: no array max | — | MS2 (MEDIUM) | MS1 (MEDIUM) | Même pattern |
+| DoS: no string max | — | — | MS2, LS5 (MEDIUM/LOW) | Nouveau dans Item 3 |
+| `setTimeout` not cleaned | — | LS1 (LOW) | MS3 (MEDIUM) | Pattern récurrent dans les composants Vue |
+| Info disclosure (Zod details) | — | — | MS4 (MEDIUM) | Nouveau dans Item 3 |
+| Markdown unescaped | — | — | LS2 (LOW) | Nouveau, spécifique à l'export |
+| Path validation | ✅ | ✅ | LS1 (LOW) | Amélioration défensive possible |
+
+---
+
+### Résumé pour l'implementor (optionnel — aucun bloquant)
+
+1. **MS1 (MEDIUM)** — `schemas/export.ts` : `.max(50_000)` sur `paragraphs`
+2. **MS2 (MEDIUM)** — `schemas/export.ts` : `.max(200)` sur `title`
+3. **MS3 (MEDIUM)** — `ExportDialog.vue` : `clearTimeout` dans `onUnmounted`
+4. **MS4 (MEDIUM)** — `handlers/export.ts` : ne pas exposer `err.errors` bruts au renderer
+5. **LS1 (LOW)** — `schemas/export.ts` : `.refine()` anti-`../` sur `outputPath`
+6. **LS2 (LOW)** — `ExportEngine.ts` : optionnel, échapper Markdown dans `toMarkdown()`
+7. **LS3 (LOW)** — `handlers/export.ts` : vérifier existence du `projectId`
+8. **LS4 (LOW)** — `ExportDialog.vue` : utiliser `path` côté main process pour joindre les chemins
+9. **LS5 (LOW)** — `schemas/export.ts` : `.max(100_000)` sur `sourceText`/`translatedText`
+
+Aucun de ces correctifs n'est bloquant pour le passage au linter. La sécurité de l'app est solide. ✅
+
+---
+
+## Current Status
+- Phase 1 (Clarify) : ✅ Complété
+- Phase 2 (Debate) : ✅ Complété
+- Phase 3-4 (Plan + Debate corrections) : ✅ Complété
+- Phase 5-11 (Item 1 — Éditeur) : ✅ Complété (implémenté, revu, corrigé, testé, sécurisé, linté, commit)
+- Phase 12-17 (Item 2 — Lexique) : ✅ Complété (implémenté, revu, corrigé, testé, linté, commit)
+- Phase 18 (Implementor - Item 3 v1) : ✅ Complété — Dialogue d'export complet implémenté
+- Phase 19 (Reviewer - Item 3) : ✅ Complété — 1 CRITICAL, 2 HIGH, 3 MEDIUM, 4 LOW
+- **Phase 20 (Implementor - Item 3 v2)** : ✅ Complété — C1, H1, H2, M1, M2, M3 fixes appliqués
+- **Phase 21 (Tester - Item 3 v2)** : ✅ Complété — 45/45 tests passent, 0 régression, type-check OK
+- **Phase 22 (Security-reviewer - Item 3)** : ✅ Complété — 0 CRITICAL, 0 HIGH, 4 MEDIUM, 5 LOW
+
 ## Next Agent
-reviewer
+linter
+
+## Lint Results — Item 3 (Dialogue d'export complet)
+
+### Verdict : ✅ PASS — Aucun problème bloquant. Formatting auto-fixé avec succès.
+
+---
+
+### Commands Run
+
+| Commande | Résultat |
+|---|---|
+| `npx prettier --check` (13 fichiers Item 3 ciblés) | ⚠️ 2 fichiers non conformes (avant fix) |
+| `npx prettier --write` (2 fichiers) | ✅ 2 fichiers corrigés |
+| `npx prettier --check` (vérification finale 13 fichiers) | ✅ **Tous les fichiers conformes** |
+| `npx prettier --check` (packages/shared 2 fichiers) | ✅ Déjà conformes |
+| `npm run type-check` (post-fix) | ✅ **Passe (0 erreur)** |
+| `npm run test` (post-fix) | ✅ **45/45 passent (4 suites)** |
+
+### Fichiers formatés par Prettier
+
+| # | Fichier | Nature |
+|---|---|---|
+| 1 | `apps/desktop/src/main/ipc/handlers/export.ts` | Nouveau (Item 3 v1, modifié v2) |
+| 2 | `apps/desktop/src/main/services/ExportEngine.ts` | Modifié (Item 3 v1 + v2) |
+
+### Fichiers déjà conformes (0 changement)
+
+| Fichier | Nature |
+|---|---|
+| `apps/desktop/src/main/ipc/router.ts` | Modifié (Item 3 v1) |
+| `apps/desktop/src/renderer/src/components/ui/NtToast.vue` | Nouveau (Item 3 v1) |
+| `apps/desktop/src/renderer/src/components/ui/NtProgressBar.vue` | Nouveau (Item 3 v1) |
+| `apps/desktop/src/renderer/src/components/export/ExportDialog.vue` | Nouveau (Item 3 v1, modifié v2) |
+| `apps/desktop/src/renderer/src/views/ProjectView.vue` | Modifié (Item 3 v1) |
+| `apps/desktop/src/renderer/src/views/ChaptersView.vue` | Modifié (Item 3 v1) |
+| `apps/desktop/src/renderer/src/views/ChapterEditorView.vue` | Modifié (Item 3 v1) |
+| `apps/desktop/tests/unit/export-dialog.spec.ts` | Nouveau (Item 3 v1) |
+| `apps/desktop/vitest.config.ts` | Modifié (Item 3 v1) |
+| `packages/shared/src/schemas/export.ts` | Nouveau (Item 3 v1, modifié v2) |
+| `packages/shared/src/schemas/index.ts` | Modifié (Item 3 v1) |
+
+### Observations (non bloquantes)
+
+| # | Sévérité | Description |
+|---|---|---|
+| 1 | INFO | **ESLint** : non configuré dans le projet. Aucun fichier `.eslintrc.*` ni `eslint.config.*`. Le script `npm run lint` échoue. À traiter dans Item 8 (CI). |
+| 2 | INFO | **EPUB validation warnings** : `validateEpub()` génère des avertissements non-critiques pour mimetype (pas premier fichier, compressé). Ces avertissements sont attendus — la validation les corrige automatiquement quand possible. |
+| 3 | INFO | **`ipcChannelSchema` désynchronisé** : `packages/shared/src/schemas/index.ts` manque les canaux ajoutés. Non bloquant — le schéma n'est pas utilisé par les handlers. Déjà noté. |
+
+### Ce qui est BON ✅
+
+| Critère | Statut | Notes |
+|---|---|---|
+| **Prettier** | ✅ | Tous les 13 fichiers passent `--check` |
+| **TypeScript types** | ✅ | `vue-tsc --noEmit` passe sans erreur |
+| **Tests unitaires** | ✅ | 45/45 passent (0 régression) |
+| **Indentation / quotes** | ✅ | Cohérent partout (double quotes, 2 espaces) |
+| **Semicolons** | ✅ | Présents sur toutes les statements |
+| **Vue SFC** | ✅ | `<script setup lang="ts">` sur tous les composants |
+| **Trailing commas** | ✅ | Cohérents partout |
+| **Zod schemas** | ✅ | Types valides, pas d'erreur de compilation |
+
+---
+
+## Implementation Notes — Item 3 v2 (Corrections post-review)
+
+### 🔴 CRITICAL Fixes
+
+#### C1 — includeParagraphNumbers now applied ✅
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/main/services/ExportEngine.ts` | Nouvelle méthode privée `pn()` (paragraph number prefix). Appliquée dans `toMarkdown()`, `toTxt()`, `toHtml()`, `toDocx()`, `toEpub()` (via `toHtml()`). |
+
+### 🟡 HIGH Fixes
+
+#### H1 — EPUB structural validation added ✅
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/main/services/ExportEngine.ts` | Nouvelle méthode privée `validateEpub()`. Vérifie : ZIP valide, mimetype présent/premier/contenu correct, mimetype non compressé (corrigé automatiquement), META-INF/container.xml présent, OPF référencé existe, métadonnées OPF minimales (title, language). Logger les avertissements, throw pour les erreurs critiques. Appelée dans `export()` après écriture pour le format EPUB. |
+
+#### H2 — Error format follows SDD §16.7 ✅
+| Fichier | Changement |
+|---|---|
+| `packages/shared/src/schemas/export.ts` | `exportRunResultSchema` : union discriminée `z.discriminatedUnion('success', [...])`. Succès : `{ success: true, path, size, format }`. Échec : `{ success: false, error: { code, message, details? } }`. Type `ExportRunResult` inféré du schéma. |
+| `apps/desktop/src/main/ipc/handlers/export.ts` | Erreurs retournées en format structuré `{ code: '...', message: '...' }`. ZodError → `VALIDATION_ERROR`. Autres → `EXPORT_FAILED`. Succès inclut `format`. |
+| `apps/desktop/src/renderer/src/components/export/ExportDialog.vue` | `result.error.message` au lieu de `result.error ?? '...'`. |
+
+### 🟡 MEDIUM Fixes
+
+#### M1 — Author used in exports ✅
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/main/services/ExportEngine.ts` | `toHtml()` : `<meta name="author">` dans `<head>`. `toEpub()` : `<dc:creator>` dans les métadonnées OPF. |
+
+#### M2 — defaultOutputPath uses process.cwd() ✅
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/main/services/ExportEngine.ts` | `defaultOutputPath()` : `process.cwd()` comme fallback quand `input.outputPath` est vide. |
+
+#### M3 — Dead paragraphsToExport removed ✅
+| Fichier | Changement |
+|---|---|
+| `apps/desktop/src/renderer/src/components/export/ExportDialog.vue` | Computed `paragraphsToExport` supprimé. Logique inline dans `doExport()` (utilise `editorStore.paragraphs` directement). Import `Chapter` retiré. |
+
+### Verification (v2)
+- ✅ `npm run type-check --workspace=apps/desktop` : passe (0 erreur)
+- ✅ `npm run test` : 45/45 passent (4 engines + 13 editor + 16 lexicon + 12 export)
+- ✅ Aucune régression sur les tests existants
+- ✅ EPUB validation generate warnings (non-critiques, attendus pour le mimetype compressé par défaut)
+- ✅ EPUB mimetype compression automatically corrected by validation code
 
 ### Files Modified (v2)
 | Fichier | Changement |

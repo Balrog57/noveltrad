@@ -3,6 +3,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ref, onMounted } from "vue";
 import { useProjectStore } from "../stores/project";
 import { useWorkflowStore } from "../stores/workflow";
+import ExportDialog from "../components/export/ExportDialog.vue";
 import type { Chapter } from "@shared/types/index.js";
 
 const route = useRoute();
@@ -11,6 +12,7 @@ const projectStore = useProjectStore();
 const workflowStore = useWorkflowStore();
 const chapters = ref<Chapter[]>([]);
 const translatingId = ref<string | null>(null);
+const exportChapterId = ref<string | null>(null);
 
 const projectId = (route.params.projectId as string) || "";
 
@@ -72,12 +74,22 @@ function progressFor(chapterId: string): string {
           >
             Traduire
           </button>
+          <button class="btn-primary" @click="exportChapterId = ch.id">
+            Exporter
+          </button>
           <span v-if="progressFor(ch.id)" class="progress">{{
             progressFor(ch.id)
           }}</span>
         </div>
       </li>
     </ul>
+
+    <!-- Dialogue d'export -->
+    <ExportDialog
+      :visible="exportChapterId !== null"
+      :chapter-id="exportChapterId"
+      @close="exportChapterId = null"
+    />
   </div>
 </template>
 

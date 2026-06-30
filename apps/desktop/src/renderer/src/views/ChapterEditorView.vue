@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useProjectStore } from "../stores/project";
 import { useEditorStore } from "../stores/editor";
 import NtSplitPane from "../components/editor/NtSplitPane.vue";
+import ExportDialog from "../components/export/ExportDialog.vue";
 import type { Paragraph } from "@shared/types/index.js";
 
 const route = useRoute();
@@ -41,6 +42,9 @@ const visibleTargetIndex = ref(0);
 
 // Flag pour éviter les boucles de scroll réciproques
 let syncingScroll = false;
+
+// --- État du dialogue d'export ---
+const showExport = ref(false);
 
 // --- IntersectionObserver pour le panneau source ---
 let sourceObserver: IntersectionObserver | null = null;
@@ -272,7 +276,7 @@ onUnmounted(() => {
       </div>
       <div class="toolbar-right">
         <button class="btn-toolbar">Traduire</button>
-        <button class="btn-toolbar">Exporter</button>
+        <button class="btn-toolbar" @click="showExport = true">Exporter</button>
         <button class="btn-toolbar">Historique</button>
         <button
           class="btn-toolbar btn-save"
@@ -377,6 +381,13 @@ onUnmounted(() => {
 
     <!-- Overlay pour fermer le menu contextuel -->
     <div v-if="contextMenu" class="context-overlay" @click="closeContextMenu" />
+
+    <!-- Dialogue d'export -->
+    <ExportDialog
+      :visible="showExport"
+      :chapter-id="chapterId"
+      @close="showExport = false"
+    />
   </div>
 </template>
 

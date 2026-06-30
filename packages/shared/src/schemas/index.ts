@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export * from "./paragraph.js";
 export * from "./lexicon.js";
+export * from "./export.js";
 
 export const projectSchema = z.object({
   id: z.string().uuid(),

@@ -3,6 +3,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useProjectStore } from "../stores/project";
 import { useWorkflowStore } from "../stores/workflow";
 import { onMounted, ref } from "vue";
+import ExportDialog from "../components/export/ExportDialog.vue";
 
 interface OpenDialogResult {
   canceled: boolean;
@@ -15,6 +16,7 @@ const projectStore = useProjectStore();
 const workflowStore = useWorkflowStore();
 const project = ref(projectStore.currentProject);
 const starting = ref(false);
+const showExport = ref(false);
 
 const projectId = (route.params.projectId as string) || "";
 
@@ -78,9 +80,19 @@ async function translate() {
       >
         Traduire le chapitre
       </button>
+      <button class="btn-primary" @click="showExport = true">
+        Exporter le projet
+      </button>
     </div>
   </div>
   <p v-else class="empty">Chargement du projet...</p>
+
+  <!-- Dialogue d'export -->
+  <ExportDialog
+    :visible="showExport"
+    :chapter-id="null"
+    @close="showExport = false"
+  />
 </template>
 
 <style scoped>
