@@ -1,6 +1,10 @@
 import type { Agent, AgentConfig } from "./Agent.js";
 import type { AgentInput, AgentOutput } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
+import {
+  POLISH_SYSTEM_PROMPT,
+  buildPolishUserPrompt,
+} from "../prompts/polish.system.js";
 
 export class PolishAgent implements Agent {
   readonly id = "polish";
@@ -14,14 +18,27 @@ export class PolishAgent implements Agent {
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const text = input.text ?? "";
-    const prompt = `Perform a final editorial pass on the following ${input.options?.targetLanguage ?? "French"} text.
-Ensure natural rhythm, consistent dialogue, and no artificial language tics. Output only the polished text, nothing else.
+    const targetLanguage =
+      (input.options?.targetLanguage as string) ?? "French";
 
-${text}`;
+    const userPrompt = buildPolishUserPrompt({ text, targetLanguage });
 
     const response = await this.aiRouter.chat(this.config.providerId, [
-      { role: "user", content: prompt },
+      { role: "system", content: POLISH_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
     ]);
+
+    // Détection de refus éthique
+    if (this.aiRouter.isEthicalRefusal(response)) {
+      console.warn(
+        `[PolishAgent] Refus éthique détecté — conservation du texte d'entrée`,
+      );
+      return {
+        text,
+        metadata: { ethicalRefusal: true },
+      };
+    }
+
     return { text: response.trim() };
   }
 }

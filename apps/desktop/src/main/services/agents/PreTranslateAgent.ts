@@ -5,11 +5,17 @@ import type {
   Paragraph,
 } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
+import {
+  PRE_TRANSLATE_SYSTEM_PROMPT,
+  buildPreTranslateUserPrompt,
+} from "../prompts/pre-translate.system.js";
 
 export class PreTranslateAgent implements Agent {
   readonly id = "pre_translate";
   readonly name = "Pré-traduction";
   readonly stage = "pre_translate";
+
+  private refusalDetected = false;
 
   constructor(
     private config: AgentConfig,
@@ -19,16 +25,38 @@ export class PreTranslateAgent implements Agent {
   async execute(input: AgentInput): Promise<AgentOutput> {
     const paragraphs = input.paragraphs ?? [];
     const sourceLines = paragraphs.map((p) => p.sourceText).join("\n\n");
+    const sourceLanguage = (input.options?.sourceLanguage as string) ?? "text";
+    const targetLanguage =
+      (input.options?.targetLanguage as string) ?? "French";
 
-    const prompt = `Translate the following ${input.options?.sourceLanguage ?? "text"} paragraphs literally into ${input.options?.targetLanguage ?? "French"}.
-Keep names as written. Output one paragraph per line, same count and order as input.
-Do not add explanations.
+    this.refusalDetected = false;
 
-${sourceLines}`;
+    const userPrompt = buildPreTranslateUserPrompt({
+      sourceText: sourceLines,
+      sourceLanguage,
+      targetLanguage,
+    });
 
     const response = await this.aiRouter.chat(this.config.providerId, [
-      { role: "user", content: prompt },
+      { role: "system", content: PRE_TRANSLATE_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
     ]);
+
+    // Détection de refus éthique
+    if (this.aiRouter.isEthicalRefusal(response)) {
+      this.refusalDetected = true;
+      console.warn(
+        `[PreTranslateAgent] Refus éthique détecté — conservation du texte source`,
+      );
+      const result: Paragraph[] = paragraphs.map((p) => ({
+        ...p,
+        preTranslatedText: p.sourceText,
+      }));
+      return {
+        paragraphs: result,
+        metadata: { ethicalRefusal: true },
+      };
+    }
 
     const translatedLines = response
       .split(/\n\n+/)
@@ -39,6 +67,9 @@ ${sourceLines}`;
       preTranslatedText: translatedLines[i] ?? "",
     }));
 
-    return { paragraphs: result };
+    return {
+      paragraphs: result,
+      metadata: this.refusalDetected ? { ethicalRefusal: true } : undefined,
+    };
   }
 }

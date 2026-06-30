@@ -1,6 +1,10 @@
 import type { Agent, AgentConfig } from "./Agent.js";
 import type { AgentInput, AgentOutput } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
+import {
+  GRAMMAR_SYSTEM_PROMPT,
+  buildGrammarUserPrompt,
+} from "../prompts/grammar.system.js";
 
 export class GrammarAgent implements Agent {
   readonly id = "grammar";
@@ -14,14 +18,27 @@ export class GrammarAgent implements Agent {
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const text = input.text ?? "";
-    const prompt = `Proofread the following ${input.options?.targetLanguage ?? "French"} text for grammar, spelling and punctuation.
-Output only the corrected text, nothing else.
+    const targetLanguage =
+      (input.options?.targetLanguage as string) ?? "French";
 
-${text}`;
+    const userPrompt = buildGrammarUserPrompt({ text, targetLanguage });
 
     const response = await this.aiRouter.chat(this.config.providerId, [
-      { role: "user", content: prompt },
+      { role: "system", content: GRAMMAR_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
     ]);
+
+    // Détection de refus éthique
+    if (this.aiRouter.isEthicalRefusal(response)) {
+      console.warn(
+        `[GrammarAgent] Refus éthique détecté — conservation du texte d'entrée`,
+      );
+      return {
+        text,
+        metadata: { ethicalRefusal: true },
+      };
+    }
+
     return { text: response.trim() };
   }
 }
