@@ -134,15 +134,6 @@ export default defineConfig({
           { text: '24 — Plan de développement', link: '/volumes/24-Development-Plan' },
           { text: '25 — Prompt Book', link: '/volumes/25-Prompt-Book' }
         ]
-      },
-      {
-        text: 'Ressources',
-        collapsed: false,
-        items: [
-          { text: 'Inspirations & comparatif', link: '/inspirations' },
-          { text: 'Guide développeur', link: '/developer-guide' },
-          { text: 'Cas d\'usage', link: '/use-cases' }
-        ]
       }
     ],
 
