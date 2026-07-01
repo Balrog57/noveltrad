@@ -15,9 +15,16 @@ export default defineConfig({
     nav: [
       { text: 'Accueil', link: '/' },
       { text: 'Volumes', link: '/volumes/00-Vision' },
-      { text: 'Inspirations', link: '/inspirations' },
-      { text: 'SDD complet', link: '/sdd-complet' },
-      { text: 'llms.txt', link: '/llms.txt' }
+      {
+        text: 'Ressources',
+        items: [
+          { text: "Inspirations & comparatif", link: '/inspirations' },
+          { text: "Guide développeur", link: '/developer-guide' },
+          { text: "Cas d'usage", link: '/use-cases' },
+          { text: 'SDD complet', link: '/sdd-complet' },
+          { text: 'llms.txt', link: '/llms.txt' }
+        ]
+      }
     ],
 
     outline: {
