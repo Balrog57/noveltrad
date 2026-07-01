@@ -1,0 +1,3 @@
+## 2024-10-24 - SQLite N+1 Transaction Bottleneck on Bulk Updates
+**Learning:** By default, loop-based sequential write operations (e.g. `.run()`) on `node-sqlite3-wasm` generate individual transactions. This IO-intensive N+1 transaction pattern causes significant bottlenecks in bulk database processes like inserting or updating hundreds of paragraphs per chapter.
+**Action:** Always wrap `.run()` inside loops in explicit `BEGIN TRANSACTION` and `COMMIT` blocks (with standard try-catch rollback mechanisms) for performance-critical bulk repositories like `ParagraphRepository` to eliminate excessive auto-commits.
