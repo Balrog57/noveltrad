@@ -1,174 +1,180 @@
-# NovelTrad 2.0
+# 📖 NovelTrad 2.0
 
-Moteur de traduction littéraire multi-agent. Application desktop Electron + Vue 3 + TypeScript.
+*Le traducteur de romans multi-agent qui parle chinois, pense en IA, et écrit en français.*
 
-Traduit des romans du chinois/anglais/japonais/coréen vers le français via un pipeline de 10 agents IA spécialisés (découpage, pré-traduction, traduction, cohérence, lexique, grammaire, style, polish, QA, export), le tout orchestré localement avec Ollama.
+[![Version](https://img.shields.io/badge/version-2.0.1-blue?style=flat-square)](https://github.com/Balrog57/noveltrad/releases)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-145%20passing-brightgreen?style=flat-square)](https://github.com/Balrog57/noveltrad/actions)
+[![Node](https://img.shields.io/badge/node-%3E%3D22-339933?style=flat-square&logo=node.js&logoColor=white)]()
+[![Electron](https://img.shields.io/badge/Electron-31-47848F?style=flat-square&logo=electron&logoColor=white)]()
+[![Vue](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vue.js&logoColor=white)]()
+[![Ollama](https://img.shields.io/badge/Ollama-local-blueviolet?style=flat-square)]()
+
+> **TL;DR** — Importez un roman chinois → 10 agents IA le traduisent → exportez un EPUB français. 100% local, aucune donnée dans le cloud.
 
 ---
 
-## Prérequis
+## ✨ Fonctionnalités
 
-- **Node.js** ≥ 22 (LTS)
-- **npm** ≥ 10
-- **[Ollama](https://ollama.com)** installé et en cours d'exécution (`http://localhost:11434`)
-- Modèle recommandé : `qwen3.5:9b` (pull via `ollama pull qwen3.5:9b`)
+- 🤖 **10 agents IA spécialisés** — Split, pré-traduction, traduction, cohérence, lexique, grammaire, style, polish, QA, export. Un pipeline complet, pas une simple traduction mot-à-mot.
+- 🧠 **Translation Memory persistante** — Chaque phrase traduite est réutilisée. La cohérence s'améliore chapitre après chapitre, les coûts IA diminuent.
+- 📚 **Lexique dynamique verrouillé** — Noms de personnages, lieux, techniques. Verrouillez une traduction, elle ne change plus jamais. Alias et termes interdits supportés.
+- 🏠 **100% local** — Fonctionne avec [Ollama](https://ollama.com). Aucune donnée source ou traduite ne quitte votre machine.
+- 📦 **Export natif** — EPUB, DOCX, Markdown, TXT, HTML. Mode bilingue inclus.
+- 🔄 **Auto-update** — Mises à jour automatiques via GitHub Releases.
 
-## Démarrage rapide
+## 🎯 Pourquoi l'utiliser ?
+
+**Le problème** : Traduire un web novel chinois de 500 chapitres avec un LLM, c'est perdre la cohérence des noms au chapitre 10 et obtenir 500 styles différents.
+
+**La solution** : NovelTrad orchestre 10 agents IA qui travaillent ensemble, alimentés par une mémoire de traduction et un lexique verrouillé. Le chapitre 500 a le même style et les mêmes noms que le chapitre 1.
+
+```
+Chapitre source → 10 agents IA → EPUB français publiable
+                    ↑                    ↑
+            TM + Lexique           QA score ≥ 90
+```
+
+## 🛠 Quick Start
+
+### Prérequis
+
+- **Node.js** ≥ 22
+- **[Ollama](https://ollama.com)** en cours d'exécution (`ollama serve`)
+
+### Installation
 
 ```bash
 git clone https://github.com/Balrog57/noveltrad.git
 cd noveltrad
 npm install
-npm run dev                    # Electron + Vite dev server
+ollama pull qwen3.5:9b    # Modèle recommandé
+npm run dev                # 🎉 L'app s'ouvre
 ```
 
-## Build
+### Workflow en 30 secondes
 
-```bash
-npm run build --workspace=apps/desktop
-```
+1. **Nouveau projet** → Choisir langue source (zh) / cible (fr)
+2. **Importer** un fichier TXT / DOCX / EPUB
+3. **Cliquer "Traduire"** → Les 10 agents travaillent séquentiellement
+4. **Vérifier** le score QA et le rapport de cohérence
+5. **Exporter** en EPUB
 
-Le `.exe` est généré dans `apps/desktop/dist/NovelTrad-2.0.0-setup.exe`.
+## 📖 Documentation
 
-### Build sans publish
-
-```bash
-cd apps/desktop
-npx electron-vite build
-npx electron-builder             # sans --publish → pas de release GitHub
-```
-
-## Tests
-
-```bash
-npm test                         # 145 tests unitaires (Vitest)
-npm run test:e2e --workspace=apps/desktop   # Playwright + Electron
-npm run type-check --workspace=apps/desktop # vue-tsc --noEmit
-```
-
-## Release & Auto-update
-
-### Publier une nouvelle version
-
-```bash
-cd apps/desktop
-# Bump version dans package.json ("2.0.0" → "2.0.1")
-git add -A && git commit -m "release v2.0.1"
-git tag v2.0.1
-git push --tags
-```
-
-Le workflow `.github/workflows/release.yml` build et publie automatiquement sur GitHub Releases.
-
-### Canaux de mise à jour
-
-| Tag | Canal | Usage |
-|-----|-------|-------|
-| `v2.0.0` | `latest` | Stable |
-| `v2.1.0-beta` | `beta` | Pré-release |
-| `v2.1.0-alpha` | `alpha` | Dev |
-
-L'auto-update (`electron-updater`) vérifie les nouvelles versions 30 secondes après le lancement et propose le téléchargement.
-
-### CI/CD
-
-| Workflow | Trigger | Actions |
-|----------|---------|---------|
-| `ci.yml` | PR / push main | Type-check → lint → 145 tests unitaires |
-| `release.yml` | Tag `v*` | Type-check → lint → tests → build → publish GitHub Release |
-
-## Structure du projet
-
-```
-noveltrad/
-├── .github/workflows/          # CI/CD
-│   ├── ci.yml                  # PR checks
-│   └── release.yml             # Build + publish on tag
-├── apps/desktop/
-│   ├── electron-builder.yml    # Packaging + auto-update config
-│   ├── electron.vite.config.ts
-│   ├── playwright.config.ts
-│   ├── vitest.config.ts
-│   ├── src/
-│   │   ├── main/               # Process principal Electron
-│   │   │   ├── index.ts        # Entry point, window, CSP, shortcuts
-│   │   │   ├── ipc/            # Handlers IPC (project, ollama, workflow, etc.)
-│   │   │   ├── managers/       # ProjectManager, WorkflowEngine, UpdateManager
-│   │   │   ├── services/       # AiRouter, ExportEngine, LexiconEngine, TM, RAG
-│   │   │   ├── services/agents/# 10 agents IA (split → export)
-│   │   │   └── db/             # SQLite (connection, migrations, repositories)
-│   │   ├── preload/            # contextBridge (novelTradAPI)
-│   │   └── renderer/           # Vue 3 + Pinia + Vue Router
-│   │       └── src/
-│   │           ├── views/      # Home, Project, Chapters, Editor, Lexicon, History, etc.
-│   │           ├── stores/     # Pinia stores (project, editor, workflow, lexicon, etc.)
-│   │           └── components/ # UI (NtBadge, NtTooltip, export, wizard, etc.)
-│   └── tests/
-│       ├── unit/               # Vitest (145 tests)
-│       └── e2e/                # Playwright + Electron
-└── packages/shared/            # Types + schémas Zod partagés
-```
-
-## Architecture du workflow de traduction
-
-```
-Chapitre source
-    │
-    ▼
-┌──────────────┐   ┌────────────────┐   ┌────────────┐
-│ 1. Split     │──▶│ 2. Pre-Trad    │──▶│ 3. Traduire │
-│ (découpage)  │   │ (TM + lexique) │   │ (IA + RAG)  │
-└──────────────┘   └────────────────┘   └────────────┘
-                                                │
-    ┌───────────────────────────────────────────┘
-    ▼
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│ 4. Cohérence │──▶│ 5. Lexique   │──▶│ 6. Grammaire │
-└──────────────┘   └──────────────┘   └──────────────┘
-                                                │
-    ┌───────────────────────────────────────────┘
-    ▼
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│ 7. Style     │──▶│ 8. Polish    │──▶│ 9. QA        │──▶│ 10. Export   │
-└──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
-```
-
-### Traitement par lot (batch)
-
-Tous les chapitres peuvent être traduits séquentiellement via le bouton **"Tout traduire"** dans la vue Chapitres, avec progression `[1/N]`.
-
-## Formats supportés
-
-| Import | Export |
-|--------|--------|
-| TXT, Markdown, DOCX, EPUB | Markdown, TXT, HTML, DOCX, EPUB |
-| TMX (mémoire de traduction) | TMX (mémoire de traduction) |
-| CSV, JSON, TSV (lexique) | CSV, JSON, TSV (lexique) |
-
-## Stack technique
-
-| Domaine | Choix |
-|---------|-------|
-| Desktop | Electron 31 + electron-builder + electron-updater |
-| UI | Vue 3 (Composition API) + Vue Router + Pinia |
-| Bundler | electron-vite (Vite 5) |
-| Langage | TypeScript strict |
-| Validation | Zod |
-| Base de données | node-sqlite3-wasm (WAL mode) |
-| IA | Ollama (local), multi-provider via AiRouter |
-| Parsing | mammoth.js (DOCX), adm-zip (EPUB), franc (langue) |
-| Export | docx (dolanmiu), archiver (EPUB) |
-| Tests | Vitest + Playwright |
-| CI/CD | GitHub Actions |
-
-## Documentation
-
-La documentation complète (SDD, guides, REUSE_MAP, inspirations) est disponible dans
-[`docs/`](docs/) et publiée sur GitHub Pages :
+La documentation complète (25 volumes SDD, guides, inspirations) est disponible sur GitHub Pages :
 
 ➡️ **[https://balrog57.github.io/noveltrad/](https://balrog57.github.io/noveltrad/)**
 
 ```bash
-npm run docs:dev     # Serveur local VitePress (port 5174)
+npm run docs:dev     # Serveur local (port 5174)
 npm run docs:build   # Build statique
 ```
+
+### Contenu de la doc
+
+| Section | Contenu |
+|---------|---------|
+| **25 volumes** | Vision, architecture, UI, DB, workflow, agents, TM, lexique, export, sécurité, CI/CD... |
+| **Guide développeur** | Ajouter un agent, brancher un provider, modifier le pipeline |
+| **Cas d'usage** | Web novels, fan-fictions, batch EPUB, mode local, QA assistée |
+| **Inspirations** | Comparatif avec OmegaT, Sugoi, honya, TransAgents, NovelTrans... |
+
+## 🏗 Architecture
+
+```
+noveltrad/
+├── .github/workflows/       # CI (ci.yml) + Release (release.yml) + Pages (pages.yml)
+├── docs/                    # VitePress — 25 volumes SDD + guides
+├── apps/desktop/
+│   ├── src/main/            # Electron : IPC, managers, services, agents, DB
+│   ├── src/preload/         # contextBridge (novelTradAPI)
+│   ├── src/renderer/        # Vue 3 : views, stores, components
+│   └── tests/               # Vitest (145) + Playwright E2E
+└── packages/shared/         # Types + schemas Zod
+```
+
+### Pipeline de traduction
+
+```
+Source → Split → Pré-trad → Traduire → Cohérence → Lexique
+    → Grammaire → Style → Polish → QA → Export EPUB
+```
+
+Chaque étape est :
+- **Persistée** dans SQLite (jobs, steps, snapshots)
+- **Relançable** individuellement (`retryStep`, `retryFrom`)
+- **Observable** en temps réel (progression IPC)
+
+## 🧪 Tests
+
+```bash
+npm test                                    # 145 tests unitaires (Vitest)
+npm run test:e2e --workspace=apps/desktop   # Playwright + Electron
+npm run type-check --workspace=apps/desktop # vue-tsc --noEmit
+```
+
+## 🚀 Release & Auto-update
+
+```bash
+# Bump version dans apps/desktop/package.json
+git tag v2.0.2
+git push --tags
+# GitHub Actions build → publish → auto-update notifie les utilisateurs
+```
+
+| Canal | Tag pattern | Usage |
+|-------|-------------|-------|
+| `latest` | `v2.0.2` | Stable |
+| `beta` | `v2.1.0-beta` | Pré-release |
+| `alpha` | `v2.1.0-alpha` | Dev |
+
+## 📦 Formats supportés
+
+| Direction | Formats |
+|-----------|---------|
+| **Import** | TXT, Markdown, DOCX, EPUB, TMX |
+| **Export** | EPUB, DOCX, Markdown, TXT, HTML (mode bilingue) |
+| **Lexique** | CSV, JSON, TSV |
+
+## 🛡 Stack technique
+
+| Domaine | Choix |
+|---------|-------|
+| Desktop | Electron 31 + electron-builder + electron-updater |
+| UI | Vue 3 (Composition API) + Pinia + Vue Router |
+| Bundler | electron-vite (Vite 5) |
+| Langage | TypeScript strict |
+| Validation | Zod |
+| Base de données | node-sqlite3-wasm (WAL mode, migrations inline) |
+| IA | Ollama (local), AiRouter multi-provider |
+| Tests | Vitest + Playwright |
+| CI/CD | GitHub Actions |
+| Docs | VitePress + GitHub Pages |
+
+## 🤝 Contribuer
+
+Les PR sont les bienvenues !
+
+1. Fork le projet
+2. Crée une branche (`git checkout -b feature/ma-feature`)
+3. Vérifie : `npm test && npm run type-check --workspace=apps/desktop`
+4. Ouvre une PR
+
+Le [guide développeur](https://balrog57.github.io/noveltrad/developer-guide) détaille comment ajouter un agent, brancher un provider IA, ou modifier le pipeline.
+
+## 🗺 Roadmap
+
+- [ ] Agent Summarizer (cohérence long-terme)
+- [ ] Mode bilingue côte-à-côte dans l'éditeur
+- [ ] Fine-tuning local via la Translation Memory
+- [ ] Support macOS et Linux
+- [ ] File d'attente QA pour les paragraphes suspects
+
+## 📜 Licence
+
+MIT © Balrog57
+
+---
+
+> Si ce projet vous aide, n'hésitez pas à mettre une ⭐ — ça motive pour la suite !
