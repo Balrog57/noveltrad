@@ -1,0 +1,3 @@
+## 2024-03-24 - Interactive List Items Missing Keyboard Access
+**Learning:** Interactive `<li>` tags used as clickable cards in this app (like the recent projects list) use `@click` directives without corresponding keyboard event handlers (`@keydown.enter`, `@keydown.space`) or `tabindex="0"`, making them completely inaccessible to keyboard and screen reader users. They also lack clear focus states.
+**Action:** When implementing custom interactive elements like clickable list items, always add `role="button"`, `tabindex="0"`, `@keydown.enter`, `@keydown.space.prevent`, and `:focus-visible` styles to ensure full keyboard accessibility.
