@@ -9,6 +9,7 @@ const projectStore = useProjectStore();
 const ollamaStore = useOllamaStore();
 
 const showCreate = ref(false);
+const creationError = ref<string | null>(null);
 const newProject = ref({
   name: "",
   sourceLanguage: "zh",
@@ -22,8 +23,13 @@ onMounted(async () => {
 });
 
 async function create() {
-  const project = await projectStore.create(newProject.value);
-  router.push({ name: "project", params: { projectId: project.id } });
+  creationError.value = null;
+  try {
+    const project = await projectStore.create(newProject.value);
+    router.push({ name: "project", params: { projectId: project.id } });
+  } catch (err) {
+    creationError.value = err instanceof Error ? err.message : "Erreur inconnue";
+  }
 }
 
 async function open(path: string) {
@@ -81,6 +87,7 @@ async function open(path: string) {
       >
         Creer
       </button>
+      <p v-if="creationError" class="error-msg">{{ creationError }}</p>
     </section>
 
     <section class="card">
@@ -201,5 +208,14 @@ select {
 
 .empty {
   color: var(--text-secondary);
+}
+
+.error-msg {
+  color: var(--error);
+  font-size: 13px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: rgba(239, 68, 68, 0.1);
+  border-radius: var(--border-radius);
 }
 </style>
