@@ -70,8 +70,18 @@ async function open(path: string) {
 
     <section class="card">
       <h2>Projets recents</h2>
-      <ul v-if="projectStore.recentProjects.length">
-        <li v-for="p in projectStore.recentProjects" :key="p.id" class="project-item" @click="open(p.path)">
+      <ul v-if="projectStore.recentProjects.length" style="list-style: none; padding: 0;">
+        <li
+          v-for="p in projectStore.recentProjects"
+          :key="p.id"
+          class="project-item"
+          role="button"
+          tabindex="0"
+          :aria-label="`Ouvrir le projet ${p.name}`"
+          @click="open(p.path)"
+          @keydown.enter="open(p.path)"
+          @keydown.space.prevent="open(p.path)"
+        >
           <strong>{{ p.name }}</strong>
           <span class="meta">{{ p.sourceLanguage }} → {{ p.targetLanguage }}</span>
         </li>
