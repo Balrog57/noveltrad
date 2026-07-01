@@ -115,4 +115,4 @@ Utilisez la barre latérale pour parcourir les 26 volumes, ou la **recherche en 
 
 ## Pour les agents IA
 
-Pour ingérer l'intégralité de ce SDD en un seul contexte, utilisez le fichier [`llms.txt`](./llms.txt).
+La barre latérale liste l'intégralité des 25 volumes du SDD, consultable via la recherche (Ctrl+K).

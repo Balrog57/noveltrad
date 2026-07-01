@@ -142,8 +142,7 @@ export default defineConfig({
         items: [
           { text: 'Inspirations & comparatif', link: '/inspirations' },
           { text: 'Guide développeur', link: '/developer-guide' },
-          { text: 'Cas d\'usage', link: '/use-cases' },
-          { text: 'llms.txt', link: '/llms-txt' }
+          { text: 'Cas d\'usage', link: '/use-cases' }
         ]
       }
     ],
