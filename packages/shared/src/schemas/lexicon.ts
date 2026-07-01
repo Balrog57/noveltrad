@@ -55,3 +55,19 @@ export const lexiconExtractCandidatesSchema = z.object({
   text: z.string().min(1),
   language: z.string(),
 });
+
+/** Payload pour détecter les conflits dans le lexique */
+export const lexiconFindConflictsSchema = z.object({
+  entries: z.array(lexiconEntrySchema).min(2, "Au moins 2 entrées requises pour la détection de conflits."),
+});
+
+export type LexiconFindConflictsInput = z.infer<typeof lexiconFindConflictsSchema>;
+
+/** Payload pour suggérer une traduction via IA */
+export const lexiconSuggestSchema = z.object({
+  term: z.string().min(1, "Le terme est requis."),
+  context: z.string().optional().default(""),
+  projectId: z.string().uuid(),
+});
+
+export type LexiconSuggestInput = z.infer<typeof lexiconSuggestSchema>;

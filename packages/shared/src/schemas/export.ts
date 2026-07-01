@@ -68,3 +68,45 @@ export const exportRunResultSchema = z.discriminatedUnion("success", [
 ]);
 
 export type ExportRunResult = z.infer<typeof exportRunResultSchema>;
+
+/**
+ * SDD §13.6 : Schéma pour la requête `export:batch` — export par lots de plusieurs chapitres.
+ */
+export const exportBatchSchema = z.object({
+  projectId: z.string().uuid(),
+  projectTitle: z.string().min(1),
+  author: z.string().optional(),
+  chapterIds: z.array(z.string().uuid()).min(1),
+  format: exportFormatSchema,
+  outputDir: z.string().min(1),
+  options: z
+    .object({
+      includeTitle: z.boolean().optional(),
+      includeParagraphNumbers: z.boolean().optional(),
+      bilingual: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+export type ExportBatchInput = z.infer<typeof exportBatchSchema>;
+
+/**
+ * SDD §13.6 : Résultat de l'export par lots.
+ */
+export const exportBatchResultSchema = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(true),
+    paths: z.array(z.string()),
+    format: exportFormatSchema,
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+      details: z.string().optional(),
+    }),
+  }),
+]);
+
+export type ExportBatchResult = z.infer<typeof exportBatchResultSchema>;

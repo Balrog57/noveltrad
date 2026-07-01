@@ -8,8 +8,8 @@ export class JobRepository {
     this.db
       .prepare(
         `
-      INSERT INTO jobs (id, project_id, chapter_id, type, status, started_at, finished_at, error_message, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO jobs (id, project_id, chapter_id, type, status, started_at, finished_at, error_message, created_at, chapter_ids, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run([
@@ -22,6 +22,8 @@ export class JobRepository {
         job.finishedAt ?? null,
         job.errorMessage ?? null,
         job.createdAt,
+        job.chapterIds ? JSON.stringify(job.chapterIds) : null,
+        job.metadata ? JSON.stringify(job.metadata) : null,
       ]);
   }
 
@@ -41,16 +43,28 @@ export class JobRepository {
     return rows.map((r) => this.mapJob(r));
   }
 
+  /** SDD §7.11 : liste les jobs en cours (running/paused) pour la reprise au démarrage */
+  listActive(): Job[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM jobs WHERE status IN ('running', 'paused') ORDER BY created_at DESC",
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.mapJob(r));
+  }
+
   updateJob(job: Job): void {
     this.db
       .prepare(
-        "UPDATE jobs SET status = ?, started_at = ?, finished_at = ?, error_message = ? WHERE id = ?",
+        `UPDATE jobs SET status = ?, started_at = ?, finished_at = ?, error_message = ?, chapter_ids = ?, metadata = ? WHERE id = ?`,
       )
       .run([
         job.status,
         job.startedAt ?? null,
         job.finishedAt ?? null,
         job.errorMessage ?? null,
+        job.chapterIds ? JSON.stringify(job.chapterIds) : null,
+        job.metadata ? JSON.stringify(job.metadata) : null,
         job.id,
       ]);
   }
@@ -127,11 +141,17 @@ export class JobRepository {
       id: String(row.id),
       projectId: String(row.project_id),
       chapterId: row.chapter_id ? String(row.chapter_id) : undefined,
+      chapterIds: row.chapter_ids
+        ? (JSON.parse(String(row.chapter_ids)) as string[])
+        : undefined,
       type: String(row.type) as Job["type"],
       status: String(row.status) as Job["status"],
       startedAt: row.started_at ? String(row.started_at) : undefined,
       finishedAt: row.finished_at ? String(row.finished_at) : undefined,
       errorMessage: row.error_message ? String(row.error_message) : undefined,
+      metadata: row.metadata
+        ? (JSON.parse(String(row.metadata)) as Record<string, unknown>)
+        : undefined,
       createdAt: String(row.created_at),
     };
   }

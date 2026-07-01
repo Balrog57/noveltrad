@@ -13,6 +13,14 @@ const tmxImporting = ref(false);
 const tmxExporting = ref(false);
 const batchTranslating = ref(false);
 
+// Rafraîchissement source (SDD §5.8)
+const refreshingId = ref<string | null>(null);
+const refreshMessage = ref<string | null>(null);
+const refreshMessageType = ref<"success" | "error">("success");
+const showRefreshDialog = ref(false);
+const refreshChapterId = ref<string | null>(null);
+const refreshStrategy = ref<"replace" | "merge" | "new-version">("replace");
+
 const route = useRoute();
 const router = useRouter();
 const projectStore = useProjectStore();
@@ -76,14 +84,47 @@ async function batchTranslate(): Promise<void> {
     "project:path",
     projectId,
   );
+  // SDD §7.9 : utiliser la sélection si des chapitres sont sélectionnés, sinon tous
+  const ids =
+    workflowStore.selectedChapterIds.length > 0
+      ? workflowStore.selectedChapterIds
+      : chapters.value.map((c) => c.id);
   batchTranslating.value = true;
   try {
-    await workflowStore.startBatch(
-      projectPath,
-      chapters.value.map((c) => c.id),
-    );
+    await workflowStore.startBatch(projectPath, ids);
   } finally {
     batchTranslating.value = false;
+  }
+}
+
+/** SDD §7.9 : traduire uniquement les chapitres sélectionnés */
+async function batchTranslateSelection(): Promise<void> {
+  if (workflowStore.selectedChapterIds.length === 0) return;
+  const projectPath = await window.novelTradAPI.invoke<string>(
+    "project:path",
+    projectId,
+  );
+  batchTranslating.value = true;
+  try {
+    await workflowStore.startBatch(projectPath, [
+      ...workflowStore.selectedChapterIds,
+    ]);
+  } finally {
+    batchTranslating.value = false;
+  }
+}
+
+/** SDD §7.9 : bascule la sélection d'un chapitre */
+function toggleSelection(chapterId: string): void {
+  workflowStore.toggleChapterSelection(chapterId);
+}
+
+/** SDD §7.9 : sélectionner/désélectionner tous les chapitres */
+function toggleSelectAll(): void {
+  if (workflowStore.selectedChapterIds.length === chapters.value.length) {
+    workflowStore.clearSelection();
+  } else {
+    workflowStore.selectAll(chapters.value.map((c) => c.id));
   }
 }
 
@@ -206,7 +247,10 @@ function showImportMessage(message: string, type: "success" | "error"): void {
 function badgeVariant(
   status: string,
 ): "default" | "success" | "warning" | "error" | "info" {
-  const map: Record<string, "default" | "success" | "warning" | "error" | "info"> = {
+  const map: Record<
+    string,
+    "default" | "success" | "warning" | "error" | "info"
+  > = {
     completed: "success",
     processing: "warning",
     error: "error",
@@ -300,6 +344,48 @@ async function exportTmx(): Promise<void> {
   }
 }
 
+/** Ouvre le dialogue de rafraîchissement source (SDD §5.8) */
+function openRefreshDialog(chapterId: string): void {
+  refreshChapterId.value = chapterId;
+  refreshStrategy.value = "replace";
+  refreshMessage.value = null;
+  showRefreshDialog.value = true;
+}
+
+/** Rafraîchit un chapitre depuis son fichier source (SDD §5.8) */
+async function confirmRefresh(): Promise<void> {
+  if (!refreshChapterId.value) return;
+  refreshingId.value = refreshChapterId.value;
+  refreshMessage.value = null;
+  showRefreshDialog.value = false;
+  try {
+    const updated = await window.novelTradAPI.invoke(
+      "project:refresh-source",
+      {
+        projectId,
+        chapterId: refreshChapterId.value,
+        strategy: refreshStrategy.value,
+      },
+    );
+    // Mettre à jour la liste des chapitres
+    const idx = chapters.value.findIndex((c) => c.id === refreshChapterId.value);
+    if (idx !== -1 && updated) {
+      chapters.value[idx] = { ...chapters.value[idx], ...updated };
+    }
+    refreshMessage.value = "Chapitre rafraîchi avec succès.";
+    refreshMessageType.value = "success";
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erreur lors du rafraîchissement";
+    refreshMessage.value = msg;
+    refreshMessageType.value = "error";
+  } finally {
+    refreshingId.value = null;
+    refreshChapterId.value = null;
+  }
+  // Auto-masquer le message après 6 secondes
+  setTimeout(() => { refreshMessage.value = null; }, 6000);
+}
+
 // Nettoyage des timers à l'unmount
 onUnmounted(() => {
   if (messageTimer) {
@@ -358,20 +444,12 @@ onUnmounted(() => {
         + Importer des fichiers
       </button>
       <NtTooltip text="Importer un fichier TMX (mémoire de traduction)">
-        <button
-          class="btn-import"
-          :disabled="tmxImporting"
-          @click="importTmx"
-        >
+        <button class="btn-import" :disabled="tmxImporting" @click="importTmx">
           Importer TMX
         </button>
       </NtTooltip>
       <NtTooltip text="Exporter la mémoire de traduction au format TMX">
-        <button
-          class="btn-import"
-          :disabled="tmxExporting"
-          @click="exportTmx"
-        >
+        <button class="btn-import" :disabled="tmxExporting" @click="exportTmx">
           Exporter TMX
         </button>
       </NtTooltip>
@@ -385,19 +463,49 @@ onUnmounted(() => {
       action-label="Importer un fichier"
       @action="openImportDialog"
     />
-    <div v-if="chapters.length > 1">
-      <NtTooltip text="Lancer la traduction de tous les chapitres en séquence">
+    <div v-if="chapters.length > 1" class="batch-actions">
+      <NtTooltip text="Sélectionner ou désélectionner tous les chapitres">
+        <label class="select-all-label">
+          <input
+            type="checkbox"
+            :checked="
+              workflowStore.selectedChapterIds.length === chapters.length &&
+              chapters.length > 0
+            "
+            @change="toggleSelectAll"
+          />
+          <span>Tout sélectionner</span>
+        </label>
+      </NtTooltip>
+      <NtTooltip
+        :text="
+          workflowStore.selectedChapterIds.length > 0
+            ? `Traduire les ${workflowStore.selectedChapterIds.length} chapitre(s) sélectionné(s)`
+            : 'Lancer la traduction de tous les chapitres en séquence'
+        "
+      >
         <button
           class="btn-primary"
           :disabled="batchTranslating || workflowStore.loading"
           @click="batchTranslate"
         >
-          Tout traduire
+          {{
+            workflowStore.selectedChapterIds.length > 0
+              ? `Traduire la sélection (${workflowStore.selectedChapterIds.length})`
+              : "Tout traduire"
+          }}
         </button>
       </NtTooltip>
     </div>
     <ul class="chapter-list">
       <li v-for="ch in chapters" :key="ch.id" class="chapter-item">
+        <div class="chapter-select">
+          <input
+            type="checkbox"
+            :checked="workflowStore.isSelected(ch.id)"
+            @change="toggleSelection(ch.id)"
+          />
+        </div>
         <div
           class="chapter-info"
           @click="openEditor(ch)"
@@ -423,6 +531,15 @@ onUnmounted(() => {
               Exporter
             </button>
           </NtTooltip>
+          <NtTooltip text="Rafraîchir depuis le fichier source">
+            <button
+              class="btn-refresh"
+              :disabled="refreshingId === ch.id"
+              @click="openRefreshDialog(ch.id)"
+            >
+              Rafraîchir
+            </button>
+          </NtTooltip>
           <span v-if="progressFor(ch.id)" class="progress">{{
             progressFor(ch.id)
           }}</span>
@@ -430,10 +547,45 @@ onUnmounted(() => {
       </li>
     </ul>
 
+    <!-- Message de rafraîchissement -->
+    <div
+      v-if="refreshMessage"
+      class="import-message"
+      :class="refreshMessageType"
+      role="alert"
+    >
+      {{ refreshMessage }}
+    </div>
+
+    <!-- Dialogue de confirmation rafraîchissement (SDD §5.8) -->
+    <div v-if="showRefreshDialog" class="modal-overlay" @click.self="showRefreshDialog = false">
+      <div class="modal-card">
+        <h3>Rafraîchir depuis le fichier source</h3>
+        <p>Le fichier source original a été modifié. Comment souhaitez-vous appliquer les changements ?</p>
+        <label class="radio-label">
+          <input type="radio" v-model="refreshStrategy" value="replace" />
+          <span><strong>Remplacer</strong> — écraser les paragraphes existants</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" v-model="refreshStrategy" value="merge" />
+          <span><strong>Fusionner</strong> — ajouter uniquement les nouveaux paragraphes</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" v-model="refreshStrategy" value="new-version" />
+          <span><strong>Nouvelle version</strong> — créer un chapitre distinct</span>
+        </label>
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="showRefreshDialog = false">Annuler</button>
+          <button class="btn-primary" @click="confirmRefresh">Confirmer</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Dialogue d'export -->
     <ExportDialog
       :visible="exportChapterId !== null"
       :chapter-id="exportChapterId"
+      :selected-chapter-ids="workflowStore.selectedChapterIds"
       @close="exportChapterId = null"
     />
   </div>
@@ -459,6 +611,19 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+}
+
+.chapter-select {
+  display: flex;
+  align-items: center;
+}
+
+.chapter-select input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
 }
 
 .chapter-info {
@@ -466,6 +631,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 6px;
   cursor: pointer;
+  flex: 1;
 }
 
 .chapter-info:hover strong {
@@ -476,6 +642,32 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* Batch actions bar */
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius);
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.select-all-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
 }
 
 .badge {
@@ -618,5 +810,88 @@ onUnmounted(() => {
 
 .btn-import:hover {
   background-color: var(--bg-tertiary);
+}
+
+.btn-refresh {
+  background-color: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 6px 12px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-refresh:hover {
+  background-color: var(--accent);
+  color: white;
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background-color: var(--bg-primary);
+  border-radius: var(--border-radius);
+  padding: 24px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal-card h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.modal-card p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.radio-label input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn-cancel {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--bg-tertiary);
+  padding: 8px 16px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
 }
 </style>

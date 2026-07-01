@@ -1,16 +1,22 @@
 import { ipcMain } from "electron";
 import type { Database as SqliteDatabase } from "node-sqlite3-wasm";
 import { SettingsManager } from "../../managers/SettingsManager.js";
-import { createProjectDatabase, runMigrations } from "../../db/connection.js";
+import {
+  createProjectDatabase,
+  runMigrations,
+} from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { HistoryRepository } from "../../db/repositories/HistoryRepository.js";
 import { ChapterRepository } from "../../db/repositories/ChapterRepository.js";
 import { ParagraphRepository } from "../../db/repositories/ParagraphRepository.js";
+import { AuditService } from "../../services/AuditService.js";
 import {
   historyListSchema,
   historyRollbackSchema,
+  historyRollbackPartialSchema,
   historyCreateSchema,
   historyDiffSchema,
+  historyGetParagraphsSchema,
 } from "@shared/schemas/history.js";
 import type {
   HistorySnapshot,
@@ -28,7 +34,8 @@ const migrationsDir = path.join(__dirname, "../../db/migrations");
  * Résout le chemin du dossier projet à partir de `projectId`.
  */
 function resolveProjectPath(projectId: string): string {
-  const recent = (settings.get("recentProjects") as string[] | undefined) ?? [];
+  const recent =
+    (settings.get("recentProjects") as string[] | undefined) ?? [];
   const projectPath = recent.find((p) => {
     if (!fs.existsSync(path.join(p, "project.db"))) return false;
     const db = createProjectDatabase(p);
@@ -121,22 +128,22 @@ export function registerHistoryHandlers(): void {
       runMigrations(db, migrationsDir);
       const repo = new HistoryRepository(db);
 
-      const snapshotA = repo.getById(snapshotIdA);
-      const snapshotB = repo.getById(snapshotIdB);
+      const paragraphsA = repo.getFullParagraphs(snapshotIdA);
+      const paragraphsB = repo.getFullParagraphs(snapshotIdB);
 
-      if (!snapshotA || !snapshotB) {
+      if (!paragraphsA.length && !paragraphsB.length) {
         throw new Error(
-          `Snapshot introuvable : ${!snapshotA ? snapshotIdA : snapshotIdB}`,
+          `Snapshot introuvable : ${!paragraphsA.length ? snapshotIdA : snapshotIdB}`,
         );
       }
 
-      return computeDiff(snapshotA.paragraphs, snapshotB.paragraphs);
+      return computeDiff(paragraphsA, paragraphsB);
     } finally {
       if (db) db.close();
     }
   });
 
-  // ─── history:rollback ───
+  // ─── history:rollback (complet) ───
   ipcMain.handle("history:rollback", async (_event, payload) => {
     const { projectId, chapterId, snapshotId } =
       historyRollbackSchema.parse(payload);
@@ -150,13 +157,14 @@ export function registerHistoryHandlers(): void {
       const historyRepo = new HistoryRepository(db);
       const paragraphRepo = new ParagraphRepository(db);
       const chapterRepo = new ChapterRepository(db);
+      const audit = new AuditService(db);
 
       const snapshot = historyRepo.getById(snapshotId);
       if (!snapshot) {
         throw new Error(`Snapshot introuvable : ${snapshotId}`);
       }
 
-      // Restaurer les paragraphes
+      // Restaurer tous les paragraphes
       paragraphRepo.updateMany(snapshot.paragraphs);
 
       // Mettre à jour le statut du chapitre
@@ -179,7 +187,117 @@ export function registerHistoryHandlers(): void {
         triggeredBy: "rollback",
       });
 
+      // Journal d'audit
+      audit.log({
+        projectId,
+        action: "rollback:full",
+        entityType: "chapter",
+        entityId: chapterId,
+        details: {
+          sourceSnapshotId: snapshotId,
+          restoredVersion: snapshot.versionNumber,
+          paragraphCount: snapshot.paragraphs.length,
+        },
+      });
+
       return { success: true, snapshotId: rollbackSnapshotId };
+    } finally {
+      if (db) db.close();
+    }
+  });
+
+  // ─── history:rollback-partial (SDD §14.5) ───
+  ipcMain.handle("history:rollback-partial", async (_event, payload) => {
+    const { projectId, chapterId, snapshotId, paragraphIds } =
+      historyRollbackPartialSchema.parse(payload);
+    const projectPath = resolveProjectPath(projectId);
+    let db: SqliteDatabase | null = null;
+
+    try {
+      db = createProjectDatabase(projectPath);
+      runMigrations(db, migrationsDir);
+
+      const historyRepo = new HistoryRepository(db);
+      const paragraphRepo = new ParagraphRepository(db);
+      const chapterRepo = new ChapterRepository(db);
+      const audit = new AuditService(db);
+
+      // Charger le snapshot source
+      const snapshot = historyRepo.getFullParagraphs(snapshotId);
+      if (!snapshot.length) {
+        throw new Error(`Snapshot introuvable : ${snapshotId}`);
+      }
+
+      // Filtrer seulement les paragraphes demandés
+      const selectedParagraphs = snapshot.filter((p) =>
+        paragraphIds.includes(p.id),
+      );
+      if (!selectedParagraphs.length) {
+        throw new Error("Aucun paragraphe valide trouvé dans ce snapshot.");
+      }
+
+      // Restaurer seulement ces paragraphes
+      paragraphRepo.updateMany(selectedParagraphs);
+
+      // Vérifier si le chapitre est maintenant complètement traduit
+      const allParagraphs = paragraphRepo.listByChapter(chapterId);
+      const allTranslated = allParagraphs.every(
+        (p) => p.status === "translated" || p.status === "reviewed",
+      );
+      if (allTranslated) {
+        chapterRepo.updateStatus(chapterId, "completed");
+      }
+
+      // Créer un nouveau snapshot de rollback avec l'état COMPLET du chapitre
+      // (pas seulement les paragraphes restaurés — sinon la chaîne incrémentale perd les paragraphes non sélectionnés)
+      const rollbackSnapshotId = crypto.randomUUID();
+      historyRepo.create({
+        id: rollbackSnapshotId,
+        projectId,
+        chapterId,
+        stage: "rollback_partial",
+        paragraphs: allParagraphs,
+        triggeredBy: "rollback",
+      });
+
+      // Journal d'audit
+      audit.log({
+        projectId,
+        action: "rollback:partial",
+        entityType: "chapter",
+        entityId: chapterId,
+        details: {
+          sourceSnapshotId: snapshotId,
+          paragraphCount: selectedParagraphs.length,
+          paragraphIds,
+        },
+      });
+
+      return {
+        success: true,
+        snapshotId: rollbackSnapshotId,
+        restoredCount: selectedParagraphs.length,
+      };
+    } finally {
+      if (db) db.close();
+    }
+  });
+
+  // ─── history:get-paragraphs (reconstruit les paragraphes d'un snapshot) ───
+  ipcMain.handle("history:get-paragraphs", async (_event, payload) => {
+    const { projectId, snapshotId } =
+      historyGetParagraphsSchema.parse(payload);
+    const projectPath = resolveProjectPath(projectId);
+    let db: SqliteDatabase | null = null;
+
+    try {
+      db = createProjectDatabase(projectPath);
+      runMigrations(db, migrationsDir);
+
+      const repo = new HistoryRepository(db);
+      const paragraphs = repo.getFullParagraphs(snapshotId);
+
+      return paragraphs;
     } finally {
       if (db) db.close();
     }
@@ -198,6 +316,7 @@ export function registerHistoryHandlers(): void {
         runMigrations(db, migrationsDir);
 
         const repo = new HistoryRepository(db);
+        const audit = new AuditService(db);
         const snapshotId = crypto.randomUUID();
 
         repo.create({
@@ -211,6 +330,20 @@ export function registerHistoryHandlers(): void {
           triggeredBy: input.triggeredBy,
         });
 
+        // Journal d'audit pour snapshot manuel
+        if (input.triggeredBy === "manual") {
+          audit.log({
+            projectId: input.projectId,
+            action: "snapshot:manual",
+            entityType: "chapter",
+            entityId: input.chapterId,
+            details: {
+              snapshotId,
+              stage: input.stage,
+            },
+          });
+        }
+
         const created = repo.getById(snapshotId);
         if (!created) throw new Error("Échec de création du snapshot.");
         return created;
@@ -219,4 +352,28 @@ export function registerHistoryHandlers(): void {
       }
     },
   );
+
+  // ─── audit:list ───
+  ipcMain.handle("audit:list", async (_event, payload) => {
+    const { projectId, limit } = payload as {
+      projectId?: string;
+      limit?: number;
+    };
+    const projectPath = resolveProjectPath(projectId ?? "");
+    let db: SqliteDatabase | null = null;
+
+    try {
+      db = createProjectDatabase(projectPath);
+      runMigrations(db, migrationsDir);
+      const audit = new AuditService(db);
+
+      const entries = projectId
+        ? audit.list(projectId, limit ?? 100)
+        : audit.listAll(limit ?? 100);
+
+      return entries;
+    } finally {
+      if (db) db.close();
+    }
+  });
 }

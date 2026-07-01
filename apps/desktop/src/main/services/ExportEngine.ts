@@ -10,9 +10,28 @@ import {
   AlignmentType,
 } from "docx";
 import AdmZip from "adm-zip";
-import type { ExportInput, ExportFormat } from "@shared/types/index.js";
+import type {
+  ExportInput,
+  ExportFormat,
+  Paragraph as NtParagraph,
+} from "@shared/types/index.js";
 import type { ProjectDatabase } from "../db/connection.js";
 import { assertWithinProject } from "../utils/paths.js";
+
+/** SDD §13.6 : entrée d'un chapitre pour l'export par lots */
+export interface BatchChapterInput {
+  chapterId: string;
+  title: string;
+  paragraphs: NtParagraph[];
+}
+
+/** SDD §13.6 : résultat d'export par lots */
+export interface BatchExportResult {
+  /** Chemins des fichiers générés (un pour EPUB agrégé, un par chapitre sinon) */
+  paths: string[];
+  /** Format utilisé */
+  format: ExportFormat;
+}
 
 export class ExportEngine {
   private db?: ProjectDatabase;
@@ -73,6 +92,251 @@ export class ExportEngine {
     }
 
     return outputPath;
+  }
+
+  /**
+   * SDD §13.6 : Export par lots de plusieurs chapitres.
+   * - EPUB : génère un seul fichier agrégé multi-chapitres.
+   * - Autres formats : génère un fichier par chapitre.
+   * @param projectId ID du projet
+   * @param projectTitle Titre du projet (utilisé pour le fichier EPUB agrégé)
+   * @param author Auteur du projet (optionnel)
+   * @param chapters Liste des chapitres à exporter
+   * @param format Format d'export
+   * @param outputDir Dossier de sortie
+   * @param options Options d'export (bilingue, titre, numérotation)
+   * @returns Résultat avec les chemins des fichiers générés
+   */
+  async exportBatch(
+    projectId: string,
+    projectTitle: string,
+    author: string | undefined,
+    chapters: BatchChapterInput[],
+    format: ExportFormat,
+    outputDir: string,
+    options?: {
+      includeTitle?: boolean;
+      includeParagraphNumbers?: boolean;
+      bilingual?: boolean;
+    },
+  ): Promise<BatchExportResult> {
+    if (chapters.length === 0) {
+      throw new Error("Aucun chapitre à exporter.");
+    }
+
+    // Créer le dossier de sortie si nécessaire
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    const paths: string[] = [];
+
+    if (format === "epub") {
+      // SDD §13.6 : EPUB agrégé multi-chapitres
+      const allParagraphs: NtParagraph[] = [];
+      for (const ch of chapters) {
+        for (const p of ch.paragraphs) {
+          allParagraphs.push({
+            ...p,
+            // Préfixer le texte avec le titre du chapitre pour séparer visuellement
+            sourceText: p.sourceText,
+            translatedText: p.translatedText,
+          });
+        }
+      }
+
+      const safeName = projectTitle.replace(/[^a-z0-9]/gi, "_");
+      const outputPath = path.join(outputDir, `${safeName}.epub`);
+
+      const input: ExportInput = {
+        projectId,
+        title: projectTitle,
+        author,
+        paragraphs: allParagraphs,
+        format: "epub",
+        outputPath,
+        options,
+      };
+
+      // Pour l'EPUB multi-chapitres, on génère un EPUB avec un chapitre par chapitre
+      const buffer = this.toEpubMultiChapter(
+        projectTitle,
+        author ?? projectTitle,
+        chapters,
+        options,
+      );
+      fs.writeFileSync(outputPath, buffer);
+
+      // Validation
+      if (!fs.existsSync(outputPath)) {
+        throw new Error(
+          `Échec de validation de l'export batch : le fichier "${outputPath}" est introuvable.`,
+        );
+      }
+      const stat = fs.statSync(outputPath);
+      if (stat.size === 0) {
+        throw new Error(
+          `Échec de validation de l'export batch : le fichier "${outputPath}" est vide.`,
+        );
+      }
+
+      this.validateEpub(outputPath);
+      paths.push(outputPath);
+    } else {
+      // SDD §13.6 : un fichier par chapitre pour les autres formats
+      for (const ch of chapters) {
+        const safeName = (ch.title || ch.chapterId).replace(/[^a-z0-9]/gi, "_");
+        const ext = this.extensionFor(format);
+        const outputPath = path.join(outputDir, `${safeName}.${ext}`);
+
+        const input: ExportInput = {
+          projectId,
+          chapterId: ch.chapterId,
+          title: ch.title,
+          author,
+          paragraphs: ch.paragraphs,
+          format,
+          outputPath,
+          options,
+        };
+
+        const resultPath = await this.export(input);
+        paths.push(resultPath);
+      }
+    }
+
+    return { paths, format };
+  }
+
+  /** Retourne l'extension de fichier pour un format donné */
+  private extensionFor(format: ExportFormat): string {
+    switch (format) {
+      case "markdown":
+        return "md";
+      case "txt":
+        return "txt";
+      case "html":
+        return "html";
+      case "docx":
+        return "docx";
+      case "epub":
+        return "epub";
+    }
+  }
+
+  /**
+   * SDD §13.6 : génère un EPUB multi-chapitres agrégé.
+   * Chaque chapitre devient un item dans le manifest + spine.
+   */
+  private toEpubMultiChapter(
+    title: string,
+    author: string,
+    chapters: BatchChapterInput[],
+    options?: {
+      includeTitle?: boolean;
+      includeParagraphNumbers?: boolean;
+      bilingual?: boolean;
+    },
+  ): Buffer {
+    const zip = new AdmZip();
+    zip.addFile("mimetype", Buffer.from("application/epub+zip"), "", 0o644);
+
+    const containerXml = `\u003c?xml version="1.0"?\u003e
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`;
+    zip.addFile("META-INF/container.xml", Buffer.from(containerXml));
+
+    // Générer un fichier HTML par chapitre + construire le manifest/spine
+    const manifestItems: string[] = [];
+    const spineItems: string[] = [];
+    const navItems: string[] = [];
+
+    chapters.forEach((ch, index) => {
+      const fileName = `chapter${index + 1}.html`;
+      const chapterTitle = ch.title || `Chapitre ${index + 1}`;
+
+      const paragraphsHtml = ch.paragraphs
+        .map((p) => {
+          const prefix = options?.includeParagraphNumbers
+            ? `${p.indexInChapter + 1}. `
+            : "";
+          const text = options?.bilingual
+            ? `<p lang="source">${this.escapeHtml(p.sourceText)}</p><p>${this.escapeHtml(prefix + (p.translatedText ?? ""))}</p>`
+            : `<p>${this.escapeHtml(prefix + (p.translatedText ?? ""))}</p>`;
+          return text;
+        })
+        .join("\n");
+
+      const html = `<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8">
+  <title>${this.escapeHtml(chapterTitle)}</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+  <h2>${this.escapeHtml(chapterTitle)}</h2>
+  ${paragraphsHtml}
+</body>
+</html>`;
+      zip.addFile(`OEBPS/${fileName}`, Buffer.from(html));
+
+      const itemId = `chapter${index + 1}`;
+      manifestItems.push(
+        `<item id="${itemId}" href="${fileName}" media-type="application/xhtml+xml"/>`,
+      );
+      spineItems.push(`<itemref idref="${itemId}"/>`);
+      navItems.push(
+        `<li><a href="${fileName}">${this.escapeHtml(chapterTitle)}</a></li>`,
+      );
+    });
+
+    // CSS partagée
+    const css = `body { font-family: Georgia, serif; line-height: 1.6; max-width: 700px; margin: 2em auto; }
+h1, h2 { text-align: center; }
+p { margin: 1em 0; text-align: justify; }
+[lang="source"] { color: #64748b; font-style: italic; }`;
+    zip.addFile("OEBPS/style.css", Buffer.from(css));
+
+    // Navigation document (nav)
+    const navHtml = `<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/opf">
+<head>
+  <meta charset="UTF-8">
+  <title>Table des matières</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+  <nav epub:type="toc">
+    <h1>Table des matières</h1>
+    <ol>
+      ${navItems.join("\n      ")}
+    </ol>
+  </nav>
+</body>
+</html>`;
+    zip.addFile("OEBPS/nav.xhtml", Buffer.from(navHtml));
+
+    const opf = `\u003c?xml version="1.0"?\u003e
+<package version="3.0" xmlns="http://www.idpf.org/2007/opf">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>${this.escapeXml(title)}</dc:title>
+    <dc:creator>${this.escapeXml(author)}</dc:creator>
+    <dc:language>fr</dc:language>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="css" href="style.css" media-type="text/css"/>
+    ${manifestItems.join("\n    ")}
+  </manifest>
+  <spine>
+    ${spineItems.join("\n    ")}
+  </spine>
+</package>`;
+    zip.addFile("OEBPS/content.opf", Buffer.from(opf));
+
+    return zip.toBuffer();
   }
 
   private defaultOutputPath(input: ExportInput): string {

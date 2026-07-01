@@ -1,17 +1,75 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch, ref } from "vue";
+import { onMounted, onUnmounted, watch, ref, computed } from "vue";
 import { useSettingsStore } from "../stores/settings";
 import { useOllamaStore } from "../stores/ollama";
 import { useUpdateStore } from "../stores/update";
+import type { ConsistencyTolerance } from "@shared/types/index.js";
 
 const settings = useSettingsStore();
 const ollama = useOllamaStore();
 const update = useUpdateStore();
 
-const themeValue = ref<string>(
-  settings.data.theme ?? "system",
-);
+const themeValue = ref<string>(settings.data.theme ?? "system");
 const saved = ref(false);
+
+// SDD §11.4 : paires de langues prédéfinies pour les tolérances
+const LANGUAGE_PAIRS = [
+  { key: "zh-fr", label: "Chinois → Français" },
+  { key: "ja-fr", label: "Japonais → Français" },
+  { key: "ko-fr", label: "Coréen → Français" },
+  { key: "en-fr", label: "Anglais → Français" },
+  { key: "zh-en", label: "Chinois → Anglais" },
+  { key: "ja-en", label: "Japonais → Anglais" },
+];
+
+// Tolérances par défaut (SDD §11.4)
+const DEFAULT_TOLERANCE: ConsistencyTolerance = {
+  sentenceRatioMin: 0.7,
+  sentenceRatioMax: 1.5,
+  lengthRatioMin: 0.6,
+  lengthRatioMax: 1.8,
+  ignoreNumbersInDialogues: false,
+  ignorePunctuationMismatch: false,
+};
+
+// Paire de langues sélectionnée pour l'édition des tolérances
+const selectedPair = ref<string>("zh-fr");
+
+// Tolérances éditables (copie locale)
+const tolerances = ref<Record<string, ConsistencyTolerance>>({});
+
+// Initialise les tolérances depuis les settings
+function initTolerances(): void {
+  const stored = settings.data.consistencyTolerances ?? {};
+  const result: Record<string, ConsistencyTolerance> = {};
+  for (const pair of LANGUAGE_PAIRS) {
+    result[pair.key] = stored[pair.key]
+      ? { ...stored[pair.key] }
+      : { ...DEFAULT_TOLERANCE };
+  }
+  tolerances.value = result;
+}
+
+// Tolérance de la paire actuellement sélectionnée
+const currentTolerance = computed({
+  get: () => tolerances.value[selectedPair.value] ?? { ...DEFAULT_TOLERANCE },
+  set: (val: ConsistencyTolerance) => {
+    tolerances.value = { ...tolerances.value, [selectedPair.value]: val };
+  },
+});
+
+function updateTolerance(
+  field: keyof ConsistencyTolerance,
+  value: number | boolean,
+): void {
+  const current = tolerances.value[selectedPair.value] ?? {
+    ...DEFAULT_TOLERANCE,
+  };
+  tolerances.value = {
+    ...tolerances.value,
+    [selectedPair.value]: { ...current, [field]: value },
+  };
+}
 
 async function saveSettings(): Promise<void> {
   saved.value = false;
@@ -24,6 +82,7 @@ async function saveSettings(): Promise<void> {
     "defaultProjectsPath",
     "updateChannel",
     "ragEnabled",
+    "qualityThreshold",
   ] as const;
   for (const key of keys) {
     const value = settings.data[key];
@@ -31,8 +90,12 @@ async function saveSettings(): Promise<void> {
       await settings.set(key, value as never);
     }
   }
+  // Sauvegarder les tolérances
+  await settings.set("consistencyTolerances", tolerances.value as never);
   saved.value = true;
-  setTimeout(() => { saved.value = false; }, 2000);
+  setTimeout(() => {
+    saved.value = false;
+  }, 2000);
 }
 
 // SDD §4.14 — Appliquer le thème sur l'élément <html>
@@ -61,9 +124,7 @@ let mediaQuery: MediaQueryList | null = null;
 function setupSystemThemeListener(): void {
   mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
   const handler = () => {
-    if (
-      (settings.data.theme ?? themeValue.value) === "system"
-    ) {
+    if ((settings.data.theme ?? themeValue.value) === "system") {
       applyTheme("system");
     }
   };
@@ -88,11 +149,9 @@ watch(
 );
 
 onMounted(() => {
-  applyTheme(
-    (settings.data.theme as "dark" | "light" | "system") ??
-      "system",
-  );
+  applyTheme((settings.data.theme as "dark" | "light" | "system") ?? "system");
   setupSystemThemeListener();
+  initTolerances();
 });
 
 onUnmounted(() => {
@@ -107,9 +166,7 @@ onUnmounted(() => {
     <h1>Parametres</h1>
 
     <div class="save-bar">
-      <button class="btn-primary" @click="saveSettings">
-        Sauvegarder
-      </button>
+      <button class="btn-primary" @click="saveSettings">Sauvegarder</button>
       <span v-if="saved" class="saved-msg">Parametres enregistres.</span>
     </div>
 
@@ -141,9 +198,7 @@ onUnmounted(() => {
         Tester
       </button>
       <p :class="{ ok: ollama.available }">
-        {{
-          ollama.available ? "Connecte" : "Non disponible"
-        }}
+        {{ ollama.available ? "Connecte" : "Non disponible" }}
       </p>
       <ul v-if="ollama.models.length">
         <li v-for="m in ollama.models" :key="m.name">
@@ -185,11 +240,143 @@ onUnmounted(() => {
         />
       </label>
       <label class="form-checkbox">
-        <input
-          v-model="settings.data.ragEnabled"
-          type="checkbox"
-        />
+        <input v-model="settings.data.ragEnabled" type="checkbox" />
         <span>Activer RAG (memoire contextuelle)</span>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Workflow</h2>
+      <p class="section-desc">
+        Seuils de qualite et tolerances de coherence configurables.
+      </p>
+
+      <label>
+        Seuil de qualite minimum (0-100)
+        <input
+          v-model.number="settings.data.qualityThreshold"
+          type="number"
+          min="0"
+          max="100"
+          placeholder="70"
+        />
+      </label>
+      <p class="hint">
+        Le workflow met en pause si le score de qualite est inferieur a ce
+        seuil.
+      </p>
+
+      <h3 class="subsection">Tolerances de coherence par paire de langues</h3>
+      <p class="hint">
+        Ajustez les ratios acceptes pour chaque paire source-cible. Les langues
+        asiatiques (zh, ja, ko) ont des ratios plus eloignes de 1.
+      </p>
+
+      <label>
+        Paire de langues
+        <select v-model="selectedPair">
+          <option
+            v-for="pair in LANGUAGE_PAIRS"
+            :key="pair.key"
+            :value="pair.key"
+          >
+            {{ pair.label }}
+          </option>
+        </select>
+      </label>
+
+      <div class="tolerance-grid">
+        <label>
+          Ratio phrases min
+          <input
+            :value="currentTolerance.sentenceRatioMin"
+            type="number"
+            step="0.1"
+            min="0"
+            max="5"
+            @input="
+              updateTolerance(
+                'sentenceRatioMin',
+                parseFloat(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+        </label>
+        <label>
+          Ratio phrases max
+          <input
+            :value="currentTolerance.sentenceRatioMax"
+            type="number"
+            step="0.1"
+            min="0"
+            max="10"
+            @input="
+              updateTolerance(
+                'sentenceRatioMax',
+                parseFloat(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+        </label>
+        <label>
+          Ratio longueur min
+          <input
+            :value="currentTolerance.lengthRatioMin"
+            type="number"
+            step="0.1"
+            min="0"
+            max="5"
+            @input="
+              updateTolerance(
+                'lengthRatioMin',
+                parseFloat(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+        </label>
+        <label>
+          Ratio longueur max
+          <input
+            :value="currentTolerance.lengthRatioMax"
+            type="number"
+            step="0.1"
+            min="0"
+            max="10"
+            @input="
+              updateTolerance(
+                'lengthRatioMax',
+                parseFloat(($event.target as HTMLInputElement).value),
+              )
+            "
+          />
+        </label>
+      </div>
+
+      <label class="form-checkbox">
+        <input
+          :checked="currentTolerance.ignoreNumbersInDialogues"
+          type="checkbox"
+          @change="
+            updateTolerance(
+              'ignoreNumbersInDialogues',
+              ($event.target as HTMLInputElement).checked,
+            )
+          "
+        />
+        <span>Ignorer les nombres dans les dialogues</span>
+      </label>
+      <label class="form-checkbox">
+        <input
+          :checked="currentTolerance.ignorePunctuationMismatch"
+          type="checkbox"
+          @change="
+            updateTolerance(
+              'ignorePunctuationMismatch',
+              ($event.target as HTMLInputElement).checked,
+            )
+          "
+        />
+        <span>Ignorer les differences de ponctuation</span>
       </label>
     </section>
 
@@ -199,11 +386,7 @@ onUnmounted(() => {
         Canal
         <select
           v-model="settings.data.updateChannel"
-          @change="
-            update.setChannel(
-              settings.data.updateChannel ?? 'latest',
-            )
-          "
+          @change="update.setChannel(settings.data.updateChannel ?? 'latest')"
         >
           <option value="latest">Stable</option>
           <option value="beta">Beta</option>
@@ -231,9 +414,7 @@ onUnmounted(() => {
       >
         Installer et redemarrer
       </button>
-      <p v-if="update.error" class="error">
-        Erreur : {{ update.error }}
-      </p>
+      <p v-if="update.error" class="error">Erreur : {{ update.error }}</p>
     </section>
   </div>
 </template>
@@ -318,5 +499,37 @@ select {
 
 .error {
   color: var(--error);
+}
+
+.section-desc {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.subsection {
+  font-size: 14px;
+  margin-top: 20px;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-top: -4px;
+  margin-bottom: 12px;
+}
+
+.tolerance-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tolerance-grid label {
+  margin-bottom: 0;
 }
 </style>

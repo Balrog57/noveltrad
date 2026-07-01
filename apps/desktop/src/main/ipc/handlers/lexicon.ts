@@ -4,6 +4,8 @@ import { createProjectDatabase, runMigrations } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { LexiconRepository } from "../../db/repositories/LexiconRepository.js";
 import { LexiconEngine } from "../../services/LexiconEngine.js";
+import { AiRouter } from "../../services/AiRouter.js";
+import { OllamaProvider } from "../../services/providers/OllamaProvider.js";
 import {
   lexiconListSchema,
   lexiconSaveSchema,
@@ -11,6 +13,8 @@ import {
   lexiconImportSchema,
   lexiconExportSchema,
   lexiconExtractCandidatesSchema,
+  lexiconFindConflictsSchema,
+  lexiconSuggestSchema,
 } from "@shared/schemas/lexicon.js";
 import type { LexiconEntry } from "@shared/types/index.js";
 import type { Database as SqliteDatabase } from "node-sqlite3-wasm";
@@ -155,6 +159,30 @@ export function registerLexiconHandlers(): void {
   ipcMain.handle("lexicon:extract-candidates", async (_event, payload) => {
     const { text, language } = lexiconExtractCandidatesSchema.parse(payload);
     return lexiconEngine.extractCandidates(text, language);
+  });
+
+  // Détecter les conflits dans le lexique
+  ipcMain.handle("lexicon:find-conflicts", async (_event, payload) => {
+    const { entries } = lexiconFindConflictsSchema.parse(payload);
+    return lexiconEngine.findConflicts(entries);
+  });
+
+  // Suggérer une traduction pour un terme inconnu via IA
+  ipcMain.handle("lexicon:suggest", async (_event, payload) => {
+    const { term, context, projectId } = lexiconSuggestSchema.parse(payload);
+
+    // Résoudre le chemin projet et récupérer les paramètres LLM
+    const projectPath = resolveProjectPath(projectId);
+    const ollamaHost = (settings.get("ollamaHost") as string) ?? "http://localhost:11434";
+    const defaultModel = (settings.get("defaultModel") as string) ?? "qwen3.5:9b";
+
+    // Créer un AiRouter avec le provider Ollama
+    const aiRouter = new AiRouter();
+    aiRouter.register(
+      new OllamaProvider("ollama-default", "Ollama local", defaultModel, ollamaHost),
+    );
+
+    return lexiconEngine.suggestTranslation(term, context, aiRouter, "ollama-default");
   });
 }
 

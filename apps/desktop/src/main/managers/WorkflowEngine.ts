@@ -30,10 +30,15 @@ import { TranslationMemoryEngine } from "../services/TranslationMemoryEngine.js"
 import { ConsistencyChecker } from "../services/ConsistencyChecker.js";
 import { QualityChecker } from "../services/QualityChecker.js";
 import { ExportEngine } from "../services/ExportEngine.js";
+import { CalibrationService } from "../services/CalibrationService.js";
 import { HistoryRepository } from "../db/repositories/HistoryRepository.js";
 import { RagEngine } from "../services/RagEngine.js";
 import { AiCache } from "../services/AiCache.js";
 import { OllamaProvider } from "../services/providers/OllamaProvider.js";
+import {
+  PerformanceProfiler,
+  type PerformanceMetrics,
+} from "../services/PerformanceProfiler.js";
 import { logger } from "../utils/logger.js";
 
 const STAGES: WorkflowStage[] = [
@@ -78,13 +83,16 @@ class WorkflowRunner extends EventEmitter {
   private ragEngine?: RagEngine;
   private sourceLanguage: string;
   private targetLanguage: string;
+  private profiler: PerformanceProfiler;
 
   constructor(
     projectPath: string,
     private settings: SettingsManager,
     private emitProgress: (payload: WorkflowProgress) => void,
+    profiler?: PerformanceProfiler,
   ) {
     super();
+    this.profiler = profiler ?? new PerformanceProfiler();
     this.db = createProjectDatabase(projectPath);
     runMigrations(this.db, path.join(__dirname, "../../db/migrations"));
 
@@ -130,6 +138,9 @@ class WorkflowRunner extends EventEmitter {
     const exportEngine = new ExportEngine();
     exportEngine.setDatabase(this.db);
 
+    // SDD §12.5 : service de calibration des scores de qualité
+    const calibrationService = new CalibrationService(this.db);
+
     this.factory = new AgentFactory({
       aiRouter,
       lexiconEngine,
@@ -137,6 +148,7 @@ class WorkflowRunner extends EventEmitter {
       consistencyChecker: new ConsistencyChecker(),
       qualityChecker: new QualityChecker(),
       exportEngine,
+      calibrationService,
     });
   }
 
@@ -155,10 +167,11 @@ class WorkflowRunner extends EventEmitter {
       status: "running",
       startedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
+      metadata: { batchChapterIndex: 0 },
     };
     this.jobRepo.createJob(this.job);
 
-    this.runBatch(chapterIds).catch((err) => {
+    this.runBatch(chapterIds, 0).catch((err) => {
       logger.error("Batch workflow error", err);
       this.job.status = "failed";
       this.job.errorMessage = err instanceof Error ? err.message : String(err);
@@ -167,6 +180,31 @@ class WorkflowRunner extends EventEmitter {
     });
 
     return this.job;
+  }
+
+  /**
+   * SDD §7.11 : Reprend un job batch interrompu (crash / fermeture app).
+   * Repart du dernier chapitre non terminé (batchChapterIndex stocké dans metadata).
+   */
+  async resumeBatch(job: Job): Promise<void> {
+    if (
+      job.type !== "batch" ||
+      !job.chapterIds ||
+      job.chapterIds.length === 0
+    ) {
+      throw new Error("Job non éligible à la reprise batch.");
+    }
+    const startIndex = Number(job.metadata?.batchChapterIndex ?? 0);
+    this.job = { ...job, status: "running" };
+    this.jobRepo.updateJob(this.job);
+
+    this.runBatch(job.chapterIds, startIndex).catch((err) => {
+      logger.error("Batch resume error", err);
+      this.job.status = "failed";
+      this.job.errorMessage = err instanceof Error ? err.message : String(err);
+      this.job.finishedAt = new Date().toISOString();
+      this.jobRepo.updateJob(this.job);
+    });
   }
 
   private async runSingle(chapterId?: string): Promise<Job> {
@@ -212,8 +250,12 @@ class WorkflowRunner extends EventEmitter {
     return this.job;
   }
 
-  private async runBatch(chapterIds: string[]): Promise<void> {
-    for (let batchIndex = 0; batchIndex < chapterIds.length; batchIndex++) {
+  private async runBatch(chapterIds: string[], startIndex = 0): Promise<void> {
+    for (
+      let batchIndex = startIndex;
+      batchIndex < chapterIds.length;
+      batchIndex++
+    ) {
       if (this.cancelled) {
         this.job.status = "cancelled";
         this.jobRepo.updateJob(this.job);
@@ -223,6 +265,13 @@ class WorkflowRunner extends EventEmitter {
       while (this.paused) {
         await this.waitForResume();
       }
+
+      // SDD §7.11 : persister l'index du chapitre en cours pour la reprise après interruption
+      this.job.metadata = {
+        ...this.job.metadata,
+        batchChapterIndex: batchIndex,
+      };
+      this.jobRepo.updateJob(this.job);
 
       this.chapter = this.chapterRepo.getById(chapterIds[batchIndex]);
       if (!this.chapter) {
@@ -425,7 +474,15 @@ class WorkflowRunner extends EventEmitter {
       logger.error(`Step ${step.stage} failed`, err);
       step.status = "failed";
       step.errorMessage = err instanceof Error ? err.message : String(err);
+      step.finishedAt = new Date().toISOString();
+      step.durationMs = Date.now() - startTime;
       this.jobRepo.updateStep(step);
+
+      // SDD §22.6 : collecter les métriques même en cas d'échec
+      this.profiler.collect(this.job.id, step.stage, {
+        durationMs: step.durationMs,
+      });
+
       this.emitProgress({
         jobId: this.job.id,
         projectId: this.project.id,
@@ -438,7 +495,21 @@ class WorkflowRunner extends EventEmitter {
 
     step.finishedAt = new Date().toISOString();
     step.durationMs = Date.now() - startTime;
+    step.tokensIn = output?.report
+      ? (output.report as Record<string, unknown>)?.tokensIn as number
+      : undefined;
+    step.tokensOut = output?.report
+      ? (output.report as Record<string, unknown>)?.tokensOut as number
+      : undefined;
     this.jobRepo.updateStep(step);
+
+    // SDD §22.6 : collecter les métriques de performance
+    this.profiler.collect(this.job.id, step.stage, {
+      durationMs: step.durationMs,
+      tokensIn: step.tokensIn,
+      tokensOut: step.tokensOut,
+    });
+
     this.emitProgress({
       jobId: this.job.id,
       projectId: this.project.id,
@@ -582,11 +653,23 @@ class WorkflowRunner extends EventEmitter {
 
 export class WorkflowEngine {
   private runners = new Map<string, WorkflowRunner>();
+  /** SDD §7.9 : concurrence des jobs batch (défaut 1 pour Ollama local) */
+  maxConcurrentJobs: number;
+
+  /**
+   * Profileur de performance partagé entre tous les runners.
+   * Chaque runner collecte ses métriques sur cette instance unique.
+   * SDD §22.6
+   */
+  readonly profiler: PerformanceProfiler;
 
   constructor(
     private settings: SettingsManager,
     private getMainWindow?: () => BrowserWindow | null,
-  ) {}
+  ) {
+    this.maxConcurrentJobs = this.settings.get("maxConcurrentJobs");
+    this.profiler = new PerformanceProfiler();
+  }
 
   private emitProgress(payload: WorkflowProgress): void {
     const win = this.getMainWindow?.();
@@ -595,25 +678,58 @@ export class WorkflowEngine {
     }
   }
 
+  /**
+   * SDD §22.6 : Retourne le rapport de performance pour un job donné.
+   */
+  getProfilerReport(jobId: string): PerformanceMetrics[] {
+    return this.profiler.getReport(jobId);
+  }
+
+  /**
+   * SDD §22.6 : Exporte toutes les métriques de performance au format CSV.
+   */
+  exportProfilerCsv(): string {
+    return this.profiler.exportCsv();
+  }
+
   async start(projectPath: string, chapterId?: string): Promise<Job> {
-    const runner = new WorkflowRunner(projectPath, this.settings, (p) =>
-      this.emitProgress(p),
+    const runner = new WorkflowRunner(
+      projectPath,
+      this.settings,
+      (p) => this.emitProgress(p),
+      this.profiler,
     );
     const job = await runner.start(chapterId);
     this.runners.set(job.id, runner);
     return job;
   }
 
-  async startBatch(
-    projectPath: string,
-    chapterIds: string[],
-  ): Promise<Job> {
-    const runner = new WorkflowRunner(projectPath, this.settings, (p) =>
-      this.emitProgress(p),
+  async startBatch(projectPath: string, chapterIds: string[]): Promise<Job> {
+    const runner = new WorkflowRunner(
+      projectPath,
+      this.settings,
+      (p) => this.emitProgress(p),
+      this.profiler,
     );
     const job = await runner.startBatch(chapterIds);
     this.runners.set(job.id, runner);
     return job;
+  }
+
+  /**
+   * SDD §7.11 : Reprend un job batch interrompu au dernier chapitre non terminé.
+   * @param projectPath Chemin du projet
+   * @param job Job à reprendre (doit être de type batch avec chapterIds)
+   */
+  async resumeBatch(projectPath: string, job: Job): Promise<void> {
+    const runner = new WorkflowRunner(
+      projectPath,
+      this.settings,
+      (p) => this.emitProgress(p),
+      this.profiler,
+    );
+    await runner.resumeBatch(job);
+    this.runners.set(job.id, runner);
   }
 
   pause(jobId: string): void {
@@ -636,3 +752,39 @@ export class WorkflowEngine {
     await this.runners.get(jobId)?.retryFrom(stage);
   }
 }
+
+// === Worker threads — SDD §22.2 ===
+//
+// Préparation pour l'exécution d'agents CPU-bound dans des Worker threads.
+// Actuellement, tous les agents s'exécutent de manière séquentielle dans le
+// thread principal. Pour les agents coûteux (SplitAgent, ConsistencyChecker,
+// ExportEngine), on pourra déléguer le travail à des Workers :
+//
+// 1. Créer un fichier worker wrapper : `src/main/workers/agent-worker.ts`
+//    qui importe l'agent, reçoit les instructions via `parentPort.on('message')`,
+//    exécute et renvoie le résultat.
+//
+// 2. Dans `WorkflowRunner`, remplacer l'appel direct à `agent.execute(input)`
+//    par :
+//    ```
+//    const worker = new Worker('./workers/agent-worker.js');
+//    worker.postMessage({ agentId: step.stage, input });
+//    output = await new Promise((resolve, reject) => {
+//      worker.on('message', resolve);
+//      worker.on('error', reject);
+//    });
+//    ```
+//
+// 3. Gérer le pool de Workers via `maxConcurrentJobs` (SDD §7.9) :
+//    limiter le nombre de Workers simultanés pour éviter la saturation CPU.
+//
+// 4. Attention : les Workers partagent la mémoire via `transferList` pour les
+//    gros payloads (paragraphs). Utiliser `MessagePort` ou `SharedArrayBuffer`
+//    si nécessaire.
+//
+// Non implémenté dans le MVP car :
+// - Electron Worker threads nécessitent une configuration supplémentaire
+//   (copie du bundle V8, gestion des chemins dans le contexte sandbox)
+// - Le surcoût de sérialisation/deserialisation peut dépasser le gain pour
+//   des payloads < 100 paragraphes
+// - La priorité MVP est la fiabilité du pipeline séquentiel

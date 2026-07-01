@@ -33,13 +33,24 @@ export const historyCreateSchema = z.object({
 });
 
 /**
- * Schéma pour la requête de rollback.
- * Restaure les paragraphes d'un snapshot donné.
+ * Schéma pour la requête de rollback complet.
+ * Restaure tous les paragraphes d'un snapshot donné.
  */
 export const historyRollbackSchema = z.object({
   projectId: z.string().uuid(),
   chapterId: z.string().uuid(),
   snapshotId: z.string().uuid(),
+});
+
+/**
+ * Schéma pour le rollback partiel (SDD §14.5).
+ * Restaure uniquement certains paragraphes sélectionnés.
+ */
+export const historyRollbackPartialSchema = z.object({
+  projectId: z.string().uuid(),
+  chapterId: z.string().uuid(),
+  snapshotId: z.string().uuid(),
+  paragraphIds: z.array(z.string().uuid()).min(1, "Au moins un paragraphe doit être sélectionné."),
 });
 
 /**
@@ -51,7 +62,18 @@ export const historyDiffSchema = z.object({
   snapshotIdB: z.string().uuid(),
 });
 
+/**
+ * Schéma pour le chargement des paragraphes d'un snapshot.
+ * Permet de reconstruire le texte complet d'un snapshot (hybride full+incremental).
+ */
+export const historyGetParagraphsSchema = z.object({
+  projectId: z.string().uuid(),
+  snapshotId: z.string().uuid(),
+});
+
 export type HistoryListInput = z.infer<typeof historyListSchema>;
 export type HistoryCreateInput = z.infer<typeof historyCreateSchema>;
 export type HistoryRollbackInput = z.infer<typeof historyRollbackSchema>;
+export type HistoryRollbackPartialInput = z.infer<typeof historyRollbackPartialSchema>;
 export type HistoryDiffInput = z.infer<typeof historyDiffSchema>;
+export type HistoryGetParagraphsInput = z.infer<typeof historyGetParagraphsSchema>;

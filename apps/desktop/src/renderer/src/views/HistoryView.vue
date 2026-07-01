@@ -49,9 +49,10 @@ const tableRows = computed(() =>
   })),
 );
 
-/** Confirmation de rollback */
+/** Confirmation de rollback complet */
 const showConfirmRollback = ref(false);
 const snapshotToRollback = ref<HistorySnapshot | null>(null);
+const partialRollbackLoading = ref(false);
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -91,13 +92,20 @@ function selectSnapshot(row: Record<string, unknown>): void {
   }
 }
 
-/** Ouvre le dialogue de confirmation de rollback */
+/** Ouvre le dialogue de confirmation de rollback complet */
 function confirmRollback(snapshot: HistorySnapshot): void {
   snapshotToRollback.value = snapshot;
   showConfirmRollback.value = true;
 }
 
-/** Exécute le rollback */
+/** Ouvre le sélecteur de paragraphes pour rollback partiel */
+async function openPartialRollback(snapshot: HistorySnapshot): Promise<void> {
+  historyStore.selectedSnapshot = snapshot;
+  await historyStore.loadSnapshotParagraphs(projectId.value, snapshot.id);
+  historyStore.showParagraphSelector = true;
+}
+
+/** Exécute le rollback complet */
 async function executeRollback(): Promise<void> {
   if (!snapshotToRollback.value && historyStore.selectedSnapshot) {
     snapshotToRollback.value = historyStore.selectedSnapshot;
@@ -110,6 +118,26 @@ async function executeRollback(): Promise<void> {
   );
   showConfirmRollback.value = false;
   snapshotToRollback.value = null;
+}
+
+/** Exécute le rollback partiel */
+async function executePartialRollback(): Promise<void> {
+  if (
+    !historyStore.selectedSnapshot ||
+    !chapterId.value ||
+    historyStore.selectedParagraphIds.size === 0
+  )
+    return;
+
+  partialRollbackLoading.value = true;
+  await historyStore.rollbackPartial(
+    projectId.value,
+    chapterId.value,
+    historyStore.selectedSnapshot.id,
+    Array.from(historyStore.selectedParagraphIds),
+  );
+  partialRollbackLoading.value = false;
+  historyStore.diffResult = null;
 }
 
 /** Crée un snapshot manuel */
@@ -244,6 +272,12 @@ watch(chapterId, (newVal, oldVal) => {
           >
             Restaurer cette version
           </button>
+          <button
+            class="btn-action btn-partial"
+            @click="openPartialRollback(historyStore.selectedSnapshot)"
+          >
+            Restaurer certains paragraphes
+          </button>
         </div>
       </div>
 
@@ -253,7 +287,7 @@ watch(chapterId, (newVal, oldVal) => {
       </div>
     </div>
 
-    <!-- Dialogue de confirmation rollback -->
+    <!-- Dialogue de confirmation rollback complet -->
     <Teleport to="body">
       <div
         v-if="showConfirmRollback"
@@ -273,8 +307,8 @@ watch(chapterId, (newVal, oldVal) => {
             ?
           </p>
           <p class="modal-warning">
-            Les paragraphes actuels seront remplacés. Une nouvelle version de
-            rollback sera créée.
+            Tous les paragraphes actuels seront remplacés par ceux de cette
+            version. Une nouvelle version de rollback sera créée.
           </p>
           <div class="modal-actions">
             <button class="btn-toolbar" @click="showConfirmRollback = false">
@@ -285,7 +319,107 @@ watch(chapterId, (newVal, oldVal) => {
               :disabled="historyStore.loading"
               @click="executeRollback"
             >
-              {{ historyStore.loading ? "Restauration..." : "Restaurer" }}
+              {{ historyStore.loading ? "Restauration..." : "Restaurer tout" }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Dialogue de sélection de paragraphes pour rollback partiel -->
+    <Teleport to="body">
+      <div
+        v-if="historyStore.showParagraphSelector"
+        class="modal-overlay"
+        @click.self="historyStore.showParagraphSelector = false"
+      >
+        <div class="modal-box partial-modal" role="dialog" aria-modal="true">
+          <h3>Restaurer certains paragraphes</h3>
+          <p class="modal-subtitle">
+            Sélectionnez les paragraphes à restaurer depuis la version
+            <strong>v{{ historyStore.selectedSnapshot?.versionNumber }}</strong
+            >.
+          </p>
+
+          <!-- Sélection tout/rien -->
+          <div class="partial-toolbar">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                :checked="
+                  historyStore.selectedParagraphIds.size ===
+                    historyStore.snapshotParagraphs.length &&
+                  historyStore.snapshotParagraphs.length > 0
+                "
+                @change="
+                  historyStore.toggleAllParagraphs(
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              Tout sélectionner
+            </label>
+            <span class="partial-count">
+              {{ historyStore.selectedParagraphIds.size }} /
+              {{ historyStore.snapshotParagraphs.length }} paragraphes
+            </span>
+          </div>
+
+          <!-- Liste des paragraphes -->
+          <div class="paragraph-list">
+            <div
+              v-for="p in historyStore.snapshotParagraphs"
+              :key="p.id"
+              class="paragraph-item"
+              :class="{ selected: p.selected }"
+              @click="historyStore.toggleParagraph(p.id)"
+            >
+              <input
+                type="checkbox"
+                :checked="p.selected"
+                class="paragraph-checkbox"
+                @click.stop
+                @change="historyStore.toggleParagraph(p.id)"
+              />
+              <div class="paragraph-content">
+                <span class="paragraph-index">#{{ p.index }}</span>
+                <span class="paragraph-text-source">{{ p.sourceText }}</span>
+                <span v-if="p.translatedText" class="paragraph-text-target">{{
+                  p.translatedText
+                }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aucun paragraphe trouvé -->
+          <p
+            v-if="historyStore.snapshotParagraphs.length === 0"
+            class="empty-msg"
+          >
+            Aucun paragraphe trouvé dans ce snapshot.
+          </p>
+
+          <!-- Actions -->
+          <div class="modal-actions">
+            <button
+              class="btn-toolbar"
+              @click="historyStore.showParagraphSelector = false"
+            >
+              Annuler
+            </button>
+            <button
+              class="btn-toolbar btn-partial"
+              :disabled="
+                historyStore.selectedParagraphIds.size === 0 ||
+                partialRollbackLoading
+              "
+              @click="executePartialRollback"
+            >
+              {{
+                partialRollbackLoading
+                  ? "Restauration..."
+                  : `Restaurer ${historyStore.selectedParagraphIds.size} paragraphe${historyStore.selectedParagraphIds.size > 1 ? "s" : ""}`
+              }}
             </button>
           </div>
         </div>
@@ -362,6 +496,15 @@ watch(chapterId, (newVal, oldVal) => {
 
 .btn-danger:hover {
   background-color: #d32f2f;
+}
+
+.btn-partial {
+  background-color: var(--warning);
+  color: white;
+}
+
+.btn-partial:hover {
+  background-color: #e65100;
 }
 
 /* --- Contenu --- */
@@ -443,6 +586,9 @@ watch(chapterId, (newVal, oldVal) => {
 .snapshot-actions {
   padding: 12px;
   border-top: 1px solid var(--bg-tertiary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .btn-action {
@@ -476,6 +622,13 @@ watch(chapterId, (newVal, oldVal) => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
+.partial-modal {
+  max-width: 640px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .modal-box h3 {
   margin: 0 0 12px;
   color: var(--text-primary);
@@ -489,6 +642,10 @@ watch(chapterId, (newVal, oldVal) => {
   line-height: 1.6;
 }
 
+.modal-subtitle {
+  margin-bottom: 16px !important;
+}
+
 .modal-warning {
   color: var(--warning) !important;
   font-size: 13px !important;
@@ -499,6 +656,96 @@ watch(chapterId, (newVal, oldVal) => {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 16px;
+}
+
+/* --- Sélecteur de paragraphes --- */
+.partial-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--bg-tertiary);
+  margin-bottom: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.partial-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.paragraph-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.paragraph-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.paragraph-item:hover {
+  background-color: var(--bg-tertiary);
+}
+
+.paragraph-item.selected {
+  background-color: rgba(0, 150, 255, 0.1);
+  border-left: 3px solid var(--accent);
+}
+
+.paragraph-checkbox {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.paragraph-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.paragraph-index {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.paragraph-text-source {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paragraph-text-target {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-msg {
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 24px;
 }
 
 /* --- Statuts --- */

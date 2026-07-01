@@ -7,11 +7,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@shared": path.resolve(__dirname, "../../packages/shared/src"),
+      "@scripts": path.resolve(__dirname, "../../scripts"),
     },
   },
   test: {
     globals: true,
     environment: "node",
+
     include: ["tests/unit/**/*.spec.ts"],
     coverage: {
       provider: "v8",

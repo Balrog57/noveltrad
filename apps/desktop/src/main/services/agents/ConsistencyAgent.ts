@@ -16,7 +16,19 @@ export class ConsistencyAgent implements Agent {
     const paragraphs = input.paragraphs ?? [];
     const source = paragraphs.map((p) => p.sourceText);
     const target = paragraphs.map((p) => p.translatedText ?? "");
-    const report = this.checker.check(source, target, input.lexicon ?? []);
+
+    // SDD §11.4 : construire la paire de langues pour appliquer les tolérances
+    const sourceLang = input.options?.sourceLanguage as string | undefined;
+    const targetLang = input.options?.targetLanguage as string | undefined;
+    const languagePair =
+      sourceLang && targetLang ? `${sourceLang}-${targetLang}` : undefined;
+
+    const report = this.checker.check(
+      source,
+      target,
+      input.lexicon ?? [],
+      languagePair,
+    );
     return { report };
   }
 }

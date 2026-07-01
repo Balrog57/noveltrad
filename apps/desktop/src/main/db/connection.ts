@@ -298,6 +298,67 @@ const MIGRATIONS = [
     name: "005_alias_export_prompts_stats",
     sql: `CREATE INDEX IF NOT EXISTS idx_statistics_project ON statistics(project_id)`,
   },
+  {
+    version: 6,
+    name: "006_batch_state",
+    sql: `ALTER TABLE jobs ADD COLUMN chapter_ids TEXT`,
+  },
+  {
+    version: 6,
+    name: "006_batch_state",
+    sql: `ALTER TABLE jobs ADD COLUMN metadata TEXT`,
+  },
+  {
+    version: 6,
+    name: "006_batch_state",
+    sql: `CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
+  },
+  {
+    version: 7,
+    name: "007_quality",
+    sql: `CREATE TABLE IF NOT EXISTS model_calibrations (
+  model TEXT NOT NULL,
+  dimension TEXT NOT NULL,
+  slope REAL NOT NULL DEFAULT 1.0,
+  offset REAL NOT NULL DEFAULT 0.0,
+  sample_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (model, dimension)
+)`,
+  },
+  {
+    version: 8,
+    name: "008_audit",
+    sql: `CREATE TABLE IF NOT EXISTS audit_log (
+  id TEXT PRIMARY KEY,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id TEXT,
+  details TEXT,
+  created_at TEXT NOT NULL
+)`,
+  },
+  {
+    version: 8,
+    name: "008_audit",
+    sql: `CREATE INDEX IF NOT EXISTS idx_audit_project ON audit_log(project_id)`,
+  },
+  {
+    version: 8,
+    name: "008_audit",
+    sql: `CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)`,
+  },
+  {
+    version: 8,
+    name: "008_audit",
+    sql: `CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)`,
+  },
+  {
+    version: 9,
+    name: "009_chapter_metadata",
+    sql: `ALTER TABLE chapters ADD COLUMN metadata TEXT`,
+  },
 ];
 
 export function createProjectDatabase(projectPath: string): Database {
@@ -321,9 +382,11 @@ export function runMigrations(db: Database, migrationsDir?: string): void {
   `);
 
   const applied = new Set(
-    (db.prepare("SELECT version FROM __migrations").all() as { version: number }[]).map(
-      (r) => r.version,
-    ),
+    (
+      db.prepare("SELECT version FROM __migrations").all() as {
+        version: number;
+      }[]
+    ).map((r) => r.version),
   );
 
   const recorded = new Map<number, string>();

@@ -10,6 +10,13 @@ const ollamaStore = useOllamaStore();
 
 const showCreate = ref(false);
 const creationError = ref<string | null>(null);
+
+// Suppression de projet (SDD §5.11)
+const showDeleteDialog = ref(false);
+const deleteProjectId = ref<string | null>(null);
+const deleteProjectName = ref("");
+const deleteRemoveFiles = ref(false);
+const deleteError = ref<string | null>(null);
 const newProject = ref({
   name: "",
   sourceLanguage: "zh",
@@ -35,6 +42,29 @@ async function create() {
 async function open(path: string) {
   const project = await projectStore.open(path);
   router.push({ name: "project", params: { projectId: project.id } });
+}
+
+/** Ouvre le dialogue de confirmation de suppression (SDD §5.11) */
+function openDeleteDialog(projectId: string, projectName: string): void {
+  deleteProjectId.value = projectId;
+  deleteProjectName.value = projectName;
+  deleteRemoveFiles.value = false;
+  deleteError.value = null;
+  showDeleteDialog.value = true;
+}
+
+/** Supprime le projet (SDD §5.11) */
+async function confirmDelete(): Promise<void> {
+  if (!deleteProjectId.value) return;
+  deleteError.value = null;
+  try {
+    await window.novelTradAPI.invoke("project:delete", deleteProjectId.value, deleteRemoveFiles.value);
+    await projectStore.loadRecent();
+    showDeleteDialog.value = false;
+    deleteProjectId.value = null;
+  } catch (err) {
+    deleteError.value = err instanceof Error ? err.message : "Erreur lors de la suppression du projet";
+  }
 }
 </script>
 
@@ -90,6 +120,37 @@ async function open(path: string) {
       <p v-if="creationError" class="error-msg">{{ creationError }}</p>
     </section>
 
+    <!-- Dialogue de confirmation de suppression (SDD §5.11) -->
+    <div v-if="showDeleteDialog" class="modal-overlay" @click.self="showDeleteDialog = false">
+      <div class="modal-card">
+        <h3>Supprimer le projet</h3>
+        <p>
+          Êtes-vous sûr de vouloir supprimer le projet
+          <strong>{{ deleteProjectName }}</strong> ?
+        </p>
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="deleteRemoveFiles" />
+          <span>Supprimer les fichiers du disque</span>
+        </label>
+        <p class="modal-hint">
+          {{
+            deleteRemoveFiles
+              ? "Tous les fichiers du projet seront définitivement supprimés."
+              : "Le projet sera retiré de la liste mais les fichiers resteront sur le disque."
+          }}
+        </p>
+        <p v-if="deleteError" class="error-msg">{{ deleteError }}</p>
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="showDeleteDialog = false">
+            Annuler
+          </button>
+          <button class="btn-danger" @click="confirmDelete">
+            Supprimer
+          </button>
+        </div>
+      </div>
+    </div>
+
     <section class="card">
       <h2>Projets recents</h2>
       <ul v-if="projectStore.recentProjects.length">
@@ -98,6 +159,7 @@ async function open(path: string) {
           :key="p.id"
           class="project-item"
           @click="open(p.path)"
+          @contextmenu.prevent="openDeleteDialog(p.id, p.name)"
         >
           <strong>{{ p.name }}</strong>
           <span class="meta"
@@ -217,5 +279,87 @@ select {
   padding: 8px 12px;
   background-color: rgba(239, 68, 68, 0.1);
   border-radius: var(--border-radius);
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background-color: var(--bg-primary);
+  border-radius: var(--border-radius);
+  padding: 24px;
+  max-width: 460px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal-card h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.modal-card p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+}
+
+.modal-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-cancel {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--bg-tertiary);
+  padding: 8px 16px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+}
+
+.btn-danger {
+  background-color: var(--error);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  opacity: 0.9;
 }
 </style>

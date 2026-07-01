@@ -168,7 +168,6 @@ Le [guide développeur](https://balrog57.github.io/noveltrad/developer-guide) d�
 - [ ] Agent Summarizer (cohérence long-terme)
 - [ ] Mode bilingue côte-à-côte dans l'éditeur
 - [ ] Fine-tuning local via la Translation Memory
-- [ ] Support macOS et Linux
 - [ ] File d'attente QA pour les paragraphes suspects
 
 ## 📜 Licence

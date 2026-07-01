@@ -1,6 +1,11 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { LexiconEntry, CandidateTerm } from "@shared/types/index.js";
+import type {
+  LexiconEntry,
+  CandidateTerm,
+  LexiconConflict,
+  LexiconSuggestion,
+} from "@shared/types/index.js";
 
 /**
  * Store lexique — gère les entrées lexicales, les filtres,
@@ -36,6 +41,13 @@ export const useLexiconStore = defineStore("lexicon", () => {
 
     return result;
   });
+
+  /** Résultats de détection de conflits */
+  const conflicts = ref<LexiconConflict[]>([]);
+
+  /** Résultat de suggestion IA */
+  const suggestion = ref<LexiconSuggestion | null>(null);
+  const suggestionLoading = ref(false);
 
   /** Catégories uniques déduites des entrées */
   const categories = computed(() => {
@@ -165,6 +177,53 @@ export const useLexiconStore = defineStore("lexicon", () => {
     }
   }
 
+  /** Détecte les conflits entre les entrées du lexique */
+  async function findConflicts(projectId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      conflicts.value = await window.novelTradAPI.invoke<LexiconConflict[]>(
+        "lexicon:find-conflicts",
+        { entries: entries.value },
+      );
+    } catch (err) {
+      error.value =
+        err instanceof Error
+          ? err.message
+          : "Erreur lors de la détection des conflits";
+      conflicts.value = [];
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /** Demande une suggestion de traduction IA pour un terme */
+  async function suggestTranslation(
+    term: string,
+    context: string,
+    projectId: string,
+  ): Promise<LexiconSuggestion | null> {
+    suggestionLoading.value = true;
+    error.value = null;
+    try {
+      const result = await window.novelTradAPI.invoke<LexiconSuggestion | null>(
+        "lexicon:suggest",
+        { term, context, projectId },
+      );
+      suggestion.value = result;
+      return result;
+    } catch (err) {
+      error.value =
+        err instanceof Error
+          ? err.message
+          : "Erreur lors de la suggestion IA";
+      suggestion.value = null;
+      return null;
+    } finally {
+      suggestionLoading.value = false;
+    }
+  }
+
   /** Extrait les termes candidats d'un texte source */
   async function extractCandidates(
     text: string,
@@ -195,6 +254,9 @@ export const useLexiconStore = defineStore("lexicon", () => {
     searchQuery,
     categoryFilter,
     candidates,
+    conflicts,
+    suggestion,
+    suggestionLoading,
     filteredEntries,
     categories,
     loadLexicon,
@@ -203,5 +265,7 @@ export const useLexiconStore = defineStore("lexicon", () => {
     importLexicon,
     exportLexicon,
     extractCandidates,
+    findConflicts,
+    suggestTranslation,
   };
 });

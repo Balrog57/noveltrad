@@ -1,17 +1,34 @@
 import type { Database } from "node-sqlite3-wasm";
+import zlib from "node:zlib";
 import type {
   HistorySnapshot,
   Paragraph,
   SnapshotTrigger,
+  IncrementalChange,
+  IncrementalPayload,
+  SnapshotMetadata,
 } from "@shared/types/index.js";
+
+/**
+ * Seuil de compression : si le JSON du snapshot dépasse 10 Ko,
+ * on le compresse avec zlib (SDD §14.3).
+ */
+const COMPRESSION_THRESHOLD = 10_000;
+
+/** Intervalle pour les snapshots complets : v1, v5, v10, v15... */
+const FULL_SNAPSHOT_INTERVAL = 5;
 
 export class HistoryRepository {
   constructor(private db: Database) {}
 
   /**
-   * Crée un nouveau snapshot d'historique.
-   * `paragraphs` est stocké au format JSON.
-   * `triggeredBy` et autres métadonnées sont stockés dans `metadata`.
+   * Crée un nouveau snapshot d'historique avec support hybride (SDD §14.3).
+   *
+   * - **Snapshots complets** : v1, v5, v10, v15... (tous les 5)
+   * - **Snapshots incrémentaux** : versions intermédiaires (stocke seulement
+   *   les différences depuis le dernier snapshot complet)
+   * - **Compression zlib** : si le JSON > 10 Ko, compression automatique
+   *   avec marquage `isCompressed` dans les métadonnées.
    */
   create(snapshot: {
     id: string;
@@ -23,14 +40,68 @@ export class HistoryRepository {
     paragraphs: Paragraph[];
     triggeredBy: SnapshotTrigger;
   }): void {
-    const metadata = JSON.stringify({
+    const count = this.getSnapshotCount(
+      snapshot.projectId,
+      snapshot.chapterId,
+    );
+    const newVersion = count + 1;
+    const isFull =
+      newVersion === 1 || newVersion % FULL_SNAPSHOT_INTERVAL === 0;
+
+    let paragraphsJson: string;
+    let metadataExtra: Partial<SnapshotMetadata> = {};
+
+    if (isFull) {
+      // Stockage complet : tous les paragraphes
+      paragraphsJson = JSON.stringify(snapshot.paragraphs);
+      metadataExtra = { snapshotType: "full" };
+    } else {
+      // Stockage incrémental : seulement les changements depuis le dernier complet
+      const baseSnapshot = this.getLastFullSnapshot(
+        snapshot.projectId,
+        snapshot.chapterId,
+      );
+      if (baseSnapshot) {
+        const changes = this.computeIncrementalChanges(
+          baseSnapshot.paragraphs,
+          snapshot.paragraphs,
+        );
+        const payload: IncrementalPayload = {
+          _type: "incremental",
+          baseSnapshotId: baseSnapshot.id,
+          changes,
+        };
+        paragraphsJson = JSON.stringify(payload);
+        metadataExtra = { snapshotType: "incremental", baseSnapshotId: baseSnapshot.id };
+      } else {
+        // Fallback : pas de snapshot complet trouvé, stocker en full
+        paragraphsJson = JSON.stringify(snapshot.paragraphs);
+        metadataExtra = { snapshotType: "full" };
+      }
+    }
+
+    // Compression zlib si le JSON dépasse le seuil
+    let storedData = paragraphsJson;
+    let isCompressed = false;
+    if (Buffer.byteLength(paragraphsJson, "utf-8") > COMPRESSION_THRESHOLD) {
+      storedData = zlib
+        .deflateSync(Buffer.from(paragraphsJson, "utf-8"))
+        .toString("base64");
+      isCompressed = true;
+    }
+
+    const metadataObj: SnapshotMetadata = {
       triggeredBy: snapshot.triggeredBy,
-    });
+      ...metadataExtra,
+      isCompressed,
+      versionNumber: newVersion,
+    };
+    const metadataStr = JSON.stringify(metadataObj);
 
     this.db
       .prepare(
         `INSERT INTO history_snapshots (id, project_id, chapter_id, job_id, step_id, stage, paragraphs, metadata, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run([
         snapshot.id,
@@ -39,24 +110,142 @@ export class HistoryRepository {
         snapshot.jobId ?? null,
         snapshot.stepId ?? null,
         snapshot.stage,
-        JSON.stringify(snapshot.paragraphs),
-        metadata,
+        storedData,
+        metadataStr,
         new Date().toISOString(),
       ]);
   }
 
   /**
+   * Compte le nombre de snapshots existants pour un projet/chapitre.
+   * Utilisé pour déterminer le numéro de version.
+   */
+  private getSnapshotCount(
+    projectId: string,
+    chapterId?: string,
+  ): number {
+    let row: { count: number } | undefined;
+    if (chapterId) {
+      row = this.db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM history_snapshots WHERE project_id = ? AND chapter_id = ?",
+        )
+        .get([projectId, chapterId]) as { count: number } | undefined;
+    } else {
+      row = this.db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM history_snapshots WHERE project_id = ?",
+        )
+        .get([projectId]) as { count: number } | undefined;
+    }
+    return row ? Number(row.count) : 0;
+  }
+
+  /**
+   * Récupère le dernier snapshot complet pour un projet/chapitre.
+   */
+  private getLastFullSnapshot(
+    projectId: string,
+    chapterId?: string,
+  ): HistorySnapshot | null {
+    // Cherche le dernier snapshot avec metadata contenant "snapshotType":"full"
+    // En pratique, on cherche le snapshot complet le plus récent avant la création
+    // du nouveau. On utilise une approche simple : récupérer tous les snapshots
+    // et filtrer ceux qui sont "full".
+    const rows = this.db
+      .prepare(
+        `SELECT hs.*, js.score AS step_score
+         FROM history_snapshots hs
+         LEFT JOIN job_steps js ON hs.step_id = js.id
+         WHERE hs.project_id = ?
+         ${chapterId ? "AND hs.chapter_id = ?" : ""}
+         ORDER BY hs.created_at DESC`,
+      )
+      .all(chapterId ? [projectId, chapterId] : [projectId]) as Record<
+      string,
+      unknown
+    >[];
+
+    for (const row of rows) {
+      const meta = this.parseMetadata(row.metadata);
+      const isFull =
+        meta.snapshotType === "full" ||
+        meta.snapshotType === undefined; // rétrocompatibilité
+      if (isFull) {
+        const snapshot = this.mapRow(row);
+        // Reconstruire les paragraphes si nécessaire
+        snapshot.paragraphs = this.getParagraphsFromRow(row);
+        return snapshot;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Calcule les changements incrémentaux entre deux listes de paragraphes.
+   * Ne stocke que les paragraphes modifiés.
+   */
+  private computeIncrementalChanges(
+    base: Paragraph[],
+    current: Paragraph[],
+  ): IncrementalChange[] {
+    const changes: IncrementalChange[] = [];
+    const maxIndex = Math.max(base.length, current.length);
+
+    for (let i = 0; i < maxIndex; i++) {
+      const b = base[i];
+      const c = current[i];
+
+      if (!b && c) {
+        // Paragraphe ajouté
+        changes.push({
+          index: c.indexInChapter,
+          sourceText: c.sourceText,
+          translatedText: c.translatedText,
+          status: c.status,
+        });
+      } else if (b && !c) {
+        // Paragraphe supprimé → stocker avec sourceText vide pour marquer la suppression
+        changes.push({
+          index: b.indexInChapter,
+          sourceText: "",
+          translatedText: undefined,
+          status: "pending",
+        });
+      } else if (b && c) {
+        const changed =
+          b.sourceText !== c.sourceText ||
+          b.translatedText !== c.translatedText ||
+          b.status !== c.status;
+        if (changed) {
+          changes.push({
+            index: c.indexInChapter,
+            sourceText: c.sourceText,
+            translatedText: c.translatedText,
+            status: c.status,
+          });
+        }
+      }
+    }
+
+    return changes;
+  }
+
+  // ── Méthodes de lecture ──
+
+  /**
    * Liste tous les snapshots pour un projet, triés par date décroissante.
-   * Effectue une jointure avec `job_steps` pour obtenir le score qualité.
+   * Les paragraphes ne sont PAS chargés pour la liste (optimisation).
+   * Utiliser `getFullParagraphs()` pour charger les paragraphes d'un snapshot.
    */
   listByProject(projectId: string): HistorySnapshot[] {
     const rows = this.db
       .prepare(
         `SELECT hs.*, js.score AS step_score
-       FROM history_snapshots hs
-       LEFT JOIN job_steps js ON hs.step_id = js.id
-       WHERE hs.project_id = ?
-       ORDER BY hs.created_at DESC`,
+         FROM history_snapshots hs
+         LEFT JOIN job_steps js ON hs.step_id = js.id
+         WHERE hs.project_id = ?
+         ORDER BY hs.created_at DESC`,
       )
       .all([projectId]) as Record<string, unknown>[];
     return this.mapRows(rows);
@@ -64,15 +253,16 @@ export class HistoryRepository {
 
   /**
    * Liste les snapshots pour un chapitre donné, triés par date décroissante.
+   * Les paragraphes ne sont PAS chargés pour la liste (optimisation).
    */
   listByChapter(chapterId: string): HistorySnapshot[] {
     const rows = this.db
       .prepare(
         `SELECT hs.*, js.score AS step_score
-       FROM history_snapshots hs
-       LEFT JOIN job_steps js ON hs.step_id = js.id
-       WHERE hs.chapter_id = ?
-       ORDER BY hs.created_at DESC`,
+         FROM history_snapshots hs
+         LEFT JOIN job_steps js ON hs.step_id = js.id
+         WHERE hs.chapter_id = ?
+         ORDER BY hs.created_at DESC`,
       )
       .all([chapterId]) as Record<string, unknown>[];
     return this.mapRows(rows);
@@ -80,38 +270,152 @@ export class HistoryRepository {
 
   /**
    * Récupère un snapshot par son ID.
+   * Les paragraphes sont chargés et reconstruits si nécessaire.
    */
   getById(id: string): HistorySnapshot | null {
     const row = this.db
       .prepare(
         `SELECT hs.*, js.score AS step_score
-       FROM history_snapshots hs
-       LEFT JOIN job_steps js ON hs.step_id = js.id
-       WHERE hs.id = ?`,
+         FROM history_snapshots hs
+         LEFT JOIN job_steps js ON hs.step_id = js.id
+         WHERE hs.id = ?`,
       )
       .get([id]) as Record<string, unknown> | undefined;
-    return row ? this.mapRow(row) : null;
+    if (!row) return null;
+
+    const snapshot = this.mapRow(row);
+    snapshot.paragraphs = this.getParagraphsFromRow(row);
+    return snapshot;
   }
 
   /**
-   * Récupère les paragraphes actuels les plus récents pour un chapitre,
-   * depuis le dernier snapshot.
+   * Reconstruit les paragraphes complets pour un snapshot donné.
+   * Gère la décompression et la reconstruction incrémentale.
+   */
+  getFullParagraphs(snapshotId: string): Paragraph[] {
+    const row = this.db
+      .prepare(
+        `SELECT hs.*, js.score AS step_score
+         FROM history_snapshots hs
+         LEFT JOIN job_steps js ON hs.step_id = js.id
+         WHERE hs.id = ?`,
+      )
+      .get([snapshotId]) as Record<string, unknown> | undefined;
+    if (!row) return [];
+    return this.getParagraphsFromRow(row);
+  }
+
+  /**
+   * Récupère les paragraphes actuels les plus récents pour un chapitre.
    */
   getLatest(chapterId: string): HistorySnapshot | null {
     const row = this.db
       .prepare(
         `SELECT hs.*, js.score AS step_score
-       FROM history_snapshots hs
-       LEFT JOIN job_steps js ON hs.step_id = js.id
-       WHERE hs.chapter_id = ?
-       ORDER BY hs.created_at DESC
-       LIMIT 1`,
+         FROM history_snapshots hs
+         LEFT JOIN job_steps js ON hs.step_id = js.id
+         WHERE hs.chapter_id = ?
+         ORDER BY hs.created_at DESC
+         LIMIT 1`,
       )
       .get([chapterId]) as Record<string, unknown> | undefined;
-    return row ? this.mapRow(row) : null;
+    if (!row) return null;
+
+    const snapshot = this.mapRow(row);
+    snapshot.paragraphs = this.getParagraphsFromRow(row);
+    return snapshot;
   }
 
-  // ── Helpers privés ──
+  // ── Helpers de reconstruction ──
+
+  /**
+   * Extrait et décompresse les données de la colonne `paragraphs`.
+   * Si le snapshot est incrémental, charge le snapshot de base et applique les changements.
+   */
+  private getParagraphsFromRow(
+    row: Record<string, unknown>,
+  ): Paragraph[] {
+    const meta = this.parseMetadata(row.metadata);
+    const rawData = String(row.paragraphs);
+    if (!rawData) return [];
+
+    // Décompresser si nécessaire
+    const jsonStr = meta.isCompressed
+      ? zlib.inflateSync(Buffer.from(rawData, "base64")).toString("utf-8")
+      : rawData;
+
+    // Vérifier si c'est un snapshot complet ou incrémental
+    if (meta.snapshotType === "incremental" || meta.baseSnapshotId) {
+      // Format incrémental
+      try {
+        const payload = JSON.parse(jsonStr) as IncrementalPayload;
+        if (payload._type === "incremental" && payload.baseSnapshotId) {
+          return this.applyIncrementalChanges(payload);
+        }
+      } catch {
+        // Fallback : essayer de parser comme tableau
+      }
+    }
+
+    // Format complet (ou fallback)
+    try {
+      return JSON.parse(jsonStr) as Paragraph[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Applique les changements incrémentaux sur le snapshot de base.
+   */
+  private applyIncrementalChanges(payload: IncrementalPayload): Paragraph[] {
+    const baseSnapshot = this.getById(payload.baseSnapshotId);
+    if (!baseSnapshot) {
+      // Snapshot de base introuvable, on ne peut pas reconstruire
+      return [];
+    }
+
+    const baseParagraphs = baseSnapshot.paragraphs;
+    const result = [...baseParagraphs];
+
+    for (const change of payload.changes) {
+      const existingIdx = result.findIndex(
+        (p) => p.indexInChapter === change.index,
+      );
+
+      if (change.sourceText === "") {
+        // Suppression
+        if (existingIdx >= 0) {
+          result.splice(existingIdx, 1);
+        }
+      } else if (existingIdx >= 0) {
+        // Mise à jour
+        result[existingIdx] = {
+          ...result[existingIdx],
+          sourceText: change.sourceText,
+          translatedText: change.translatedText,
+          status: change.status,
+        };
+      } else {
+        // Ajout
+        const baseId = `reconstructed-${payload.baseSnapshotId}-${change.index}`;
+        result.push({
+          id: baseId,
+          chapterId: baseSnapshot.chapterId ?? "",
+          indexInChapter: change.index,
+          sourceText: change.sourceText,
+          translatedText: change.translatedText,
+          status: change.status,
+        });
+      }
+    }
+
+    // Trier par indexInChapter
+    result.sort((a, b) => a.indexInChapter - b.indexInChapter);
+    return result;
+  }
+
+  // ── Helpers de mapping ──
 
   private mapRows(rows: Record<string, unknown>[]): HistorySnapshot[] {
     const total = rows.length;
@@ -122,31 +426,29 @@ export class HistoryRepository {
     row: Record<string, unknown>,
     versionNumber?: number,
   ): HistorySnapshot {
-    let metadata: Record<string, unknown> = {};
-    const rowMetadata = row.metadata;
-    if (rowMetadata) {
-      try {
-        metadata = JSON.parse(String(rowMetadata)) as Record<string, unknown>;
-      } catch {
-        metadata = {};
-      }
-    }
-
-    let paragraphs: Paragraph[] = [];
-    try {
-      paragraphs = JSON.parse(String(row.paragraphs)) as Paragraph[];
-    } catch {
-      paragraphs = [];
-    }
+    const meta = this.parseMetadata(row.metadata);
 
     const triggeredBy: SnapshotTrigger =
-      metadata.triggeredBy === "manual" ||
-      metadata.triggeredBy === "rollback" ||
-      metadata.triggeredBy === "workflow"
-        ? (metadata.triggeredBy as SnapshotTrigger)
+      meta.triggeredBy === "manual" ||
+      meta.triggeredBy === "rollback" ||
+      meta.triggeredBy === "workflow"
+        ? (meta.triggeredBy as SnapshotTrigger)
         : "workflow";
 
     const stepScore = row.step_score;
+
+    // Pour les listes, on ne charge pas les paragraphes (optimisation)
+    // Les paragraphes sont vides par défaut, le store les charge via getFullParagraphs
+    let paragraphs: Paragraph[] = [];
+    // Si le snapshot est complet ET non compressé ET qu'on est pas en mode liste,
+    // on charge les paragraphes. Pour les listes bulk, on skip.
+    // (détecté par l'absence de versionNumber passé)
+    if (versionNumber === undefined && meta.snapshotType !== "incremental") {
+      paragraphs = this.getParagraphsFromRow(row);
+    }
+
+    const vNumber =
+      meta.versionNumber ?? versionNumber;
 
     return {
       id: String(row.id),
@@ -159,7 +461,20 @@ export class HistoryRepository {
       qualityScore: stepScore != null ? Number(stepScore) : undefined,
       triggeredBy,
       createdAt: String(row.created_at),
-      versionNumber,
+      versionNumber: vNumber,
     };
+  }
+
+  private parseMetadata(
+    rowMetadata: unknown,
+  ): SnapshotMetadata {
+    if (!rowMetadata) {
+      return { triggeredBy: "workflow" };
+    }
+    try {
+      return JSON.parse(String(rowMetadata)) as SnapshotMetadata;
+    } catch {
+      return { triggeredBy: "workflow" };
+    }
   }
 }

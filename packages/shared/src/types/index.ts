@@ -217,6 +217,12 @@ export interface AppSettings {
   theme: "dark" | "light" | "system";
   updateChannel: "latest" | "beta" | "alpha";
   ragEnabled: boolean;
+  /** SDD §7.9 : concurrence des jobs batch (défaut 1 pour Ollama local) */
+  maxConcurrentJobs: number;
+  /** SDD §12.5 : seuil de qualité minimum (défaut 70) */
+  qualityThreshold: number;
+  /** SDD §11.4 : tolérances de cohérence par paire de langues */
+  consistencyTolerances: Record<string, ConsistencyTolerance>;
 }
 
 export interface CreateProjectPayload {
@@ -297,4 +303,131 @@ export interface ParagraphChange {
   sourceAfter?: string;
   targetBefore?: string;
   targetAfter?: string;
+}
+
+// ── Phase D : Qualité avancée (SDD §12.5, §12.6, §11.4) ──
+
+/** SDD §12.5 : Calibration d'un modèle sur une dimension de qualité */
+export interface ModelCalibration {
+  model: string;
+  dimension: string;
+  slope: number;
+  offset: number;
+  sampleCount: number;
+  updatedAt: string;
+}
+
+/** SDD §12.6 : Rapport de détection d'hallucination */
+export interface HallucinationReport {
+  /** Score d'hallucination (0 = beaucoup d'hallucinations, 100 = aucune) */
+  score: number;
+  /** Entités nommées présentes dans la cible mais absentes du source (potentiellement inventées) */
+  inventedEntities: string[];
+  /** Nombres de chapitres/personnages mentionnés dans la cible sans être dans le source */
+  suspiciousReferences: string[];
+  /** Avertissements détaillés */
+  warnings: string[];
+}
+
+/** SDD §11.4 : Tolérances de cohérence configurables par paire de langues */
+export interface ConsistencyTolerance {
+  /** Ratio minimal du nombre de phrases (cible/source) */
+  sentenceRatioMin: number;
+  /** Ratio maximal du nombre de phrases (cible/source) */
+  sentenceRatioMax: number;
+  /** Ratio minimal de longueur (cible/source) */
+  lengthRatioMin: number;
+  /** Ratio maximal de longueur (cible/source) */
+  lengthRatioMax: number;
+  /** Ignorer les nombres dans les dialogues pour le calcul de cohérence */
+  ignoreNumbersInDialogues: boolean;
+  /** Ignorer les différences de ponctuation */
+  ignorePunctuationMismatch: boolean;
+}
+
+/** Paire de langues au format "source-cible" (ex: "zh-fr", "ja-fr", "en-fr") */
+export type LanguagePair = string;
+
+// ── Phase F : Gestion de projets avancée (SDD §5.8, §5.10, §5.11) ──
+
+/** Options de re-synchronisation source (SDD §5.8) */
+export type RefreshStrategy = "replace" | "merge" | "new-version";
+
+/** Informations de doublon détecté (SDD §5.10) */
+export interface DuplicateInfo {
+  /** ID du chapitre existant en conflit */
+  existingChapterId: string;
+  /** Titre du chapitre existant */
+  existingTitle: string;
+  /** Type de doublon détecté */
+  type: "title" | "sha256" | "both";
+  /** Hash SHA256 du fichier en cours d'import */
+  fileHash: string;
+  /** Hash SHA256 du fichier existant (si applicable) */
+  existingHash?: string;
+}
+
+/** Map des tolérances par paire de langues */
+export type ConsistencyTolerances = Record<LanguagePair, ConsistencyTolerance>;
+
+// ── Phase E : Historique avancé (SDD §14.3, §14.5, §14.6) ──
+
+/** Type de snapshot hybride : complet ou incrémental */
+export type SnapshotStorageType = "full" | "incremental";
+
+/** Métadonnées de snapshot enrichies (SDD §14.3) */
+export interface SnapshotMetadata {
+  triggeredBy: SnapshotTrigger;
+  snapshotType?: SnapshotStorageType;
+  isCompressed?: boolean;
+  baseSnapshotId?: string;
+  /** Numéro de version pour décider du type de snapshot */
+  versionNumber?: number;
+}
+
+/** Changement incrémental entre deux snapshots */
+export interface IncrementalChange {
+  index: number;
+  sourceText: string;
+  translatedText?: string;
+  status: Paragraph["status"];
+}
+
+/** Payload stocké dans la colonne paragraphs pour un snapshot incrémental */
+export interface IncrementalPayload {
+  _type: "incremental";
+  baseSnapshotId: string;
+  changes: IncrementalChange[];
+}
+
+// ── Phase H : Lexique avancé (SDD §10.9, §10.10) ──
+
+/** Type de conflit lexical */
+export type LexiconConflictType = "duplicate_term" | "overlap";
+
+/** Conflit détecté entre deux entrées lexicales */
+export interface LexiconConflict {
+  type: LexiconConflictType;
+  entryA: LexiconEntry;
+  entryB: LexiconEntry;
+  description: string;
+  normalized?: string;
+}
+
+/** Suggestion IA pour un terme inconnu */
+export interface LexiconSuggestion {
+  translation: string;
+  category: string;
+  explanation: string;
+}
+
+/** Entrée du journal d'audit (SDD §14.6) */
+export interface AuditEntry {
+  id: string;
+  projectId?: string;
+  action: string;
+  entityType?: string;
+  entityId?: string;
+  details?: Record<string, unknown>;
+  createdAt: string;
 }

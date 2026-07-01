@@ -4,7 +4,7 @@ import { SettingsManager } from "../../managers/SettingsManager.js";
 import { createProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { JobRepository } from "../../db/repositories/JobRepository.js";
-import type { WorkflowStage } from "@shared/types/index.js";
+import type { Job, WorkflowStage } from "@shared/types/index.js";
 
 const settings = new SettingsManager();
 
@@ -69,4 +69,24 @@ export function registerWorkflowHandlers(): void {
     db.close();
     return jobs;
   });
+
+  // SDD §7.11 : liste les jobs en cours (running/paused) pour la reprise au démarrage
+  ipcMain.handle(
+    "workflow:list-active",
+    async (_event, projectPath: string) => {
+      const db = createProjectDatabase(projectPath);
+      const jobs = new JobRepository(db).listActive();
+      db.close();
+      return jobs;
+    },
+  );
+
+  // SDD §7.11 : reprend un job batch interrompu au dernier chapitre non terminé
+  ipcMain.handle(
+    "workflow:resume-batch",
+    async (_event, projectPath: string, job: Job) => {
+      await workflowEngine.resumeBatch(projectPath, job);
+      return { ok: true };
+    },
+  );
 }

@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 
 import type {
   CreateProjectPayload,
   Project,
   Chapter,
+  RefreshStrategy,
+  DuplicateInfo,
 } from "@shared/types/index.js";
 import type { SettingsManager } from "./SettingsManager.js";
 import { createProjectDatabase, runMigrations } from "../db/connection.js";
@@ -162,6 +165,362 @@ export class ProjectManager {
     this.settings.set("recentProjects", nextRecent);
   }
 
+  /**
+   * Re-synchronise un chapitre depuis son fichier source original (SDD §5.8).
+   * Compare les hashes SHA256 du fichier source stocké et du fichier original.
+   * @param strategy "replace" (écraser) | "merge" (ajouter nouveaux) | "new-version" (créer nouveau chapitre)
+   */
+  async refreshSource(
+    projectId: string,
+    chapterId: string,
+    strategy: RefreshStrategy = "replace",
+  ): Promise<Chapter> {
+    const projectPath = this.resolveProjectPath(projectId);
+    const sourceFilePath = path.join(projectPath, "source", `${chapterId}.md`);
+
+    // Lire le chapitre depuis la DB
+    const db = createProjectDatabase(projectPath);
+    runMigrations(db, migrationsDir);
+    let chapter: Chapter | undefined;
+    let chapterMetadata: Record<string, unknown> = {};
+    try {
+      const row = db
+        .prepare("SELECT * FROM chapters WHERE id = ? AND project_id = ?")
+        .get([chapterId, projectId]) as Record<string, unknown> | undefined;
+      if (!row) {
+        throw new Error(`Chapitre non trouvé : ${chapterId}`);
+      }
+      chapter = {
+        id: String(row.id),
+        projectId: String(row.project_id),
+        title: row.title ? String(row.title) : undefined,
+        sourcePath: row.source_path ? String(row.source_path) : undefined,
+        orderIndex: Number(row.order_index),
+        status: String(row.status) as Chapter["status"],
+        createdAt: String(row.created_at),
+        updatedAt: String(row.updated_at),
+      };
+      // Lire les métadonnées du chapitre (originalFileHash, etc.)
+      if (row.metadata) {
+        try {
+          chapterMetadata = JSON.parse(String(row.metadata)) as Record<
+            string,
+            unknown
+          >;
+        } catch {
+          chapterMetadata = {};
+        }
+      }
+    } finally {
+      db.close();
+    }
+
+    // Vérifier que le fichier source existe toujours
+    if (!fs.existsSync(sourceFilePath)) {
+      throw new Error(
+        `Fichier source introuvable : ${sourceFilePath}. Le chapitre a peut-être été supprimé.`,
+      );
+    }
+
+    // Vérifier si le fichier source original existe encore
+    const originalFilePath = chapter.sourcePath;
+    if (!originalFilePath || !fs.existsSync(originalFilePath)) {
+      throw new Error(
+        "Fichier source original introuvable. Veuillez ré-importer le fichier.",
+      );
+    }
+
+    // Étape 1 : Comparer le hash du fichier original complet (binaire)
+    // Si identique au hash stocké, le fichier n'a pas changé → aucun rafraîchissement nécessaire
+    const originalFileHash =
+      (chapterMetadata.originalFileHash as string | undefined) ?? "";
+    if (originalFileHash) {
+      const currentOriginalHash = crypto
+        .createHash("sha256")
+        .update(fs.readFileSync(originalFilePath))
+        .digest("hex");
+
+      if (currentOriginalHash === originalFileHash) {
+        // Le fichier source original n'a pas changé
+        return chapter;
+      }
+    }
+
+    // Étape 2 : Le fichier original a changé → ré-extraire et re-découper
+    const ext = path.extname(originalFilePath).toLowerCase();
+    let fullContent: string;
+    try {
+      switch (ext) {
+        case ".docx":
+          fullContent = await this.extractDocx(originalFilePath);
+          break;
+        case ".epub":
+          fullContent = await this.extractEpub(originalFilePath);
+          break;
+        default:
+          fullContent = this.extractPlainText(originalFilePath);
+          break;
+      }
+    } catch {
+      throw new Error(
+        "Impossible de lire le fichier source original. Veuillez vérifier le fichier.",
+      );
+    }
+
+    // Re-découper en chapitres
+    const chapterTexts = this.splitIntoChapters(fullContent, projectPath);
+
+    // Trouver le chapitre correspondant par orderIndex
+    const chapterIndex = chapter.orderIndex;
+    const chapterTextIndex = chapterIndex < chapterTexts.length ? chapterIndex : 0;
+    const newChapterContent = chapterTexts[chapterTextIndex] ?? "";
+
+    // Lire le contenu actuel du chapitre
+    const currentContent = fs.readFileSync(sourceFilePath, "utf-8");
+    const currentHash = crypto
+      .createHash("sha256")
+      .update(currentContent, "utf-8")
+      .digest("hex");
+
+    const newChapterHash = crypto
+      .createHash("sha256")
+      .update(newChapterContent, "utf-8")
+      .digest("hex");
+
+    // Si le contenu de ce chapitre n'a pas changé, retourner tel quel
+    if (currentHash === newChapterHash) {
+      return chapter;
+    }
+
+    // Le nouveau hash du fichier original sera mis à jour dans metadata après l'écriture
+    const updatedOriginalHash = crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(originalFilePath))
+      .digest("hex");
+
+    // Appliquer la stratégie avec le contenu du chapitre spécifique
+    switch (strategy) {
+      case "new-version": {
+        // Créer un nouveau chapitre distinct (importSource re-découpe correctement)
+        const newChapters = await this.importSource(projectId, originalFilePath);
+        return newChapters[0]!;
+      }
+      case "merge": {
+        // Ajouter uniquement les nouveaux paragraphes (non présents dans l'actuel)
+        const currentParagraphs = currentContent
+          .split(/\n\n+/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+        const newParagraphs = newChapterContent
+          .split(/\n\n+/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+        const merged = [...currentParagraphs];
+        for (const np of newParagraphs) {
+          if (!currentParagraphs.includes(np)) {
+            merged.push(np);
+          }
+        }
+
+        const mergedContent = merged.join("\n\n");
+        fs.writeFileSync(sourceFilePath, mergedContent, "utf-8");
+
+        // Mettre à jour les paragraphes dans la DB
+        const db2 = createProjectDatabase(projectPath);
+        runMigrations(db2, migrationsDir);
+        try {
+          db2.exec("BEGIN TRANSACTION");
+          const deleteParas = db2.prepare(
+            "DELETE FROM paragraphs WHERE chapter_id = ?",
+          );
+          deleteParas.run([chapterId]);
+
+          const insertPara = db2.prepare(`
+            INSERT INTO paragraphs (id, chapter_id, index_in_chapter, source_text, translated_text, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `);
+          for (let i = 0; i < merged.length; i++) {
+            insertPara.run([
+              crypto.randomUUID(),
+              chapterId,
+              i + 1,
+              merged[i]!,
+              null,
+              "pending",
+            ]);
+          }
+          db2.exec("COMMIT");
+
+          // Mettre à jour la metadata avec le nouveau sourceHash et originalFileHash
+          const newSourceHash = crypto
+            .createHash("sha256")
+            .update(mergedContent, "utf-8")
+            .digest("hex");
+          chapterMetadata.originalFileHash = updatedOriginalHash;
+          chapterMetadata.sourceHash = newSourceHash;
+          db2.prepare("UPDATE chapters SET metadata = ? WHERE id = ?").run([
+            JSON.stringify(chapterMetadata),
+            chapterId,
+          ]);
+        } catch (err) {
+          db2.exec("ROLLBACK");
+          db2.close();
+          throw err;
+        }
+        db2.close();
+
+        chapter.status = "pending";
+        chapter.updatedAt = new Date().toISOString();
+        return chapter;
+      }
+      default: {
+        // "replace" — écraser le contenu
+        fs.writeFileSync(sourceFilePath, newChapterContent, "utf-8");
+
+        // Mettre à jour les paragraphes dans la DB
+        const db2 = createProjectDatabase(projectPath);
+        runMigrations(db2, migrationsDir);
+        try {
+          db2.exec("BEGIN TRANSACTION");
+          const deleteParas = db2.prepare(
+            "DELETE FROM paragraphs WHERE chapter_id = ?",
+          );
+          deleteParas.run([chapterId]);
+
+          const newParagraphs = newChapterContent
+            .split(/\n\n+/)
+            .map((t) => t.trim())
+            .filter(Boolean);
+
+          const insertPara = db2.prepare(`
+            INSERT INTO paragraphs (id, chapter_id, index_in_chapter, source_text, translated_text, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `);
+          for (let i = 0; i < newParagraphs.length; i++) {
+            insertPara.run([
+              crypto.randomUUID(),
+              chapterId,
+              i + 1,
+              newParagraphs[i]!,
+              null,
+              "pending",
+            ]);
+          }
+          db2.exec("COMMIT");
+
+          // Mettre à jour la metadata avec le nouveau sourceHash et originalFileHash
+          const newSourceHash = crypto
+            .createHash("sha256")
+            .update(newChapterContent, "utf-8")
+            .digest("hex");
+          chapterMetadata.originalFileHash = updatedOriginalHash;
+          chapterMetadata.sourceHash = newSourceHash;
+          db2.prepare("UPDATE chapters SET metadata = ? WHERE id = ?").run([
+            JSON.stringify(chapterMetadata),
+            chapterId,
+          ]);
+        } catch (err) {
+          db2.exec("ROLLBACK");
+          db2.close();
+          throw err;
+        }
+        db2.close();
+
+        chapter.status = "pending";
+        chapter.updatedAt = new Date().toISOString();
+        return chapter;
+      }
+    }
+  }
+
+  /**
+   * Détecte les doublons lors de l'import d'un fichier source (SDD §5.10).
+   * Vérifie : même titre OU même hash SHA256.
+   * @returns DuplicateInfo si un doublon est détecté, null sinon.
+   */
+  detectDuplicate(projectId: string, filePath: string): DuplicateInfo | null {
+    const projectPath = this.resolveProjectPath(projectId);
+
+    // Lire le fichier à importer
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Fichier introuvable : ${filePath}`);
+    }
+
+    const buffer = fs.readFileSync(filePath);
+    const fileHash = crypto
+      .createHash("sha256")
+      .update(buffer)
+      .digest("hex");
+
+    const fileName = path.basename(filePath, path.extname(filePath));
+
+    // Lister les chapitres existants (inclure metadata pour originalFileHash)
+    const db = createProjectDatabase(projectPath);
+    let rows: Record<string, unknown>[];
+    try {
+      rows = db
+        .prepare(
+          "SELECT id, title, metadata FROM chapters WHERE project_id = ? ORDER BY order_index",
+        )
+        .all([projectId]) as Record<string, unknown>[];
+    } finally {
+      db.close();
+    }
+
+    for (const row of rows) {
+      const existingId = String(row.id);
+      const existingTitle = row.title ? String(row.title) : existingId;
+
+      let matchTitle = false;
+      let matchHash = false;
+
+      // 1. Même titre (insensible à la casse)
+      if (
+        existingTitle.toLowerCase() === fileName.toLowerCase() ||
+        existingTitle.toLowerCase().startsWith(fileName.toLowerCase())
+      ) {
+        matchTitle = true;
+      }
+
+      // 2. Même hash SHA256 — comparer contre le hash du fichier original stocké
+      //    dans chapter.metadata.originalFileHash (pas le hash du .md normalisé,
+      //    car pour DOCX/EPUB les hash binaires ne matchent jamais les .md textuels)
+      if (row.metadata) {
+        try {
+          const meta = JSON.parse(String(row.metadata)) as Record<
+            string,
+            unknown
+          >;
+          const storedHash = meta.originalFileHash as string | undefined;
+          if (storedHash && storedHash === fileHash) {
+            matchHash = true;
+          }
+        } catch {
+          // metadata JSON invalide — ignorer la comparaison par hash
+        }
+      }
+
+      if (matchTitle || matchHash) {
+        const type: "title" | "sha256" | "both" = matchTitle
+          ? matchHash
+            ? "both"
+            : "title"
+          : "sha256";
+
+        return {
+          existingChapterId: existingId,
+          existingTitle,
+          type,
+          fileHash,
+          existingHash: matchHash ? fileHash : undefined,
+        };
+      }
+    }
+
+    return null;
+  }
+
   async importSource(projectId: string, filePath: string): Promise<Chapter[]> {
     const projectPath = this.resolveProjectPath(projectId);
 
@@ -213,6 +572,12 @@ export class ProjectManager {
 
     const createdChapters: Chapter[] = [];
 
+    // Calculer le hash SHA256 du fichier original (pour detectDuplicate et refreshSource)
+    const originalFileHash = crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(filePath))
+      .digest("hex");
+
     db.exec("BEGIN TRANSACTION");
     try {
       for (const chapterText of chapterTexts) {
@@ -229,8 +594,16 @@ export class ProjectManager {
         "utf-8",
       );
 
-      // Métadonnées de détection de langue
-      const metadata: Record<string, unknown> = {};
+      // Métadonnées du chapitre : langue détectée + hash du fichier original (SDD §5.8, §5.10)
+      const sourceHash = crypto
+        .createHash("sha256")
+        .update(chapterText, "utf-8")
+        .digest("hex");
+
+      const metadata: Record<string, unknown> = {
+        originalFileHash,
+        sourceHash,
+      };
       if (detectedLanguage) {
         metadata.detectedLanguage = detectedLanguage.code;
         metadata.detectedLanguageName = detectedLanguage.name;
@@ -240,8 +613,8 @@ export class ProjectManager {
       // Créer le chapitre dans la DB
       db.prepare(
         `
-        INSERT INTO chapters (id, project_id, title, source_path, order_index, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO chapters (id, project_id, title, source_path, order_index, status, created_at, updated_at, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       ).run([
         chapterId,
@@ -252,6 +625,7 @@ export class ProjectManager {
         "pending",
         new Date().toISOString(),
         new Date().toISOString(),
+        JSON.stringify(metadata),
       ]);
 
       // Découper en paragraphes

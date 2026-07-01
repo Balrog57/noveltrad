@@ -13,6 +13,8 @@ const props = defineProps<{
   visible: boolean;
   /** ID du chapitre à exporter (null = tout le projet) */
   chapterId?: string | null;
+  /** SDD §13.6 : IDs des chapitres sélectionnés pour l'export par lots */
+  selectedChapterIds?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +34,9 @@ const outputFolder = ref("");
 const includeTitle = ref(true);
 const includeParagraphNumbers = ref(false);
 
+// --- SDD §13.6 : Export par lots ---
+const exportScope = ref<"chapter" | "selection" | "all">("chapter");
+
 // --- État de l'export ---
 const exporting = ref(false);
 const exportProgress = ref(-1); // -1 = indeterminé
@@ -49,9 +54,17 @@ const projectTitle = computed(
   () => projectStore.currentProject?.name ?? "Export",
 );
 
+/** SDD §13.6 : indique si l'option d'export par sélection doit être affichée */
+const hasSelection = computed(
+  () => (props.selectedChapterIds?.length ?? 0) > 0,
+);
+
+/** SDD §13.6 : affiche les options de périmètre si on a un chapterId ou une sélection */
+const showBatchOption = computed(() => props.chapterId || hasSelection.value);
+
 /** Titre de l'export */
 const exportTitle = computed(() => {
-  if (props.chapterId) {
+  if (props.chapterId && exportScope.value === "chapter") {
     const ch = projectStore.chapters.find((c) => c.id === props.chapterId);
     return ch?.title ?? "Chapitre sans titre";
   }
@@ -137,9 +150,20 @@ async function doExport(): Promise<void> {
       return;
     }
 
-    // Récupérer les paragraphes
+    // Récupérer les paragraphes selon le périmètre d'export
     let paragraphs: Paragraph[];
-    if (props.chapterId) {
+    let batchChapterIds: string[] | null = null;
+
+    if (exportScope.value === "selection" && hasSelection.value) {
+      // SDD §13.6 : export par lots de la sélection
+      batchChapterIds = props.selectedChapterIds ?? [];
+      const all: Paragraph[] = [];
+      for (const chId of batchChapterIds) {
+        const chParagraphs = await loadParagraphsForChapter(chId);
+        all.push(...chParagraphs);
+      }
+      paragraphs = all;
+    } else if (props.chapterId && exportScope.value === "chapter") {
       // Utiliser les paragraphes du store éditeur si disponibles
       if (
         editorStore.chapterId === props.chapterId &&
@@ -166,39 +190,72 @@ async function doExport(): Promise<void> {
 
     exportProgress.value = 50; // Simulation de progression
 
-    const result = await window.novelTradAPI.invoke<ExportRunResult>(
-      "export:run",
-      {
+    // SDD §13.6 : si export par lots (sélection), utiliser exportBatch
+    if (batchChapterIds && batchChapterIds.length > 0) {
+      const result = await window.novelTradAPI.invoke<{
+        success: boolean;
+        paths?: string[];
+        error?: { code: string; message: string };
+      }>("export:batch", {
         projectId,
-        chapterId: props.chapterId ?? undefined,
-        title: exportTitle.value,
+        projectTitle: projectTitle.value,
         author: author.value ?? undefined,
-        paragraphs,
+        chapterIds: batchChapterIds,
         format: selectedFormat.value,
-        outputPath: outputPath.value,
+        outputDir: outputFolder.value,
         options: {
           includeTitle: includeTitle.value,
           includeParagraphNumbers: includeParagraphNumbers.value,
           bilingual: bilingualMode.value,
         },
-      },
-    );
+      });
 
-    exportProgress.value = 100;
+      exportProgress.value = 100;
 
-    if (result.success) {
-      toast.value = {
-        message: `Export réussi : ${result.path} (${formatSize(result.size ?? 0)})`,
-        type: "success",
-      };
-      emit("exported");
-      // Fermer après un court délai pour laisser le toast s'afficher
-      setTimeout(() => emit("close"), 800);
+      if (result.success && result.paths) {
+        toast.value = {
+          message: `Export par lots réussi : ${result.paths.length} fichier(s) généré(s) dans ${outputFolder.value}`,
+          type: "success",
+        };
+        emit("exported");
+        setTimeout(() => emit("close"), 800);
+      } else if (result.error) {
+        toast.value = { message: result.error.message, type: "error" };
+      }
     } else {
-      toast.value = {
-        message: result.error.message,
-        type: "error",
-      };
+      const result = await window.novelTradAPI.invoke<ExportRunResult>(
+        "export:run",
+        {
+          projectId,
+          chapterId: props.chapterId ?? undefined,
+          title: exportTitle.value,
+          author: author.value ?? undefined,
+          paragraphs,
+          format: selectedFormat.value,
+          outputPath: outputPath.value,
+          options: {
+            includeTitle: includeTitle.value,
+            includeParagraphNumbers: includeParagraphNumbers.value,
+            bilingual: bilingualMode.value,
+          },
+        },
+      );
+
+      exportProgress.value = 100;
+
+      if (result.success) {
+        toast.value = {
+          message: `Export réussi : ${result.path} (${formatSize(result.size ?? 0)})`,
+          type: "success",
+        };
+        emit("exported");
+        setTimeout(() => emit("close"), 800);
+      } else {
+        toast.value = {
+          message: result.error.message,
+          type: "error",
+        };
+      }
     }
   } catch (err) {
     const message =
@@ -255,6 +312,40 @@ function clearToast(): void {
             :disabled="exporting"
           />
           <span>Mode bilingue (source + traduction)</span>
+        </label>
+      </div>
+
+      <!-- SDD §13.6 : Export par lots (sélection) -->
+      <div v-if="showBatchOption" class="form-group">
+        <label class="form-label">Périmètre d'export</label>
+        <label class="form-checkbox">
+          <input
+            v-model="exportScope"
+            type="radio"
+            value="chapter"
+            :disabled="exporting"
+          />
+          <span>Chapitre courant uniquement</span>
+        </label>
+        <label class="form-checkbox">
+          <input
+            v-model="exportScope"
+            type="radio"
+            value="selection"
+            :disabled="exporting || !hasSelection"
+          />
+          <span>
+            Sélection ({{ selectedChapterIds?.length ?? 0 }} chapitre(s))
+          </span>
+        </label>
+        <label class="form-checkbox">
+          <input
+            v-model="exportScope"
+            type="radio"
+            value="all"
+            :disabled="exporting"
+          />
+          <span>Tous les chapitres</span>
         </label>
       </div>
 

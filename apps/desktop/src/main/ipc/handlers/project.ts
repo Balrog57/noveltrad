@@ -2,6 +2,7 @@ import { ipcMain, dialog } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { z } from "zod";
+import type { DuplicateInfo, RefreshStrategy } from "@shared/types/index.js";
 import { ProjectManager } from "../../managers/ProjectManager.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import { createProjectDatabase } from "../../db/connection.js";
@@ -206,6 +207,41 @@ export function registerProjectHandlers(): void {
       } finally {
         db.close();
       }
+    },
+  );
+
+  /**
+   * Re-synchronise un chapitre depuis son fichier source (SDD §5.8).
+   * Compare les hashes SHA256 et applique la stratégie choisie.
+   */
+  const refreshSourceSchema = z.object({
+    projectId: z.string().uuid(),
+    chapterId: z.string().uuid(),
+    strategy: z.enum(["replace", "merge", "new-version"]).optional().default("replace"),
+  });
+
+  ipcMain.handle(
+    "project:refresh-source",
+    async (_event, payload: { projectId: string; chapterId: string; strategy?: RefreshStrategy }) => {
+      const parsed = refreshSourceSchema.parse(payload);
+      return projectManager.refreshSource(parsed.projectId, parsed.chapterId, parsed.strategy);
+    },
+  );
+
+  /**
+   * Détecte les doublons avant import (SDD §5.10).
+   * Vérifie le titre et le hash SHA256.
+   */
+  const detectDuplicateSchema = z.object({
+    projectId: z.string().uuid(),
+    filePath: z.string().min(1),
+  });
+
+  ipcMain.handle(
+    "project:detect-duplicate",
+    async (_event, payload: { projectId: string; filePath: string }) => {
+      const parsed = detectDuplicateSchema.parse(payload);
+      return projectManager.detectDuplicate(parsed.projectId, parsed.filePath) as DuplicateInfo | null;
     },
   );
 

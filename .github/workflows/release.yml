@@ -72,6 +72,32 @@ jobs:
         run: npx electron-builder --publish always
         working-directory: apps/desktop
 
+      - name: Generate latest.json
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          INSTALLER=$(ls apps/desktop/dist/*.exe 2>/dev/null | head -1)
+          if [ -z "$INSTALLER" ]; then
+            echo "⚠️ No installer found, skipping latest.json generation"
+            exit 0
+          fi
+          npx tsx scripts/generate-latest-json.ts \
+            --version "$VERSION" \
+            --installer "$INSTALLER" \
+            --output "apps/desktop/dist/latest.json" \
+            --channel "${{ steps.channel.outputs.channel }}"
+
+      - name: Upload latest.json to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if [ -f "apps/desktop/dist/latest.json" ]; then
+            gh release upload "${{ github.ref_name }}" "apps/desktop/dist/latest.json" --clobber
+            echo "✅ latest.json uploaded to release ${{ github.ref_name }}"
+          fi
+
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
@@ -80,3 +106,4 @@ jobs:
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.exe.blockmap
             apps/desktop/dist/latest*.yml
+            apps/desktop/dist/latest.json

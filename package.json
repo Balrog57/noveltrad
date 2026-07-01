@@ -14,7 +14,8 @@
     "test": "npm run test --workspace=apps/desktop",
     "test:coverage": "npm run test:coverage --workspace=apps/desktop",
     "test:e2e": "npm run test:e2e --workspace=apps/desktop",
-    "lint": "npm run lint --workspace=apps/desktop"
+    "lint": "npm run lint --workspace=apps/desktop",
+    "generate-latest-json": "npx tsx scripts/generate-latest-json.ts"
   },
   "workspaces": [
     "apps/*",

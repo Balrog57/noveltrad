@@ -2,8 +2,12 @@ import type {
   LexiconEntry,
   LexiconApplyResult,
   Substitution,
+  LexiconConflict,
+  LexiconSuggestion,
+  ChatMessage,
 } from "@shared/types/index.js";
 import type { CandidateTerm } from "@shared/types/index.js";
+import type { AiRouter } from "./AiRouter.js";
 
 export class LexiconEngine {
   private entries: Map<string, LexiconEntry> = new Map();
@@ -214,6 +218,149 @@ export class LexiconEngine {
       return `"${value.replace(/"/g, '""')}"`;
     }
     return value;
+  }
+
+  /**
+   * Normalise un terme pour la détection de conflits.
+   * Minuscules, remplacement des séparateurs par des espaces,
+   * suppression des caractères non pertinents, normalisation des espaces.
+   */
+  private normalizeTerm(term: string): string {
+    return term
+      .toLowerCase()
+      .trim()
+      // Remplacer les séparateurs par des espaces (tirets, underscores, etc.)
+      .replace(/[-_'/\\.]+/g, " ")
+      // Supprimer les caractères non pertinents (ponctuation, symboles)
+      .replace(/[^a-z0-9\u00e0-\u024f\u4e00-\u9fff\s]/g, "")
+      // Normaliser les espaces
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  /**
+   * Détecte les conflits entre des entrées lexicales.
+   * SDD §10.9 : duplicate_term (même normalisé) + overlap (terme inclus dans un autre).
+   */
+  findConflicts(entries: LexiconEntry[]): LexiconConflict[] {
+    const conflicts: LexiconConflict[] = [];
+    const seen = new Set<string>();
+
+    for (let i = 0; i < entries.length; i++) {
+      const a = entries[i];
+      const normA = this.normalizeTerm(a.term);
+
+      for (let j = i + 1; j < entries.length; j++) {
+        const b = entries[j];
+        const normB = this.normalizeTerm(b.term);
+
+        // Éviter les paires déjà vues
+        const pairKey = `${a.id}:${b.id}`;
+        if (seen.has(pairKey)) continue;
+        seen.add(pairKey);
+
+        // 1. Duplicate term : même normalisé
+        if (normA === normB && a.id !== b.id) {
+          conflicts.push({
+            type: "duplicate_term",
+            entryA: a,
+            entryB: b,
+            description: `Terme en double : "${a.term}" et "${b.term}" (normalisé : "${normA}")`,
+            normalized: normA,
+          });
+          continue;
+        }
+
+        // 2. Overlap : un terme contient l'autre (non égaux)
+        const aContainsB =
+          normA.includes(normB) && normA !== normB && normB.length > 0;
+        const bContainsA =
+          normB.includes(normA) && normB !== normA && normA.length > 0;
+
+        if (aContainsB) {
+          conflicts.push({
+            type: "overlap",
+            entryA: a,
+            entryB: b,
+            description: `Chevauchement : "${a.term}" contient "${b.term}"`,
+          });
+        } else if (bContainsA) {
+          conflicts.push({
+            type: "overlap",
+            entryA: a,
+            entryB: b,
+            description: `Chevauchement : "${b.term}" contient "${a.term}"`,
+          });
+        }
+      }
+    }
+
+    return conflicts;
+  }
+
+  /**
+   * Suggère une traduction pour un terme inconnu via IA.
+   * SDD §10.10 : utilise AiRouter pour demander une suggestion au LLM.
+   * Retourne { translation, category, explanation } ou null en cas d'échec.
+   */
+  async suggestTranslation(
+    term: string,
+    context: string,
+    aiRouter: AiRouter,
+    providerId?: string,
+  ): Promise<LexiconSuggestion | null> {
+    const systemPrompt =
+      "You are a translator specializing in literary and novel translation. " +
+      "Given a term and its context, suggest a natural translation in the target language. " +
+      "Return ONLY valid JSON with no markdown fences, no additional text:\n" +
+      '{\n  "translation": "the translation",\n  "category": "personnage|lieu|technique|arme|objet|concept|general",\n  "explanation": "brief reason for this choice"\n}';
+
+    const userMessage =
+      `Term: "${term}"\n` +
+      (context ? `Context: "${context}"\n` : "") +
+      "Suggest a natural translation for this term.";
+
+    const messages: ChatMessage[] = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ];
+
+    try {
+      const defaultProvider = providerId ?? "ollama-default";
+      const response = await aiRouter.chat(defaultProvider, messages, {
+        temperature: 0.3,
+        maxTokens: 200,
+        jsonMode: true,
+      });
+
+      // Tenter de parser la réponse JSON
+      const parsed = aiRouter.tryParseJson(response);
+      if (parsed && typeof parsed === "object") {
+        const obj = parsed as Record<string, unknown>;
+        const translation = String(obj.translation ?? "");
+        const category = String(obj.category ?? "general");
+        const explanation = String(obj.explanation ?? "");
+
+        if (translation) {
+          return { translation, category, explanation };
+        }
+      }
+
+      // Fallback : la réponse contient peut-être juste le texte de traduction
+      const cleanResponse = response.trim().replace(/^["']|["']$/g, "");
+      if (cleanResponse.length > 0) {
+        return {
+          translation: cleanResponse,
+          category: "general",
+          explanation: "Suggestions IA (format non-JSON)",
+        };
+      }
+
+      return null;
+    } catch {
+      // En cas d'erreur réseau ou LLM, retourner null
+      return null;
+    }
   }
 
   private escapeRegExp(text: string): string {

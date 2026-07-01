@@ -20,6 +20,7 @@ import type { TranslationMemoryEngine } from "../TranslationMemoryEngine.js";
 import type { ConsistencyChecker } from "../ConsistencyChecker.js";
 import type { QualityChecker } from "../QualityChecker.js";
 import type { ExportEngine } from "../ExportEngine.js";
+import type { CalibrationService } from "../CalibrationService.js";
 
 export interface AgentFactoryServices {
   aiRouter: AiRouter;
@@ -28,6 +29,8 @@ export interface AgentFactoryServices {
   consistencyChecker: ConsistencyChecker;
   qualityChecker: QualityChecker;
   exportEngine: ExportEngine;
+  /** SDD §12.5 : service de calibration optionnel */
+  calibrationService?: CalibrationService;
 }
 
 export class AgentFactory {
@@ -60,6 +63,7 @@ export class AgentFactory {
           config,
           this.services.aiRouter,
           this.services.qualityChecker,
+          this.services.calibrationService,
         );
       case "export":
         return new ExportAgent(config, this.services.exportEngine);

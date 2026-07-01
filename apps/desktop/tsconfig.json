@@ -15,7 +15,8 @@
     "paths": {
       "@/*": ["src/renderer/src/*"],
       "@main/*": ["src/main/*"],
-      "@shared/*": ["../../packages/shared/src/*"]
+      "@shared/*": ["../../packages/shared/src/*"],
+      "@scripts/*": ["../../scripts/*"]
     },
     "types": ["electron-vite/node", "vitest/globals"]
   },
