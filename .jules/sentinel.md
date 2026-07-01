@@ -1,0 +1,4 @@
+## 2024-05-24 - Preload script IPC security enhancement
+**Vulnerability:** The Electron preload script exposed `ipcRenderer.invoke` and `ipcRenderer.on` directly to the renderer without validating the channel names, which is a significant security risk as it could allow unauthorized access to sensitive main process functions.
+**Learning:** In Electron, exposing unmodified `ipcRenderer` APIs directly to the renderer process via `contextBridge` undermines the security boundary established by `contextIsolation`. Any channel string could be passed, potentially triggering unexpected handlers or interacting with internal Electron channels.
+**Prevention:** Always validate the `channel` argument in preload scripts against a strict allowlist of application-specific IPC channels before forwarding the call to `ipcRenderer`.
