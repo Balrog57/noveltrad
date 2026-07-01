@@ -10,9 +10,6 @@ hero:
       text: Commencer par la Vision
       link: /volumes/00-Vision
     - theme: alt
-      text: Voir l'Architecture
-      link: /volumes/01-Architecture
-    - theme: alt
       text: GitHub
       link: https://github.com/Balrog57/noveltrad
 
