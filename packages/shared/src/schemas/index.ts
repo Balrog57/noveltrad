@@ -4,6 +4,7 @@ export * from "./paragraph.js";
 export * from "./lexicon.js";
 export * from "./export.js";
 export * from "./history.js";
+export * from "./tmx.js";
 
 export const projectSchema = z.object({
   id: z.string().uuid(),

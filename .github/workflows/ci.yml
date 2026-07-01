@@ -2,25 +2,34 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  checks:
+    name: Type check + Lint + Tests
+    runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run type-check --workspace=apps/desktop
-      - run: npm run test
-      - run: npm run lint --workspace=apps/desktop
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check --workspace=apps/desktop
+
+      - name: Lint
+        run: npm run lint --workspace=apps/desktop
         continue-on-error: true
-      - run: npx --workspace=apps/desktop electron-vite build
+
+      - name: Unit tests
+        run: npm run test --workspace=apps/desktop

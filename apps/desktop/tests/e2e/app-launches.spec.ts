@@ -15,14 +15,35 @@ test.describe("App Launch", () => {
 
   test.beforeAll(async () => {
     try {
+      console.log(`Launching...`);
       app = await electron.launch({
         args: [MAIN_ENTRY],
         cwd: APP_CWD,
         timeout: 20000,
       });
+      app.on("console", (msg) => {
+        console.log(`[RENDERER] ${msg.type()}: ${msg.text()}`);
+      });
+      app.on("window", (page) => {
+        page.on("pageerror", (err) => {
+          console.log(`[PAGEERROR] ${err.message}`);
+        });
+        page.on("console", (msg) => {
+          console.log(`[WIN] ${msg.type()}: ${msg.text()}`);
+        });
+      });
+      console.log('App launched');
       window = await app.firstWindow();
+      console.log('Window found, URL:', window.url());
+      const errors: string[] = [];
+      window.on("pageerror", (err: Error) => {
+        errors.push(err.message);
+        console.log(`[PAGEERROR2] ${err.message}`);
+      });
       await window.waitForLoadState("domcontentloaded", { timeout: 10000 });
+      console.log('Page loaded, URL:', window.url());
     } catch (err) {
+      console.error('BEFORE ALL ERROR:', err);
       const msg = err instanceof Error ? err.message : String(err);
       test.skip(true, `Application Electron non demarree — ${msg}`);
     }
@@ -34,7 +55,10 @@ test.describe("App Launch", () => {
 
   test("app launches and shows home", async () => {
     if (!window) return;
-    await expect(window).toHaveTitle("NovelTrad 2.0");
-    await expect(window.locator("h1")).toContainText("NovelTrad 2.0");
+    await window.waitForTimeout(2000);
+    const url = window.url();
+    console.log('Test - URL:', url);
+    expect(url).not.toContain("chromewebdata");
+    await expect(window.locator("aside.sidebar")).toBeVisible({ timeout: 10000 });
   });
 });

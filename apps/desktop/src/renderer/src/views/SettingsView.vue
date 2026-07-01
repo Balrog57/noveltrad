@@ -11,6 +11,29 @@ const update = useUpdateStore();
 const themeValue = ref<string>(
   settings.data.theme ?? "system",
 );
+const saved = ref(false);
+
+async function saveSettings(): Promise<void> {
+  saved.value = false;
+  const keys = [
+    "ollamaHost",
+    "defaultModel",
+    "defaultPreTranslateModel",
+    "sourceLanguage",
+    "targetLanguage",
+    "defaultProjectsPath",
+    "updateChannel",
+    "ragEnabled",
+  ] as const;
+  for (const key of keys) {
+    const value = settings.data[key];
+    if (value !== undefined) {
+      await settings.set(key, value as never);
+    }
+  }
+  saved.value = true;
+  setTimeout(() => { saved.value = false; }, 2000);
+}
 
 // SDD §4.14 — Appliquer le thème sur l'élément <html>
 function applyTheme(theme: "dark" | "light" | "system"): void {
@@ -83,6 +106,13 @@ onUnmounted(() => {
   <div class="settings">
     <h1>Parametres</h1>
 
+    <div class="save-bar">
+      <button class="btn-primary" @click="saveSettings">
+        Sauvegarder
+      </button>
+      <span v-if="saved" class="saved-msg">Parametres enregistres.</span>
+    </div>
+
     <section class="card">
       <h2>Theme</h2>
       <label>
@@ -120,6 +150,17 @@ onUnmounted(() => {
           {{ m.name }}
         </li>
       </ul>
+      <label class="label-mt">
+        Modele par defaut
+        <input v-model="settings.data.defaultModel" placeholder="qwen3.5:9b" />
+      </label>
+      <label class="label-mt">
+        Modele de pre-traduction
+        <input
+          v-model="settings.data.defaultPreTranslateModel"
+          placeholder="qwen3.5:4b"
+        />
+      </label>
     </section>
 
     <section class="card">
@@ -131,6 +172,24 @@ onUnmounted(() => {
       <label>
         Cible
         <input v-model="settings.data.targetLanguage" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Projets</h2>
+      <label>
+        Dossier par defaut
+        <input
+          v-model="settings.data.defaultProjectsPath"
+          placeholder="~/NovelTrad Projects"
+        />
+      </label>
+      <label class="form-checkbox">
+        <input
+          v-model="settings.data.ragEnabled"
+          type="checkbox"
+        />
+        <span>Activer RAG (memoire contextuelle)</span>
       </label>
     </section>
 
@@ -184,6 +243,18 @@ onUnmounted(() => {
   max-width: 600px;
 }
 
+.save-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.saved-msg {
+  color: var(--success);
+  font-size: 13px;
+}
+
 .card {
   background-color: var(--bg-secondary);
   border-radius: var(--border-radius);
@@ -209,6 +280,26 @@ select {
   border-radius: var(--border-radius);
   border: 1px solid var(--bg-tertiary);
   background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.label-mt {
+  margin-top: 12px;
+}
+
+.form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.form-checkbox input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--accent);
+}
+
+.form-checkbox span {
   color: var(--text-primary);
 }
 

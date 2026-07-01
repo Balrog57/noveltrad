@@ -23,6 +23,13 @@ const importFilesSchema = z.object({
   filePaths: z.array(z.string().min(1)).min(1).max(50),
 });
 
+const projectIdSchema = z.string().uuid();
+
+const chapterImportSchema = z.object({
+  projectId: z.string().uuid(),
+  filePath: z.string().min(1),
+});
+
 export function registerProjectHandlers(): void {
   ipcMain.handle("project:create", async (_event, payload) => {
     const parsed = createProjectSchema.parse(payload);
@@ -64,7 +71,8 @@ export function registerProjectHandlers(): void {
   ipcMain.handle(
     "chapter:import",
     async (_event, projectId: string, filePath: string) => {
-      return projectManager.importSource(projectId, filePath);
+      const parsed = chapterImportSchema.parse({ projectId, filePath });
+      return projectManager.importSource(parsed.projectId, parsed.filePath);
     },
   );
 
@@ -112,19 +120,20 @@ export function registerProjectHandlers(): void {
   ipcMain.handle(
     "project:stats",
     async (_event, projectId: string): Promise<ProjectStats> => {
+      const parsedProjectId = projectIdSchema.parse(projectId);
       const recent =
         (settings.get("recentProjects") as string[] | undefined) ?? [];
       const projectPath = recent.find((p) => {
         const dbPath = path.join(p, "project.db");
         if (!fs.existsSync(dbPath)) return false;
         const db = createProjectDatabase(p);
-        const found = new ProjectRepository(db).getById(projectId);
+        const found = new ProjectRepository(db).getById(parsedProjectId);
         db.close();
         return found !== undefined;
       });
 
       if (!projectPath) {
-        throw new Error(`Projet non trouve : ${projectId}`);
+        throw new Error(`Projet non trouve : ${parsedProjectId}`);
       }
 
       const db = createProjectDatabase(projectPath);
@@ -135,7 +144,7 @@ export function registerProjectHandlers(): void {
           .prepare(
             "SELECT COUNT(*) as count FROM chapters WHERE project_id = ?",
           )
-          .get([projectId]) as { count: number };
+          .get([parsedProjectId]) as { count: number };
 
         // Paragraphes : total et traduits
         const paragraphRow = db
@@ -147,7 +156,7 @@ export function registerProjectHandlers(): void {
              JOIN chapters c ON p.chapter_id = c.id
              WHERE c.project_id = ?`,
           )
-          .get([projectId]) as { total: number; translated: number };
+          .get([parsedProjectId]) as { total: number; translated: number };
 
         // Nombre de mots source et cible
         const wordRow = db
@@ -161,7 +170,7 @@ export function registerProjectHandlers(): void {
              JOIN chapters c ON p.chapter_id = c.id
              WHERE c.project_id = ?`,
           )
-          .get([projectId]) as { source_words: number; target_words: number };
+          .get([parsedProjectId]) as { source_words: number; target_words: number };
 
         // Score qualité moyen (depuis job_steps.score)
         const qualityRow = db
@@ -171,7 +180,7 @@ export function registerProjectHandlers(): void {
              JOIN jobs j ON js.job_id = j.id
              WHERE j.project_id = ? AND js.score IS NOT NULL`,
           )
-          .get([projectId]) as { avg_score: number | null };
+          .get([parsedProjectId]) as { avg_score: number | null };
 
         // Dernier statut workflow
         const lastJobRow = db
@@ -180,7 +189,7 @@ export function registerProjectHandlers(): void {
              WHERE project_id = ?
              ORDER BY created_at DESC LIMIT 1`,
           )
-          .get([projectId]) as { status: string } | undefined;
+          .get([parsedProjectId]) as { status: string } | undefined;
 
         return {
           chapterCount: chapterRow.count,
@@ -203,6 +212,11 @@ export function registerProjectHandlers(): void {
   ipcMain.handle("dialog:open-file", async (_event, options) => {
     const result = await dialog.showOpenDialog(options);
     return { canceled: result.canceled, filePaths: result.filePaths };
+  });
+
+  ipcMain.handle("dialog:save-file", async (_event, options) => {
+    const result = await dialog.showSaveDialog(options);
+    return { canceled: result.canceled, filePath: result.filePath };
   });
 }
 

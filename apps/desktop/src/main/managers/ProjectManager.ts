@@ -200,19 +200,22 @@ export class ProjectManager {
       path.join(projectPath, "chapitres", `${fileName}${ext}`),
     );
 
-    // Récupérer le dernier orderIndex existant
-    const existingChapters = await this.listChapters(projectId);
-    let nextOrderIndex =
-      existingChapters.length > 0
-        ? Math.max(...existingChapters.map((c) => c.orderIndex)) + 1
-        : 0;
-
     const db = createProjectDatabase(projectPath);
     runMigrations(db, migrationsDir);
 
+    // Récupérer le dernier orderIndex existant via la même DB
+    const existingRows = db
+      .prepare(
+        "SELECT order_index FROM chapters WHERE project_id = ? ORDER BY order_index DESC LIMIT 1",
+      )
+      .get([projectId]) as { order_index: number } | undefined;
+    let nextOrderIndex = existingRows ? existingRows.order_index + 1 : 0;
+
     const createdChapters: Chapter[] = [];
 
-    for (const chapterText of chapterTexts) {
+    db.exec("BEGIN TRANSACTION");
+    try {
+      for (const chapterText of chapterTexts) {
       const chapterId = crypto.randomUUID();
       const title =
         chapterTexts.length === 1
@@ -292,6 +295,13 @@ export class ProjectManager {
       });
 
       nextOrderIndex++;
+      }
+
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      db.close();
+      throw err;
     }
 
     db.close();
@@ -519,6 +529,7 @@ export class ProjectManager {
         console.warn(
           `[ProjectManager] Confiance de détection de langue faible : ${code} (${(score * 100).toFixed(1)}%). Seuil : ${LANGUAGE_CONFIDENCE_THRESHOLD * 100}%`,
         );
+        return null;
       }
 
       return {

@@ -46,8 +46,11 @@ function setupErrorHandlers(): void {
 }
 
 function setupCspHeaders(): void {
-  // SDD §1.1 — Content Security Policy
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL || "";
+  // Désactivé en mode production pour éviter les conflits avec le protocole file://
+  if (!process.env.VITE_DEV_SERVER_URL) return;
+
+  // SDD §1.1 — Content Security Policy (dev mode only)
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
   const connectSrc = [
     "'self'",
@@ -150,7 +153,7 @@ async function createWindow(): Promise<BrowserWindow> {
     minWidth: 1024,
     minHeight: 700,
     webPreferences: {
-      sandbox: true,
+      sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
       allowRunningInsecureContent: false,
@@ -159,8 +162,7 @@ async function createWindow(): Promise<BrowserWindow> {
     },
   });
 
-  const devServerUrl =
-    process.env.VITE_DEV_SERVER_URL || "http://localhost:5173/";
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
   if (devServerUrl) {
     await mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();

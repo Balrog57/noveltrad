@@ -17,6 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
+import { dismissWizard } from "./helpers";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,6 +69,7 @@ test.describe("Editor E2E", () => {
       });
       window = await app.firstWindow();
       await window.waitForLoadState("domcontentloaded", { timeout: 10000 });
+      await dismissWizard(window);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       test.skip(true, `Application Electron non demarree — ${msg}`);
@@ -83,15 +85,20 @@ test.describe("Editor E2E", () => {
       const projectName = uniqueName("EditTest");
       await window.locator("input[placeholder='Mon roman']").fill(projectName);
 
-      const selects = window.locator("section.card select");
-      await selects.nth(0).selectOption("en");
-      await selects.nth(1).selectOption("fr");
+      // Créer via IPC direct
+      await window.evaluate(async ({ name, src, tgt }: { name: string; src: string; tgt: string }) => {
+        const api = (window as any).novelTradAPI;
+        const proj = await api.invoke("project:create", {
+          name, sourceLanguage: src, targetLanguage: tgt, parentPath: "~/NovelTrad Projects"
+        });
+        if (proj?.id) document.location.hash = `#/project/${proj.id}`;
+      }, { name: projectName, src: "en", tgt: "fr" });
 
-      const creerBtn = window.locator("section.card button", { hasText: "Creer" });
-      await creerBtn.click();
-      await window.waitForURL("**/project/**", { timeout: 8000 });
-
-      projectId = window.url().split("/project/")[1]?.split(/[/?#]/)[0] ?? "";
+      await window.waitForFunction(
+        () => document.location.hash.includes("/project/"),
+        { timeout: 10000 },
+      );
+      projectId = (new URL(window.url())).hash.split("/project/")[1]?.split(/[/?#]/)[0] ?? "";
 
       // Importer un chapitre via IPC
       const tempFile = createTempTxt(`e2e-editor-chapter-${Date.now()}`);

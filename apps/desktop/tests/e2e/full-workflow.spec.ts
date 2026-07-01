@@ -13,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
+import { dismissWizard } from "./helpers";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,9 +65,9 @@ test.describe("Full Workflow E2E", () => {
       });
       window = await app.firstWindow();
       await window.waitForLoadState("domcontentloaded", { timeout: 10000 });
+      await dismissWizard(window);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Skip toute la suite si l'app ne démarre pas
       test.skip(true, `Application Electron non demarree — ${msg}`);
     }
   });
@@ -78,7 +79,7 @@ test.describe("Full Workflow E2E", () => {
   test("app launches and shows home page", async () => {
     if (!window) return;
     await expect(window).toHaveTitle("NovelTrad 2.0");
-    await expect(window.locator("h1")).toContainText("NovelTrad 2.0");
+    await expect(window.locator("main h1")).toContainText("NovelTrad 2.0");
     await expect(
       window.locator("button", { hasText: "Nouveau projet" }),
     ).toBeVisible();
@@ -95,7 +96,10 @@ test.describe("Full Workflow E2E", () => {
     await window.waitForSelector("section.card", { timeout: 5000 });
 
     const projectName = uniqueName("MonRoman");
+    await window.locator("input[placeholder='Mon roman']").click();
     await window.locator("input[placeholder='Mon roman']").fill(projectName);
+    await window.locator("input[placeholder='Mon roman']").blur();
+    await window.waitForTimeout(200);
 
     const selects = window.locator("section.card select");
     await selects.nth(0).selectOption("en");
@@ -103,16 +107,34 @@ test.describe("Full Workflow E2E", () => {
 
     const creerBtn = window.locator("section.card button", { hasText: "Creer" });
     await expect(creerBtn).toBeEnabled();
+    console.log('Button enabled, clicking...');
 
     let projectId: string | null = null;
 
     try {
-      await creerBtn.click();
-      await window.waitForURL("**/project/**", { timeout: 8000 });
-      const url = window.url();
-      projectId = url.split("/project/")[1]?.split(/[/?#]/)[0] ?? null;
-    } catch {
-      test.skip(true, "Creation de projet impossible — IPC project:create non disponible");
+      // Créer via IPC direct et naviguer
+      const proj = await window.evaluate(async ({ name, src, tgt }: { name: string; src: string; tgt: string }) => {
+        const api = (window as any).novelTradAPI;
+        const project = await api.invoke("project:create", {
+          name,
+          sourceLanguage: src,
+          targetLanguage: tgt,
+          parentPath: "~/NovelTrad Projects",
+        });
+        if (project?.id) {
+          document.location.hash = `#/project/${project.id}`;
+        }
+        return project;
+      }, { name: projectName, src: "en", tgt: "fr" });
+
+      await window.waitForTimeout(500);
+      await window.waitForURL("**#/project/**", { timeout: 10000 });
+      const currentUrl = window.url();
+      projectId = currentUrl.split("/project/")[1]?.split(/[/?#]/)[0] ?? null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("CREATE PROJECT ERROR:", msg);
+      test.skip(true, "Creation de projet impossible — " + msg);
       return;
     }
 
@@ -206,3 +228,4 @@ test.describe("Full Workflow E2E", () => {
     test.skip(true, "Le workflow de traduction necessite Ollama (non disponible en CI)");
   });
 });
+

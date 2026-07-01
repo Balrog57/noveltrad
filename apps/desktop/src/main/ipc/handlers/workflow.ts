@@ -23,6 +23,13 @@ export function registerWorkflowHandlers(): void {
     },
   );
 
+  ipcMain.handle(
+    "workflow:start-batch",
+    async (_event, projectPath: string, chapterIds: string[]) => {
+      return workflowEngine.startBatch(projectPath, chapterIds);
+    },
+  );
+
   ipcMain.handle("workflow:pause", async (_event, jobId: string) => {
     workflowEngine.pause(jobId);
     return { ok: true };

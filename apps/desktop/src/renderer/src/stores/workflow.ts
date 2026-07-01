@@ -8,6 +8,8 @@ export interface WorkflowProgressPayload {
   chapterId?: string;
   step: Step;
   totalSteps: number;
+  batchChapterIndex?: number;
+  batchTotalChapters?: number;
 }
 
 export const useWorkflowStore = defineStore("workflow", () => {
@@ -27,6 +29,24 @@ export const useWorkflowStore = defineStore("workflow", () => {
         "workflow:start",
         projectPath,
         chapterId,
+      );
+      activeJobs.value = [job, ...activeJobs.value];
+      return job;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function startBatch(
+    projectPath: string,
+    chapterIds: string[],
+  ): Promise<Job> {
+    loading.value = true;
+    try {
+      const job = await window.novelTradAPI.invoke<Job>(
+        "workflow:start-batch",
+        projectPath,
+        chapterIds,
       );
       activeJobs.value = [job, ...activeJobs.value];
       return job;
@@ -64,6 +84,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     progress,
     loading,
     start,
+    startBatch,
     pause,
     resume,
     cancel,

@@ -11,6 +11,7 @@ export const IPC_CHANNELS = [
   "settings:get",
   "settings:set",
   "workflow:start",
+  "workflow:start-batch",
   "workflow:pause",
   "workflow:resume",
   "workflow:cancel",
@@ -31,6 +32,7 @@ export const IPC_CHANNELS = [
   "source:import-files",
   "export:run",
   "dialog:open-file",
+  "dialog:save-file",
   "update:check",
   "update:download",
   "update:install",
@@ -45,6 +47,8 @@ export const IPC_CHANNELS = [
   "history:diff",
   "history:rollback",
   "history:create-snapshot",
+  "tm:import",
+  "tm:export",
   "log",
 ] as const;
 

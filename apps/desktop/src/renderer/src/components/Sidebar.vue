@@ -14,6 +14,7 @@ const links = [
 
 /** Liens visibles seulement quand un projet est ouvert */
 const projectLinks = [
+  { name: "chapters", label: "Chapitres", icon: "📖" },
   { name: "workflow", label: "Workflow", icon: "⚙" },
   { name: "lexicon", label: "Lexique", icon: "📚" },
   { name: "history", label: "Historique", icon: "🕐" },

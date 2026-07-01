@@ -3,29 +3,80 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Update channel (latest, beta, alpha)"
+        required: false
+        default: "latest"
+        type: choice
+        options:
+          - latest
+          - beta
+          - alpha
 
 jobs:
   release:
+    name: Build & Publish (${{ inputs.channel || 'latest' }})
     runs-on: windows-latest
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run test
-      - name: Build and publish
-        run: npm run build --workspace=apps/desktop
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check --workspace=apps/desktop
+
+      - name: Lint
+        run: npm run lint --workspace=apps/desktop
+        continue-on-error: true
+
+      - name: Unit tests
+        run: npm run test --workspace=apps/desktop
+
+      - name: Determine update channel
+        id: channel
+        shell: bash
+        run: |
+          CHANNEL="${{ inputs.channel || 'latest' }}"
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+            if [[ "$TAG" == *beta* ]]; then CHANNEL="beta"
+            elif [[ "$TAG" == *alpha* ]]; then CHANNEL="alpha"
+            fi
+          fi
+          echo "channel=${CHANNEL}" >> $GITHUB_OUTPUT
+          echo "Update channel: ${CHANNEL}"
+
+      - name: Build Electron
+        run: npx electron-vite build
+        working-directory: apps/desktop
+
+      - name: Publish to GitHub Releases
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      - name: Upload artifacts
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --publish always
+        working-directory: apps/desktop
+
+      - name: Upload installer
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: noveltrad-${{ github.ref_name }}
+          name: NovelTrad-Setup
           path: |
             apps/desktop/dist/*.exe
-            apps/desktop/dist/*.yml
-            apps/desktop/dist/latest.yml
+            apps/desktop/dist/*.exe.blockmap
+            apps/desktop/dist/latest*.yml

@@ -55,6 +55,10 @@ export interface WorkflowProgress {
   chapterId?: string;
   step: Step;
   totalSteps: number;
+  /** Index du chapitre en cours dans un batch (0-based) */
+  batchChapterIndex?: number;
+  /** Nombre total de chapitres dans le batch */
+  batchTotalChapters?: number;
 }
 
 class WorkflowRunner extends EventEmitter {
@@ -137,6 +141,35 @@ class WorkflowRunner extends EventEmitter {
   }
 
   async start(chapterId?: string): Promise<Job> {
+    return this.runSingle(chapterId);
+  }
+
+  async startBatch(chapterIds: string[]): Promise<Job> {
+    if (chapterIds.length === 0) throw new Error("Aucun chapitre selectionne");
+
+    this.job = {
+      id: crypto.randomUUID(),
+      projectId: this.project.id,
+      chapterIds,
+      type: "batch",
+      status: "running",
+      startedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    this.jobRepo.createJob(this.job);
+
+    this.runBatch(chapterIds).catch((err) => {
+      logger.error("Batch workflow error", err);
+      this.job.status = "failed";
+      this.job.errorMessage = err instanceof Error ? err.message : String(err);
+      this.job.finishedAt = new Date().toISOString();
+      this.jobRepo.updateJob(this.job);
+    });
+
+    return this.job;
+  }
+
+  private async runSingle(chapterId?: string): Promise<Job> {
     if (chapterId) {
       this.chapter = this.chapterRepo.getById(chapterId);
       if (!this.chapter) throw new Error(`Chapitre non trouve : ${chapterId}`);
@@ -177,6 +210,61 @@ class WorkflowRunner extends EventEmitter {
     });
 
     return this.job;
+  }
+
+  private async runBatch(chapterIds: string[]): Promise<void> {
+    for (let batchIndex = 0; batchIndex < chapterIds.length; batchIndex++) {
+      if (this.cancelled) {
+        this.job.status = "cancelled";
+        this.jobRepo.updateJob(this.job);
+        return;
+      }
+
+      while (this.paused) {
+        await this.waitForResume();
+      }
+
+      this.chapter = this.chapterRepo.getById(chapterIds[batchIndex]);
+      if (!this.chapter) {
+        logger.warn(`Chapitre inconnu : ${chapterIds[batchIndex]}, ignore.`);
+        continue;
+      }
+
+      this.paragraphs = this.paragraphRepo.listByChapter(this.chapter.id);
+      this.steps = STAGES.map((stage, index) => ({
+        id: crypto.randomUUID(),
+        jobId: this.job.id,
+        agentId: stage,
+        name: this.agentName(stage),
+        stage,
+        orderIndex: index,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      }));
+      for (const step of this.steps) {
+        this.jobRepo.createStep(step);
+      }
+
+      this.emitProgress({
+        jobId: this.job.id,
+        projectId: this.project.id,
+        step: this.steps[0],
+        totalSteps: this.steps.length,
+        batchChapterIndex: batchIndex,
+        batchTotalChapters: chapterIds.length,
+      });
+
+      await this.runFromIndex(0);
+
+      if (this.job.status === "failed") {
+        return;
+      }
+    }
+
+    this.job.status = "completed";
+    this.job.finishedAt = new Date().toISOString();
+    this.jobRepo.updateJob(this.job);
+    this.db.close();
   }
 
   pause(): void {
@@ -512,6 +600,18 @@ export class WorkflowEngine {
       this.emitProgress(p),
     );
     const job = await runner.start(chapterId);
+    this.runners.set(job.id, runner);
+    return job;
+  }
+
+  async startBatch(
+    projectPath: string,
+    chapterIds: string[],
+  ): Promise<Job> {
+    const runner = new WorkflowRunner(projectPath, this.settings, (p) =>
+      this.emitProgress(p),
+    );
+    const job = await runner.startBatch(chapterIds);
     this.runners.set(job.id, runner);
     return job;
   }

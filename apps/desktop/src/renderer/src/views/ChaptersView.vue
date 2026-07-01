@@ -4,7 +4,14 @@ import { ref, onMounted, onUnmounted } from "vue";
 import { useProjectStore } from "../stores/project";
 import { useWorkflowStore } from "../stores/workflow";
 import ExportDialog from "../components/export/ExportDialog.vue";
+import NtBadge from "../components/ui/NtBadge.vue";
+import NtEmptyState from "../components/ui/NtEmptyState.vue";
+import NtTooltip from "../components/ui/NtTooltip.vue";
 import type { Chapter } from "@shared/types/index.js";
+
+const tmxImporting = ref(false);
+const tmxExporting = ref(false);
+const batchTranslating = ref(false);
 
 const route = useRoute();
 const router = useRouter();
@@ -52,9 +59,32 @@ async function translateChapter(chapter: Chapter) {
 }
 
 function progressFor(chapterId: string): string {
-  if (workflowStore.progress?.chapterId !== chapterId) return "";
-  const { step, totalSteps } = workflowStore.progress;
-  return `${step.name} (${step.orderIndex + 1}/${totalSteps})`;
+  const p = workflowStore.progress;
+  if (!p) return "";
+  const batchPrefix =
+    p.batchTotalChapters && p.batchChapterIndex !== undefined
+      ? `[${p.batchChapterIndex + 1}/${p.batchTotalChapters}] `
+      : "";
+  if (p.chapterId === chapterId) {
+    return `${batchPrefix}${p.step.name} (${p.step.orderIndex + 1}/${p.totalSteps})`;
+  }
+  return batchPrefix || "";
+}
+
+async function batchTranslate(): Promise<void> {
+  const projectPath = await window.novelTradAPI.invoke<string>(
+    "project:path",
+    projectId,
+  );
+  batchTranslating.value = true;
+  try {
+    await workflowStore.startBatch(
+      projectPath,
+      chapters.value.map((c) => c.id),
+    );
+  } finally {
+    batchTranslating.value = false;
+  }
 }
 
 // --- Drag-and-drop handlers (SDD §5.9) ---
@@ -173,6 +203,18 @@ function showImportMessage(message: string, type: "success" | "error"): void {
   }
 }
 
+function badgeVariant(
+  status: string,
+): "default" | "success" | "warning" | "error" | "info" {
+  const map: Record<string, "default" | "success" | "warning" | "error" | "info"> = {
+    completed: "success",
+    processing: "warning",
+    error: "error",
+    pending: "default",
+  };
+  return map[status] ?? "default";
+}
+
 /** Ouvre le dialogue natif de sélection de fichiers pour l'import */
 async function openImportDialog(): Promise<void> {
   const result = await window.novelTradAPI.invoke<{
@@ -191,6 +233,70 @@ async function openImportDialog(): Promise<void> {
 
   if (!result.canceled && result.filePaths.length > 0) {
     importFiles(result.filePaths);
+  }
+}
+
+async function importTmx(): Promise<void> {
+  const result = await window.novelTradAPI.invoke<{
+    canceled: boolean;
+    filePaths: string[];
+  }>("dialog:open-file", {
+    title: "Importer un fichier TMX",
+    filters: [
+      { name: "TMX", extensions: ["tmx"] },
+      { name: "Tous les fichiers", extensions: ["*"] },
+    ],
+    properties: ["openFile"],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) return;
+
+  tmxImporting.value = true;
+  try {
+    const res = await window.novelTradAPI.invoke<{
+      success: boolean;
+      importedCount: number;
+    }>("tm:import", { projectId, filePath: result.filePaths[0] });
+    if (res.success) {
+      showImportMessage(
+        `${res.importedCount} entrée(s) TMX importée(s).`,
+        "success",
+      );
+    }
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : "Erreur lors de l'import TMX";
+    showImportMessage(msg, "error");
+  } finally {
+    tmxImporting.value = false;
+  }
+}
+
+async function exportTmx(): Promise<void> {
+  const result = await window.novelTradAPI.invoke<{
+    canceled: boolean;
+    filePath: string | null;
+  }>("dialog:save-file", {
+    title: "Exporter la mémoire de traduction",
+    defaultPath: "memory.tmx",
+    filters: [{ name: "TMX", extensions: ["tmx"] }],
+  });
+
+  if (result.canceled || !result.filePath) return;
+
+  tmxExporting.value = true;
+  try {
+    await window.novelTradAPI.invoke("tm:export", {
+      projectId,
+      filePath: result.filePath,
+    });
+    showImportMessage("Mémoire de traduction exportée.", "success");
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : "Erreur lors de l'export TMX";
+    showImportMessage(msg, "error");
+  } finally {
+    tmxExporting.value = false;
   }
 }
 
@@ -251,11 +357,45 @@ onUnmounted(() => {
       <button class="btn-import" @click="openImportDialog">
         + Importer des fichiers
       </button>
+      <NtTooltip text="Importer un fichier TMX (mémoire de traduction)">
+        <button
+          class="btn-import"
+          :disabled="tmxImporting"
+          @click="importTmx"
+        >
+          Importer TMX
+        </button>
+      </NtTooltip>
+      <NtTooltip text="Exporter la mémoire de traduction au format TMX">
+        <button
+          class="btn-import"
+          :disabled="tmxExporting"
+          @click="exportTmx"
+        >
+          Exporter TMX
+        </button>
+      </NtTooltip>
     </div>
 
-    <p v-if="!chapters.length && !importProgress" class="empty">
-      Aucun chapitre importé.
-    </p>
+    <NtEmptyState
+      v-if="!chapters.length && !importProgress"
+      icon="📖"
+      title="Aucun chapitre"
+      description="Importez un fichier TXT, MD, DOCX ou EPUB pour commencer."
+      action-label="Importer un fichier"
+      @action="openImportDialog"
+    />
+    <div v-if="chapters.length > 1">
+      <NtTooltip text="Lancer la traduction de tous les chapitres en séquence">
+        <button
+          class="btn-primary"
+          :disabled="batchTranslating || workflowStore.loading"
+          @click="batchTranslate"
+        >
+          Tout traduire
+        </button>
+      </NtTooltip>
+    </div>
     <ul class="chapter-list">
       <li v-for="ch in chapters" :key="ch.id" class="chapter-item">
         <div
@@ -266,19 +406,23 @@ onUnmounted(() => {
           @keydown.enter="openEditor(ch)"
         >
           <strong>{{ ch.title || ch.id }}</strong>
-          <span class="badge" :class="ch.status">{{ ch.status }}</span>
+          <NtBadge :variant="badgeVariant(ch.status)">{{ ch.status }}</NtBadge>
         </div>
         <div class="chapter-actions">
-          <button
-            class="btn-primary"
-            :disabled="translatingId === ch.id || workflowStore.loading"
-            @click="translateChapter(ch)"
-          >
-            Traduire
-          </button>
-          <button class="btn-primary" @click="exportChapterId = ch.id">
-            Exporter
-          </button>
+          <NtTooltip text="Lancer la traduction">
+            <button
+              class="btn-primary"
+              :disabled="translatingId === ch.id || workflowStore.loading"
+              @click="translateChapter(ch)"
+            >
+              Traduire
+            </button>
+          </NtTooltip>
+          <NtTooltip text="Exporter ce chapitre">
+            <button class="btn-primary" @click="exportChapterId = ch.id">
+              Exporter
+            </button>
+          </NtTooltip>
           <span v-if="progressFor(ch.id)" class="progress">{{
             progressFor(ch.id)
           }}</span>
