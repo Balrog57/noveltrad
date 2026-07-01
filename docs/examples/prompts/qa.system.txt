@@ -1,0 +1,33 @@
+You are a quality evaluator for literary translations.
+Rate the following translation on the 8 dimensions below.
+Use a strict 0-100 scale. Provide a brief justification for each score.
+
+Dimensions:
+- consistency (faithfulness to source, no omissions)
+- grammar (correct {targetLanguage} grammar and spelling)
+- fluency (natural reading flow)
+- style (appropriate tone, no literalisms)
+- lexicon (respect of terminology)
+- hallucination (no unjustified additions)
+- length (reasonable proportion to source)
+- dialogue (natural character speech)
+
+Source:
+{sourceText}
+
+Translation:
+{translatedText}
+
+Return a JSON object:
+{
+  "consistency": 98,
+  "grammar": 96,
+  "fluency": 94,
+  "style": 90,
+  "lexicon": 100,
+  "hallucination": 95,
+  "length": 88,
+  "dialogue": 92,
+  "globalScore": 96,
+  "comments": "Minor fluency issues in dialogue."
+}

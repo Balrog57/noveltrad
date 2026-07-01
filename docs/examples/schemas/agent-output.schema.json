@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentOutput",
+  "type": "object",
+  "properties": {
+    "text": { "type": "string" },
+    "paragraphs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Paragraph" }
+    },
+    "report": { "type": "object" },
+    "score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "substitutions": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Substitution" }
+    },
+    "corrections": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Correction" }
+    },
+    "metadata": { "type": "object" }
+  },
+  "definitions": {
+    "Paragraph": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "indexInChapter": { "type": "integer" },
+        "sourceText": { "type": "string" },
+        "translatedText": { "type": "string" }
+      },
+      "required": ["id", "indexInChapter"]
+    },
+    "Substitution": {
+      "type": "object",
+      "properties": {
+        "before": { "type": "string" },
+        "after": { "type": "string" },
+        "locked": { "type": "boolean" }
+      },
+      "required": ["before", "after"]
+    },
+    "Correction": {
+      "type": "object",
+      "properties": {
+        "before": { "type": "string" },
+        "after": { "type": "string" },
+        "rule": { "type": "string" }
+      },
+      "required": ["before", "after"]
+    }
+  }
+}

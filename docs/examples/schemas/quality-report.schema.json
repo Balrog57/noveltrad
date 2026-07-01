@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QualityReport",
+  "type": "object",
+  "properties": {
+    "consistency": { "type": "number", "minimum": 0, "maximum": 100 },
+    "grammar": { "type": "number", "minimum": 0, "maximum": 100 },
+    "fluency": { "type": "number", "minimum": 0, "maximum": 100 },
+    "style": { "type": "number", "minimum": 0, "maximum": 100 },
+    "lexicon": { "type": "number", "minimum": 0, "maximum": 100 },
+    "hallucination": { "type": "number", "minimum": 0, "maximum": 100 },
+    "length": { "type": "number", "minimum": 0, "maximum": 100 },
+    "dialogue": { "type": "number", "minimum": 0, "maximum": 100 },
+    "globalScore": { "type": "number", "minimum": 0, "maximum": 100 },
+    "comments": { "type": "string" }
+  },
+  "required": [
+    "consistency", "grammar", "fluency", "style", "lexicon",
+    "hallucination", "length", "dialogue", "globalScore"
+  ]
+}

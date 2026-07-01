@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "npm run dev --workspace=apps/desktop",
     "build": "npm run build --workspace=apps/desktop",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
     "test": "npm run test --workspace=apps/desktop",
     "test:coverage": "npm run test:coverage --workspace=apps/desktop",
     "test:e2e": "npm run test:e2e --workspace=apps/desktop",
@@ -20,5 +22,8 @@
   ],
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
   }
 }

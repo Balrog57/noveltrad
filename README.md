@@ -160,3 +160,15 @@ Tous les chapitres peuvent être traduits séquentiellement via le bouton **"Tou
 | Export | docx (dolanmiu), archiver (EPUB) |
 | Tests | Vitest + Playwright |
 | CI/CD | GitHub Actions |
+
+## Documentation
+
+La documentation complète (SDD, guides, REUSE_MAP, inspirations) est disponible dans
+[`docs/`](docs/) et publiée sur GitHub Pages :
+
+➡️ **[https://balrog57.github.io/noveltrad/](https://balrog57.github.io/noveltrad/)**
+
+```bash
+npm run docs:dev     # Serveur local VitePress (port 5174)
+npm run docs:build   # Build statique
+```

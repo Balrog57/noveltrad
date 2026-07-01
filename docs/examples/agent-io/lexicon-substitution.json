@@ -1,0 +1,42 @@
+{
+  "description": "Lexique verrouillé imposé sur la traduction",
+  "agent": "lexicon",
+  "languagePair": ["zh", "fr"],
+  "input": {
+    "projectId": "demo-project",
+    "text": "Lin Ming entered the Sky Palace and grabbed some Spirit Stones.",
+    "lexicon": [
+      {
+        "id": "lex1",
+        "term": "林明",
+        "translation": "Lin Ming",
+        "category": "character",
+        "aliases": ["Lin Ming"],
+        "locked": true
+      },
+      {
+        "id": "lex2",
+        "term": "天宫",
+        "translation": "Palais Céleste",
+        "category": "sect",
+        "aliases": ["Sky Palace"],
+        "locked": false
+      },
+      {
+        "id": "lex3",
+        "term": "灵石",
+        "translation": "Pierres Spirituelles",
+        "category": "object",
+        "aliases": ["Spirit Stones"],
+        "locked": false
+      }
+    ]
+  },
+  "expectedOutput": {
+    "text": "Lin Ming entra dans le Palais Céleste et saisit quelques Pierres Spirituelles.",
+    "substitutions": [
+      { "before": "Sky Palace", "after": "Palais Céleste", "locked": false },
+      { "before": "Spirit Stones", "after": "Pierres Spirituelles", "locked": false }
+    ]
+  }
+}

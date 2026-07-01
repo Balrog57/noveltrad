@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentInput",
+  "type": "object",
+  "properties": {
+    "projectId": { "type": "string" },
+    "chapterId": { "type": "string" },
+    "paragraphs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Paragraph" }
+    },
+    "text": { "type": "string" },
+    "previousOutput": { "type": "string" },
+    "lexicon": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/LexiconEntry" }
+    },
+    "memoryMatches": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/TranslationMemoryMatch" }
+    },
+    "options": { "type": "object" }
+  },
+  "required": ["projectId"],
+  "definitions": {
+    "Paragraph": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "indexInChapter": { "type": "integer" },
+        "sourceText": { "type": "string" },
+        "preTranslatedText": { "type": "string" },
+        "translatedText": { "type": "string" }
+      },
+      "required": ["id", "indexInChapter", "sourceText"]
+    },
+    "LexiconEntry": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "term": { "type": "string" },
+        "translation": { "type": "string" },
+        "category": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "locked": { "type": "boolean" }
+      },
+      "required": ["id", "term", "translation", "category"]
+    },
+    "TranslationMemoryMatch": {
+      "type": "object",
+      "properties": {
+        "sourceText": { "type": "string" },
+        "targetText": { "type": "string" },
+        "similarity": { "type": "number" }
+      },
+      "required": ["sourceText", "targetText", "similarity"]
+    }
+  }
+}

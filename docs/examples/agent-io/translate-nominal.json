@@ -1,0 +1,44 @@
+{
+  "description": "Jeu de test nominal pour l'agent de traduction",
+  "agent": "translate",
+  "languagePair": ["zh", "fr"],
+  "input": {
+    "projectId": "demo-project",
+    "chapterId": "ch01",
+    "paragraphs": [
+      {
+        "id": "p1",
+        "indexInChapter": 1,
+        "sourceText": "林明站起身来，望向了远方的天空。"
+      },
+      {
+        "id": "p2",
+        "indexInChapter": 2,
+        "sourceText": "“今天，我一定要突破！”"
+      }
+    ],
+    "lexicon": [
+      {
+        "id": "lex1",
+        "term": "林明",
+        "translation": "Lin Ming",
+        "category": "character",
+        "locked": true
+      }
+    ]
+  },
+  "expectedOutput": {
+    "paragraphs": [
+      {
+        "id": "p1",
+        "indexInChapter": 1,
+        "translatedText": "Lin Ming se leva et regarda le ciel au loin."
+      },
+      {
+        "id": "p2",
+        "indexInChapter": 2,
+        "translatedText": "« Aujourd’hui, je vais absolument faire une percée ! »"
+      }
+    ]
+  }
+}
