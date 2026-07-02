@@ -194,4 +194,29 @@ describe("pluginManifestSchema", () => {
       pluginManifestSchema.parse({ ...validManifest, type: "theme" }),
     ).toThrow();
   });
+
+  it("rejette un configSchema trop volumineux (>10 Ko)", () => {
+    const largeConfig: Record<string, unknown> = {};
+    for (let i = 0; i < 500; i++) {
+      largeConfig[`key${i}`] = "x".repeat(50);
+    }
+    expect(JSON.stringify(largeConfig).length).toBeGreaterThan(10000);
+    expect(() =>
+      pluginManifestSchema.parse({
+        ...validManifest,
+        configSchema: largeConfig,
+      }),
+    ).toThrow("configSchema trop volumineux");
+  });
+
+  it("accepte un configSchema de taille raisonnable", () => {
+    const result = pluginManifestSchema.parse({
+      ...validManifest,
+      configSchema: {
+        strictness: { type: "number", default: 0.8 },
+        model: { type: "string", default: "default" },
+      },
+    });
+    expect(result.configSchema).toBeDefined();
+  });
 });

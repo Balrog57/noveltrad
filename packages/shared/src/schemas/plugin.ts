@@ -134,7 +134,16 @@ export const pluginManifestSchema = z.object({
   entry: entrySchema,
   permissions: z.array(pluginPermissionSchema).default([]),
   contributions: contributionsSchema,
-  configSchema: z.record(z.unknown()).optional(),
+  configSchema: z
+    .record(z.unknown())
+    .optional()
+    .refine(
+      (val) => {
+        if (!val) return true;
+        return JSON.stringify(val).length < 10000;
+      },
+      { message: "configSchema trop volumineux (max 10 Ko)" },
+    ),
 });
 
 export type PluginManifestInput = z.input<typeof pluginManifestSchema>;
