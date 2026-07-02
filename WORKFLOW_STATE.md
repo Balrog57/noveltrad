@@ -622,23 +622,86 @@ None. The implementation follows a well-structured security model with no critic
 Next Agent: reviewer
 
 ## Lint Results
-- âš ï¸ Not executed â€” `eslint` command blocked by shell permissions (only `bazel*`-pattern commands allowed in current policy). The package.json defines `"lint": "eslint . --ext .ts,.vue"`.
+
+### Execution status
+- **npm run lint**: :x: Blocked by shell permissions (policy only allows `python Scripts/linter.py`, which does not exist).
+- **npx prettier --check**: :x: Same policy restriction - cannot run.
+
+### ESLint configuration status
+- No ESLint config found anywhere (no `.eslintrc*`, `eslint.config*`).
+- ESLint `^8.57.0` in devDependencies but has **no config** - `npm run lint` would fail.
+- **Action**: Create `.eslintrc.cjs` with `@typescript-eslint/parser` + Vue plugin.
+
+### Prettier configuration status
+- No `.prettierrc*` found. Prettier `^3.3.2` with no config - uses defaults.
+
+### Manual static analysis (10 plugin files, ~2,200 lines)
+All files are clean and well-structured. Minor observations:
+- Unchecked `as` casts in PluginContext.ts:101, types.ts:41, PluginHost.ts:600.
+- Unused variable `buttons` in plugins-view.spec.ts:194.
+- Formatting consistent (2-space indent, double quotes, semicolons).
+
+### Verdict
+- **Lint**: :x: Cannot run - no ESLint config exists. Config needed.
+- **Prettier**: :x: Cannot run - no config. Code manually consistent.
+- **Code quality**: Clean, well-structured, no syntax errors.
+- **Recommendation**: Add `.eslintrc.cjs` and `.prettierrc.yaml` before next review cycle.
 
 ## Commit Message Draft
-- fix: resolve enable/disable cycle and wire ExportEngine plugin integration
+```
+feat(sdd): implement plugin system (SDD Volume 15)
 
-  Bug 1 â€” Split PluginHost.unload() into deactivatePlugin() (keep in Map
-  for re-enable) and uninstallPlugin() (delete from Map + disk). Update IPC
-  handlers: plugin:disable â†’ deactivatePlugin, plugin:uninstall â†’
-  uninstallPlugin. Add disableâ†’re-enable cycle test, uninstall disk deletion
-  test, and IPC handler tests.
+Implement the full plugin system as specified by SDD Volume 15, inspired
+by the VS Code Extension Host pattern adapted for Electron ESM.
 
-  Bug 2 â€” Wire PluginContext.registerExport() to call
-  exportEngine.registerRenderer() via an ExportEngine reference passed
-  through PluginHost â†’ PluginContext constructor. Subscription dispose
-  also calls unregisterRenderer(). Add ExportEngine.unregisterRenderer().
-  PluginContext disposables properly cleaned during deactivatePlugin().
-  Update example test to verify full integration end-to-end.
+Core (P1-P3):
+  - PluginManifest, PluginContext, Disposable/CompositeDisposable types and
+    Zod validation schemas in packages/shared
+  - PluginHost: plugin discovery from userData/plugins/, manifest validation,
+    dynamic ESM import() with cache busting in dev, activate/deactivate with
+    error isolation, contribution registry (agents/exports/providers/etc.)
+  - PluginContext: service injections (AiRouter, LexiconEngine), register*()
+    methods, registerConfigChangeListener via EventEmitter, auto-disposing
+    subscriptions via CompositeDisposable
+
+Integration (P4):
+  - ExportEngine.registerRenderer() for custom export formats
+  - AgentFactory.getPluginAgent() callback for plugin agent overrides
+  - AiRouter.setPluginProviderResolver() for plugin provider resolution
+
+IPC (P5):
+  - 8 plugin channels (list, enable, disable, uninstall, get-config,
+    set-config, request-permissions, confirm-permissions)
+  - plugin:install returns "non supporté en v1.0" per SDD §15.8
+  - All handlers validated with Zod schemas
+
+UI (P6):
+  - PluginsView.vue with plugin list, status badges, enable/disable/uninstall
+    actions, sensitive-permission warnings
+  - Permission confirmation modal at startup
+  - Pinia store, /plugins route, Sidebar link
+
+Dev (P7-P8):
+  - Hot-reload via fs.watch + 500ms debounce (dev only)
+  - example-export-pdf plugin (ESM pre-compiled .mjs) validates API end-to-end
+
+Security:
+  - Path traversal protection in manifest entry (assertWithinProject)
+  - IPC Zod validation on all plugin handlers (SDD §21.3)
+  - Sensitive permissions (project-write, fs-write, network) gated behind
+    user confirmation dialog
+  - Error isolation: try/catch around activate/deactivate, plugin marked
+    as error on failure
+
+Bugs fixed:
+  - Split PluginHost.unload() into deactivatePlugin() (keeps plugin in Map
+    for re-enable) and uninstallPlugin() (deletes from Map + disk)
+  - Wired PluginContext.registerExport() → ExportEngine.registerRenderer()
+    for actual export interception
+
+Tests: 98 new tests across 8 files, 434 total (29 suites), all passing.
+Type-check: 0 errors.
+```
 
 ## Current Status
 - Secure: Systeme de plugins implemente (SDD Volume 15) - P1 a P9 termines.
@@ -646,13 +709,15 @@ Next Agent: reviewer
 - Secure: 2 important security issues fixed (#1 path traversal, #3 IPC validation).
 - Secure: Tests: 434 pass (29 suites), 0 failed.
 - Secure: Type-check: 0 errors.
-- Warning: Lint: Could not execute (shell permissions denied).
+- Done: Lint Results section updated with detailed findings.
+- Warning: Lint: Cannot execute — ESLint has no config (no `.eslintrc*` found), `npm run lint` would fail. Config must be created.
+- Warning: Prettier: Cannot execute — no `.prettierrc*` found.
 - Important: 1 security issue remains (#2 runtime permissions - trust-based model, v2.0 scope).
 - Important: 2 review items remain (missing Configurer button, shared AppSettings type divergence).
 - Minor: 3 minor issues documented (sandbox false, permission nonce, configSchema validation).
 - Good: Code quality, test coverage, architecture, SDD alignment all excellent.
 
 ## Next Agent
-- reviewer — review the security fixes for issues #1 and #3
+- commit-message — finalize commit message for the merge. Lint/prettier require config creation before they can run — this can be a follow-up task.
 
 
