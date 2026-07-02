@@ -366,7 +366,44 @@ Le plan mentionne NtCard, NtButton, NtTable, NtBadge, NtModal â€” tous exis
 - `apps/desktop/src/renderer/src/components/Sidebar.vue`
 - `PROGRESS.md`
 
-## Implementation Notes (Coverage Improvement Session)
+## Implementation Notes (Structured JSON Logger — SDD §18.6)
+
+### Files changed
+- **`apps/desktop/src/main/utils/logger.ts`** — Replaced the 4-line electron-log re-export with a full `StructuredLogger` class that:
+  - Implements `StructuredLogger` class with `debug()`, `info()`, `warn()`, `error()` methods accepting `(message, ...args)`
+  - Produces NDJSON output for file transport via electron-log format function
+  - Produces human-readable console output: `[timestamp] [LEVEL] [component] message (duration, tokens)`
+  - Supports `child(component)` — returns new logger with preset component name
+  - Supports `withCorrelationId(id)` — returns new logger whose every entry carries the correlationId
+  - Builds structured `LogEntry` objects with required fields: timestamp, level, component, message
+  - Extracts optional fields from context objects: correlationId, durationMs, tokensIn, tokensOut, error, projectId, chapterId
+  - Redacts sensitive keys (apiKey, password, secret, authorization, bearer) recursively
+  - Truncates messages over 1000 characters
+  - Backward compatible: supports old-style `logger.info("msg", err)` and `logger.warn("msg", err)` patterns
+  - Handles old-style `logger.info("msg", { arbitraryField: "value" })` by merging fields into entry
+  - Falls back to `extra` array for multiple unstructured args
+  - Guarded transport configuration (safe in test environments without full electron-log mocking)
+  - Exports `export const logger = new StructuredLogger()` (singleton) and `export default logger`
+  - Exports `StructuredLogger`, `LogContext`, `LogEntry` types
+
+- **`apps/desktop/tests/unit/logger.spec.ts`** — 30 new tests covering:
+  - JSON structure: required fields (timestamp, level, component, message) for all 4 levels
+  - Optional fields: correlationId, durationMs, tokensIn, tokensOut, error, projectId, chapterId
+  - Child logger: component is set correctly, does not mutate parent
+  - withCorrelationId: correlationId is included in every log entry, passed to child loggers
+  - Backward compatibility: simple messages, message + Error (old-style), message + plain object (old-style), prefixed messages, template messages
+  - Sensitive data redaction: apiKey, password, secret (nested), authorization — all redacted; innocent fields not affected
+  - Message truncation: messages > 1000 chars truncated with `... [truncated]` suffix; short messages intact
+  - Edge cases: Error stack vs message, empty messages, multiple extra args
+
+### Test results
+- ✅ **Tests**: 550 passed (33 suites), 0 failed. Command: `npm run test --workspace=apps/desktop`
+- ✅ **Type-check**: 0 errors. Command: `npm run type-check --workspace=apps/desktop` (vue-tsc --noEmit, clean exit)
+- ✅ **Coverage thresholds**: Pass (lines 43.4% ≥ 40%, branches 73.62% ≥ 50%, functions 75% ≥ 75%, statements 43.4% ≥ 40%)
+- No regressions: all 520 existing tests + 30 new logger tests preserved.
+
+
+### Implementation Notes (Coverage Improvement Session)
 
 ### Test files created/modified
 
@@ -915,8 +952,11 @@ Type-check: 0 errors.
 - Minor: sandbox: false in webPreferences (deferred evaluation).
 - Good: Code quality, test coverage, architecture, SDD alignment all excellent.
 
+
 ## Next Agent
-- reviewer — review the test coverage improvements in this session. Verify new tests pass (520 total), type-check OK (0 errors), coverage thresholds pass.
-
-
-
+- @reviewer — review the Structured JSON Logger implementation (SDD §18.6). Verify:
+  - 550 tests pass (520 existing + 30 new logger tests)
+  - Type-check clean (0 errors)
+  - Coverage thresholds met
+  - New logger at apps/desktop/src/main/utils/logger.ts is backward compatible
+  - Logger spec at apps/desktop/tests/unit/logger.spec.ts covers all required cases
