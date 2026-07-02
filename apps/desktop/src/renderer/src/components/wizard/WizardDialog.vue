@@ -424,6 +424,7 @@ onBeforeUnmount(() => {
               class="test-error"
             >❌ Échec du test</span>
           </div>
+        </div>
 
         <!-- Barre d'actions -->
         <div class="wizard-footer">
