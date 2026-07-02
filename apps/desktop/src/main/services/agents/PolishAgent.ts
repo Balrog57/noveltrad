@@ -5,6 +5,7 @@ import {
   POLISH_SYSTEM_PROMPT,
   buildPolishUserPrompt,
 } from "../prompts/polish.system.js";
+import { logger } from "../../utils/logger.js";
 
 export class PolishAgent implements Agent {
   readonly id = "polish";
@@ -30,7 +31,7 @@ export class PolishAgent implements Agent {
 
     // Détection de refus éthique
     if (this.aiRouter.isEthicalRefusal(response)) {
-      console.warn(
+      logger.warn(
         `[PolishAgent] Refus éthique détecté — conservation du texte d'entrée`,
       );
       return {

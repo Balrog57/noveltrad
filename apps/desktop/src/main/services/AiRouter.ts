@@ -4,6 +4,7 @@ import type {
   ChatOptions,
 } from "@shared/types/index.js";
 import type { AiCache } from "./AiCache.js";
+import { logger } from "../utils/logger.js";
 
 export class AiRouter {
   private providers: Map<string, AiProvider> = new Map();
@@ -110,7 +111,7 @@ export class AiRouter {
       // Note : ne gère pas les apostrophes à l'intérieur des chaînes
       fixed = fixed.replace(/'/g, '"');
       const result = JSON.parse(fixed);
-      console.warn(
+      logger.warn(
         "[AiRouter] JSON réparé (fallback single quotes / trailing commas)",
       );
       return result;

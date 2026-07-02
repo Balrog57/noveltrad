@@ -11,6 +11,7 @@ import {
   TRANSLATE_SYSTEM_PROMPT,
   buildTranslateUserPrompt,
 } from "../prompts/translate.system.js";
+import { logger } from "../../utils/logger.js";
 
 export class TranslateAgent implements Agent {
   readonly id = "translate";
@@ -60,7 +61,7 @@ export class TranslateAgent implements Agent {
       // Détection de refus éthique
       if (this.aiRouter.isEthicalRefusal(response)) {
         this.refusalDetected = true;
-        console.warn(
+        logger.warn(
           `[TranslateAgent] Refus éthique détecté — conservation du texte source pour le paragraphe`,
         );
         translated.push({

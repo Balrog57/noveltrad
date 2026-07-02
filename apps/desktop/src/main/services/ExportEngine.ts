@@ -20,6 +20,7 @@ import type {
 export type CustomRenderer = (input: ExportInput) => string | Buffer | Promise<string | Buffer>;
 import type { ProjectDatabase } from "../db/connection.js";
 import { assertWithinProject } from "../utils/paths.js";
+import { logger } from "../utils/logger.js";
 
 /** SDD §13.6 : entrée d'un chapitre pour l'export par lots */
 export interface BatchChapterInput {
@@ -467,7 +468,7 @@ p { margin: 1em 0; text-align: justify; }
 
     // Logger les avertissements non-critiques
     for (const w of warnings) {
-      console.warn(`[ExportEngine] EPUB validation: ${w}`);
+      logger.warn(`[ExportEngine] EPUB validation: ${w}`);
     }
   }
 

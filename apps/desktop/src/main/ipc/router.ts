@@ -11,6 +11,7 @@ import { registerExportHandlers } from "./handlers/export.js";
 import { registerHistoryHandlers } from "./handlers/history.js";
 import { registerTmHandlers } from "./handlers/tm.js";
 import { registerPluginHandlers } from "./handlers/plugins.js";
+import { logger } from "../utils/logger.js";
 
 export function registerIpcRouter(): void {
   registerProjectHandlers();
@@ -28,7 +29,7 @@ export function registerIpcRouter(): void {
   ipcMain.on("message", (event, channel) => {
     if (!IPC_CHANNELS.includes(channel)) {
       event.preventDefault();
-      console.warn(`Unknown IPC channel: ${channel}`);
+      logger.warn(`Unknown IPC channel: ${channel}`);
     }
   });
 }

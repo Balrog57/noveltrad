@@ -9,6 +9,7 @@ import {
   PRE_TRANSLATE_SYSTEM_PROMPT,
   buildPreTranslateUserPrompt,
 } from "../prompts/pre-translate.system.js";
+import { logger } from "../../utils/logger.js";
 
 export class PreTranslateAgent implements Agent {
   readonly id = "pre_translate";
@@ -45,7 +46,7 @@ export class PreTranslateAgent implements Agent {
     // Détection de refus éthique
     if (this.aiRouter.isEthicalRefusal(response)) {
       this.refusalDetected = true;
-      console.warn(
+      logger.warn(
         `[PreTranslateAgent] Refus éthique détecté — conservation du texte source`,
       );
       const result: Paragraph[] = paragraphs.map((p) => ({

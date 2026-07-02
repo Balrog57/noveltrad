@@ -5,6 +5,7 @@ import {
   STYLE_SYSTEM_PROMPT,
   buildStyleUserPrompt,
 } from "../prompts/style.system.js";
+import { logger } from "../../utils/logger.js";
 
 export class StyleAgent implements Agent {
   readonly id = "style";
@@ -30,7 +31,7 @@ export class StyleAgent implements Agent {
 
     // Détection de refus éthique
     if (this.aiRouter.isEthicalRefusal(response)) {
-      console.warn(
+      logger.warn(
         `[StyleAgent] Refus éthique détecté — conservation du texte d'entrée`,
       );
       return {
