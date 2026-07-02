@@ -72,8 +72,6 @@ jobs:
       matrix:
         os:
           - windows-latest
-          - macos-latest
-          - ubuntu-latest
       fail-fast: false
 
     steps:
@@ -105,29 +103,9 @@ jobs:
         run: npx electron-vite build
         working-directory: apps/desktop
 
-      - name: Sign (Windows)
-        if: matrix.os == 'windows-latest'
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: echo "Windows code signing configured"
-
-      - name: Sign (macOS)
-        if: matrix.os == 'macos-latest'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: echo "macOS code signing configured"
-
       - name: Publish to GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npx electron-builder --publish always
         working-directory: apps/desktop
 
