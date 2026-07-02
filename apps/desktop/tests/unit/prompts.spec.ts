@@ -1,4 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Mock electron-log before any imports that trigger the logger
+vi.mock("electron-log", () => ({
+  default: {
+    initialize: vi.fn(),
+    transports: { file: { level: false }, console: { level: false } },
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import { AiRouter } from "../../src/main/services/AiRouter";
 import { TRANSLATE_SYSTEM_PROMPT, buildTranslateUserPrompt } from "../../src/main/services/prompts/translate.system";
 import { PRE_TRANSLATE_SYSTEM_PROMPT, buildPreTranslateUserPrompt } from "../../src/main/services/prompts/pre-translate.system";

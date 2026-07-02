@@ -1,4 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// Mock electron-log before any imports that trigger the logger
+vi.mock("electron-log", () => ({
+  default: {
+    initialize: vi.fn(),
+    transports: { file: { level: false }, console: { level: false } },
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import { TranslateAgent } from "../../src/main/services/agents/TranslateAgent";
 import { PreTranslateAgent } from "../../src/main/services/agents/PreTranslateAgent";
 import { GrammarAgent } from "../../src/main/services/agents/GrammarAgent";

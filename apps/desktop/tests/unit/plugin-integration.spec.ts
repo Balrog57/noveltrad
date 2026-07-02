@@ -1,4 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
+
+// Mock electron-log before any imports that trigger the logger
+vi.mock("electron-log", () => ({
+  default: {
+    initialize: vi.fn(),
+    transports: { file: { level: false }, console: { level: false } },
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import { ExportEngine } from "../../src/main/services/ExportEngine";
 import type { Agent } from "../../src/main/services/agents/Agent";
 import type { AgentConfig } from "../../src/main/services/agents/Agent";
