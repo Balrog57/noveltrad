@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { IPC_CHANNELS } from "../main/ipc/channels";
 
 export interface NovelTradAPI {
   invoke: <T = unknown>(channel: string, ...args: unknown[]) => Promise<T>;
@@ -6,12 +7,21 @@ export interface NovelTradAPI {
 }
 
 const api: NovelTradAPI = {
-  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  invoke: (channel, ...args) => {
+    if (IPC_CHANNELS.includes(channel as any)) {
+      return ipcRenderer.invoke(channel, ...args);
+    }
+    return Promise.reject(new Error(`Invalid IPC channel: ${channel}`));
+  },
   on: (channel, callback) => {
-    ipcRenderer.on(channel, (_event, ...args) => callback(...args));
-    return () => {
-      ipcRenderer.removeAllListeners(channel);
-    };
+    if (IPC_CHANNELS.includes(channel as any)) {
+      ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+      return () => {
+        ipcRenderer.removeAllListeners(channel);
+      };
+    }
+    console.error(`Invalid IPC channel: ${channel}`);
+    return () => {};
   },
 };
 
