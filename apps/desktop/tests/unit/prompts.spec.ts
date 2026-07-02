@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { AiRouter } from "../../src/main/services/AiRouter";
-import { TRANSLATE_SYSTEM_PROMPT } from "../../src/main/services/prompts/translate.system";
-import { PRE_TRANSLATE_SYSTEM_PROMPT } from "../../src/main/services/prompts/pre-translate.system";
-import { GRAMMAR_SYSTEM_PROMPT } from "../../src/main/services/prompts/grammar.system";
-import { STYLE_SYSTEM_PROMPT } from "../../src/main/services/prompts/style.system";
-import { POLISH_SYSTEM_PROMPT } from "../../src/main/services/prompts/polish.system";
+import { TRANSLATE_SYSTEM_PROMPT, buildTranslateUserPrompt } from "../../src/main/services/prompts/translate.system";
+import { PRE_TRANSLATE_SYSTEM_PROMPT, buildPreTranslateUserPrompt } from "../../src/main/services/prompts/pre-translate.system";
+import { GRAMMAR_SYSTEM_PROMPT, buildGrammarUserPrompt } from "../../src/main/services/prompts/grammar.system";
+import { STYLE_SYSTEM_PROMPT, buildStyleUserPrompt } from "../../src/main/services/prompts/style.system";
+import { POLISH_SYSTEM_PROMPT, buildPolishUserPrompt } from "../../src/main/services/prompts/polish.system";
 
 // ---------------------------------------------------------------------------
 // AiRouter.tryParseJson
@@ -247,5 +247,141 @@ describe("Qwen prompt compatibility", () => {
     for (const prompt of prompts) {
       expect(prompt).toContain("Do NOT add any text before or after");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildTranslateUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildTranslateUserPrompt", () => {
+  it("devrait construire un prompt avec texte source et langues", () => {
+    const result = buildTranslateUserPrompt({
+      sourceText: "The dragon flew.",
+      sourceLanguage: "en",
+      targetLanguage: "fr",
+      lexiconBlock: "",
+      memoryBlock: "",
+    });
+    expect(result).toContain("Source (en)");
+    expect(result).toContain("The dragon flew.");
+    expect(result).toContain("Translate to fr:");
+  });
+
+  it("devrait inclure le bloc lexique si non vide", () => {
+    const result = buildTranslateUserPrompt({
+      sourceText: "Hello",
+      sourceLanguage: "en",
+      targetLanguage: "fr",
+      lexiconBlock: "--- LEXICON ---\n- dragon → dragon\n--- END LEXICON ---\n\n",
+      memoryBlock: "",
+    });
+    expect(result).toContain("LEXICON");
+    expect(result).toContain("dragon → dragon");
+  });
+
+  it("devrait inclure le bloc mémoire si non vide", () => {
+    const result = buildTranslateUserPrompt({
+      sourceText: "Hello",
+      sourceLanguage: "en",
+      targetLanguage: "fr",
+      lexiconBlock: "",
+      memoryBlock: "--- TRANSLATION MEMORY ---\n- \"Hi\" → \"Salut\"\n--- END TM ---\n\n",
+    });
+    expect(result).toContain("TRANSLATION MEMORY");
+    expect(result).toContain("\"Hi\" → \"Salut\"");
+  });
+
+  it("devrait inclure le bloc RAG si fourni", () => {
+    const result = buildTranslateUserPrompt({
+      sourceText: "Hello",
+      sourceLanguage: "en",
+      targetLanguage: "fr",
+      lexiconBlock: "",
+      memoryBlock: "",
+      ragBlock: "## Traductions similaires précédentes\nSource: Hi\nTraduction: Salut\n\n",
+    });
+    expect(result).toContain("Traductions similaires précédentes");
+    expect(result).toContain("Hi");
+    expect(result).toContain("Salut");
+  });
+
+  it("devrait ignorer le bloc RAG s'il est undefined", () => {
+    const result = buildTranslateUserPrompt({
+      sourceText: "Hello",
+      sourceLanguage: "en",
+      targetLanguage: "fr",
+      lexiconBlock: "",
+      memoryBlock: "",
+    });
+    expect(result).not.toContain("undefined");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildPreTranslateUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildPreTranslateUserPrompt", () => {
+  it("devrait construire un prompt de pré-traduction", () => {
+    const result = buildPreTranslateUserPrompt({
+      sourceText: "Line 1\n\nLine 2",
+      sourceLanguage: "en",
+      targetLanguage: "fr",
+    });
+    expect(result).toContain("Input (en)");
+    expect(result).toContain("Line 1");
+    expect(result).toContain("Line 2");
+    expect(result).toContain("Translate to fr");
+    expect(result).toContain("literal translation");
+    expect(result).toContain("same number of paragraphs");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGrammarUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildGrammarUserPrompt", () => {
+  it("devrait construire un prompt de correction grammaticale", () => {
+    const result = buildGrammarUserPrompt({
+      text: "Le dragon volaient.",
+      targetLanguage: "fr",
+    });
+    expect(result).toContain("Text to proofread (fr)");
+    expect(result).toContain("Le dragon volaient.");
+    expect(result).toContain("Corrected text:");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildStyleUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildStyleUserPrompt", () => {
+  it("devrait construire un prompt d'amélioration stylistique", () => {
+    const result = buildStyleUserPrompt({
+      text: "Le dragon a volé.",
+      targetLanguage: "fr",
+    });
+    expect(result).toContain("Text to improve (fr)");
+    expect(result).toContain("Le dragon a volé.");
+    expect(result).toContain("Rewritten text:");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildPolishUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildPolishUserPrompt", () => {
+  it("devrait construire un prompt de polissage final", () => {
+    const result = buildPolishUserPrompt({
+      text: "Le dragon volait dans le ciel.",
+      targetLanguage: "fr",
+    });
+    expect(result).toContain("Text to polish (fr)");
+    expect(result).toContain("Le dragon volait dans le ciel.");
+    expect(result).toContain("Polished text:");
   });
 });
