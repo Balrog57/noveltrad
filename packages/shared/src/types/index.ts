@@ -217,6 +217,7 @@ export interface AppSettings {
   targetLanguage: string;
   defaultProjectsPath: string;
   theme: "dark" | "light" | "system";
+  recentProjects: string[];
   updateChannel: "latest" | "beta" | "alpha";
   ragEnabled: boolean;
   /** SDD §7.9 : concurrence des jobs batch (défaut 1 pour Ollama local) */
@@ -225,6 +226,8 @@ export interface AppSettings {
   qualityThreshold: number;
   /** SDD §11.4 : tolérances de cohérence par paire de langues */
   consistencyTolerances: Record<string, ConsistencyTolerance>;
+  /** SDD §15 : plugins activés (liste des IDs) */
+  enabledPlugins: string[];
 }
 
 export interface CreateProjectPayload {

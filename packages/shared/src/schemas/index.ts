@@ -26,15 +26,38 @@ export const createProjectSchema = z.object({
   parentPath: z.string().min(1),
 });
 
+/** SDD §11.4 : schéma Zod pour une tolérance de cohérence */
+const consistencyToleranceSchema = z.object({
+  sentenceRatioMin: z.number().min(0).max(5).default(0.7),
+  sentenceRatioMax: z.number().min(0).max(10).default(1.5),
+  lengthRatioMin: z.number().min(0).max(5).default(0.6),
+  lengthRatioMax: z.number().min(0).max(10).default(1.8),
+  ignoreNumbersInDialogues: z.boolean().default(false),
+  ignorePunctuationMismatch: z.boolean().default(false),
+});
+
 export const appSettingsSchema = z.object({
   firstRunCompleted: z.boolean().default(false),
-  ollamaHost: z.string().url().default("http://localhost:11434"),
+  ollamaHost: z.string().default("http://localhost:11434"),
   defaultModel: z.string().default("qwen3.5:9b"),
   defaultPreTranslateModel: z.string().default("qwen3.5:4b"),
   sourceLanguage: z.string().length(2).default("zh"),
   targetLanguage: z.string().length(2).default("fr"),
   defaultProjectsPath: z.string().default("~/NovelTrad Projects"),
   theme: z.enum(["dark", "light", "system"]).default("dark"),
+  recentProjects: z.array(z.string()).default([]),
+  updateChannel: z.enum(["latest", "beta", "alpha"]).default("latest"),
+  ragEnabled: z.boolean().default(true),
+  // SDD §7.9 : concurrence des jobs batch (défaut 1 pour Ollama local)
+  maxConcurrentJobs: z.number().int().min(1).max(8).default(1),
+  // SDD §12.5 : seuil de qualité minimum (le workflow met en pause si le score est inférieur)
+  qualityThreshold: z.number().int().min(0).max(100).default(70),
+  // SDD §11.4 : tolérances de cohérence configurables par paire de langues
+  consistencyTolerances: z
+    .record(z.string(), consistencyToleranceSchema)
+    .default({}),
+  // SDD §15 : plugins activés (liste des IDs)
+  enabledPlugins: z.array(z.string()).default([]),
 });
 
 export const ipcChannelSchema = z.enum([
