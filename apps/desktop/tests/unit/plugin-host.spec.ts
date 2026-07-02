@@ -323,6 +323,48 @@ describe("PluginHost", () => {
     it("getParser retourne undefined si aucun plugin parser", () => {
       expect(host.getParser("pdf")).toBeUndefined();
     });
+
+    it("les contributions dynamiques d'activate() ne sont pas écrasées par le manifest", async () => {
+      const pluginDir = path.join(pluginsDir, "com.test.dynamic");
+      fs.mkdirSync(pluginDir, { recursive: true });
+      const manifest = {
+        id: "com.test.dynamic",
+        name: "Dynamic Plugin",
+        version: "1.0.0",
+        type: "agent",
+        entry: "index.mjs",
+        permissions: [],
+        contributions: {
+          agents: [{ stage: "xianxia_check", name: "Xianxia Check" }],
+        },
+      };
+      fs.writeFileSync(path.join(pluginDir, "manifest.json"), JSON.stringify(manifest, null, 2));
+      const factoryFn = async () => ({ run: () => "from-activate" });
+      fs.writeFileSync(
+        path.join(pluginDir, "index.mjs"),
+        `
+export default {
+  manifest: ${JSON.stringify(manifest)},
+  apiVersion: "1.0",
+  activate: async (context) => {
+    context.registerAgent("xianxia_check", ${factoryFn.toString()});
+  },
+  deactivate: async () => {},
+};`,
+      );
+
+      await host.load(pluginDir);
+      await host.activatePlugin("com.test.dynamic");
+
+      // Le registre doit contenir la factory dynamique, pas l'instance du plugin
+      const agent = host.getAgent("xianxia_check");
+      expect(agent).not.toBe(host.get("com.test.dynamic")?.instance);
+      expect(typeof agent).toBe("function");
+
+      // Après désactivation, le registre doit être nettoyé
+      await host.deactivatePlugin("com.test.dynamic");
+      expect(host.getAgent("xianxia_check")).toBeUndefined();
+    });
   });
 
   describe("init", () => {

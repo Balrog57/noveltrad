@@ -257,8 +257,9 @@ export class PluginHost {
       loaded.disposables = undefined;
     }
 
-    // Désenregistrer les contributions du manifest
-    this.unregisterContributions(loaded.manifest);
+    // Désenregistrer les contributions du manifest (seulement si encore l'instance,
+    // pas une fonction dynamique enregistrée par activate())
+    this.unregisterContributions(loaded.manifest, loaded.instance);
 
     loaded.status = "inactive";
 
@@ -537,38 +538,52 @@ export class PluginHost {
 
   /**
    * Désenregistre les contributions d'un plugin.
+   * Ne supprime que les entrées qui pointent encore vers l'instance du plugin
+   * (et non une fonction dynamique enregistrée par activate()).
    */
-  private unregisterContributions(manifest: PluginManifest): void {
+  private unregisterContributions(manifest: PluginManifest, instance: NovelTradPlugin): void {
     if (!manifest.contributions) return;
 
     if (manifest.contributions.agents) {
       for (const agent of manifest.contributions.agents) {
-        this.registry.agents.delete(agent.stage);
+        if (this.registry.agents.get(agent.stage) === instance) {
+          this.registry.agents.delete(agent.stage);
+        }
       }
     }
     if (manifest.contributions.exports) {
       for (const exp of manifest.contributions.exports) {
-        this.registry.exports.delete(exp.format);
+        if (this.registry.exports.get(exp.format) === instance) {
+          this.registry.exports.delete(exp.format);
+        }
       }
     }
     if (manifest.contributions.providers) {
       for (const prov of manifest.contributions.providers) {
-        this.registry.providers.delete(prov.id);
+        if (this.registry.providers.get(prov.id) === instance) {
+          this.registry.providers.delete(prov.id);
+        }
       }
     }
     if (manifest.contributions.parsers) {
       for (const parser of manifest.contributions.parsers) {
-        this.registry.parsers.delete(parser.extension);
+        if (this.registry.parsers.get(parser.extension) === instance) {
+          this.registry.parsers.delete(parser.extension);
+        }
       }
     }
     if (manifest.contributions.prompts) {
       for (const prompt of manifest.contributions.prompts) {
-        this.registry.prompts.delete(prompt.id);
+        if (this.registry.prompts.get(prompt.id) === instance) {
+          this.registry.prompts.delete(prompt.id);
+        }
       }
     }
     if (manifest.contributions.commands) {
       for (const cmd of manifest.contributions.commands) {
-        this.registry.commands.delete(cmd.id);
+        if (this.registry.commands.get(cmd.id) === instance) {
+          this.registry.commands.delete(cmd.id);
+        }
       }
     }
   }
