@@ -1,0 +1,3 @@
+## 2025-07-02 - Keyboard accessibility for custom table rows
+**Learning:** Custom interactive elements (like `<tr>` used as clickable rows in `NtTable`) need explicit keyboard support (`tabindex="0"`, `@keydown.enter`, `@keydown.space.prevent`) and visible focus states (`:focus-visible` with `outline`) to be accessible to keyboard-only and screen reader users. Simply adding an `@click` handler leaves out a significant portion of users.
+**Action:** Always ensure that any custom clickable element that functions like a button or link has a `tabindex`, keyboard event handlers, and a distinct focus style.
