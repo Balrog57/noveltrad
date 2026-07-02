@@ -1,7 +1,14 @@
 import { ipcMain } from "electron";
+import { z } from "zod";
 import { UpdateManager } from "../../managers/UpdateManager.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import { BrowserWindow } from "electron";
+
+// ── Schémas de validation Zod (SDD §16.3) ──────────────────────────────
+
+const channelSchema = z.enum(["latest", "beta", "alpha"], {
+  message: "Canal invalide. Valeurs acceptées : latest, beta, alpha",
+});
 
 const settings = new SettingsManager();
 
@@ -28,12 +35,10 @@ export function registerUpdateHandlers(): void {
     return { ok: true };
   });
 
-  ipcMain.handle("update:set-channel", async (_event, channel: string) => {
-    if (!["latest", "beta", "alpha"].includes(channel))
-      throw new Error("Canal invalide");
-
-    updateManager.setChannel(channel);
-    settings.set("updateChannel", channel as "latest" | "beta" | "alpha");
+  ipcMain.handle("update:set-channel", async (_event, channel: unknown) => {
+    const parsed = channelSchema.parse(channel);
+    updateManager.setChannel(parsed);
+    settings.set("updateChannel", parsed);
     return { ok: true };
   });
 }
