@@ -105,7 +105,10 @@ function sortIcon(col: Column): string {
           :key="(row.id as string) ?? idx"
           class="nt-tr"
           :class="{ 'nt-tr--odd': idx % 2 === 0 }"
+          tabindex="0"
           @click="emit('row-click', row)"
+          @keydown.enter="emit('row-click', row)"
+          @keydown.space.prevent="emit('row-click', row)"
           @contextmenu.prevent="emit('row-context', row, $event)"
         >
           <td v-for="col in columns" :key="col.key">
@@ -181,6 +184,11 @@ tbody td {
 
 .nt-tr:hover {
   background-color: var(--bg-tertiary);
+}
+
+.nt-tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .nt-tr--odd {
