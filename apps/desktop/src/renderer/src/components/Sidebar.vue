@@ -1,24 +1,34 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
 import { useProjectStore } from "../stores/project";
+import {
+  Home,
+  Terminal,
+  Puzzle,
+  Settings,
+  BookOpen,
+  Workflow,
+  BookMarked,
+  Clock,
+} from "@lucide/vue";
 
 const router = useRouter();
 const route = useRoute();
 const projectStore = useProjectStore();
 
 const links = [
-  { name: "home", label: "Accueil", icon: "🏠" },
-  { name: "console", label: "Console", icon: "🖥" },
-  { name: "plugins", label: "Plugins", icon: "🔌" },
-  { name: "settings", label: "Paramètres", icon: "⚙️" },
+  { name: "home", label: "Accueil", icon: Home },
+  { name: "console", label: "Console", icon: Terminal },
+  { name: "plugins", label: "Plugins", icon: Puzzle },
+  { name: "settings", label: "Paramètres", icon: Settings },
 ];
 
 /** Liens visibles seulement quand un projet est ouvert */
 const projectLinks = [
-  { name: "chapters", label: "Chapitres", icon: "📖" },
-  { name: "workflow", label: "Workflow", icon: "⚙" },
-  { name: "lexicon", label: "Lexique", icon: "📚" },
-  { name: "history", label: "Historique", icon: "🕐" },
+  { name: "chapters", label: "Chapitres", icon: BookOpen },
+  { name: "workflow", label: "Workflow", icon: Workflow },
+  { name: "lexicon", label: "Lexique", icon: BookMarked },
+  { name: "history", label: "Historique", icon: Clock },
 ];
 
 function isActive(name: string) {
@@ -40,7 +50,7 @@ function isActive(name: string) {
         :aria-label="link.label"
         @click="router.push({ name: link.name })"
       >
-        <span class="icon">{{ link.icon }}</span>
+        <component :is="link.icon" class="icon" :size="18" />
         <span>{{ link.label }}</span>
       </button>
 
@@ -60,7 +70,7 @@ function isActive(name: string) {
             })
           "
         >
-          <span class="icon">{{ link.icon }}</span>
+          <component :is="link.icon" class="icon" :size="18" />
           <span>{{ link.label }}</span>
         </button>
       </template>
