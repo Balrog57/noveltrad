@@ -58,6 +58,28 @@ export const appSettingsSchema = z.object({
     .default({}),
   // SDD §15 : plugins activés (liste des IDs)
   enabledPlugins: z.array(z.string()).default([]),
+
+  // SDD §4.11.1 : provider IA actif
+  activeProvider: z
+    .enum(["ollama", "openai", "anthropic", "gemini", "openrouter", "lmstudio"])
+    .default("ollama"),
+
+  // SDD §4.11.1 : provider de fallback
+  fallbackProvider: z
+    .enum(["", "ollama", "openai", "anthropic", "gemini", "openrouter", "lmstudio"])
+    .default(""),
+
+  // SDD §4.11.1 : clé API pour les providers cloud
+  apiKey: z.string().default(""),
+
+  // SDD §4.11.4 : langue de l'interface
+  uiLanguage: z.enum(["fr", "en"]).default("fr"),
+
+  // SDD §4.11.4 : taille de police dans l'éditeur
+  editorFontSize: z.number().int().min(10).max(24).default(14),
+
+  // SDD §4.11.5 : niveau de log
+  logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
 export const ipcChannelSchema = z.enum([

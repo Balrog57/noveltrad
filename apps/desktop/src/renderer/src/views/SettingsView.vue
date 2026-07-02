@@ -3,11 +3,13 @@ import { onMounted, onUnmounted, watch, ref, computed } from "vue";
 import { useSettingsStore } from "../stores/settings";
 import { useOllamaStore } from "../stores/ollama";
 import { useUpdateStore } from "../stores/update";
+import { useRouter } from "vue-router";
 import type { ConsistencyTolerance } from "@shared/types/index.js";
 
 const settings = useSettingsStore();
 const ollama = useOllamaStore();
 const update = useUpdateStore();
+const router = useRouter();
 
 const themeValue = ref<string>(settings.data.theme ?? "system");
 const saved = ref(false);
@@ -147,6 +149,33 @@ watch(
     }
   },
 );
+
+async function resetPreferences(): Promise<void> {
+  if (confirm("Voulez-vous vraiment reinitialiser toutes les preferences ?")) {
+    // Recharger les valeurs par defaut en reinitialisant le store
+    await settings.set("ollamaHost", "http://localhost:11434");
+    await settings.set("theme", "dark");
+    await settings.set("updateChannel", "latest");
+    await settings.set("ragEnabled", true);
+    await settings.set("qualityThreshold", 70);
+    await settings.set("activeProvider", "ollama");
+    await settings.set("fallbackProvider", "");
+    await settings.set("apiKey", "");
+    await settings.set("uiLanguage", "fr");
+    await settings.set("editorFontSize", 14);
+    await settings.set("logLevel", "info");
+    await settings.load();
+    saved.value = true;
+    setTimeout(() => {
+      saved.value = false;
+    }, 2000);
+  }
+}
+
+async function restartWizard(): Promise<void> {
+  await settings.set("firstRunCompleted", false);
+  router.push("/wizard");
+}
 
 onMounted(() => {
   applyTheme((settings.data.theme as "dark" | "light" | "system") ?? "system");
@@ -380,6 +409,97 @@ onUnmounted(() => {
       </label>
     </section>
 
+    <!-- SDD §4.11.1 : Section IA -->
+    <section class="card">
+      <h2>IA</h2>
+      <p class="section-desc">
+        Configuration du fournisseur d'intelligence artificielle.
+      </p>
+
+      <label>
+        Provider actif
+        <select v-model="settings.data.activeProvider">
+          <option value="ollama">Ollama (local)</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="gemini">Gemini</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="lmstudio">LM Studio</option>
+        </select>
+      </label>
+
+      <label>
+        Provider de fallback
+        <select v-model="settings.data.fallbackProvider">
+          <option value="">Aucun</option>
+          <option value="ollama">Ollama (local)</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="gemini">Gemini</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="lmstudio">LM Studio</option>
+        </select>
+      </label>
+
+      <div v-if="settings.data.activeProvider && settings.data.activeProvider !== 'ollama' && settings.data.activeProvider !== 'lmstudio'">
+        <label>
+          Cle API
+          <input
+            v-model="settings.data.apiKey"
+            type="password"
+            placeholder="sk-..."
+          />
+        </label>
+      </div>
+    </section>
+
+    <!-- SDD §4.11.4 : Section Interface -->
+    <section class="card">
+      <h2>Interface</h2>
+
+      <label>
+        Langue de l'interface
+        <select v-model="settings.data.uiLanguage">
+          <option value="fr">Francais</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+
+      <label>
+        Taille de police (editeur)
+        <select v-model.number="settings.data.editorFontSize">
+          <option :value="12">12</option>
+          <option :value="14">14</option>
+          <option :value="16">16</option>
+          <option :value="18">18</option>
+          <option :value="20">20</option>
+        </select>
+      </label>
+    </section>
+
+    <!-- SDD §4.11.5 : Section Avance -->
+    <section class="card">
+      <h2>Avance</h2>
+
+      <label>
+        Niveau de log
+        <select v-model="settings.data.logLevel">
+          <option value="debug">Debug</option>
+          <option value="info">Info</option>
+          <option value="warn">Warning</option>
+          <option value="error">Error</option>
+        </select>
+      </label>
+
+      <button class="btn-danger" @click="resetPreferences" style="margin-top: 12px;">
+        Reinitialiser les preferences
+      </button>
+
+      <button class="btn-danger" @click="restartWizard" style="margin-top: 8px;">
+        Relancer le wizard de premier demarrage
+      </button>
+    </section>
+
     <section class="card">
       <h2>Mises a jour</h2>
       <label>
@@ -495,6 +615,17 @@ select {
 
 .ok {
   color: var(--success);
+}
+
+.btn-danger {
+  background-color: var(--error, #e74c3c);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  display: block;
+  width: 100%;
 }
 
 .error {

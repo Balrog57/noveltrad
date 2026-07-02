@@ -228,6 +228,18 @@ export interface AppSettings {
   consistencyTolerances: Record<string, ConsistencyTolerance>;
   /** SDD §15 : plugins activés (liste des IDs) */
   enabledPlugins: string[];
+  /** SDD §4.11.1 : provider IA actif */
+  activeProvider: "ollama" | "openai" | "anthropic" | "gemini" | "openrouter" | "lmstudio";
+  /** SDD §4.11.1 : provider de fallback */
+  fallbackProvider: "" | "ollama" | "openai" | "anthropic" | "gemini" | "openrouter" | "lmstudio";
+  /** SDD §4.11.1 : clé API pour les providers cloud */
+  apiKey: string;
+  /** SDD §4.11.4 : langue de l'interface */
+  uiLanguage: "fr" | "en";
+  /** SDD §4.11.4 : taille de police dans l'éditeur */
+  editorFontSize: number;
+  /** SDD §4.11.5 : niveau de log */
+  logLevel: "debug" | "info" | "warn" | "error";
 }
 
 export interface CreateProjectPayload {
