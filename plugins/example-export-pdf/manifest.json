@@ -1,0 +1,19 @@
+{
+  "id": "com.noveltrad.example-export",
+  "name": "Export PDF Example",
+  "version": "1.0.0",
+  "author": "NovelTrad",
+  "description": "Exemple de plugin d'export PDF pour NovelTrad. Ajoute le format PDF à l'ExportEngine.",
+  "type": "export",
+  "entry": "index.mjs",
+  "permissions": ["fs-write"],
+  "contributions": {
+    "exports": [
+      {
+        "format": "pdf",
+        "name": "PDF",
+        "description": "Export PDF basique"
+      }
+    ]
+  }
+}

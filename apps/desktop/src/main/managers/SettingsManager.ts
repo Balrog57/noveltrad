@@ -33,6 +33,8 @@ export const appSettingsSchema = z.object({
   consistencyTolerances: z
     .record(z.string(), consistencyToleranceSchema)
     .default({}),
+  // SDD §15 : plugins activés (liste des IDs)
+  enabledPlugins: z.array(z.string()).default([]),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;

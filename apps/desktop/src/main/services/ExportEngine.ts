@@ -15,6 +15,9 @@ import type {
   ExportFormat,
   Paragraph as NtParagraph,
 } from "@shared/types/index.js";
+
+/** Renderer personnalisé enregistré par un plugin */
+export type CustomRenderer = (input: ExportInput) => string | Buffer | Promise<string | Buffer>;
 import type { ProjectDatabase } from "../db/connection.js";
 import { assertWithinProject } from "../utils/paths.js";
 
@@ -35,6 +38,22 @@ export interface BatchExportResult {
 
 export class ExportEngine {
   private db?: ProjectDatabase;
+
+  /**
+   * Renderers personnalisés enregistrés par des plugins (SDD §15).
+   * Map<format, renderer>. Vérifié avant le switch built-in dans render().
+   */
+  private customRenderers: Map<string, CustomRenderer> = new Map();
+
+  /** Enregistre un renderer pour un format d'export (utilisé par PluginHost) */
+  registerRenderer(format: string, renderer: CustomRenderer): void {
+    this.customRenderers.set(format, renderer);
+  }
+
+  /** Désenregistre un renderer pour un format (utilisé à la désactivation d'un plugin) */
+  unregisterRenderer(format: string): void {
+    this.customRenderers.delete(format);
+  }
 
   /** Définit la base de données projet pour le traçage des exports (SDD §6.2) */
   setDatabase(db: ProjectDatabase): void {
@@ -453,6 +472,13 @@ p { margin: 1em 0; text-align: justify; }
   }
 
   private async render(input: ExportInput): Promise<Buffer | string> {
+    // SDD §15 : vérifier d'abord les renderers personnalisés (plugins)
+    const customRenderer = this.customRenderers.get(input.format);
+    if (customRenderer) {
+      return customRenderer(input);
+    }
+
+    // Renderers built-in
     switch (input.format) {
       case "markdown":
         return this.toMarkdown(input);

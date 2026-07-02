@@ -1,60 +1,53 @@
-# Shared Agent Rules
+# Agent Guidelines for Noveltrad
 
-All agents in this configuration participate in a coordinated workflow.
+This document provides essential information for AI coding agents working on the Noveltrad application.
 
-## Workflow Order
+# Team workflow rules
 
-1. **Planner** - Clarifies the request, creates a plan
-2. **Debater** - Reviews the plan, suggests improvements
-3. **Implementor** - Makes the code changes
-4. **Reviewer** - Reviews implementation for correctness
-5. **Tester** - Runs relevant tests
-6. **Security-reviewer** - Performs security code review
-7. **Linter** - Runs formatting/lint checks
-8. **Commit-message** - Generates the final commit message
+All agents participate in one workflow.
 
-## Shared State Rules
+Shared handoff file:
+- Read `WORKFLOW_STATE.md` before starting work
+- Update `WORKFLOW_STATE.md` before finishing work
+- Never overwrite another section unnecessarily
+- Preserve decisions, assumptions, blockers, and next steps
 
-All agents must use `WORKFLOW_STATE.md` as the shared handoff file.
+Workflow order:
+1. Planner clarifies the request with the user
+2. Planner writes clarified scope and acceptance criteria
+3. Debater critiques the plan
+4. Implementor makes the change
+5. Reviewer reviews the result
+6. Tester runs relevant tests
+7. security-reviewer – performs security code review
+8. Linter checks formatting/linting
+9. Commit-message writes the final commit message
 
-Before starting:
-- Read `WORKFLOW_STATE.md`
-
-After finishing:
-- Update only the sections relevant to your role
-- Preserve existing content unless outdated or incorrect
-- Add a short handoff note for the next agent
-
-## Context7 Usage Rules
-
-When working with code, dependencies, libraries, frameworks, or APIs:
-- Use context7 before proposing a plan
-- Use context7 before implementation if external library behavior is relevant
-- Use context7 during review when checking API usage or framework conventions
-- Prefer context7 over guessing library behavior from memory
-- Record important findings in `WORKFLOW_STATE.md`
-
-## Writing Rules
-
+Writing rules:
 - Keep entries short and structured
 - Prefer bullets over long paragraphs
 - Record file paths when discussing code changes
 - Record exact test commands and results
 - Record unresolved questions under "Open Questions"
 
-## Handoff Rules
+# Shared workflow rules
 
-- Do not use chat history as the only source of truth
-- `WORKFLOW_STATE.md` is the canonical workflow record
-- Each agent updates only its own sections
-- Set `Next Agent` before finishing to guide the workflow
+All agents must use WORKFLOW_STATE.md as the shared handoff file.
 
-## Specialized Agents
+Before starting:
+- Read WORKFLOW_STATE.md
 
-Beyond the core workflow, these specialized agents are available:
-- **Architect** - Deep technical planning and design stress-testing
-- **Code Simplifier** - Refactoring and code quality improvements
-- **Code Skeptic** - Critical code quality inspection
-- **Documentation Specialist** - Writing and maintaining docs
-- **Frontend Specialist** - React, TypeScript, CSS expertise
-- **Test Engineer** - Test writing and coverage improvement
+After finishing:
+- Update only the sections relevant to your role
+- Preserve existing content unless it is outdated or clearly incorrect
+- Add a short handoff note for the next agent
+
+When working on code, dependencies, libraries, frameworks, or APIs:
+- Use context7 before proposing a plan
+- Use context7 before implementation if external library behavior is relevant
+- Use context7 during review when checking API usage or framework conventions
+- Prefer context7 over guessing library behavior from memory
+- Record important findings in WORKFLOW_STATE.md
+
+Do not use chat history as the only source of truth.
+WORKFLOW_STATE.md is the canonical workflow record.

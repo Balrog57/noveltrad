@@ -6,10 +6,16 @@ import { registerIpcRouter } from "./ipc/router.js";
 import { SettingsManager } from "./managers/SettingsManager.js";
 import { UpdateManager } from "./managers/UpdateManager.js";
 import { logger } from "./utils/logger.js";
+import { PluginHost } from "./plugins/PluginHost.js";
+import { setPluginHost, setSettingsManager } from "./ipc/handlers/plugins.js";
+import { AiRouter } from "./services/AiRouter.js";
+import { LexiconEngine } from "./services/LexiconEngine.js";
+import { ExportEngine } from "./services/ExportEngine.js";
 
 const settings = new SettingsManager();
 let mainWindow: BrowserWindow | null = null;
 let updateManager: UpdateManager | null = null;
+let pluginHost: PluginHost | null = null;
 
 function getCrashReportsDir(): string {
   const appData = process.env.APPDATA || path.join(os.homedir(), ".config");
@@ -186,6 +192,34 @@ app.whenReady().then(async () => {
   logger.info("NovelTrad starting...");
   registerIpcRouter();
   await createWindow();
+
+  // SDD §15 : initialisation du PluginHost
+  const aiRouter = new AiRouter();
+  const lexiconEngine = new LexiconEngine();
+  const exportEngine = new ExportEngine();
+  pluginHost = new PluginHost(
+    {
+      aiRouter,
+      lexiconEngine,
+      logger,
+    },
+    exportEngine,
+  );
+
+  // Connecter le PluginHost aux handlers IPC
+  setPluginHost(pluginHost);
+  setSettingsManager(settings);
+
+  // Découvrir et charger les plugins activés (flux permissions différé)
+  const enabledPluginIds = settings.get("enabledPlugins");
+  const sensitivePlugins = await pluginHost.init(enabledPluginIds);
+
+  // Si des plugins sensibles sont en attente, demander confirmation à l'utilisateur
+  if (sensitivePlugins.length > 0) {
+    mainWindow?.webContents.once("did-finish-load", async () => {
+      mainWindow?.webContents.send("plugin:request-permissions");
+    });
+  }
 
   updateManager = new UpdateManager(
     settings.get("updateChannel"),

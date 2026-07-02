@@ -9,6 +9,7 @@ const projectStore = useProjectStore();
 const links = [
   { name: "home", label: "Accueil", icon: "🏠" },
   { name: "console", label: "Console", icon: "🖥" },
+  { name: "plugins", label: "Plugins", icon: "🔌" },
   { name: "settings", label: "Paramètres", icon: "⚙️" },
 ];
 

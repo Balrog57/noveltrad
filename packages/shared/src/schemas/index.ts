@@ -5,6 +5,7 @@ export * from "./lexicon.js";
 export * from "./export.js";
 export * from "./history.js";
 export * from "./tmx.js";
+export * from "./plugin.js";
 
 export const projectSchema = z.object({
   id: z.string().uuid(),
@@ -55,4 +56,13 @@ export const ipcChannelSchema = z.enum([
   "chapter:list",
   "chapter:import",
   "export:run",
+  "plugin:list",
+  "plugin:enable",
+  "plugin:disable",
+  "plugin:uninstall",
+  "plugin:install",
+  "plugin:get-config",
+  "plugin:set-config",
+  "plugin:request-permissions",
+  "plugin:confirm-permissions",
 ]);

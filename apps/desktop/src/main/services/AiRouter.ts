@@ -8,9 +8,16 @@ import type { AiCache } from "./AiCache.js";
 export class AiRouter {
   private providers: Map<string, AiProvider> = new Map();
   private aiCache?: AiCache;
+  /** SDD §15 : callback pour obtenir un provider depuis un plugin */
+  private getPluginProviderFn?: (id: string) => AiProvider | undefined;
 
   register(provider: AiProvider): void {
     this.providers.set(provider.id, provider);
+  }
+
+  /** SDD §15 : enregistre une fonction pour résoudre les providers via PluginHost */
+  setPluginProviderResolver(fn: (id: string) => AiProvider | undefined): void {
+    this.getPluginProviderFn = fn;
   }
 
   /** Active le cache des réponses IA (SDD §22.1) */
@@ -19,9 +26,15 @@ export class AiRouter {
   }
 
   get(id: string): AiProvider {
+    // SDD §15 : vérifier d'abord les providers built-in
     const provider = this.providers.get(id);
-    if (!provider) throw new Error(`Provider inconnu : ${id}`);
-    return provider;
+    if (provider) return provider;
+    // SDD §15 : puis vérifier les plugins
+    if (this.getPluginProviderFn) {
+      const pluginProvider = this.getPluginProviderFn(id);
+      if (pluginProvider) return pluginProvider;
+    }
+    throw new Error(`Provider inconnu : ${id}`);
   }
 
   async chat(

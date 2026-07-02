@@ -48,6 +48,11 @@ const routes = [
     name: "console",
     component: () => import("../views/ConsoleView.vue"),
   },
+  {
+    path: "/plugins",
+    name: "plugins",
+    component: () => import("../views/PluginsView.vue"),
+  },
 ];
 
 const router = createRouter({

@@ -31,12 +31,24 @@ export interface AgentFactoryServices {
   exportEngine: ExportEngine;
   /** SDD §12.5 : service de calibration optionnel */
   calibrationService?: CalibrationService;
+  /**
+   * SDD §15 : callback pour obtenir un agent depuis un plugin.
+   * PluginHost fournit cette fonction. Si elle retourne un agent,
+   * il est utilisé à la place du built-in.
+   */
+  getPluginAgent?: (stage: string, config: AgentConfig) => Agent | undefined;
 }
 
 export class AgentFactory {
   constructor(private services: AgentFactoryServices) {}
 
   create(stage: WorkflowStage, config: AgentConfig): Agent {
+    // SDD §15 : vérifier d'abord si un plugin fournit un agent pour ce stage
+    if (this.services.getPluginAgent) {
+      const pluginAgent = this.services.getPluginAgent(stage, config);
+      if (pluginAgent) return pluginAgent;
+    }
+
     switch (stage) {
       case "split":
         return new SplitAgent(config);

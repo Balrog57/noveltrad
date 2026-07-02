@@ -1,3 +1,5 @@
+export * from "./plugin.js";
+
 export interface Project {
   id: string;
   name: string;

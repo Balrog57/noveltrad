@@ -8,7 +8,7 @@
 
 ## Etat global
 
-- **Tests** : 327/327 OK (20 suites)
+- **Tests** : 423/423 OK (29 suites)
 - **Type-check** : OK (0 erreur)
 - **Branche** : `main` (propre)
 - **Sous-agents** : configures sur `deepseek/deepseek-v4-flash` OK
@@ -166,6 +166,19 @@ Phase E (Historique) -> Phase H (Lexique) -> Phase G (Perf) -> Phase I (CI)
 | I1 | Script generate-latest-json.ts | [x] | [x] |
 | I2 | Upload latest.json CI | [x] | [x] |
 | I3 | Verification tag-vs-version | [x] | [x] |
+
+### Phase J — Plugins (SDD Volume 15)
+| # | Tache | Statut | Tests |
+|---|-------|--------|-------|
+| J1 | Types partages + schema Zod manifest | [x] | [x] |
+| J2 | PluginHost (decouverte, load, activate, registre) | [x] | [x] |
+| J3 | PluginContext + Disposable + CompositeDisposable | [x] | [x] |
+| J4 | Integration ExportEngine, AgentFactory, AiRouter | [x] | [x] |
+| J5 | Handlers IPC plugins | [x] | [x] |
+| J6 | UI PluginsView + store Pinia + route | [x] | [x] |
+| J7 | Hot-reload dev (fs.watch debounce 500ms) | [x] | [x] |
+| J8 | Plugin exemple (export PDF) | [x] | [x] |
+| J9 | Documentation + finalisation | [x] | [x] |
 
 ---
 

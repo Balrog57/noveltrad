@@ -60,6 +60,15 @@ export const IPC_CHANNELS = [
   "tm:import",
   "tm:export",
   "log",
+  "plugin:list",
+  "plugin:enable",
+  "plugin:disable",
+  "plugin:uninstall",
+  "plugin:install",
+  "plugin:get-config",
+  "plugin:set-config",
+  "plugin:request-permissions",
+  "plugin:confirm-permissions",
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

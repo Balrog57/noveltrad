@@ -10,6 +10,7 @@ import { registerLexiconHandlers } from "./handlers/lexicon.js";
 import { registerExportHandlers } from "./handlers/export.js";
 import { registerHistoryHandlers } from "./handlers/history.js";
 import { registerTmHandlers } from "./handlers/tm.js";
+import { registerPluginHandlers } from "./handlers/plugins.js";
 
 export function registerIpcRouter(): void {
   registerProjectHandlers();
@@ -22,6 +23,7 @@ export function registerIpcRouter(): void {
   registerExportHandlers();
   registerHistoryHandlers();
   registerTmHandlers();
+  registerPluginHandlers();
 
   ipcMain.on("message", (event, channel) => {
     if (!IPC_CHANNELS.includes(channel)) {
