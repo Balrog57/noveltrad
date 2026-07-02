@@ -240,6 +240,8 @@ export interface AppSettings {
   editorFontSize: number;
   /** SDD §4.11.5 : niveau de log */
   logLevel: "debug" | "info" | "warn" | "error";
+  /** SDD §22.2 : utiliser les Worker threads pour les agents CPU-bound */
+  useWorkerThreads: boolean;
 }
 
 export interface CreateProjectPayload {

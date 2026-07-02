@@ -80,6 +80,9 @@ export const appSettingsSchema = z.object({
 
   // SDD §4.11.5 : niveau de log
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
+
+  // SDD §22.2 : utiliser les Worker threads pour les agents CPU-bound
+  useWorkerThreads: z.boolean().default(false),
 });
 
 export const ipcChannelSchema = z.enum([
