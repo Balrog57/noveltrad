@@ -24,6 +24,10 @@ const selectedStep = ref<Step | null>(null);
 /** Logs en temps réel du workflow */
 const workflowLogs = ref<string[]>([]);
 
+/** Visibilité des snapshots (SDD §4.9) */
+const showInputSnapshot = ref(false);
+const showOutputSnapshot = ref(false);
+
 const selectedJob = computed(() => {
   if (!selectedJobId.value) return null;
   return jobs.value.find((j) => j.id === selectedJobId.value) ?? null;
@@ -204,6 +208,22 @@ function formatDuration(ms?: number): string {
 /** Formater le timestamp */
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString("fr-FR");
+}
+
+/** Formater un snapshot pour affichage (SDD §4.9) */
+function formatSnapshot(snapshot: Record<string, unknown>): string {
+  // Exclure les champs techniques
+  const keys = Object.keys(snapshot).filter(
+    (k) => k !== "model" && k !== "providerId",
+  );
+  if (keys.length === 0) return JSON.stringify(snapshot, null, 2);
+  const filtered: Record<string, unknown> = {};
+  for (const key of keys) {
+    filtered[key] = snapshot[key];
+  }
+  const text = JSON.stringify(filtered, null, 2);
+  // Tronquer les snapshots trop longs (> 2000 caractères)
+  return text.length > 2000 ? text.slice(0, 2000) + "\n... [tronqué]" : text;
 }
 
 /** Pourcentage de progression du job */
@@ -457,6 +477,33 @@ onUnmounted(() => {
                 </dd>
               </template>
             </dl>
+
+            <!-- Snapshots (SDD §4.9) : entr\u00E9e/sortie de l'\u00E9tape -->
+            <div
+              v-if="selectedStep.inputSnapshot && Object.keys(selectedStep.inputSnapshot).length > 1"
+              class="snapshot-section"
+            >
+              <h4 class="snapshot-title" @click="showInputSnapshot = !showInputSnapshot">
+                <span class="snapshot-toggle">{{ showInputSnapshot ? "\u25BC" : "\u25B6" }}</span>
+                Entr\u00E9e (snapshot)
+              </h4>
+              <pre v-if="showInputSnapshot" class="snapshot-content">{{
+                formatSnapshot(selectedStep.inputSnapshot)
+              }}</pre>
+            </div>
+
+            <div
+              v-if="selectedStep.outputSnapshot && Object.keys(selectedStep.outputSnapshot).length > 1"
+              class="snapshot-section"
+            >
+              <h4 class="snapshot-title" @click="showOutputSnapshot = !showOutputSnapshot">
+                <span class="snapshot-toggle">{{ showOutputSnapshot ? "\u25BC" : "\u25B6" }}</span>
+                Sortie (snapshot)
+              </h4>
+              <pre v-if="showOutputSnapshot" class="snapshot-content">{{
+                formatSnapshot(selectedStep.outputSnapshot)
+              }}</pre>
+            </div>
           </div>
         </template>
 
@@ -762,6 +809,46 @@ onUnmounted(() => {
 
 .error-text {
   color: var(--error) !important;
+}
+
+/* Snapshots (SDD §4.9) */
+.snapshot-section {
+  margin-top: 16px;
+}
+
+.snapshot-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  user-select: none;
+}
+
+.snapshot-title:hover {
+  color: var(--accent);
+}
+
+.snapshot-toggle {
+  font-size: 10px;
+}
+
+.snapshot-content {
+  margin: 8px 0 0;
+  padding: 12px;
+  background-color: var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 /* Logs */
