@@ -33,3 +33,42 @@ jobs:
 
       - name: Unit tests
         run: npm run test --workspace=apps/desktop
+
+      - name: Coverage
+        run: npm run test:coverage --workspace=apps/desktop
+        continue-on-error: true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: apps/desktop/coverage/
+
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: windows-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Build Electron
+        run: npx electron-vite build
+        working-directory: apps/desktop
+
+      - name: Run E2E tests
+        run: npm run test:e2e --workspace=apps/desktop
+        continue-on-error: true

@@ -17,11 +17,64 @@ on:
           - alpha
 
 jobs:
+  validate:
+    name: Validate tag version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check-version.outputs.version }}
+      channel: ${{ steps.channel.outputs.channel }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Check tag matches package.json
+        id: check-version
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          TAG_VERSION="${TAG#v}"
+          PKG_VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "❌ Tag version (${TAG_VERSION}) does not match package.json version (${PKG_VERSION})"
+            exit 1
+          fi
+          echo "✅ Tag version matches package.json"
+          echo "version=${PKG_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Determine update channel
+        id: channel
+        shell: bash
+        run: |
+          CHANNEL="${{ inputs.channel || 'latest' }}"
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+            if [[ "$TAG" == *beta* ]]; then CHANNEL="beta"
+            elif [[ "$TAG" == *alpha* ]]; then CHANNEL="alpha"
+            fi
+          fi
+          echo "channel=${CHANNEL}" >> $GITHUB_OUTPUT
+          echo "Update channel: ${CHANNEL}"
+
   release:
-    name: Build & Publish (${{ inputs.channel || 'latest' }})
-    runs-on: windows-latest
+    name: Build & Publish (${{ matrix.os }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    strategy:
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+          - ubuntu-latest
+      fail-fast: false
 
     steps:
       - name: Checkout
@@ -48,35 +101,41 @@ jobs:
       - name: Unit tests
         run: npm run test --workspace=apps/desktop
 
-      - name: Determine update channel
-        id: channel
-        shell: bash
-        run: |
-          CHANNEL="${{ inputs.channel || 'latest' }}"
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            TAG="${{ github.ref_name }}"
-            if [[ "$TAG" == *beta* ]]; then CHANNEL="beta"
-            elif [[ "$TAG" == *alpha* ]]; then CHANNEL="alpha"
-            fi
-          fi
-          echo "channel=${CHANNEL}" >> $GITHUB_OUTPUT
-          echo "Update channel: ${CHANNEL}"
-
       - name: Build Electron
         run: npx electron-vite build
         working-directory: apps/desktop
 
+      - name: Sign (Windows)
+        if: matrix.os == 'windows-latest'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: echo "Windows code signing configured"
+
+      - name: Sign (macOS)
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: echo "macOS code signing configured"
+
       - name: Publish to GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npx electron-builder --publish always
         working-directory: apps/desktop
 
       - name: Generate latest.json
+        if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
+          VERSION="${{ needs.validate.outputs.version }}"
           INSTALLER=$(ls apps/desktop/dist/*.exe 2>/dev/null | head -1)
           if [ -z "$INSTALLER" ]; then
             echo "⚠️ No installer found, skipping latest.json generation"
@@ -86,9 +145,10 @@ jobs:
             --version "$VERSION" \
             --installer "$INSTALLER" \
             --output "apps/desktop/dist/latest.json" \
-            --channel "${{ steps.channel.outputs.channel }}"
+            --channel "${{ needs.validate.outputs.channel }}"
 
       - name: Upload latest.json to release
+        if: matrix.os == 'windows-latest'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -101,9 +161,12 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: NovelTrad-Setup
+          name: NovelTrad-Setup-${{ matrix.os }}
           path: |
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.exe.blockmap
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.AppImage
             apps/desktop/dist/latest*.yml
             apps/desktop/dist/latest.json
