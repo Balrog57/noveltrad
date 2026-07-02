@@ -5,6 +5,11 @@ import { PRE_TRANSLATE_SYSTEM_PROMPT, buildPreTranslateUserPrompt } from "../../
 import { GRAMMAR_SYSTEM_PROMPT, buildGrammarUserPrompt } from "../../src/main/services/prompts/grammar.system";
 import { STYLE_SYSTEM_PROMPT, buildStyleUserPrompt } from "../../src/main/services/prompts/style.system";
 import { POLISH_SYSTEM_PROMPT, buildPolishUserPrompt } from "../../src/main/services/prompts/polish.system";
+import { SPLIT_SYSTEM_PROMPT, buildSplitUserPrompt } from "../../src/main/services/prompts/split.system";
+import { CONSISTENCY_SYSTEM_PROMPT, buildConsistencyUserPrompt } from "../../src/main/services/prompts/consistency.system";
+import { LEXICON_SYSTEM_PROMPT, buildLexiconUserPrompt } from "../../src/main/services/prompts/lexicon.system";
+import { QA_SYSTEM_PROMPT, buildQaUserPrompt } from "../../src/main/services/prompts/qa.system";
+import { EXPORT_SYSTEM_PROMPT, buildExportUserPrompt } from "../../src/main/services/prompts/export.system";
 
 // ---------------------------------------------------------------------------
 // AiRouter.tryParseJson
@@ -189,6 +194,36 @@ describe("Qwen prompt compatibility", () => {
     );
   });
 
+  it("split prompt starts with 'You are a helpful assistant.'", () => {
+    expect(SPLIT_SYSTEM_PROMPT.trim()).toMatch(
+      /^You are a helpful assistant\./,
+    );
+  });
+
+  it("consistency prompt starts with 'You are a helpful assistant.'", () => {
+    expect(CONSISTENCY_SYSTEM_PROMPT.trim()).toMatch(
+      /^You are a helpful assistant\./,
+    );
+  });
+
+  it("lexicon prompt starts with 'You are a helpful assistant.'", () => {
+    expect(LEXICON_SYSTEM_PROMPT.trim()).toMatch(
+      /^You are a helpful assistant\./,
+    );
+  });
+
+  it("qa prompt starts with 'You are a helpful assistant.'", () => {
+    expect(QA_SYSTEM_PROMPT.trim()).toMatch(
+      /^You are a helpful assistant\./,
+    );
+  });
+
+  it("export prompt starts with 'You are a helpful assistant.'", () => {
+    expect(EXPORT_SYSTEM_PROMPT.trim()).toMatch(
+      /^You are a helpful assistant\./,
+    );
+  });
+
   it("translate prompt forbids markdown code fences", () => {
     expect(TRANSLATE_SYSTEM_PROMPT).toContain(
       "Do NOT wrap in markdown code fences",
@@ -219,6 +254,36 @@ describe("Qwen prompt compatibility", () => {
     );
   });
 
+  it("split prompt forbids markdown code fences", () => {
+    expect(SPLIT_SYSTEM_PROMPT).toContain(
+      "Do NOT wrap in markdown code fences",
+    );
+  });
+
+  it("consistency prompt forbids markdown code fences", () => {
+    expect(CONSISTENCY_SYSTEM_PROMPT).toContain(
+      "Do NOT wrap in markdown code fences",
+    );
+  });
+
+  it("lexicon prompt forbids markdown code fences", () => {
+    expect(LEXICON_SYSTEM_PROMPT).toContain(
+      "Do NOT wrap in markdown code fences",
+    );
+  });
+
+  it("qa prompt forbids markdown code fences", () => {
+    expect(QA_SYSTEM_PROMPT).toContain(
+      "Do NOT wrap in markdown code fences",
+    );
+  });
+
+  it("export prompt forbids markdown code fences", () => {
+    expect(EXPORT_SYSTEM_PROMPT).toContain(
+      "Do NOT wrap in markdown code fences",
+    );
+  });
+
   it("translate prompt has version comment", () => {
     expect(TRANSLATE_SYSTEM_PROMPT).toBeDefined();
   });
@@ -230,6 +295,11 @@ describe("Qwen prompt compatibility", () => {
       GRAMMAR_SYSTEM_PROMPT,
       STYLE_SYSTEM_PROMPT,
       POLISH_SYSTEM_PROMPT,
+      SPLIT_SYSTEM_PROMPT,
+      CONSISTENCY_SYSTEM_PROMPT,
+      LEXICON_SYSTEM_PROMPT,
+      QA_SYSTEM_PROMPT,
+      EXPORT_SYSTEM_PROMPT,
     ];
     for (const prompt of prompts) {
       expect(prompt).toContain("OUTPUT FORMAT");
@@ -243,6 +313,11 @@ describe("Qwen prompt compatibility", () => {
       GRAMMAR_SYSTEM_PROMPT,
       STYLE_SYSTEM_PROMPT,
       POLISH_SYSTEM_PROMPT,
+      SPLIT_SYSTEM_PROMPT,
+      CONSISTENCY_SYSTEM_PROMPT,
+      LEXICON_SYSTEM_PROMPT,
+      QA_SYSTEM_PROMPT,
+      EXPORT_SYSTEM_PROMPT,
     ];
     for (const prompt of prompts) {
       expect(prompt).toContain("Do NOT add any text before or after");
@@ -383,5 +458,98 @@ describe("buildPolishUserPrompt", () => {
     expect(result).toContain("Text to polish (fr)");
     expect(result).toContain("Le dragon volait dans le ciel.");
     expect(result).toContain("Polished text:");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildSplitUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildSplitUserPrompt", () => {
+  it("devrait retourner le texte source brut", () => {
+    const result = buildSplitUserPrompt({
+      sourceText: "Paragraphe 1\n\nParagraphe 2",
+    });
+    expect(result).toContain("Paragraphe 1");
+    expect(result).toContain("Paragraphe 2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildConsistencyUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildConsistencyUserPrompt", () => {
+  it("devrait construire un prompt avec source + target", () => {
+    const result = buildConsistencyUserPrompt({
+      sourceText: "Hello world",
+      translatedText: "Bonjour le monde",
+    });
+    expect(result).toContain("Source:");
+    expect(result).toContain("Hello world");
+    expect(result).toContain("Translation:");
+    expect(result).toContain("Bonjour le monde");
+  });
+
+  it("devrait inclure le bloc lexique si fourni", () => {
+    const result = buildConsistencyUserPrompt({
+      sourceText: "Hello",
+      translatedText: "Bonjour",
+      lexiconBlock: "Dragon → Dragon",
+    });
+    expect(result).toContain("Dragon → Dragon");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildLexiconUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildLexiconUserPrompt", () => {
+  it("devrait construire un prompt avec lexique + texte traduit", () => {
+    const result = buildLexiconUserPrompt({
+      translatedText: "Bonjour le monde",
+      lexiconBlock: "Hello (locked) → Bonjour\nworld → monde",
+    });
+    expect(result).toContain("Lexicon:");
+    expect(result).toContain("Hello (locked) → Bonjour");
+    expect(result).toContain("Translated text:");
+    expect(result).toContain("Bonjour le monde");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildQaUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildQaUserPrompt", () => {
+  it("devrait construire un prompt d'évaluation qualité", () => {
+    const result = buildQaUserPrompt({
+      sourceText: "Hello world",
+      translatedText: "Bonjour le monde",
+      targetLanguage: "fr",
+    });
+    expect(result).toContain("Source:");
+    expect(result).toContain("Hello world");
+    expect(result).toContain("Translation (fr):");
+    expect(result).toContain("Bonjour le monde");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildExportUserPrompt
+// ---------------------------------------------------------------------------
+
+describe("buildExportUserPrompt", () => {
+  it("devrait construire un prompt d'export", () => {
+    const result = buildExportUserPrompt({
+      chapterTitle: "Chapitre 1",
+      translatedText: "Texte traduit.",
+      format: "epub",
+    });
+    expect(result).toContain("Format: epub");
+    expect(result).toContain("Title: Chapitre 1");
+    expect(result).toContain("Paragraphs:");
+    expect(result).toContain("Texte traduit.");
   });
 });
