@@ -100,7 +100,7 @@ function toggleMode(): void {
       <div class="diff-toggle-group">
         <label class="toggle-label">
           <input type="checkbox" v-model="showLineLevel" />
-          Diff ligne à ligne
+          Afficher au niveau ligne
         </label>
         <button class="btn-mode" @click="toggleMode">
           {{ currentMode === "side-by-side" ? "Vue unifiée" : "Côte à côte" }}
@@ -132,6 +132,21 @@ function toggleMode(): void {
               <p v-if="change.targetBefore" class="diff-target">
                 {{ change.targetBefore }}
               </p>
+              <!-- Line-level diff (côté Avant) -->
+              <template v-if="showLineLevel">
+                <div
+                  v-for="(seg, i) in paragraphLineDiffs(change)"
+                  :key="'l-' + i"
+                  class="diff-segment"
+                  :class="{
+                    'seg-equal': seg.type === 'equal',
+                    'seg-added': seg.type === 'added',
+                    'seg-removed': seg.type === 'removed',
+                  }"
+                >
+                  {{ seg.text }}
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -154,6 +169,21 @@ function toggleMode(): void {
               <p v-if="change.targetAfter" class="diff-target">
                 {{ change.targetAfter }}
               </p>
+              <!-- Line-level diff (côté Après) -->
+              <template v-if="showLineLevel">
+                <div
+                  v-for="(seg, i) in paragraphLineDiffs(change)"
+                  :key="'l-' + i"
+                  class="diff-segment"
+                  :class="{
+                    'seg-equal': seg.type === 'equal',
+                    'seg-added': seg.type === 'added',
+                    'seg-removed': seg.type === 'removed',
+                  }"
+                >
+                  {{ seg.text }}
+                </div>
+              </template>
             </div>
           </div>
         </div>
