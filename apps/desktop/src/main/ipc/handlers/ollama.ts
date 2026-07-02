@@ -2,6 +2,7 @@ import { ipcMain } from "electron";
 import { z } from "zod";
 import { OllamaManager } from "../../managers/OllamaManager.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
+import { logger } from "../../utils/logger.js";
 
 // ── Schémas de validation Zod (SDD §16.3) ──────────────────────────────
 
@@ -28,5 +29,17 @@ export function registerOllamaHandlers(): void {
       event.sender.send("ollama:pull-progress", progress);
     });
     return { done: true };
+  });
+
+  /** SDD §2.5 : test rapide du modèle en envoyant une courte requête */
+  ipcMain.handle("ollama:test-model", async (_event, modelName: unknown) => {
+    const parsed = z.string().min(1).parse(modelName);
+    try {
+      const result = await ollamaManager.testModel(parsed);
+      return { success: true, response: result };
+    } catch (e) {
+      logger.warn(`[ollama] Test du modèle "${parsed}" échoué : ${(e as Error).message}`);
+      return { success: false, error: (e as Error).message };
+    }
   });
 }

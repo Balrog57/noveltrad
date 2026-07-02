@@ -48,4 +48,15 @@ export class OllamaManager {
       );
     }
   }
+
+  /** SDD §2.5 : envoie une courte requête pour vérifier que le modèle répond */
+  async testModel(name: string): Promise<string> {
+    const client = this.getClient();
+    const response = await client.chat({
+      model: name,
+      messages: [{ role: "user", content: "Réponds uniquement par 'ok'." }],
+      stream: false,
+    });
+    return response.message.content;
+  }
 }

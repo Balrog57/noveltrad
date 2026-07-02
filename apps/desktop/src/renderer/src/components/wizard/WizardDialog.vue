@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { useSettingsStore } from "../../stores/settings";
 import { useOllamaStore } from "../../stores/ollama";
+import NtProgressBar from "../ui/NtProgressBar.vue";
 
 const emit = defineEmits<{
   close: [];
@@ -24,11 +25,34 @@ const suggestedModel = "qwen3.5:9b";
 const modelPresent = ref(false);
 const pullingModel = ref(false);
 const pullProgress = ref("");
+const pullPercent = ref(-1); // -1 = indéterminé
+const pullStatus = ref("");
+let unsubPullProgress: (() => void) | null = null;
 
 // Étape 4 : configuration rapide
 const sourceLanguage = ref("zh");
 const targetLanguage = ref("fr");
 const projectsPath = ref("~/NovelTrad Projects");
+
+// Connexion test (étape 5)
+const testLoading = ref(false);
+const testResult = ref<"idle" | "ok" | "error">("idle");
+
+async function testModel(): Promise<void> {
+  testLoading.value = true;
+  testResult.value = "idle";
+  try {
+    const result = await window.novelTradAPI.invoke<{
+      success: boolean;
+      error?: string;
+    }>("ollama:test-model", suggestedModel);
+    testResult.value = result.success ? "ok" : "error";
+  } catch {
+    testResult.value = "error";
+  } finally {
+    testLoading.value = false;
+  }
+}
 
 // Validation des étapes
 const canProceed = computed(() => {
@@ -127,16 +151,42 @@ async function detectModel(): Promise<void> {
 async function pullModel(): Promise<void> {
   if (pullingModel.value) return;
   pullingModel.value = true;
-  pullProgress.value = "Téléchargement en cours...";
+  pullPercent.value = -1; // indéterminé
+  pullStatus.value = "Préparation du téléchargement...";
+
+  // Écouter les événements de progression
+  unsubPullProgress = window.novelTradAPI.on(
+    "ollama:pull-progress",
+    (payload: unknown) => {
+      const data = payload as {
+        completed?: number;
+        total?: number;
+        status: string;
+      };
+      if (data.total && data.total > 0) {
+        pullPercent.value = Math.round(
+          ((data.completed ?? 0) / data.total) * 100,
+        );
+      }
+      pullStatus.value = data.status;
+    },
+  );
+
   try {
     await window.novelTradAPI.invoke("ollama:pull-model", suggestedModel);
     modelPresent.value = true;
     pullProgress.value = "";
+    pullPercent.value = 100;
+    pullStatus.value = "Téléchargement terminé";
   } catch (e) {
     pullProgress.value =
       e instanceof Error ? e.message : "Échec du téléchargement.";
+    pullPercent.value = -1;
+    pullStatus.value = "Erreur";
   } finally {
     pullingModel.value = false;
+    unsubPullProgress?.();
+    unsubPullProgress = null;
   }
 }
 
@@ -156,6 +206,10 @@ onMounted(() => {
   if (ollama.available) {
     ollamaStatus.value = "available";
   }
+});
+
+onBeforeUnmount(() => {
+  unsubPullProgress?.();
 });
 </script>
 
@@ -252,16 +306,19 @@ onMounted(() => {
                   Sans ce modèle, la traduction ne pourra pas fonctionner. Vous
                   pouvez le télécharger maintenant (environ 5 Go).
                 </p>
+                <div v-if="pullingModel" class="wizard-pull-progress">
+                  <NtProgressBar
+                    :value="pullPercent"
+                    :label="pullStatus"
+                  />
+                  <p v-if="pullProgress" class="wizard-error">{{ pullProgress }}</p>
+                </div>
                 <button
+                  v-else
                   class="btn-primary"
-                  :disabled="pullingModel"
                   @click="pullModel"
                 >
-                  {{
-                    pullingModel
-                      ? pullProgress || "Téléchargement..."
-                      : `Télécharger ${suggestedModel}`
-                  }}
+                  Télécharger {{ suggestedModel }}
                 </button>
               </div>
             </template>
@@ -346,7 +403,24 @@ onMounted(() => {
             Vous pouvez modifier ces paramètres à tout moment depuis ⚙️
             Paramètres.
           </p>
-        </div>
+
+          <div class="wizard-test-section">
+            <button
+              class="btn-secondary"
+              :disabled="testLoading"
+              @click="testModel"
+            >
+              {{ testLoading ? "Test en cours..." : "Tester le modèle" }}
+            </button>
+            <span
+              v-if="testResult === 'ok'"
+              class="test-ok"
+            >✅ Modèle fonctionnel</span>
+            <span
+              v-else-if="testResult === 'error'"
+              class="test-error"
+            >❌ Échec du test</span>
+          </div>
 
         <!-- Barre d'actions -->
         <div class="wizard-footer">
@@ -681,5 +755,35 @@ onMounted(() => {
 .btn-ghost:hover {
   color: var(--text-primary);
   background-color: var(--bg-tertiary);
+}
+
+/* Progression téléchargement */
+.wizard-pull-progress {
+  margin-top: 16px;
+  text-align: left;
+}
+
+/* Test de connexion */
+.wizard-test-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px;
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius);
+}
+
+.test-ok {
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.test-error {
+  color: var(--error);
+  font-size: 13px;
+  font-weight: 500;
 }
 </style>
