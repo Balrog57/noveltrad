@@ -72,6 +72,7 @@ export function registerPluginHandlers(): void {
       permissions: p.manifest.permissions || [],
       status: p.status,
       errorMessage: p.errorMessage,
+      configSchema: p.manifest.configSchema || undefined,
     }));
   });
 
@@ -142,19 +143,30 @@ export function registerPluginHandlers(): void {
   ipcMain.handle("plugin:get-config", async (_event, pluginId: unknown) => {
     const id = pluginIdSchema.parse(pluginId);
     if (!pluginHost) throw new Error("PluginHost non initialisé");
-    const plugin = pluginHost.get(id);
-    if (!plugin) throw new Error(`Plugin inconnu : ${id}`);
-    // La config est stockée dans le contexte du plugin, pour l'instant retourner vide
-    return plugin.manifest.configSchema || {};
+    try {
+      const plugin = pluginHost.get(id);
+      const config = pluginHost.getPluginConfig(id);
+      return {
+        success: true,
+        config,
+        configSchema: plugin?.manifest.configSchema || {},
+      };
+    } catch (err) {
+      logger.error(`[IPC] Erreur get-config pour "${id}" :`, err);
+      return { success: false, error: String(err) };
+    }
   });
 
   ipcMain.handle("plugin:set-config", async (_event, pluginId: unknown, config: unknown) => {
     const parsed = setConfigSchema.parse({ pluginId, config });
     if (!pluginHost) throw new Error("PluginHost non initialisé");
-    const plugin = pluginHost.get(parsed.pluginId);
-    if (!plugin) throw new Error(`Plugin inconnu : ${parsed.pluginId}`);
-    // Pour l'instant, la config est en lecture seule via le manifest
-    return { success: true };
+    try {
+      pluginHost.setPluginConfig(parsed.pluginId, parsed.config as Record<string, unknown>);
+      return { success: true };
+    } catch (err) {
+      logger.error(`[IPC] Erreur set-config pour "${parsed.pluginId}" :`, err);
+      return { success: false, error: String(err) };
+    }
   });
 
   /**

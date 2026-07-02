@@ -251,4 +251,80 @@ describe("Plugin IPC handlers", () => {
       expect(result).toEqual({ success: true });
     });
   });
+
+  describe("plugin:get-config / plugin:set-config", () => {
+    it("get-config retourne la config runtime du plugin", async () => {
+      const pluginDir = path.join(pluginsDir, "test.config");
+      fs.mkdirSync(pluginDir, { recursive: true });
+      const manifest = {
+        id: "test.config",
+        name: "Config Test",
+        version: "1.0.0",
+        type: "export",
+        entry: "index.mjs",
+        permissions: [],
+        configSchema: { strictness: { type: "number", default: 0.8 } },
+      };
+      fs.writeFileSync(path.join(pluginDir, "manifest.json"), JSON.stringify(manifest, null, 2));
+      fs.writeFileSync(
+        path.join(pluginDir, "index.mjs"),
+        `export default {
+          manifest: ${JSON.stringify(manifest)},
+          apiVersion: "1.0",
+          activate: async () => {},
+          deactivate: async () => {},
+        };`,
+      );
+
+      await host.load(pluginDir);
+      await host.activatePlugin("test.config");
+
+      const handlerCalls = vi.mocked(ipcMain.handle).mock.calls;
+      const getConfigHandler = handlerCalls.find(([c]) => c === "plugin:get-config")![1];
+
+      const result = await (getConfigHandler as any)({}, "test.config");
+      expect(result.success).toBe(true);
+      expect(result.config).toBeDefined();
+      // La config par défaut devrait inclure strictness
+      expect(result.configSchema).toBeDefined();
+    });
+
+    it("set-config persiste la config via PluginHost", async () => {
+      const pluginDir = path.join(pluginsDir, "test.setcfg");
+      fs.mkdirSync(pluginDir, { recursive: true });
+      const manifest = {
+        id: "test.setcfg",
+        name: "Set Config Test",
+        version: "1.0.0",
+        type: "export",
+        entry: "index.mjs",
+        permissions: [],
+      };
+      fs.writeFileSync(path.join(pluginDir, "manifest.json"), JSON.stringify(manifest, null, 2));
+      fs.writeFileSync(
+        path.join(pluginDir, "index.mjs"),
+        `export default {
+          manifest: ${JSON.stringify(manifest)},
+          apiVersion: "1.0",
+          activate: async () => {},
+          deactivate: async () => {},
+        };`,
+      );
+
+      await host.load(pluginDir);
+      await host.activatePlugin("test.setcfg");
+
+      const setConfigSpy = vi.spyOn(host, "setPluginConfig");
+
+      const handlerCalls = vi.mocked(ipcMain.handle).mock.calls;
+      const setConfigHandler = handlerCalls.find(([c]) => c === "plugin:set-config")![1];
+
+      const result = await (setConfigHandler as any)({}, "test.setcfg", {
+        strictness: 0.9,
+      });
+
+      expect(setConfigSpy).toHaveBeenCalledWith("test.setcfg", { strictness: 0.9 });
+      expect(result).toEqual({ success: true });
+    });
+  });
 });

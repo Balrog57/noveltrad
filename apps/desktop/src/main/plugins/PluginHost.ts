@@ -213,6 +213,9 @@ export class PluginHost {
     // Stocker les abonnements pour les disposer à la désactivation
     loaded.disposables = context.subscriptions;
 
+    // Stocker la référence au contexte pour getConfig/setConfig
+    loaded.context = context;
+
     // Enregistrer les contributions du manifest avant activate()
     // Les enregistrements dynamiques dans activate() peuvent ensuite les surcharger
     this.registerContributions(loaded.manifest, loaded.instance);
@@ -264,6 +267,7 @@ export class PluginHost {
     // pas une fonction dynamique enregistrée par activate())
     this.unregisterContributions(loaded.manifest, loaded.instance);
 
+    loaded.context = undefined;
     loaded.status = "inactive";
 
     logger.info(`[PluginHost] Plugin désactivé : ${pluginId}`);
@@ -438,6 +442,22 @@ export class PluginHost {
   /** Retourne un plugin par son ID */
   get(pluginId: string): LoadedPlugin | undefined {
     return this.plugins.get(pluginId);
+  }
+
+  /** Récupère la configuration runtime d'un plugin depuis son PluginContext */
+  getPluginConfig(pluginId: string): Record<string, unknown> {
+    const plugin = this.plugins.get(pluginId);
+    if (!plugin?.context) return {};
+    return (plugin.context as PluginContext).getConfig<Record<string, unknown>>();
+  }
+
+  /** Définit la configuration runtime d'un plugin dans son PluginContext */
+  setPluginConfig(pluginId: string, config: Record<string, unknown>): void {
+    const plugin = this.plugins.get(pluginId);
+    if (!plugin?.context) {
+      throw new Error(`Plugin "${pluginId}" non actif ou sans contexte`);
+    }
+    (plugin.context as PluginContext).setConfig(config);
   }
 
   // ── Hot-reload (dev) ─────────────────────────────────────────────────

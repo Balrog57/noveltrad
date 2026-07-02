@@ -11,6 +11,7 @@ export interface PluginInfo {
   permissions: string[];
   status: "inactive" | "active" | "error";
   errorMessage?: string;
+  configSchema?: Record<string, unknown>;
 }
 
 export interface PendingPermission {
@@ -72,11 +73,16 @@ export const usePluginsStore = defineStore("plugins", () => {
   }
 
   async function getConfig(pluginId: string) {
-    return window.novelTradAPI.invoke<Record<string, unknown>>("plugin:get-config", pluginId);
+    return window.novelTradAPI.invoke<{
+      success: boolean;
+      config: Record<string, unknown>;
+      configSchema: Record<string, unknown>;
+      error?: string;
+    }>("plugin:get-config", pluginId);
   }
 
   async function setConfig(pluginId: string, config: Record<string, unknown>) {
-    return window.novelTradAPI.invoke<{ success: boolean }>("plugin:set-config", {
+    return window.novelTradAPI.invoke<{ success: boolean; error?: string }>("plugin:set-config", {
       pluginId,
       config,
     });

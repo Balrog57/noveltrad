@@ -33,6 +33,8 @@ export interface LoadedPlugin {
   moduleKey?: string;
   /** Abonnements du PluginContext (disposés à la désactivation) */
   disposables?: CompositeDisposable;
+  /** Référence au PluginContext (pour getConfig/setConfig via IPC) */
+  context?: unknown;
 }
 
 /** Adaptateur PluginAiRouter vers AiRouter concret */

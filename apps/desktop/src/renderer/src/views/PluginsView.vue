@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, computed } from "vue";
 import { usePluginsStore, type PluginInfo } from "../stores/plugins";
 import NtCard from "../components/ui/NtCard.vue";
 import NtButton from "../components/ui/NtButton.vue";
@@ -15,6 +15,41 @@ const toastMessage = ref("");
 const toastVisible = ref(false);
 
 const SENSITIVE_PERMISSIONS = ["project-write", "fs-write", "network"];
+
+// ── État de la configuration du plugin ──
+
+/** Plugin en cours de configuration (null = modal fermée) */
+const configPluginId = ref<string | null>(null);
+/** Schéma de configuration du plugin (depuis le manifest) */
+const configSchema = ref<Record<string, unknown>>({});
+/** Valeurs actuelles du formulaire */
+const configValues = ref<Record<string, unknown>>({});
+/** Erreur de sauvegarde */
+const configError = ref("");
+
+const configModalVisible = computed(() => configPluginId.value !== null);
+const configPluginName = computed(() => {
+  if (!configPluginId.value) return "";
+  const plugin = store.plugins.find((p) => p.id === configPluginId.value);
+  return plugin?.name || configPluginId.value;
+});
+
+/** Champs du formulaire générés depuis le configSchema */
+const configFields = computed(() => {
+  const fields: Array<{ key: string; type: string; label: string; description?: string }> = [];
+  for (const [key, value] of Object.entries(configSchema.value)) {
+    if (typeof value === "object" && value !== null) {
+      const fieldDef = value as Record<string, unknown>;
+      fields.push({
+        key,
+        type: (fieldDef.type as string) || "string",
+        label: (fieldDef.label as string) || key,
+        description: fieldDef.description as string | undefined,
+      });
+    }
+  }
+  return fields;
+});
 
 onMounted(async () => {
   await store.load();
@@ -96,6 +131,55 @@ async function removePlugin(plugin: PluginInfo) {
   }
 }
 
+/** Ouvre la modale de configuration d'un plugin */
+async function configurePlugin(plugin: PluginInfo) {
+  configError.value = "";
+  const result = await store.getConfig(plugin.id);
+
+  if (!result.success) {
+    showToast(`Erreur chargement configuration : ${result.error}`);
+    return;
+  }
+
+  // Utiliser le configSchema du manifest + les valeurs runtime du PluginContext
+  configSchema.value = result.configSchema || {};
+  configValues.value = { ...(result.config || {}) };
+
+  // Pour chaque champ du schéma, initialiser la valeur par défaut si absente
+  for (const [key, value] of Object.entries(configSchema.value)) {
+    if (typeof value === "object" && value !== null) {
+      const fieldDef = value as Record<string, unknown>;
+      if (configValues.value[key] === undefined && "default" in fieldDef) {
+        configValues.value[key] = fieldDef.default;
+      }
+    }
+  }
+
+  configPluginId.value = plugin.id;
+}
+
+/** Ferme la modale sans sauvegarder */
+function cancelConfig() {
+  configPluginId.value = null;
+  configSchema.value = {};
+  configValues.value = {};
+  configError.value = "";
+}
+
+/** Sauvegarde la configuration du plugin */
+async function saveConfig() {
+  if (!configPluginId.value) return;
+  configError.value = "";
+  const result = await store.setConfig(configPluginId.value, { ...configValues.value });
+  if (result.success) {
+    showToast(`Configuration de "${configPluginName.value}" enregistrée`);
+    cancelConfig();
+  } else {
+    configError.value = result.error || "Erreur inconnue";
+    showToast(`Erreur : ${configError.value}`);
+  }
+}
+
 async function confirmPermissions() {
   const allIds = store.pendingPermissions.map((p) => p.id);
   await store.confirmPermissions(allIds);
@@ -171,6 +255,14 @@ function showToast(message: string) {
           >
             {{ plugin.status === "active" ? "Désactiver" : "Activer" }}
           </NtButton>
+          <NtButton
+            v-if="plugin.configSchema && Object.keys(plugin.configSchema).length > 0"
+            variant="secondary"
+            size="sm"
+            @click="configurePlugin(plugin)"
+          >
+            Configurer
+          </NtButton>
           <NtButton variant="danger" size="sm" @click="removePlugin(plugin)">
             Supprimer
           </NtButton>
@@ -196,6 +288,62 @@ function showToast(message: string) {
       <template #footer>
         <NtButton variant="secondary" @click="rejectPermissions">Refuser</NtButton>
         <NtButton variant="primary" @click="confirmPermissions">Accepter</NtButton>
+      </template>
+    </NtModal>
+
+    <!-- Modal de configuration du plugin -->
+    <NtModal
+      :visible="configModalVisible"
+      title="Configuration"
+      @close="cancelConfig"
+    >
+      <p>Configuration du plugin <strong>{{ configPluginName }}</strong></p>
+      <div v-if="configFields.length === 0" class="config-empty">
+        Aucun champ configurable.
+      </div>
+      <div v-else class="config-form">
+        <div v-for="field in configFields" :key="field.key" class="config-field">
+          <label class="config-label">{{ field.label }}</label>
+          <span v-if="field.description" class="config-description">{{ field.description }}</span>
+          <!-- Champ string / text -->
+          <input
+            v-if="field.type === 'string'"
+            v-model="configValues[field.key]"
+            class="config-input"
+            type="text"
+            :placeholder="field.label"
+          />
+          <!-- Champ number -->
+          <input
+            v-else-if="field.type === 'number'"
+            v-model.number="configValues[field.key]"
+            class="config-input"
+            type="number"
+            step="0.01"
+          />
+          <!-- Champ boolean -->
+          <label v-else-if="field.type === 'boolean'" class="config-checkbox-label">
+            <input
+              v-model="configValues[field.key]"
+              type="checkbox"
+              class="config-checkbox"
+            />
+            Activer
+          </label>
+          <!-- Type inconnu : afficher en texte -->
+          <input
+            v-else
+            v-model="configValues[field.key]"
+            class="config-input"
+            type="text"
+            :placeholder="field.label"
+          />
+        </div>
+      </div>
+      <div v-if="configError" class="config-error-msg">{{ configError }}</div>
+      <template #footer>
+        <NtButton variant="secondary" @click="cancelConfig">Annuler</NtButton>
+        <NtButton variant="primary" @click="saveConfig">Enregistrer</NtButton>
       </template>
     </NtModal>
 
@@ -309,5 +457,68 @@ function showToast(message: string) {
   gap: 4px;
   margin-top: 6px;
   flex-wrap: wrap;
+}
+
+.config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.config-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.config-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.config-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.config-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.config-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.config-error-msg {
+  color: var(--danger);
+  font-size: 13px;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  margin: 8px 0;
+}
+
+.config-empty {
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 16px 0;
+  text-align: center;
 }
 </style>

@@ -205,4 +205,53 @@ describe("PluginsView", () => {
     expect(store.plugins).toHaveLength(1);
     expect(store.plugins[0].name).toBe("P1");
   });
+
+  it("affiche le bouton Configurer si le plugin a un configSchema", async () => {
+    vi.mocked(window.novelTradAPI.invoke)
+      .mockResolvedValueOnce([
+        {
+          id: "com.test.config",
+          name: "Configurable Plugin",
+          version: "1.0.0",
+          type: "export",
+          permissions: [],
+          status: "inactive",
+          configSchema: { strictness: { type: "number", default: 0.8 } },
+        },
+      ])
+      .mockResolvedValueOnce([]); // requestPermissions
+
+    const wrapper = mount(PluginsView, {
+      global: { plugins: [createPinia()] },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    const buttons = wrapper.findAllComponents({ name: "NtButton" });
+    const configButtons = buttons.filter((b) => b.text().includes("Configurer"));
+    expect(configButtons.length).toBe(1);
+  });
+
+  it("n'affiche pas le bouton Configurer si le plugin n'a pas de configSchema", async () => {
+    vi.mocked(window.novelTradAPI.invoke)
+      .mockResolvedValueOnce([
+        {
+          id: "com.test.simple",
+          name: "Simple Plugin",
+          version: "1.0.0",
+          type: "export",
+          permissions: [],
+          status: "inactive",
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const wrapper = mount(PluginsView, {
+      global: { plugins: [createPinia()] },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    const buttons = wrapper.findAllComponents({ name: "NtButton" });
+    const configButtons = buttons.filter((b) => b.text().includes("Configurer"));
+    expect(configButtons.length).toBe(0);
+  });
 });
