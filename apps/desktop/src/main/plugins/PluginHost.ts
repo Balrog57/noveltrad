@@ -16,6 +16,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { app } from "electron";
 import { pluginManifestSchema } from "@shared/schemas/plugin.js";
 import type {
@@ -68,7 +69,9 @@ export class PluginHost {
   /** Plugins en attente de confirmation de permissions */
   private pendingPermissionPlugins: LoadedPlugin[] = [];
 
-  /** Watcher pour le hot-reload (dev) */
+  /** Nonce CSRF pour le flux de confirmation des permissions (Sécurité #5) */
+  private permissionNonce: string | null = null;
+  private permissionNonceExpiry: number = 0;
   private watcher: fs.FSWatcher | null = null;
 
   /** Callbacks de hot-reload */
@@ -337,6 +340,11 @@ export class PluginHost {
       }
     }
 
+    // Générer un nonce CSRF si des plugins sensibles sont en attente
+    if (sensitivePlugins.length > 0) {
+      this.generatePermissionNonce();
+    }
+
     return sensitivePlugins;
   }
 
@@ -365,6 +373,29 @@ export class PluginHost {
   /** Vérifie si des plugins nécessitent confirmation */
   hasPendingPermissions(): boolean {
     return this.pendingPermissionPlugins.length > 0;
+  }
+
+  /**
+   * Génère un nonce pour le flux de confirmation des permissions.
+   * Le nonce expire après 5 minutes.
+   */
+  generatePermissionNonce(): string {
+    this.permissionNonce = crypto.randomUUID();
+    this.permissionNonceExpiry = Date.now() + 5 * 60 * 1000; // 5 minutes
+    return this.permissionNonce;
+  }
+
+  /** Valide le nonce de permissions */
+  validatePermissionNonce(nonce: string): boolean {
+    if (!this.permissionNonce) return false;
+    if (Date.now() > this.permissionNonceExpiry) return false;
+    return this.permissionNonce === nonce;
+  }
+
+  /** Invalide le nonce après utilisation */
+  clearPermissionNonce(): void {
+    this.permissionNonce = null;
+    this.permissionNonceExpiry = 0;
   }
 
   // ── Registre des contributions ───────────────────────────────────────

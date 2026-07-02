@@ -98,12 +98,14 @@ describe("Plugin IPC handlers", () => {
     expect(result).toEqual({ success: false, error: "non supporté en v1.0" });
   });
 
-  it("plugin:request-permissions retourne une liste vide si aucun plugin sensible", async () => {
+  it("plugin:request-permissions retourne plugins vides si aucun plugin sensible", async () => {
     const handlerCalls = vi.mocked(ipcMain.handle).mock.calls;
     const permHandler = handlerCalls.find(([c]) => c === "plugin:request-permissions")![1];
 
     const result = await (permHandler as any)({});
-    expect(result).toEqual([]);
+    expect(result.plugins).toEqual([]);
+    expect(typeof result.nonce).toBe("string");
+    expect(result.nonce.length).toBeGreaterThan(0);
   });
 
   describe("validation des entrées (SDD §21.3)", () => {
@@ -125,10 +127,18 @@ describe("Plugin IPC handlers", () => {
       await expect((uninstallHandler as any)({}, null)).rejects.toThrow();
     });
 
-    it("plugin:confirm-permissions rejette un input non-array", async () => {
+    it("plugin:confirm-permissions rejette un input sans nonce", async () => {
       const handlerCalls = vi.mocked(ipcMain.handle).mock.calls;
       const confirmHandler = handlerCalls.find(([c]) => c === "plugin:confirm-permissions")![1];
-      await expect((confirmHandler as any)({}, "not-an-array")).rejects.toThrow();
+      await expect((confirmHandler as any)({}, { approvedIds: ["test"] })).rejects.toThrow();
+    });
+
+    it("plugin:confirm-permissions rejette un nonce invalide", async () => {
+      const handlerCalls = vi.mocked(ipcMain.handle).mock.calls;
+      const confirmHandler = handlerCalls.find(([c]) => c === "plugin:confirm-permissions")![1];
+      await expect(
+        (confirmHandler as any)({}, { approvedIds: ["test"], nonce: "bad-nonce" }),
+      ).rejects.toThrow("Nonce invalide");
     });
 
     it("plugin:set-config rejette un pluginId manquant", async () => {
@@ -223,6 +233,21 @@ describe("Plugin IPC handlers", () => {
       const result = await (uninstallHandler as any)({}, "test.uninst");
 
       expect(uninstallSpy).toHaveBeenCalledWith("test.uninst");
+      expect(result).toEqual({ success: true });
+    });
+
+    it("plugin:confirm-permissions accepte un nonce valide", async () => {
+      // Générer un nonce valide
+      const nonce = host.generatePermissionNonce();
+
+      const activateSpy = vi.spyOn(host, "activateApproved").mockResolvedValue(undefined);
+
+      const handlerCalls = vi.mocked(ipcMain.handle).mock.calls;
+      const confirmHandler = handlerCalls.find(([c]) => c === "plugin:confirm-permissions")![1];
+
+      const result = await (confirmHandler as any)({}, { approvedIds: ["test.plugin"], nonce });
+
+      expect(activateSpy).toHaveBeenCalledWith(["test.plugin"]);
       expect(result).toEqual({ success: true });
     });
   });

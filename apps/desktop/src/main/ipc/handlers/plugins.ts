@@ -31,8 +31,11 @@ const setConfigSchema = z.object({
 });
 
 /** Validation pour plugin:confirm-permissions */
-const approvedIdsSchema = z.array(pluginIdSchema, {
-  message: "approvedIds doit être un tableau d'IDs",
+const confirmPermissionsSchema = z.object({
+  approvedIds: z.array(pluginIdSchema, {
+    message: "approvedIds doit être un tableau d'IDs",
+  }),
+  nonce: z.string().min(1, { message: "nonce requis" }),
 });
 
 // Ces instances seront injectées par le router
@@ -156,28 +159,38 @@ export function registerPluginHandlers(): void {
 
   /**
    * Retourne la liste des plugins sensibles en attente de confirmation.
+   * Inclut un nonce CSRF pour sécuriser la confirmation (Sécurité #5).
    */
   ipcMain.handle("plugin:request-permissions", () => {
-    if (!pluginHost) return [];
+    if (!pluginHost) return { plugins: [], nonce: "" };
     const sensitive = pluginHost.getPendingPermissionPlugins();
+    const nonce = pluginHost.generatePermissionNonce();
     pendingPermissions = sensitive.map((p) => ({
       id: p.manifest.id,
       name: p.manifest.name,
       permissions: p.manifest.permissions || [],
       version: p.manifest.version,
     }));
-    return pendingPermissions;
+    return { plugins: pendingPermissions, nonce };
   });
 
   /**
    * Reçoit la confirmation utilisateur et active les plugins approuvés.
+   * Valide le nonce CSRF pour empêcher les confirmations non sollicitées.
    */
   ipcMain.handle(
     "plugin:confirm-permissions",
-    async (_event, approvedIds: unknown) => {
-      const ids = approvedIdsSchema.parse(approvedIds);
+    async (_event, payload: unknown) => {
+      const parsed = confirmPermissionsSchema.parse(payload);
       if (!pluginHost) throw new Error("PluginHost non initialisé");
-      await pluginHost.activateApproved(ids);
+
+      // Valider le nonce CSRF
+      if (!pluginHost.validatePermissionNonce(parsed.nonce)) {
+        throw new Error("Nonce invalide ou expiré — veuillez redemander les permissions");
+      }
+
+      await pluginHost.activateApproved(parsed.approvedIds);
+      pluginHost.clearPermissionNonce();
       pendingPermissions = [];
       return { success: true };
     },

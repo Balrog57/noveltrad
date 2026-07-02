@@ -24,6 +24,7 @@ export const usePluginsStore = defineStore("plugins", () => {
   const plugins = ref<PluginInfo[]>([]);
   const loading = ref(false);
   const pendingPermissions = ref<PendingPermission[]>([]);
+  const permissionNonce = ref("");
 
   const hasSensitivePlugins = computed(() => pendingPermissions.value.length > 0);
 
@@ -70,20 +71,35 @@ export const usePluginsStore = defineStore("plugins", () => {
     return result;
   }
 
+  async function getConfig(pluginId: string) {
+    return window.novelTradAPI.invoke<Record<string, unknown>>("plugin:get-config", pluginId);
+  }
+
+  async function setConfig(pluginId: string, config: Record<string, unknown>) {
+    return window.novelTradAPI.invoke<{ success: boolean }>("plugin:set-config", {
+      pluginId,
+      config,
+    });
+  }
+
   async function getInstallInfo() {
     return window.novelTradAPI.invoke("plugin:install");
   }
 
   async function requestPermissions() {
-    const result = await window.novelTradAPI.invoke<PendingPermission[]>("plugin:request-permissions");
-    pendingPermissions.value = result || [];
+    const result = await window.novelTradAPI.invoke<{
+      plugins: PendingPermission[];
+      nonce: string;
+    }>("plugin:request-permissions");
+    pendingPermissions.value = result?.plugins || [];
+    permissionNonce.value = result?.nonce || "";
     return pendingPermissions.value;
   }
 
   async function confirmPermissions(approvedIds: string[]) {
     return window.novelTradAPI.invoke<{ success: boolean }>(
       "plugin:confirm-permissions",
-      approvedIds,
+      { approvedIds, nonce: permissionNonce.value },
     );
   }
 
@@ -91,11 +107,14 @@ export const usePluginsStore = defineStore("plugins", () => {
     plugins,
     loading,
     pendingPermissions,
+    permissionNonce,
     hasSensitivePlugins,
     load,
     enable,
     disable,
     uninstall,
+    getConfig,
+    setConfig,
     getInstallInfo,
     requestPermissions,
     confirmPermissions,
