@@ -12,7 +12,7 @@ const settings = useSettingsStore();
 const ollama = useOllamaStore();
 
 // Étapes du wizard
-const step = ref(1);
+const step = ref<number>(1);
 const totalSteps = 5;
 
 // Étape 2 : détection Ollama
@@ -86,6 +86,9 @@ const nextLabel = computed(() => {
 });
 
 function nextStep(): void {
+  if (step.value === 4) {
+    void saveConfig();
+  }
   if (step.value === 3 && !modelPresent.value) {
     // Suggérer de télécharger le modèle avant de continuer
     // On peut continuer sans — l'utilisateur installera plus tard
@@ -438,7 +441,7 @@ onBeforeUnmount(() => {
             <button
               v-if="step < totalSteps"
               class="btn-primary"
-              @click="step === 4 ? (nextStep(), saveConfig()) : nextStep()"
+              @click="nextStep"
             >
               {{ nextLabel }}
             </button>
