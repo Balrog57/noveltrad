@@ -8,6 +8,7 @@ import NtBadge from "../components/ui/NtBadge.vue";
 import NtEmptyState from "../components/ui/NtEmptyState.vue";
 import NtTooltip from "../components/ui/NtTooltip.vue";
 import type { Chapter } from "@shared/types/index.js";
+import { useHistoryStore } from "../stores/history";
 
 const tmxImporting = ref(false);
 const tmxExporting = ref(false);
@@ -386,6 +387,70 @@ async function confirmRefresh(): Promise<void> {
   setTimeout(() => { refreshMessage.value = null; }, 6000);
 }
 
+// ── Menu contextuel (SDD §4.7) ─────────────────────────────────────────
+const contextMenu = ref<{
+  x: number;
+  y: number;
+  chapter: Chapter;
+} | null>(null);
+
+function onContextMenu(event: MouseEvent, chapter: Chapter): void {
+  event.preventDefault();
+  contextMenu.value = {
+    x: event.clientX,
+    y: event.clientY,
+    chapter,
+  };
+}
+
+function closeContextMenu(): void {
+  contextMenu.value = null;
+}
+
+/** Traduire depuis le menu contextuel */
+function contextTranslate(chapter: Chapter): void {
+  closeContextMenu();
+  translateChapter(chapter);
+}
+
+/** Exporter depuis le menu contextuel */
+function contextExport(chapter: Chapter): void {
+  closeContextMenu();
+  exportChapterId.value = chapter.id;
+}
+
+/** Naviguer vers l'historique depuis le menu contextuel */
+function contextViewHistory(chapter: Chapter): void {
+  closeContextMenu();
+  router.push({
+    name: "history",
+    params: { projectId, chapterId: chapter.id },
+  });
+}
+
+/** Supprimer un chapitre depuis le menu contextuel */
+async function contextDeleteChapter(chapter: Chapter): Promise<void> {
+  closeContextMenu();
+  const confirmed = confirm(
+    `Voulez-vous vraiment supprimer le chapitre "${chapter.title || chapter.id}" ?`,
+  );
+  if (!confirmed) return;
+
+  try {
+    await window.novelTradAPI.invoke("chapter:delete", {
+      projectId,
+      chapterId: chapter.id,
+    });
+    // Recharger la liste
+    chapters.value = await window.novelTradAPI.invoke("chapter:list", projectId);
+    projectStore.chapters = chapters.value;
+  } catch {
+    // Si le handler n'existe pas (v1.0), retirer localement
+    chapters.value = chapters.value.filter((c) => c.id !== chapter.id);
+    projectStore.chapters = chapters.value;
+  }
+}
+
 // Nettoyage des timers à l'unmount
 onUnmounted(() => {
   if (messageTimer) {
@@ -498,7 +563,12 @@ onUnmounted(() => {
       </NtTooltip>
     </div>
     <ul class="chapter-list">
-      <li v-for="ch in chapters" :key="ch.id" class="chapter-item">
+      <li
+        v-for="ch in chapters"
+        :key="ch.id"
+        class="chapter-item"
+        @contextmenu.prevent="onContextMenu($event, ch)"
+      >
         <div class="chapter-select">
           <input
             type="checkbox"
@@ -588,6 +658,35 @@ onUnmounted(() => {
       :selected-chapter-ids="workflowStore.selectedChapterIds"
       @close="exportChapterId = null"
     />
+
+    <!-- Menu contextuel (SDD §4.7) -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenu"
+        class="context-menu"
+        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+        @click.stop
+      >
+        <button class="context-item" @click="contextTranslate(contextMenu.chapter)">
+          Traduire
+        </button>
+        <button class="context-item" @click="contextExport(contextMenu.chapter)">
+          Exporter
+        </button>
+        <button class="context-item" @click="contextViewHistory(contextMenu.chapter)">
+          Voir historique
+        </button>
+        <button
+          class="context-item context-item--danger"
+          @click="contextDeleteChapter(contextMenu.chapter)"
+        >
+          Supprimer
+        </button>
+      </div>
+    </Teleport>
+
+    <!-- Overlay pour fermer le menu contextuel -->
+    <div v-if="contextMenu" class="context-overlay" @click="closeContextMenu" />
   </div>
 </template>
 
@@ -893,5 +992,47 @@ onUnmounted(() => {
   padding: 8px 16px;
   border-radius: var(--border-radius);
   cursor: pointer;
+}
+
+/* Menu contextuel (SDD §4.7) */
+.context-menu {
+  position: fixed;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 2000;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.context-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 10px 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.context-item:hover {
+  background-color: var(--bg-secondary);
+}
+
+.context-item--danger {
+  color: var(--error, #e74c3c);
+}
+
+.context-item--danger:hover {
+  background-color: rgba(231, 76, 60, 0.1);
+}
+
+.context-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1999;
 }
 </style>
