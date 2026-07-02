@@ -263,19 +263,13 @@ function showToast(message: string) {
           >
             Configurer
           </NtButton>
-          <NtButton variant="danger" size="sm" @click="removePlugin(plugin)">
-            Supprimer
-          </NtButton>
+          <NtButton variant="danger" size="sm" @click="removePlugin(plugin)"> Supprimer </NtButton>
         </div>
       </NtCard>
     </div>
 
     <!-- Modal de confirmation des permissions -->
-    <NtModal
-      :visible="showPermissionModal"
-      title="Permissions requises"
-      @close="rejectPermissions"
-    >
+    <NtModal :visible="showPermissionModal" title="Permissions requises" @close="rejectPermissions">
       <p>Les plugins suivants demandent des permissions sensibles :</p>
       <div v-for="p in store.pendingPermissions" :key="p.id" class="permission-item">
         <strong>{{ p.name }}</strong> (v{{ p.version }})
@@ -292,15 +286,11 @@ function showToast(message: string) {
     </NtModal>
 
     <!-- Modal de configuration du plugin -->
-    <NtModal
-      :visible="configModalVisible"
-      title="Configuration"
-      @close="cancelConfig"
-    >
-      <p>Configuration du plugin <strong>{{ configPluginName }}</strong></p>
-      <div v-if="configFields.length === 0" class="config-empty">
-        Aucun champ configurable.
-      </div>
+    <NtModal :visible="configModalVisible" title="Configuration" @close="cancelConfig">
+      <p>
+        Configuration du plugin <strong>{{ configPluginName }}</strong>
+      </p>
+      <div v-if="configFields.length === 0" class="config-empty">Aucun champ configurable.</div>
       <div v-else class="config-form">
         <div v-for="field in configFields" :key="field.key" class="config-field">
           <label class="config-label">{{ field.label }}</label>
@@ -323,11 +313,7 @@ function showToast(message: string) {
           />
           <!-- Champ boolean -->
           <label v-else-if="field.type === 'boolean'" class="config-checkbox-label">
-            <input
-              v-model="configValues[field.key]"
-              type="checkbox"
-              class="config-checkbox"
-            />
+            <input v-model="configValues[field.key]" type="checkbox" class="config-checkbox" />
             Activer
           </label>
           <!-- Type inconnu : afficher en texte -->
@@ -348,7 +334,12 @@ function showToast(message: string) {
     </NtModal>
 
     <!-- Toast notification -->
-    <NtToast v-if="toastVisible" :message="toastMessage" type="info" @close="toastVisible = false" />
+    <NtToast
+      v-if="toastVisible"
+      :message="toastMessage"
+      type="info"
+      @close="toastVisible = false"
+    />
   </div>
 </template>
 

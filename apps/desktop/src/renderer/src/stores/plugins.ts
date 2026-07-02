@@ -103,10 +103,10 @@ export const usePluginsStore = defineStore("plugins", () => {
   }
 
   async function confirmPermissions(approvedIds: string[]) {
-    return window.novelTradAPI.invoke<{ success: boolean }>(
-      "plugin:confirm-permissions",
-      { approvedIds, nonce: permissionNonce.value },
-    );
+    return window.novelTradAPI.invoke<{ success: boolean }>("plugin:confirm-permissions", {
+      approvedIds,
+      nonce: permissionNonce.value,
+    });
   }
 
   return {

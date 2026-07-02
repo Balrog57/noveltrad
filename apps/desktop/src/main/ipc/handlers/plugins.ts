@@ -190,21 +190,18 @@ export function registerPluginHandlers(): void {
    * Reçoit la confirmation utilisateur et active les plugins approuvés.
    * Valide le nonce CSRF pour empêcher les confirmations non sollicitées.
    */
-  ipcMain.handle(
-    "plugin:confirm-permissions",
-    async (_event, payload: unknown) => {
-      const parsed = confirmPermissionsSchema.parse(payload);
-      if (!pluginHost) throw new Error("PluginHost non initialisé");
+  ipcMain.handle("plugin:confirm-permissions", async (_event, payload: unknown) => {
+    const parsed = confirmPermissionsSchema.parse(payload);
+    if (!pluginHost) throw new Error("PluginHost non initialisé");
 
-      // Valider le nonce CSRF
-      if (!pluginHost.validatePermissionNonce(parsed.nonce)) {
-        throw new Error("Nonce invalide ou expiré — veuillez redemander les permissions");
-      }
+    // Valider le nonce CSRF
+    if (!pluginHost.validatePermissionNonce(parsed.nonce)) {
+      throw new Error("Nonce invalide ou expiré — veuillez redemander les permissions");
+    }
 
-      await pluginHost.activateApproved(parsed.approvedIds);
-      pluginHost.clearPermissionNonce();
-      pendingPermissions = [];
-      return { success: true };
-    },
-  );
+    await pluginHost.activateApproved(parsed.approvedIds);
+    pluginHost.clearPermissionNonce();
+    pendingPermissions = [];
+    return { success: true };
+  });
 }

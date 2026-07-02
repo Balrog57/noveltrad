@@ -60,8 +60,10 @@ export class PluginContext implements PluginContextInterface {
     this.logger = {
       info: (msg: string, ...args: unknown[]) => logger.info(`[${this.pluginId}] ${msg}`, ...args),
       warn: (msg: string, ...args: unknown[]) => logger.warn(`[${this.pluginId}] ${msg}`, ...args),
-      error: (msg: string, ...args: unknown[]) => logger.error(`[${this.pluginId}] ${msg}`, ...args),
-      debug: (msg: string, ...args: unknown[]) => logger.debug(`[${this.pluginId}] ${msg}`, ...args),
+      error: (msg: string, ...args: unknown[]) =>
+        logger.error(`[${this.pluginId}] ${msg}`, ...args),
+      debug: (msg: string, ...args: unknown[]) =>
+        logger.debug(`[${this.pluginId}] ${msg}`, ...args),
     };
     this.subscriptions = new CompositeDisposable();
     this._registry = registry;

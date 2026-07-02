@@ -50,22 +50,16 @@ const entrySchema = z
       return !lower.endsWith(".ts");
     },
     {
-      message:
-        "Le point d'entrée doit être un fichier .mjs ou .js compilé, pas .ts",
+      message: "Le point d'entrée doit être un fichier .mjs ou .js compilé, pas .ts",
     },
   )
   .refine(
     (val) => {
       const lower = val.toLowerCase();
-      return (
-        lower.endsWith(".mjs") ||
-        lower.endsWith(".js") ||
-        lower.endsWith(".cjs")
-      );
+      return lower.endsWith(".mjs") || lower.endsWith(".js") || lower.endsWith(".cjs");
     },
     {
-      message:
-        "Le point d'entrée doit avoir une extension .mjs, .js ou .cjs",
+      message: "Le point d'entrée doit avoir une extension .mjs, .js ou .cjs",
     },
   );
 
@@ -121,8 +115,7 @@ export const pluginManifestSchema = z.object({
     .string()
     .min(1)
     .regex(/^[a-z0-9.-]+$/, {
-      message:
-        "L'id du plugin doit être en minuscules, chiffres, points et tirets uniquement",
+      message: "L'id du plugin doit être en minuscules, chiffres, points et tirets uniquement",
     }),
   name: z.string().min(1).max(100),
   version: z.string().regex(/^\d+\.\d+\.\d+$/, {

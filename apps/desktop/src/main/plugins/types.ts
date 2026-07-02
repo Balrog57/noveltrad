@@ -40,14 +40,25 @@ export interface LoadedPlugin {
 /** Adaptateur PluginAiRouter vers AiRouter concret */
 export function createPluginAiRouter(realRouter: AiRouter): PluginAiRouter {
   return {
-    chat: (providerId, messages, options) => realRouter.chat(providerId, messages as Parameters<AiRouter["chat"]>[1], options as Parameters<AiRouter["chat"]>[2]),
-    streamChat: (providerId, messages, options) => realRouter.streamChat(providerId, messages as Parameters<AiRouter["streamChat"]>[1], options as Parameters<AiRouter["streamChat"]>[2]),
+    chat: (providerId, messages, options) =>
+      realRouter.chat(
+        providerId,
+        messages as Parameters<AiRouter["chat"]>[1],
+        options as Parameters<AiRouter["chat"]>[2],
+      ),
+    streamChat: (providerId, messages, options) =>
+      realRouter.streamChat(
+        providerId,
+        messages as Parameters<AiRouter["streamChat"]>[1],
+        options as Parameters<AiRouter["streamChat"]>[2],
+      ),
   };
 }
 
 /** Adaptateur PluginLexiconEngine vers LexiconEngine concret */
 export function createPluginLexiconEngine(realEngine: LexiconEngine): PluginLexiconEngine {
   return {
-    apply: (text, entries) => realEngine.apply(text, entries as Parameters<LexiconEngine["apply"]>[1]),
+    apply: (text, entries) =>
+      realEngine.apply(text, entries as Parameters<LexiconEngine["apply"]>[1]),
   };
 }

@@ -12,24 +12,10 @@
 // ── PluginManifest ────────────────────────────────────────────────────────────
 
 export type PluginType =
-  | "provider"
-  | "agent"
-  | "export"
-  | "prompt-pack"
-  | "workflow"
-  | "ui-theme"
-  | "parser"
-  | "tool";
+  "provider" | "agent" | "export" | "prompt-pack" | "workflow" | "ui-theme" | "parser" | "tool";
 
 export type PluginPermission =
-  | "ai"
-  | "lexicon"
-  | "project-read"
-  | "project-write"
-  | "fs-read"
-  | "fs-write"
-  | "network"
-  | "ui";
+  "ai" | "lexicon" | "project-read" | "project-write" | "fs-read" | "fs-write" | "network" | "ui";
 
 /** Permissions considérées comme sensibles — nécessitent confirmation utilisateur */
 export const SENSITIVE_PERMISSIONS: readonly PluginPermission[] = [
@@ -106,7 +92,10 @@ export interface PluginAiRouter {
 }
 
 export interface PluginLexiconEngine {
-  apply(text: string, entries?: unknown[]): { text: string; substitutions: Array<{ before: string; after: string; locked: boolean }> };
+  apply(
+    text: string,
+    entries?: unknown[],
+  ): { text: string; substitutions: Array<{ before: string; after: string; locked: boolean }> };
 }
 
 export interface Logger {
