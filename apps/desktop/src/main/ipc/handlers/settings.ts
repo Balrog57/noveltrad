@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { ipcMain, app } from "electron";
 import { z } from "zod";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 
@@ -27,5 +27,9 @@ export function registerSettingsHandlers(): void {
       parsed.value as never,
     );
     return settings.getAll();
+  });
+
+  ipcMain.handle("app:get-version", async () => {
+    return app.getVersion();
   });
 }

@@ -69,6 +69,7 @@ export const IPC_CHANNELS = [
   "plugin:set-config",
   "plugin:request-permissions",
   "plugin:confirm-permissions",
+  "app:get-version",
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

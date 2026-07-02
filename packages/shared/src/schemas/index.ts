@@ -83,6 +83,9 @@ export const appSettingsSchema = z.object({
 
   // SDD §22.2 : utiliser les Worker threads pour les agents CPU-bound
   useWorkerThreads: z.boolean().default(false),
+
+  // SDD §17.9 : vérification automatique des mises à jour
+  autoUpdateCheck: z.boolean().default(true),
 });
 
 export const ipcChannelSchema = z.enum([

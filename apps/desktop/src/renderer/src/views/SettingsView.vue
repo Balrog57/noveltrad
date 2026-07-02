@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch, ref, computed } from "vue";
+import { onMounted, onUnmounted, watch, ref, computed, onBeforeMount } from "vue";
 import { useSettingsStore } from "../stores/settings";
 import { useOllamaStore } from "../stores/ollama";
 import { useUpdateStore } from "../stores/update";
@@ -13,6 +13,7 @@ const router = useRouter();
 
 const themeValue = ref<string>(settings.data.theme ?? "system");
 const saved = ref(false);
+const appVersion = ref("");
 
 // SDD §11.4 : paires de langues prédéfinies pour les tolérances
 const LANGUAGE_PAIRS = [
@@ -164,6 +165,7 @@ async function resetPreferences(): Promise<void> {
     await settings.set("uiLanguage", "fr");
     await settings.set("editorFontSize", 14);
     await settings.set("logLevel", "info");
+    await settings.set("autoUpdateCheck", true);
     await settings.load();
     saved.value = true;
     setTimeout(() => {
@@ -176,6 +178,14 @@ async function restartWizard(): Promise<void> {
   await settings.set("firstRunCompleted", false);
   router.push("/wizard");
 }
+
+onBeforeMount(async () => {
+  try {
+    appVersion.value = await window.novelTradAPI.invoke<string>("app:get-version");
+  } catch {
+    appVersion.value = "2.0.1";
+  }
+});
 
 onMounted(() => {
   applyTheme((settings.data.theme as "dark" | "light" | "system") ?? "system");
@@ -502,6 +512,10 @@ onUnmounted(() => {
 
     <section class="card">
       <h2>Mises a jour</h2>
+      <p class="section-desc">
+        Version actuelle : <strong>{{ appVersion }}</strong>
+      </p>
+
       <label>
         Canal
         <select
@@ -513,6 +527,20 @@ onUnmounted(() => {
           <option value="alpha">Alpha</option>
         </select>
       </label>
+
+      <label class="form-checkbox">
+        <input
+          v-model="settings.data.autoUpdateCheck"
+          type="checkbox"
+          @change="settings.set('autoUpdateCheck', settings.data.autoUpdateCheck ?? true)"
+        />
+        <span>Verification automatique</span>
+      </label>
+
+      <p v-if="update.info?.version && update.info.version !== appVersion" class="hint">
+        Derniere version connue : {{ update.info.version }}
+      </p>
+
       <button class="btn-primary" @click="update.check">
         Verifier maintenant
       </button>

@@ -242,6 +242,8 @@ export interface AppSettings {
   logLevel: "debug" | "info" | "warn" | "error";
   /** SDD §22.2 : utiliser les Worker threads pour les agents CPU-bound */
   useWorkerThreads: boolean;
+  /** SDD §17.9 : vérification automatique des mises à jour */
+  autoUpdateCheck: boolean;
 }
 
 export interface CreateProjectPayload {
