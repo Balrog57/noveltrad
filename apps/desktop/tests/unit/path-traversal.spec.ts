@@ -95,9 +95,9 @@ describe("Path traversal protection (SDD §21.3)", () => {
     );
   });
 
-  // Cas 6 : Windows separators (..\\) — rejeté
+  // Cas 6 : Windows separators (..\\) — rejeté (test multi-plateforme via path.win32)
   it("cas 6: Windows backslash traversal (..\\) — rejected", () => {
-    const target = path.join(BASE, "..\\secret.txt");
+    const target = path.win32.join(BASE, "..\\secret.txt");
     expect(() => assertWithinProject(BASE, target)).toThrow("Path traversal detected");
   });
 
