@@ -47,10 +47,18 @@ export class AiRouter {
 
     // SDD §22.1 : vérifier le cache avant d'appeler le LLM
     if (this.aiCache) {
-      const prompt = messages.map((m) => m.content).join("\n");
+      const systemPrompt = messages
+        .filter((m) => m.role === "system")
+        .map((m) => m.content)
+        .join("\n");
+      const userPrompt = messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content)
+        .join("\n");
       const temperature = options?.temperature ?? 0.7;
       const cacheKey = this.aiCache.generateKey(
-        prompt,
+        systemPrompt,
+        userPrompt,
         provider.model ?? "unknown",
         temperature,
       );

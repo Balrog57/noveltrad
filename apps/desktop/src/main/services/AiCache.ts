@@ -69,11 +69,17 @@ export class AiCache {
   }
 
   /**
-   * Génère une clé de cache déterministe à partir du prompt, du modèle et de la température.
-   * Utilise SHA-256 pour produire un hash de 64 caractères hex.
+   * Génère une clé de cache déterministe à partir des prompts système/utilisateur,
+   * du modèle et de la température (SDD §22.1).
+   * Hash = SHA-256(systemPrompt + userPrompt + modelId + temperature), tronqué à 32 caractères hex.
    */
-  generateKey(prompt: string, model: string, temperature: number): string {
-    const input = `${model}:${temperature.toFixed(2)}:${prompt}`;
-    return createHash("sha256").update(input).digest("hex");
+  generateKey(
+    systemPrompt: string,
+    userPrompt: string,
+    modelId: string,
+    temperature: number,
+  ): string {
+    const input = systemPrompt + userPrompt + modelId + String(temperature);
+    return createHash("sha256").update(input).digest("hex").substring(0, 32);
   }
 }
