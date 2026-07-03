@@ -480,64 +480,14 @@ p { margin: 1em 0; text-align: justify; }
 
   /**
    * Validation externe optionnelle via epubcheck.
-   * Vérifie si Java est disponible et si epubcheck.jar existe,
-   * puis exécute `java -jar epubcheck.jar <file>`.
+   * Délègue à la fonction autonome `runEpubcheck`.
    * Non-bloquante : les erreurs sont simplement loguées.
    */
   private async validateEpubWithEpubcheck(filePath: string): Promise<void> {
-    const epubcheckPath =
-      process.env.EPUBCHECK_PATH || this.findEpubcheckJar();
-    if (!epubcheckPath) {
-      logger.warn(
-        "[ExportEngine] epubcheck.jar introuvable — validation externe ignorée. Définissez EPUBCHECK_PATH ou placez epubcheck.jar dans l'application.",
-      );
-      return;
+    const result = await runEpubcheck(filePath);
+    if (!result.success && !result.skipped) {
+      throw new Error(`Validation epubcheck échouée: ${result.message}`);
     }
-
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        "java",
-        ["-jar", epubcheckPath, filePath],
-        { timeout: 30000 },
-        (error, stdout, stderr) => {
-          if (error) {
-            // epubcheck exit code != 0 signifie des erreurs de validation
-            const message = stderr || stdout || error.message;
-            reject(new Error(`Validation epubcheck échouée: ${message}`));
-          } else {
-            logger.info("[ExportEngine] epubcheck : validation réussie");
-            resolve();
-          }
-        },
-      );
-    });
-  }
-
-  /** Cherche epubcheck.jar dans des chemins courants */
-  private findEpubcheckJar(): string | null {
-    const candidates = [
-      // Variable d'environnement
-      ...(process.env.EPUBCHECK_PATH ? [process.env.EPUBCHECK_PATH] : []),
-      // Dans le dossier resources de l'application
-      path.join(process.resourcesPath || "", "epubcheck", "epubcheck.jar"),
-      // Dans le dossier courant
-      path.join(process.cwd(), "epubcheck", "epubcheck.jar"),
-      // Dans les dossiers parent
-      path.join(process.cwd(), "..", "epubcheck", "epubcheck.jar"),
-      // Dans le dossier de l'utilisateur
-      path.join(
-        process.env.USERPROFILE || process.env.HOME || "",
-        "epubcheck",
-        "epubcheck.jar",
-      ),
-    ];
-
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-    return null;
   }
 
   private async render(input: ExportInput): Promise<Buffer | string> {
@@ -717,4 +667,82 @@ p { margin: 1em 0; text-align: justify; }
       (input.options as { targetLanguage?: string })?.targetLanguage ?? "fr"
     );
   }
+}
+
+// ── Fonctions autonomes (exportées pour testabilité, SDD §13.8) ─────────────
+
+export interface RunEpubcheckResult {
+  success: boolean;
+  skipped?: boolean;
+  message?: string;
+}
+
+/**
+ * Exécute epubcheck.jar sur un fichier EPUB en sous-processus (SDD §13.8).
+ * Si epubcheck.jar est introuvable, log un avertissement et ne bloque pas.
+ * @param filePath Chemin absolu du fichier EPUB à valider
+ * @returns Résultat de la validation
+ */
+export async function runEpubcheck(
+  filePath: string,
+): Promise<RunEpubcheckResult> {
+  const epubcheckPath = findEpubcheckJar();
+  if (!epubcheckPath) {
+    logger.warn(
+      "[ExportEngine] epubcheck.jar introuvable — validation externe ignorée. Définissez EPUBCHECK_PATH ou placez epubcheck.jar dans l'application.",
+    );
+    return { success: true, skipped: true };
+  }
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        "java",
+        ["-jar", epubcheckPath, filePath],
+        { timeout: 30000 },
+        (error, stdout, stderr) => {
+          if (error) {
+            const message = stderr || stdout || error.message;
+            reject(new Error(`Validation epubcheck échouée: ${message}`));
+          } else {
+            resolve();
+          }
+        },
+      );
+    });
+    logger.info("[ExportEngine] epubcheck : validation réussie");
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : "Erreur inconnue",
+    };
+  }
+}
+
+/** Cherche epubcheck.jar dans des chemins courants */
+function findEpubcheckJar(): string | null {
+  const candidates = [
+    // Variable d'environnement
+    ...(process.env.EPUBCHECK_PATH ? [process.env.EPUBCHECK_PATH] : []),
+    // Dans le dossier resources de l'application
+    path.join(process.resourcesPath || "", "epubcheck", "epubcheck.jar"),
+    // Dans le dossier courant
+    path.join(process.cwd(), "epubcheck", "epubcheck.jar"),
+    // Dans les dossiers parent
+    path.join(process.cwd(), "..", "epubcheck", "epubcheck.jar"),
+    // Dans le dossier de l'utilisateur
+    path.join(
+      process.env.USERPROFILE || process.env.HOME || "",
+      "epubcheck",
+      "epubcheck.jar",
+    ),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
 }
