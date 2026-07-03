@@ -208,6 +208,7 @@ export class PluginHost {
       this.registry,
       config,
       this.exportEngine,
+      loaded.manifest.permissions,
     );
 
     // Stocker les abonnements pour les disposer à la désactivation

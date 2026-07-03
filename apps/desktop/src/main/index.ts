@@ -159,7 +159,7 @@ async function createWindow(): Promise<BrowserWindow> {
     minWidth: 1024,
     minHeight: 700,
     webPreferences: {
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       allowRunningInsecureContent: false,

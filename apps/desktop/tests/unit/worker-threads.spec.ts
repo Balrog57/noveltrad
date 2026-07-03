@@ -1,10 +1,11 @@
 /**
  * Tests pour l'infrastructure Worker threads (SDD §22.2)
  *
- * Vérifie le wrapper runAgentInWorker et le schéma useWorkerThreads.
+ * Vérifie le wrapper runAgentInWorker, le schéma useWorkerThreads,
+ * et l'exécution réelle via workerData (fix du deadlock).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 
 // ── Schéma répliqué depuis shared/schemas/index.ts ─────────────────────

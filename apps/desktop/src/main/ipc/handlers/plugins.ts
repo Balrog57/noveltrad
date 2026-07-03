@@ -18,6 +18,8 @@ import { z } from "zod";
 import { PluginHost } from "../../plugins/PluginHost.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import { logger } from "../../utils/logger.js";
+import type { PluginPermission } from "@shared/types/index.js";
+import { SENSITIVE_PERMISSIONS } from "@shared/types/index.js";
 
 // ── Schémas de validation Zod (SDD §21.3) ──────────────────────────────
 
@@ -81,6 +83,20 @@ export function registerPluginHandlers(): void {
     if (!pluginHost) throw new Error("PluginHost non initialisé");
     const plugin = pluginHost.get(id);
     if (!plugin) throw new Error(`Plugin inconnu : ${id}`);
+
+    // SDD §21.4 — Vérifier les permissions sensibles :
+    // un plugin demandant project-write, fs-write ou network ne peut pas
+    // être activé directement via plugin:enable. L'utilisateur doit passer
+    // par le flux plugin:request-permissions → plugin:confirm-permissions.
+    const hasSensitive = plugin.manifest.permissions?.some((p: PluginPermission) =>
+      (SENSITIVE_PERMISSIONS as readonly PluginPermission[]).includes(p),
+    );
+    if (hasSensitive) {
+      return {
+        success: false,
+        error: "Permissions sensibles requises — utilisez le flux de confirmation (plugin:request-permissions)",
+      };
+    }
 
     try {
       await pluginHost.activatePlugin(id);

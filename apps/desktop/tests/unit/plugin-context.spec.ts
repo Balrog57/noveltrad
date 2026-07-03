@@ -283,4 +283,98 @@ describe("PluginContext", () => {
       expect(context.subscriptions.size).toBe(0);
     });
   });
+
+  describe("permission guards (runtime enforcement)", () => {
+    it("aiRouter.chat() lève une erreur si la permission 'ai' manque", () => {
+      const plugin = createMockPlugin();
+      plugin.manifest.permissions = []; // pas de permissions
+      const context = new PluginContext(
+        plugin,
+        createMockAiRouter(),
+        createMockLexiconEngine(),
+        createMockLogger(),
+        createRegistry(),
+      );
+      expect(() => context.aiRouter.chat("provider", [])).toThrow("permission \"ai\"");
+    });
+
+    it("aiRouter.chat() fonctionne si la permission 'ai' est déclarée", async () => {
+      const router = createMockAiRouter();
+      vi.mocked(router.chat).mockResolvedValue("response");
+      const plugin = createMockPlugin();
+      plugin.manifest.permissions = ["ai"];
+      const context = new PluginContext(
+        plugin,
+        router,
+        createMockLexiconEngine(),
+        createMockLogger(),
+        createRegistry(),
+      );
+      const result = await context.aiRouter.chat("provider", []);
+      expect(result).toBe("response");
+    });
+
+    it("lexiconEngine.apply() lève une erreur si la permission 'lexicon' manque", () => {
+      const plugin = createMockPlugin();
+      plugin.manifest.permissions = [];
+      const context = new PluginContext(
+        plugin,
+        createMockAiRouter(),
+        createMockLexiconEngine(),
+        createMockLogger(),
+        createRegistry(),
+      );
+      expect(() => context.lexiconEngine.apply("text")).toThrow("permission \"lexicon\"");
+    });
+
+    it("lexiconEngine.apply() fonctionne si la permission 'lexicon' est déclarée", () => {
+      const engine = createMockLexiconEngine();
+      vi.mocked(engine.apply).mockReturnValue({ text: "ok", substitutions: [] });
+      const plugin = createMockPlugin();
+      plugin.manifest.permissions = ["lexicon"];
+      const context = new PluginContext(
+        plugin,
+        createMockAiRouter(),
+        engine,
+        createMockLogger(),
+        createRegistry(),
+      );
+      const result = context.lexiconEngine.apply("text");
+      expect(result.text).toBe("ok");
+    });
+
+    it("les permissions sont lues depuis le constructeur si pas dans le manifest", () => {
+      const plugin = createMockPlugin();
+      plugin.manifest.permissions = []; // manifest vide
+      // Mais on passe les permissions en paramètre
+      const context = new PluginContext(
+        plugin,
+        createMockAiRouter(),
+        createMockLexiconEngine(),
+        createMockLogger(),
+        createRegistry(),
+        undefined,
+        undefined,
+        ["ai", "lexicon"], // permissions explicites
+      );
+      // Pas d'erreur car les permissions sont passées en paramètre
+      expect(() => context.aiRouter.chat("provider", [])).not.toThrow();
+      expect(() => context.lexiconEngine.apply("text")).not.toThrow();
+    });
+
+    it("registerAgent ne lève pas d'erreur (pas de guard sur register)", () => {
+      const plugin = createMockPlugin();
+      plugin.manifest.permissions = [];
+      const registry = createRegistry();
+      const context = new PluginContext(
+        plugin,
+        createMockAiRouter(),
+        createMockLexiconEngine(),
+        createMockLogger(),
+        registry,
+      );
+      // registerAgent n'a pas de guard — seuls les appels de service sont filtrés
+      expect(() => context.registerAgent("test", vi.fn())).not.toThrow();
+    });
+  });
 });

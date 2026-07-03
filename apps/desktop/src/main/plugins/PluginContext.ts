@@ -5,12 +5,17 @@
  * Fournit les services (AiRouter, LexiconEngine, Logger),
  * les méthodes d'enregistrement de contributions,
  * et la gestion des abonnements (subscriptions) via CompositeDisposable.
+ *
+ * Sécurité : les appels aux services sont filtrés par les permissions
+ * déclarées dans le manifest du plugin. Un plugin sans la permission "ai"
+ * ne peut pas appeler aiRouter.chat(), etc.
  */
 
 import { EventEmitter } from "node:events";
 import type {
   PluginContext as PluginContextInterface,
   NovelTradPlugin,
+  PluginPermission,
   ConfigChangeListener,
 } from "@shared/types/index.js";
 import { CompositeDisposable } from "@shared/types/index.js";
@@ -44,6 +49,7 @@ export class PluginContext implements PluginContextInterface {
   private configEmitter = new EventEmitter();
   private _registry: ContributionRegistry;
   private _exportEngine?: ExportEngine;
+  private _permissions: readonly PluginPermission[];
 
   constructor(
     plugin: NovelTradPlugin,
@@ -53,10 +59,12 @@ export class PluginContext implements PluginContextInterface {
     registry: ContributionRegistry,
     config?: Record<string, unknown>,
     exportEngine?: ExportEngine,
+    permissions?: PluginPermission[],
   ) {
     this.pluginId = plugin.manifest.id;
-    this.aiRouter = createPluginAiRouter(aiRouter);
-    this.lexiconEngine = createPluginLexiconEngine(lexiconEngine);
+    this._permissions = permissions ?? plugin.manifest.permissions ?? [];
+    this.aiRouter = this.createGuardedAiRouter(aiRouter);
+    this.lexiconEngine = this.createGuardedLexiconEngine(lexiconEngine);
     this.logger = {
       info: (msg: string, ...args: unknown[]) => logger.info(`[${this.pluginId}] ${msg}`, ...args),
       warn: (msg: string, ...args: unknown[]) => logger.warn(`[${this.pluginId}] ${msg}`, ...args),
@@ -71,6 +79,55 @@ export class PluginContext implements PluginContextInterface {
     if (config) {
       this.config = config;
     }
+  }
+
+  // ── Permission guards ────────────────────────────────────────────────
+
+  /**
+   * Vérifie que le plugin possède la permission requise.
+   * Lève une erreur si la permission n'est pas déclarée dans le manifest.
+   */
+  private assertPermission(required: PluginPermission): void {
+    if (!this._permissions.includes(required)) {
+      throw new Error(
+        `Plugin "${this.pluginId}" n'a pas la permission "${required}". ` +
+          `Permissions déclarées : [${this._permissions.join(", ")}]`,
+      );
+    }
+  }
+
+  /** Crée un aiRouter filtré par la permission "ai" */
+  private createGuardedAiRouter(realRouter: AiRouter) {
+    const self = this;
+    return {
+      chat: (providerId: string, messages: unknown[], options?: unknown) => {
+        self.assertPermission("ai");
+        return realRouter.chat(
+          providerId,
+          messages as Parameters<AiRouter["chat"]>[1],
+          options as Parameters<AiRouter["chat"]>[2],
+        );
+      },
+      streamChat: (providerId: string, messages: unknown[], options?: unknown) => {
+        self.assertPermission("ai");
+        return realRouter.streamChat(
+          providerId,
+          messages as Parameters<AiRouter["streamChat"]>[1],
+          options as Parameters<AiRouter["streamChat"]>[2],
+        );
+      },
+    };
+  }
+
+  /** Crée un lexiconEngine filtré par la permission "lexicon" */
+  private createGuardedLexiconEngine(realEngine: LexiconEngine) {
+    const self = this;
+    return {
+      apply: (text: string, entries?: unknown[]) => {
+        self.assertPermission("lexicon");
+        return realEngine.apply(text, entries as Parameters<LexiconEngine["apply"]>[1]);
+      },
+    };
   }
 
   // ── Registration methods ─────────────────────────────────────────────

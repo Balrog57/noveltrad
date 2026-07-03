@@ -199,6 +199,42 @@ describe("Plugin IPC handlers", () => {
       expect(result).toEqual({ success: true });
     });
 
+    it("plugin:enable rejette un plugin avec permissions sensibles (SDD §21.4)", async () => {
+      // Créer un plugin avec fs-write (permission sensible)
+      const pluginDir = path.join(pluginsDir, "test.sensitive");
+      fs.mkdirSync(pluginDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(pluginDir, "manifest.json"),
+        JSON.stringify({
+          id: "test.sensitive",
+          name: "Sensitive Plugin",
+          version: "1.0.0",
+          type: "export",
+          entry: "index.mjs",
+          permissions: ["fs-write"],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(pluginDir, "index.mjs"),
+        `export default {
+          manifest: { id: "test.sensitive", name: "Sensitive Plugin", version: "1.0.0", type: "export", permissions: ["fs-write"] },
+          apiVersion: "1.0",
+          activate: async () => {},
+          deactivate: async () => {},
+        };`,
+      );
+
+      await host.load(pluginDir);
+
+      const handlerCalls = vi.mocked(ipcMain.handle).mock.calls;
+      const enableHandler = handlerCalls.find(([c]) => c === "plugin:enable")![1];
+
+      const result = await (enableHandler as any)({}, "test.sensitive");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Permissions sensibles requises");
+    });
+
     it("plugin:uninstall appelle uninstallPlugin", async () => {
       const pluginDir = path.join(pluginsDir, "test.uninst");
       fs.mkdirSync(pluginDir, { recursive: true });
