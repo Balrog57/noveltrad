@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, globalShortcut } from "electron";
+import { app, BrowserWindow, session, globalShortcut, Menu } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -190,7 +190,33 @@ setupErrorHandlers();
 
 app.whenReady().then(async () => {
   logger.info("NovelTrad starting...");
-  registerIpcRouter();
+
+  // Native menu with Help (SDD §4.15)
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "Fichier",
+      submenu: [
+        { label: "Nouveau projet", accelerator: "CmdOrCtrl+N", click: () => mainWindow?.webContents.send("navigate", "/") },
+        { label: "Ouvrir un projet", accelerator: "CmdOrCtrl+O", click: () => mainWindow?.webContents.send("menu", "open-project") },
+        { type: "separator" },
+        { role: "quit", label: "Quitter" },
+      ],
+    },
+    {
+      label: "Aide",
+      submenu: [
+        { label: "Guide d'utilisation", click: () => mainWindow?.webContents.send("navigate", "/help") },
+        { label: "GitHub", click: async () => { const { shell } = await import("electron"); await shell.openExternal("https://github.com/Balrog57/noveltrad"); } },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
+
+  try {
+    registerIpcRouter();
+  } catch (err) {
+    logger.error("Failed to register IPC router", err as Error);
+  }
   await createWindow();
 
   // SDD §15 : initialisation du PluginHost

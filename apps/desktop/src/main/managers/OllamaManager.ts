@@ -6,7 +6,7 @@ export class OllamaManager {
   constructor(private settings: SettingsManager) {}
 
   private getClient(): Ollama {
-    const host = this.settings.get("ollamaHost");
+    const host = this.settings.get("ollamaHost") || "http://localhost:11434";
     return new Ollama({ host });
   }
 

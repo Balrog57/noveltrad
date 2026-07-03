@@ -10,7 +10,6 @@ import {
   Workflow,
   BookMarked,
   Clock,
-  HelpCircle,
 } from "@lucide/vue";
 
 const router = useRouter();
@@ -22,7 +21,6 @@ const links = [
   { name: "console", label: "Console", icon: Terminal },
   { name: "plugins", label: "Plugins", icon: Puzzle },
   { name: "settings", label: "Paramètres", icon: Settings },
-  { name: "help", label: "Aide", icon: HelpCircle },
 ];
 
 /** Liens visibles seulement quand un projet est ouvert */
