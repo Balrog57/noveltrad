@@ -22,6 +22,7 @@ class MockAiCacheDb {
   prepare(sql: string): {
     get: (params: unknown[]) => unknown;
     run: (params: unknown[]) => void;
+    all: (params: unknown[]) => unknown[];
   } {
     return {
       get: (params: unknown[]): unknown => {
@@ -30,7 +31,29 @@ class MockAiCacheDb {
           const row = this.data.find((d) => d.key === key);
           return row ? { ...row } : undefined;
         }
+        if (sql.includes("SUM(LENGTH(key) + LENGTH(response))")) {
+          const total = this.data.reduce(
+            (sum, row) => sum + row.key.length + row.response.length,
+            0,
+          );
+          return { total_size: total };
+        }
         return undefined;
+      },
+      all: (params: unknown[]): unknown[] => {
+        if (sql.includes("ORDER BY created_at ASC")) {
+          return [...this.data]
+            .sort(
+              (a, b) =>
+                new Date(a.created_at).getTime() -
+                new Date(b.created_at).getTime(),
+            )
+            .map((row) => ({
+              key: row.key,
+              entry_size: row.key.length + row.response.length,
+            }));
+        }
+        return [];
       },
       run: (params: unknown[]): void => {
         if (sql.includes("INSERT OR REPLACE INTO ai_cache")) {
@@ -54,6 +77,11 @@ class MockAiCacheDb {
         }
       },
     };
+  }
+
+  /** Helper to inspect internal data */
+  get data_(): Row[] {
+    return this.data;
   }
 }
 
@@ -136,6 +164,63 @@ describe("AiCache", () => {
       cache.set("persist", "keep me", 30);
       const result = cache.get("persist");
       expect(result).toBe("keep me");
+    });
+  });
+
+  describe("evictLru", () => {
+    it("devrait ne rien faire si la taille totale est sous le seuil", () => {
+      cache.set("k1", "small");
+      cache.set("k2", "entries");
+
+      // Ces entrées sont très petites (< 1 Go), evictLru ne devrait rien supprimer
+      const result1 = cache.get("k1");
+      const result2 = cache.get("k2");
+
+      expect(result1).toBe("small");
+      expect(result2).toBe("entries");
+      expect(db.data_.length).toBe(2);
+    });
+
+    it("devrait évincer les entrées les plus anciennes quand le seuil est dépassé", () => {
+      // Insérer des entrées avec un seuil très bas pour forcer l'éviction
+      cache.set("oldest", "a".repeat(100)); // ~100 bytes
+      cache.set("middle", "b".repeat(100)); // ~100 bytes
+      cache.set("newest", "c".repeat(10)); // ~10 bytes
+
+      // Seuil à 150 bytes — devrait évincer "oldest" (~100 bytes) pour revenir à ~110
+      cache.evictLru(150);
+
+      // oldest devrait être supprimé
+      expect(cache.get("oldest")).toBeNull();
+      // middle et newest devraient encore être là
+      expect(cache.get("middle")).toBe("b".repeat(100));
+      expect(cache.get("newest")).toBe("c".repeat(10));
+    });
+
+    it("devrait respecter l'ordre LRU (plus ancien d'abord)", () => {
+      // Forcer created_at avec fake timers + TTL long pour éviter l'expiration
+      vi.useFakeTimers();
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      cache.set("first", "x".repeat(200), 365); // ~200 bytes, TTL 1 an
+
+      vi.setSystemTime(new Date("2026-01-02T00:00:00.000Z"));
+      cache.set("second", "y".repeat(200), 365); // ~200 bytes
+
+      vi.setSystemTime(new Date("2026-01-03T00:00:00.000Z"));
+      cache.set("third", "z".repeat(200), 365); // ~200 bytes
+
+      vi.useRealTimers();
+
+      // Seuil à 250 bytes — devrait évincer first puis s'arrêter
+      // first (205) + second (206) + third (205) = 616 > 250
+      // Suppression first (205) → reste 411 > 250 → suppression second (206) → reste 205 < 250 → stop
+      cache.evictLru(250);
+
+      // Le plus ancien (first) doit être supprimé
+      expect(cache.get("first")).toBeNull();
+      // Le plus récent (third) doit être conservé (~205 < 250)
+      expect(cache.get("third")).toBe("z".repeat(200));
     });
   });
 });

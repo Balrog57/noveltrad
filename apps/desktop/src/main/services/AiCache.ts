@@ -56,6 +56,7 @@ export class AiCache {
   /**
    * Stocke une réponse dans le cache.
    * Utilise INSERT OR REPLACE pour écraser les entrées existantes.
+   * Après insertion, déclenche un nettoyage LRU si la taille totale dépasse le seuil.
    * @param key Clé de cache
    * @param response Réponse textuelle du LLM
    * @param ttlDays Durée de vie en jours (défaut 7)
@@ -66,6 +67,39 @@ export class AiCache {
         "INSERT OR REPLACE INTO ai_cache (key, response, created_at, ttl_days) VALUES (?, ?, ?, ?)",
       )
       .run([key, response, new Date().toISOString(), ttlDays]);
+    this.evictLru();
+  }
+
+  /**
+   * Évince les entrées les plus anciennes du cache si la taille totale dépasse
+   * le seuil spécifié (SDD §22.4 — Limite de taille 1 Go par défaut).
+   * Supprime les entrées les plus anciennes (par created_at) jusqu'à repasser sous le seuil.
+   *
+   * @param maxSizeBytes Taille maximale du cache en octets (défaut 1 Go)
+   */
+  evictLru(maxSizeBytes: number = 1_073_741_824): void {
+    const sizeRow = this.db
+      .prepare(
+        "SELECT COALESCE(SUM(LENGTH(key) + LENGTH(response)), 0) AS total_size FROM ai_cache",
+      )
+      .get() as { total_size: number } | undefined;
+
+    if (!sizeRow || sizeRow.total_size <= maxSizeBytes) return;
+
+    // Récupère les entrées les plus anciennes triées par created_at ASC
+    const entries = this.db
+      .prepare(
+        "SELECT key, LENGTH(key) + LENGTH(response) AS entry_size FROM ai_cache ORDER BY created_at ASC",
+      )
+      .all() as Array<{ key: string; entry_size: number }>;
+
+    let toFree = sizeRow.total_size - maxSizeBytes;
+
+    for (const entry of entries) {
+      if (toFree <= 0) break;
+      this.db.prepare("DELETE FROM ai_cache WHERE key = ?").run([entry.key]);
+      toFree -= entry.entry_size;
+    }
   }
 
   /**
