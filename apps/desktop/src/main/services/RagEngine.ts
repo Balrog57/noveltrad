@@ -1,6 +1,7 @@
 import type { ProjectDatabase } from "../db/connection.js";
 import type { RagMatch } from "@shared/types/index.js";
 import { logger } from "../utils/logger.js";
+import similarity from "compute-cosine-similarity";
 
 /**
  * Moteur RAG (Retrieval-Augmented Generation) interne léger.
@@ -127,21 +128,10 @@ export class RagEngine {
    */
   cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) return 0;
-
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-    if (denominator === 0) return 0;
-
-    return dotProduct / denominator;
+    const result = similarity(a, b);
+    if (result === null || !isFinite(result)) return 0;
+    // Clamp to [-1, 1] due to floating-point imprecision
+    return Math.max(-1, Math.min(1, result));
   }
 
   /**
