@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type { TranslationMemoryMatch } from "@shared/types/index.js";
 import type { Database } from "node-sqlite3-wasm";
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
+import levenshtein from "fast-levenshtein";
 
 export class TranslationMemoryEngine {
   constructor(private db?: Database) {}
@@ -40,7 +41,7 @@ export class TranslationMemoryEngine {
         sourceText: r.source_text,
         targetText: r.target_text,
         usageCount: r.usage_count,
-        similarity: this.levenshteinRatio(text, r.source_text),
+        similarity: 1 - levenshtein.get(text, r.source_text) / Math.max(text.length, r.source_text.length),
       }))
       .filter((m) => m.similarity > 0.85)
       .sort((a, b) => b.similarity - a.similarity)
@@ -81,33 +82,6 @@ export class TranslationMemoryEngine {
           new Date().toISOString(),
         ]);
     }
-  }
-
-  private levenshteinRatio(a: string, b: string): number {
-    const distance = this.levenshtein(a, b);
-    const maxLen = Math.max(a.length, b.length);
-    return maxLen === 0 ? 1 : 1 - distance / maxLen;
-  }
-
-  private levenshtein(a: string, b: string): number {
-    const matrix: number[][] = [];
-    for (let i = 0; i <= b.length; i++) {
-      matrix[i] = [i];
-    }
-    for (let j = 0; j <= a.length; j++) {
-      matrix[0][j] = j;
-    }
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        const cost = b[i - 1] === a[j - 1] ? 0 : 1;
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost,
-        );
-      }
-    }
-    return matrix[b.length][a.length];
   }
 
   /**
