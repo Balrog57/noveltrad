@@ -11,6 +11,7 @@ import { registerExportHandlers } from "./handlers/export.js";
 import { registerHistoryHandlers } from "./handlers/history.js";
 import { registerTmHandlers } from "./handlers/tm.js";
 import { registerPluginHandlers } from "./handlers/plugins.js";
+import { registerAiHandlers } from "./handlers/ai.js";
 import { logger } from "../utils/logger.js";
 
 export function registerIpcRouter(): void {
@@ -25,6 +26,7 @@ export function registerIpcRouter(): void {
   registerHistoryHandlers();
   registerTmHandlers();
   registerPluginHandlers();
+  registerAiHandlers();
 
   ipcMain.on("message", (event, channel) => {
     if (!IPC_CHANNELS.includes(channel)) {

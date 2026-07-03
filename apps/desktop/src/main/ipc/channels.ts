@@ -71,6 +71,10 @@ export const IPC_CHANNELS = [
   "plugin:set-config",
   "plugin:request-permissions",
   "plugin:confirm-permissions",
+  "ai:stream-chat",
+  "ai:stream-chunk",
+  "ai:stream-end",
+  "ai:stream-error",
   "app:get-version",
 ] as const;
 
