@@ -81,8 +81,9 @@ describe("AiRouter — chatWithChunking (SDD §3.6b)", () => {
       }),
       streamChat: vi.fn(),
       isAvailable: vi.fn().mockResolvedValue(true),
-      listModels: vi.fn(),
-    };
+      listModels: vi.fn().mockResolvedValue([]),
+      embeddings: vi.fn().mockResolvedValue([]),
+    } as unknown as import("@shared/types/index.js").AiProvider;
     router.register(fakeProvider);
   });
 
@@ -122,7 +123,8 @@ describe("AiRouter — chatWithChunking (SDD §3.6b)", () => {
         streamChat: vi.fn(),
         isAvailable: vi.fn().mockResolvedValue(true),
         listModels: vi.fn(),
-      });
+        embeddings: vi.fn(),
+      } as unknown as import("@shared/types/index.js").AiProvider);
 
       await localRouter.chatWithChunking("test", [
         { role: "user", content: "Salut" },
