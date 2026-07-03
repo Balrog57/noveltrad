@@ -1,176 +1,205 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { AuditService, AUDIT_ACTIONS } from "../../src/main/services/AuditService";
 import type { AuditEntry } from "@shared/types/index.js";
 
-// ── Mock AuditService ──
+// ---------------------------------------------------------------------------
+// Mock SQLite DB (same pattern as tmx.spec.ts and ai-cache.spec.ts)
+// ---------------------------------------------------------------------------
 
-class MockAuditService {
-  private entries: AuditEntry[] = [];
+interface AuditRow {
+  id: string;
+  project_id: string | null;
+  action: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  details: string | null;
+  created_at: string;
+}
 
-  log(params: {
-    projectId?: string;
-    action: string;
-    entityType?: string;
-    entityId?: string;
-    details?: Record<string, unknown>;
-  }): void {
-    this.entries.push({
-      id: `audit-${this.entries.length + 1}`,
-      projectId: params.projectId,
-      action: params.action,
-      entityType: params.entityType,
-      entityId: params.entityId,
-      details: params.details,
-      createdAt: new Date().toISOString(),
-    });
+class MockAuditDb {
+  private rows: Map<string, AuditRow> = new Map();
+  execCalls: string[] = [];
+
+  exec(sql: string): void {
+    this.execCalls.push(sql);
   }
 
-  list(projectId: string, limit = 100): AuditEntry[] {
-    return this.entries
-      .filter((e) => e.projectId === projectId)
-      .slice(0, limit)
-      .reverse(); // latest first
+  prepare(sql: string): {
+    get: (params: unknown[]) => unknown;
+    run: (params: unknown[]) => void;
+    all: (params: unknown[]) => unknown[];
+  } {
+    return {
+      get: (_params: unknown[]): unknown => {
+        return undefined;
+      },
+      run: (params: unknown[]): void => {
+        if (sql.includes("INSERT INTO audit_log")) {
+          const row: AuditRow = {
+            id: params[0] as string,
+            project_id: params[1] as string | null,
+            action: params[2] as string,
+            entity_type: params[3] as string | null,
+            entity_id: params[4] as string | null,
+            details: params[5] as string | null,
+            created_at: params[6] as string,
+          };
+          this.rows.set(row.id, row);
+        }
+      },
+      all: (params: unknown[]): unknown[] => {
+        // SELECT * FROM audit_log WHERE project_id = ? ORDER BY created_at DESC LIMIT ?
+        if (sql.includes("WHERE project_id = ?")) {
+          const projectId = params[0] as string;
+          const limit = params[1] as number;
+          const filtered: AuditRow[] = [];
+          for (const row of this.rows.values()) {
+            if (row.project_id === projectId) {
+              filtered.push(row);
+            }
+          }
+          filtered.sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          );
+          return filtered.slice(0, limit);
+        }
+        // SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?
+        if (sql.includes("ORDER BY created_at DESC LIMIT ?")) {
+          const limit = params[0] as number;
+          const all = Array.from(this.rows.values());
+          all.sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          );
+          return all.slice(0, limit);
+        }
+        return [];
+      },
+    };
   }
 
-  listAll(limit = 100): AuditEntry[] {
-    return [...this.entries]
-      .reverse()
-      .slice(0, limit);
+  /** Helper to inspect stored rows */
+  getAllRows(): AuditRow[] {
+    return Array.from(this.rows.values());
   }
 
+  /** Helper to inject a raw row (for edge case testing) */
+  injectRawRow(row: AuditRow): void {
+    this.rows.set(row.id, row);
+  }
+
+  /** Helper to clear all rows */
   clear(): void {
-    this.entries = [];
-  }
-
-  get count(): number {
-    return this.entries.length;
+    this.rows.clear();
   }
 }
 
-// ── Types d'actions d'audit ──
-
-const AUDIT_ACTIONS = {
-  PROJECT_CREATED: "project:created",
-  CHAPTER_IMPORTED: "chapter:imported",
-  WORKFLOW_STARTED: "workflow:started",
-  EXPORT_RUN: "export:run",
-  ROLLBACK_FULL: "rollback:full",
-  ROLLBACK_PARTIAL: "rollback:partial",
-  SNAPSHOT_MANUAL: "snapshot:manual",
-} as const;
-
-// ── Tests ──
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 describe("AuditService", () => {
-  let audit: MockAuditService;
+  let db: MockAuditDb;
+  let audit: AuditService;
 
   beforeEach(() => {
-    audit = new MockAuditService();
+    db = new MockAuditDb();
+    audit = new AuditService(db as unknown as import("node-sqlite3-wasm").Database);
+  });
+
+  describe("constructor / ensureTable", () => {
+    it("devrait créer la table audit_log et ses index au constructeur", () => {
+      const ddlCalls = db.execCalls;
+      expect(ddlCalls.length).toBeGreaterThanOrEqual(3);
+      expect(ddlCalls.some((s) => s.includes("CREATE TABLE IF NOT EXISTS audit_log"))).toBe(true);
+      expect(ddlCalls.some((s) => s.includes("CREATE INDEX IF NOT EXISTS idx_audit_project"))).toBe(true);
+      expect(ddlCalls.some((s) => s.includes("CREATE INDEX IF NOT EXISTS idx_audit_action"))).toBe(true);
+    });
   });
 
   describe("log()", () => {
-    it("devrait enregistrer une action avec projet", () => {
+    it("devrait insérer une entrée avec tous les champs", () => {
       audit.log({
         projectId: "proj-1",
         action: AUDIT_ACTIONS.PROJECT_CREATED,
         entityType: "project",
         entityId: "proj-1",
-        details: { name: "Mon Roman" },
+        details: { name: "Mon Roman", chapters: 12 },
       });
 
-      expect(audit.count).toBe(1);
-      const entries = audit.list("proj-1");
-      expect(entries).toHaveLength(1);
-      expect(entries[0].action).toBe("project:created");
-      expect(entries[0].entityType).toBe("project");
-      expect(entries[0].details?.name).toBe("Mon Roman");
+      const rows = db.getAllRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].action).toBe("project:created");
+      expect(rows[0].project_id).toBe("proj-1");
+      expect(rows[0].entity_type).toBe("project");
+      expect(rows[0].entity_id).toBe("proj-1");
+      expect(rows[0].details).toBe('{"name":"Mon Roman","chapters":12}');
+      expect(rows[0].id).toBeTruthy();
+      expect(rows[0].created_at).toBeTruthy();
     });
 
-    it("devrait enregistrer une action sans entité", () => {
+    it("devrait gérer les champs optionnels absents", () => {
       audit.log({
         action: AUDIT_ACTIONS.WORKFLOW_STARTED,
-        details: { model: "qwen3.5:9b" },
       });
 
-      expect(audit.count).toBe(1);
-      const entry = audit.listAll()[0];
-      expect(entry.action).toBe("workflow:started");
-      expect(entry.projectId).toBeUndefined();
-      expect(entry.entityType).toBeUndefined();
+      const rows = db.getAllRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].action).toBe("workflow:started");
+      expect(rows[0].project_id).toBeNull();
+      expect(rows[0].entity_type).toBeNull();
+      expect(rows[0].entity_id).toBeNull();
+      expect(rows[0].details).toBeNull();
     });
 
-    it("devrait enregistrer un import de chapitre", () => {
+    it("devrait enregistrer des détails nullables", () => {
       audit.log({
         projectId: "proj-1",
-        action: AUDIT_ACTIONS.CHAPTER_IMPORTED,
-        entityType: "chapter",
-        entityId: "ch-5",
-        details: { title: "Chapitre 5", sourceFormat: "docx" },
+        action: AUDIT_ACTIONS.WORKFLOW_STARTED,
+        details: undefined,
       });
 
-      const entries = audit.list("proj-1");
-      expect(entries).toHaveLength(1);
-      expect(entries[0].entityId).toBe("ch-5");
-      expect(entries[0].details?.title).toBe("Chapitre 5");
-      expect(entries[0].details?.sourceFormat).toBe("docx");
+      const rows = db.getAllRows();
+      expect(rows[0].details).toBeNull();
     });
 
-    it("devrait enregistrer un export", () => {
-      audit.log({
-        projectId: "proj-1",
-        action: AUDIT_ACTIONS.EXPORT_RUN,
-        entityType: "chapter",
-        entityId: "ch-3",
-        details: { format: "epub", fileSize: 102400 },
-      });
+    it("devrait accepter différents types d'actions AUDIT_ACTIONS", () => {
+      const actions = [
+        AUDIT_ACTIONS.PROJECT_CREATED,
+        AUDIT_ACTIONS.CHAPTER_IMPORTED,
+        AUDIT_ACTIONS.WORKFLOW_STARTED,
+        AUDIT_ACTIONS.WORKFLOW_COMPLETED,
+        AUDIT_ACTIONS.WORKFLOW_FAILED,
+        AUDIT_ACTIONS.EXPORT_RUN,
+        AUDIT_ACTIONS.SNAPSHOT_MANUAL,
+        AUDIT_ACTIONS.ROLLBACK_FULL,
+        AUDIT_ACTIONS.LEXICON_IMPORTED,
+        AUDIT_ACTIONS.TM_EXPORTED,
+      ];
 
-      const entries = audit.list("proj-1");
-      expect(entries).toHaveLength(1);
-      expect(entries[0].action).toBe("export:run");
+      for (const action of actions) {
+        audit.log({ action });
+      }
+
+      expect(db.getAllRows()).toHaveLength(actions.length);
+      const savedActions = db.getAllRows().map((r) => r.action);
+      for (const a of actions) {
+        expect(savedActions).toContain(a);
+      }
     });
 
-    it("devrait enregistrer un rollback complet", () => {
-      audit.log({
-        projectId: "proj-1",
-        action: AUDIT_ACTIONS.ROLLBACK_FULL,
-        entityType: "chapter",
-        entityId: "ch-1",
-        details: {
-          sourceSnapshotId: "snap-5",
-          restoredVersion: 5,
-          paragraphCount: 12,
-        },
-      });
+    it("devrait générer un ID unique pour chaque entrée", () => {
+      audit.log({ action: AUDIT_ACTIONS.PROJECT_CREATED });
+      audit.log({ action: AUDIT_ACTIONS.CHAPTER_IMPORTED });
+      audit.log({ action: AUDIT_ACTIONS.WORKFLOW_STARTED });
 
-      const entries = audit.list("proj-1");
-      expect(entries).toHaveLength(1);
-      expect(entries[0].action).toBe("rollback:full");
-      expect(entries[0].details?.restoredVersion).toBe(5);
-      expect(entries[0].details?.paragraphCount).toBe(12);
-    });
-
-    it("devrait enregistrer un rollback partiel", () => {
-      audit.log({
-        projectId: "proj-1",
-        action: AUDIT_ACTIONS.ROLLBACK_PARTIAL,
-        entityType: "chapter",
-        entityId: "ch-1",
-        details: {
-          sourceSnapshotId: "snap-3",
-          paragraphCount: 3,
-          paragraphIds: ["p1", "p2", "p3"],
-        },
-      });
-
-      const entries = audit.list("proj-1");
-      expect(entries).toHaveLength(1);
-      expect(entries[0].action).toBe("rollback:partial");
-      expect(entries[0].details?.paragraphCount).toBe(3);
-      expect((entries[0].details?.paragraphIds as string[])).toHaveLength(3);
+      const rows = db.getAllRows();
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.size).toBe(3);
     });
   });
 
   describe("list()", () => {
-    it("devrait lister les entrées par projet", () => {
+    it("devrait filtrer les entrées par projectId", () => {
       audit.log({ projectId: "proj-1", action: "project:created" });
       audit.log({ projectId: "proj-1", action: "chapter:imported" });
       audit.log({ projectId: "proj-2", action: "project:created" });
@@ -183,89 +212,116 @@ describe("AuditService", () => {
     });
 
     it("devrait retourner les entrées les plus récentes en premier", () => {
-      audit.log({
-        projectId: "proj-1",
-        action: "workflow:started",
-      });
-      audit.log({
-        projectId: "proj-1",
-        action: "workflow:completed",
-      });
+      // Use fake timers to control created_at order
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-07-01T10:00:00.000Z"));
+      audit.log({ projectId: "proj-1", action: "workflow:started" });
+
+      vi.setSystemTime(new Date("2026-07-01T11:00:00.000Z"));
+      audit.log({ projectId: "proj-1", action: "workflow:completed" });
+
+      vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+      audit.log({ projectId: "proj-1", action: "export:run" });
+
+      vi.useRealTimers();
 
       const entries = audit.list("proj-1");
-      // Le MockAuditService.list() inverse l'ordre, donc le dernier ajouté est premier
-      expect(entries[0].action).toBe("workflow:completed");
-      expect(entries[1].action).toBe("workflow:started");
+      expect(entries).toHaveLength(3);
+      expect(entries[0].action).toBe("export:run");
+      expect(entries[1].action).toBe("workflow:completed");
+      expect(entries[2].action).toBe("workflow:started");
     });
 
     it("devrait respecter la limite", () => {
       for (let i = 1; i <= 10; i++) {
-        audit.log({
-          projectId: "proj-1",
-          action: `action:${i}`,
-        });
+        audit.log({ projectId: "proj-1", action: `action:${i}` });
       }
 
       const entries = audit.list("proj-1", 3);
       expect(entries).toHaveLength(3);
     });
+
+    it("devrait retourner un tableau vide si aucune entrée pour le projet", () => {
+      const entries = audit.list("proj-inexistant");
+      expect(entries).toHaveLength(0);
+    });
   });
 
   describe("listAll()", () => {
-    it("devrait lister toutes les entrées sans filtre projet", () => {
+    it("devrait retourner toutes les entrées sans filtre projet", () => {
       audit.log({ projectId: "proj-1", action: "project:created" });
       audit.log({ projectId: "proj-2", action: "project:created" });
-      audit.log({ action: "system:startup" });
+      audit.log({ projectId: "proj-1", action: "chapter:imported" });
 
       const entries = audit.listAll();
       expect(entries).toHaveLength(3);
     });
+
+    it("devrait respecter la limite par défaut de 100", () => {
+      for (let i = 0; i < 150; i++) {
+        audit.log({ action: `action:${i}` });
+      }
+
+      const entries = audit.listAll();
+      expect(entries).toHaveLength(100);
+    });
+
+    it("devrait retourner un tableau vide si aucune entrée", () => {
+      const entries = audit.listAll();
+      expect(entries).toHaveLength(0);
+    });
   });
 
-  describe("AuditEntry type", () => {
-    it("devrait valider la structure d'une entrée d'audit complète", () => {
-      const entry: AuditEntry = {
-        id: "audit-1",
+  describe("mapRow (via list)", () => {
+    it("devrait parser correctement les champs en AuditEntry", () => {
+      audit.log({
         projectId: "proj-1",
-        action: "project:created",
+        action: AUDIT_ACTIONS.PROJECT_CREATED,
         entityType: "project",
         entityId: "proj-1",
-        details: { name: "Mon Roman" },
-        createdAt: "2026-07-01T12:00:00.000Z",
-      };
+        details: { test: true },
+      });
 
-      expect(entry.id).toBe("audit-1");
-      expect(entry.action).toMatch(/^[a-z]+:[a-z]+$/);
-      expect(entry.createdAt).toBeDefined();
+      const entries = audit.list("proj-1");
+      const entry = entries[0];
+
+      expect(entry.id).toBeTruthy();
+      expect(typeof entry.id).toBe("string");
+      expect(entry.projectId).toBe("proj-1");
+      expect(entry.action).toBe("project:created");
+      expect(entry.entityType).toBe("project");
+      expect(entry.entityId).toBe("proj-1");
+      expect(entry.details).toEqual({ test: true });
+      expect(entry.createdAt).toBeTruthy();
+      expect(typeof entry.createdAt).toBe("string");
     });
 
-    it("devrait accepter une entrée sans projet ni entité", () => {
-      const entry: AuditEntry = {
-        id: "audit-2",
-        action: "system:startup",
-        createdAt: "2026-07-01T12:00:00.000Z",
-      };
+    it("devrait retourner des champs optionnels undefined si absents", () => {
+      audit.log({ action: AUDIT_ACTIONS.WORKFLOW_STARTED });
 
-      expect(entry.projectId).toBeUndefined();
-      expect(entry.entityType).toBeUndefined();
-      expect(entry.details).toBeUndefined();
+      const entries = audit.listAll();
+      expect(entries[0].projectId).toBeUndefined();
+      expect(entries[0].entityType).toBeUndefined();
+      expect(entries[0].entityId).toBeUndefined();
+      expect(entries[0].details).toBeUndefined();
     });
 
-    it("devrait accepter des détails nullables", () => {
-      const entry: AuditEntry = {
-        id: "audit-3",
-        projectId: "proj-1",
-        action: "snapshot:manual",
-        createdAt: "2026-07-01T12:00:00.000Z",
-      };
+    it("devrait gérer un JSON invalide dans le champ details (catch mapRow)", () => {
+      // Inject raw row with invalid JSON to trigger the try/catch in mapRow
+      db.injectRawRow({
+        id: "bad-json-1",
+        project_id: "proj-1",
+        action: "project:created",
+        entity_type: "project",
+        entity_id: "proj-1",
+        details: "pas du json valide{", // Invalid JSON
+        created_at: "2026-07-01T12:00:00.000Z",
+      });
 
-      expect(entry.details).toBeUndefined();
-      // Le type AuditEntry permet details optionnel
-      const testEntry: AuditEntry = {
-        ...entry,
-        details: undefined,
-      };
-      expect(testEntry.details).toBeUndefined();
+      const entries = audit.listAll();
+      expect(entries).toHaveLength(1);
+      expect(entries[0].action).toBe("project:created");
+      expect(entries[0].details).toBeUndefined(); // Fallback to undefined on parse error
     });
   });
 });
