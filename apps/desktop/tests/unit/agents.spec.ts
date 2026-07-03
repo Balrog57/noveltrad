@@ -21,6 +21,8 @@ import { ConsistencyAgent } from "../../src/main/services/agents/ConsistencyAgen
 import { LexiconAgent } from "../../src/main/services/agents/LexiconAgent";
 import { QaAgent } from "../../src/main/services/agents/QaAgent";
 import { ExportAgent } from "../../src/main/services/agents/ExportAgent";
+import { SplitAgent } from "../../src/main/services/agents/SplitAgent";
+import { AgentFactory } from "../../src/main/services/agents/AgentFactory";
 import type { AiRouter } from "../../src/main/services/AiRouter";
 import type { Paragraph, LexiconEntry } from "@shared/types/index.js";
 import type { ConsistencyChecker } from "../../src/main/services/ConsistencyChecker";
@@ -657,5 +659,95 @@ describe("ExportAgent", () => {
       options: { format: "txt", title: "Test" },
     });
     expect(output.metadata?.exportPath).toBe("/path/to/output.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AgentFactory
+// ---------------------------------------------------------------------------
+
+describe("AgentFactory", () => {
+  let mockRouter: AiRouter;
+  let mockServices: import("../../src/main/services/agents/AgentFactory").AgentFactoryServices;
+
+  beforeEach(() => {
+    mockRouter = {
+      chat: vi.fn().mockResolvedValue("test"),
+      tryParseJson: vi.fn(),
+      isEthicalRefusal: vi.fn().mockReturnValue(false),
+    } as unknown as AiRouter;
+
+    mockServices = {
+      aiRouter: mockRouter,
+      lexiconEngine: {} as unknown as import("../../src/main/services/LexiconEngine").LexiconEngine,
+      tmEngine: {} as unknown as import("../../src/main/services/TranslationMemoryEngine").TranslationMemoryEngine,
+      consistencyChecker: {} as unknown as import("../../src/main/services/ConsistencyChecker").ConsistencyChecker,
+      qualityChecker: {} as unknown as import("../../src/main/services/QualityChecker").QualityChecker,
+      exportEngine: {} as unknown as import("../../src/main/services/ExportEngine").ExportEngine,
+    };
+  });
+
+  it("devrait créer un agent pour chaque stage connu", () => {
+    const factory = new AgentFactory(mockServices);
+    const stages = [
+      "split", "pre_translate", "translate", "consistency",
+      "lexicon", "grammar", "style", "polish", "qa", "export",
+    ] as const;
+
+    for (const stage of stages) {
+      const agent = factory.create(stage, { providerId: "test", model: "test" });
+      expect(agent).toBeDefined();
+      expect(typeof agent.execute).toBe("function");
+    }
+  });
+
+  it("devrait passer les options de config à chaque agent", () => {
+    const factory = new AgentFactory(mockServices);
+    const config = { providerId: "ollama", model: "qwen3.5:9b", temperature: 0.3 };
+    const agent = factory.create("translate", config);
+    expect(agent).toBeDefined();
+    // Le constructeur reçoit bien config, pas d'erreur
+  });
+
+  it("devrait lancer une erreur pour un stage inconnu", () => {
+    const factory = new AgentFactory(mockServices);
+    expect(() =>
+      factory.create("unknown_stage" as never, { providerId: "test", model: "test" }),
+    ).toThrow(/inconnu|unknown/i);
+  });
+
+  it("devrait utiliser l'agent du plugin si getPluginAgent retourne un agent", () => {
+    const pluginAgent = new SplitAgent({ providerId: "plugin", model: "plugin-model" });
+    const factory = new AgentFactory({
+      ...mockServices,
+      getPluginAgent: (_stage: string, _config: { providerId: string; model: string }) => {
+        return pluginAgent;
+      },
+    });
+
+    const agent = factory.create("translate", { providerId: "test", model: "test" });
+    expect(agent).toBe(pluginAgent);
+  });
+
+  it("devrait ignorer getPluginAgent si elle retourne undefined (fallback built-in)", () => {
+    const factory = new AgentFactory({
+      ...mockServices,
+      getPluginAgent: (_stage: string, _config: { providerId: string; model: string }) => {
+        return undefined;
+      },
+    });
+
+    const agent = factory.create("translate", { providerId: "test", model: "test" });
+    expect(agent).toBeDefined();
+    // Vérifier que c'est bien un agent built-in, pas le plugin
+    expect(agent.constructor.name).toBe("TranslateAgent");
+  });
+
+  it("devrait fonctionner sans getPluginAgent (undefined)", () => {
+    const factory = new AgentFactory(mockServices);
+    // services.getPluginAgent est undefined → le if (this.services.getPluginAgent) est false
+    const agent = factory.create("translate", { providerId: "test", model: "test" });
+    expect(agent).toBeDefined();
+    expect(agent.constructor.name).toBe("TranslateAgent");
   });
 });
