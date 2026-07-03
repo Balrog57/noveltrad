@@ -53,6 +53,11 @@ const routes = [
     name: "plugins",
     component: () => import("../views/PluginsView.vue"),
   },
+  {
+    path: "/help",
+    name: "help",
+    component: () => import("../views/HelpView.vue"),
+  },
 ];
 
 const router = createRouter({

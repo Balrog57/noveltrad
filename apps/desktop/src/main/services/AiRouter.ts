@@ -5,7 +5,6 @@ import type {
 } from "@shared/types/index.js";
 import type { AiCache } from "./AiCache.js";
 import { logger } from "../utils/logger.js";
-import { encode as gptEncode } from "gpt-tokenizer";
 
 export class AiRouter {
   private providers: Map<string, AiProvider> = new Map();
@@ -104,8 +103,10 @@ export class AiRouter {
     options?: ChatOptions,
     contextWindow: number = 32768,
   ): Promise<string> {
+    const encode = await this.loadTokenizer();
+
     const fullText = messages.map((m) => m.content).join("\n");
-    const totalTokens = gptEncode(fullText).length;
+    const totalTokens = encode(fullText).length;
 
     // Si en dessous du seuil, pas de découpage nécessaire
     if (totalTokens <= contextWindow * 0.5) {
@@ -122,14 +123,12 @@ export class AiRouter {
     // Découper le texte utilisateur en paragraphes
     const paragraphs = userTexts.split(/\n\n+/).filter((p) => p.trim().length > 0);
     if (paragraphs.length === 0) {
-      // Aucun contenu utilisateur, fallback au chat normal
       return this.chat(providerId, messages, options);
     }
 
     const systemTokens = systemMessages.length > 0
-      ? gptEncode(systemMessages.map((m) => m.content).join("\n")).length
+      ? encode(systemMessages.map((m) => m.content).join("\n")).length
       : 0;
-    // Seuil par chunk : 45% de la fenêtre (marge pour la réponse)
     const chunkThreshold = Math.floor(contextWindow * 0.45);
 
     const chunks: string[] = [];
@@ -137,15 +136,12 @@ export class AiRouter {
     let currentTokens = 0;
 
     for (const para of paragraphs) {
-      const paraTokens = gptEncode(para).length;
+      const paraTokens = encode(para).length;
 
-      // Si un paragraphe seul dépasse le seuil, on le force dans un chunk seul
-      // (le LLM fera au mieux avec ce qu'il reçoit)
       if (
         currentTokens + paraTokens + systemTokens > chunkThreshold &&
         currentBatch.length > 0
       ) {
-        // Finaliser le chunk en cours
         const chunkText = currentBatch.join("\n\n");
         const chunkResult = await this.chat(providerId, [
           ...systemMessages,
@@ -161,7 +157,6 @@ export class AiRouter {
       }
     }
 
-    // Dernier chunk
     if (currentBatch.length > 0) {
       const chunkText = currentBatch.join("\n\n");
       const chunkResult = await this.chat(providerId, [
@@ -172,6 +167,20 @@ export class AiRouter {
     }
 
     return chunks.join("\n\n");
+  }
+
+  /** Charge paresseusement gpt-tokenizer (import ESM peut échouer en production asar).
+   *  Fallback : estimation 1 token ≈ 4 caractères. */
+  private async loadTokenizer(): Promise<(text: string) => { length: number }> {
+    try {
+      const { encode: gptEncode } = await import("gpt-tokenizer");
+      return gptEncode;
+    } catch {
+      logger.warn("[AiRouter] gpt-tokenizer indisponible, fallback estimation");
+      return (text: string) => ({
+        length: Math.ceil(text.length / 4),
+      });
+    }
   }
 
   /**

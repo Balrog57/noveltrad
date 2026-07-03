@@ -24,17 +24,22 @@ const streamChatPayloadSchema = z.object({
     .optional(),
 });
 
-// ── Instance partagée du routeur avec provider Ollama ───────────────────────
+// ── Instance partagée du routeur avec provider Ollama (lazy) ────────────
 
-const settings = new SettingsManager();
-const router = new AiRouter();
+let _router: AiRouter | undefined;
 
-const defaultModel = settings.get("defaultModel") as string;
-const ollamaHost = settings.get("ollamaHost") as string;
-
-router.register(
-  new OllamaProvider("ollama-default", "Ollama local", defaultModel, ollamaHost),
-);
+function getRouter(): AiRouter {
+  if (!_router) {
+    const settings = new SettingsManager();
+    _router = new AiRouter();
+    const defaultModel = settings.get("defaultModel") as string;
+    const ollamaHost = settings.get("ollamaHost") as string;
+    _router.register(
+      new OllamaProvider("ollama-default", "Ollama local", defaultModel, ollamaHost),
+    );
+  }
+  return _router;
+}
 
 // Si d'autres modèles sont configurés, ils pourraient être enregistrés ici.
 
@@ -54,7 +59,7 @@ export function registerAiHandlers(): void {
       try {
         const parsed = streamChatPayloadSchema.parse(payload);
 
-        const stream = router.streamChat(
+        const stream = getRouter().streamChat(
           parsed.providerId,
           parsed.messages,
           parsed.options,
