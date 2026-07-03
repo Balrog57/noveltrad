@@ -1,0 +1,3 @@
+## 2024-05-14 - Keyboard Accessibility in Interactive Table Rows
+**Learning:** In Vue components, implementing custom interactive elements (like `<tr>` used as clickable rows or custom list items) requires explicit keyboard support. Just having `@click` isn't enough. Users who rely on keyboard navigation cannot activate these rows using the Enter or Space keys unless `tabindex` and specific keyboard event handlers are added. Also, a visible focus state is needed to indicate which element is currently focused.
+**Action:** When creating custom interactive components (like `NtTable.vue` with clickable `<tr>`), always add `tabindex="0"`, handle `@keydown.enter` and `@keydown.space.prevent`, and add a `:focus-visible` style in CSS.
