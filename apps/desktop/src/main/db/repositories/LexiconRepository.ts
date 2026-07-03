@@ -99,14 +99,21 @@ export class LexiconRepository {
    * Supprime tous les aliases existants pour cette entrée, puis insère les nouveaux.
    */
   private syncAliases(lexiconId: string, aliases: string[]): void {
-    this.db
-      .prepare("DELETE FROM lexicon_aliases WHERE lexicon_id = ?")
-      .run([lexiconId]);
-    const insert = this.db.prepare(
-      "INSERT INTO lexicon_aliases (id, lexicon_id, alias) VALUES (?, ?, ?)",
-    );
-    for (const alias of aliases) {
-      insert.run([randomUUID(), lexiconId, alias]);
+    this.db.exec("BEGIN TRANSACTION");
+    try {
+      this.db
+        .prepare("DELETE FROM lexicon_aliases WHERE lexicon_id = ?")
+        .run([lexiconId]);
+      const insert = this.db.prepare(
+        "INSERT INTO lexicon_aliases (id, lexicon_id, alias) VALUES (?, ?, ?)",
+      );
+      for (const alias of aliases) {
+        insert.run([randomUUID(), lexiconId, alias]);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
     }
   }
 
