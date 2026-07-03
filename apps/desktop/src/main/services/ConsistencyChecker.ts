@@ -3,6 +3,7 @@ import type {
   ConsistencyTolerance,
   LexiconEntry,
 } from "@shared/types/index.js";
+import tokenizer from "sbd";
 
 /**
  * SDD §11.4 : Tolérances par défaut pour les paires de langues courantes.
@@ -212,13 +213,17 @@ export class ConsistencyChecker {
 
   /**
    * Compte le nombre de phrases dans un texte.
-   * Une phrase est délimitée par . ! ? 。！？
+   * Utilise `sbd` (Sentence Boundary Detection) pour une détection
+   * plus précise que le simple split sur la ponctuation.
+   * Pour les textes CJK non gérés par sbd, un split supplémentaire
+   * sur la ponctuation CJK (。！？) est appliqué.
    */
   private countSentences(text: string): number {
     if (!text.trim()) return 0;
-    const sentences = text
-      .split(/[.!?。！？]+/)
-      .filter((s) => s.trim().length > 0);
+    const sbdSentences = tokenizer.sentences(text, {});
+    const sentences = sbdSentences.flatMap((s: string) =>
+      s.split(/[。！？]+/).filter((p: string) => p.trim().length > 0),
+    );
     return sentences.length;
   }
 
