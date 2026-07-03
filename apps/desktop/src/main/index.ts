@@ -212,11 +212,7 @@ app.whenReady().then(async () => {
   ]);
   Menu.setApplicationMenu(menu);
 
-  try {
-    registerIpcRouter();
-  } catch (err) {
-    logger.error("Failed to register IPC router", err as Error);
-  }
+  await registerIpcRouter();
   await createWindow();
 
   // SDD §15 : initialisation du PluginHost
