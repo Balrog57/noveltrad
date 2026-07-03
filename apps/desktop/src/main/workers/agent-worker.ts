@@ -8,7 +8,7 @@
  * Agents ciblés : ConsistencyAgent, ExportAgent, SplitAgent
  * (opérations CPU-bound : comparaison, formatage, découpage).
  *
- * Désactivé par défaut en v1.0 (useWorkerThreads = false).
+ * Activé par défaut en v1.0 (useWorkerThreads = true).
  * Voir WorkflowEngine.ts pour la configuration.
  */
 

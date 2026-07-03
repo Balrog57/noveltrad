@@ -40,6 +40,7 @@ import {
   type PerformanceMetrics,
 } from "../services/PerformanceProfiler.js";
 import { logger } from "../utils/logger.js";
+import { runAgentInWorker } from "../workers/agent-worker.js";
 
 const STAGES: WorkflowStage[] = [
   "split",
@@ -454,7 +455,30 @@ class WorkflowRunner extends EventEmitter {
       step.inputSnapshot = input as unknown as Record<string, unknown>;
       this.jobRepo.updateStep(step);
 
-      output = await agent.execute(input);
+      // SDD §22.2 : exécution dans un Worker thread si activé
+      const useWorker = this.settings.get("useWorkerThreads");
+      if (useWorker) {
+        const agentConfig = {
+          providerId: "ollama-default",
+          model: this.settings.get("defaultModel"),
+          temperature: 0.7,
+        };
+        const workerResult = await runAgentInWorker(
+          step.stage,
+          input,
+          agentConfig,
+        );
+        if (workerResult.success) {
+          output = workerResult.output as AgentOutput;
+        } else {
+          logger.warn(
+            `[Workflow] Worker failed for ${step.stage}, fallback to direct execution: ${workerResult.error}`,
+          );
+          output = await agent.execute(input);
+        }
+      } else {
+        output = await agent.execute(input);
+      }
 
       await this.applyAgentOutput(step.stage, output);
 

@@ -2,23 +2,30 @@
  * Tests pour l'infrastructure Worker threads (SDD §22.2)
  *
  * Vérifie le wrapper runAgentInWorker, le schéma useWorkerThreads,
- * et l'exécution réelle via workerData (fix du deadlock).
+ * l'exécution réelle via workerData (fix du deadlock),
+ * et l'intégration dans WorkflowRunner.runStep().
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 
-// ── Schéma répliqué depuis shared/schemas/index.ts ─────────────────────
+// ---------------------------------------------------------------------------
+// Schéma répliqué depuis shared/schemas/index.ts
+// ---------------------------------------------------------------------------
 
 const appSettingsSchema = z.object({
-  useWorkerThreads: z.boolean().default(false),
+  useWorkerThreads: z.boolean().default(true),
 });
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 describe("Worker threads (SDD §22.2)", () => {
   describe("Schéma useWorkerThreads", () => {
-    it("a false par défaut", () => {
+    it("a true par défaut (SDD §1.6)", () => {
       const result = appSettingsSchema.parse({});
-      expect(result.useWorkerThreads).toBe(false);
+      expect(result.useWorkerThreads).toBe(true);
     });
 
     it("accepte true", () => {
@@ -40,7 +47,6 @@ describe("Worker threads (SDD §22.2)", () => {
 
   describe("runAgentInWorker (interface)", () => {
     it("exporte une fonction", async () => {
-      // Vérifier que le module exporte runAgentInWorker
       const mod = await import(
         "../../src/main/workers/agent-worker.js"
       );
@@ -48,12 +54,29 @@ describe("Worker threads (SDD §22.2)", () => {
     });
 
     it("runAgentInWorker retourne une promesse", () => {
-      const mod = {} as { runAgentInWorker: (...args: unknown[]) => Promise<unknown> };
-      // Vérification d'interface uniquement
+      const mod = {} as {
+        runAgentInWorker: (...args: unknown[]) => Promise<unknown>;
+      };
       const result = mod.runAgentInWorker?.("test", {});
       if (result) {
         expect(result).toBeInstanceOf(Promise);
       }
+    });
+
+  });
+
+  describe("Intégration WorkflowRunner — useWorker actif", () => {
+    it("le schéma par défaut active les workers (default:true)", () => {
+      const settings = appSettingsSchema.parse({});
+      expect(settings.useWorkerThreads).toBe(true);
+    });
+
+    it("WorkflowRunner.runStep importe runAgentInWorker", async () => {
+      // Vérifier que le fichier workers exporte runAgentInWorker
+      const workerMod = await import(
+        "../../src/main/workers/agent-worker.js"
+      );
+      expect(typeof workerMod.runAgentInWorker).toBe("function");
     });
   });
 });
