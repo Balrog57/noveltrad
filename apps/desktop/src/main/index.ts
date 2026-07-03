@@ -225,11 +225,12 @@ app.whenReady().then(async () => {
     settings.get("updateChannel"),
     getMainWindow,
   );
+  // Vérification immédiate au démarrage + notification toast
   setTimeout(() => {
     updateManager?.check().catch((err) => {
       logger.warn("Initial update check failed", err);
     });
-  }, 30_000);
+  }, 5_000);
 
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

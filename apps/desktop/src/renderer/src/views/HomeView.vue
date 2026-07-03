@@ -24,9 +24,45 @@ const newProject = ref({
   parentPath: "~/NovelTrad Projects",
 });
 
+// Mise à jour
+const updateAvailable = ref(false);
+const updateVersion = ref("");
+const updateChecking = ref(false);
+const updateDownloading = ref(false);
+const updateDownloaded = ref(false);
+
+function checkUpdate(): void {
+  updateChecking.value = true;
+  window.novelTradAPI.invoke("update:check").catch(() => {});
+  setTimeout(() => { updateChecking.value = false; }, 3000);
+}
+
+function downloadUpdate(): void {
+  updateDownloading.value = true;
+  window.novelTradAPI.invoke("update:download").catch(() => {});
+}
+
+function installUpdate(): void {
+  window.novelTradAPI.invoke("update:install").catch(() => {});
+}
+
+// Écoute les événements de mise à jour du main process
 onMounted(async () => {
   await projectStore.loadRecent();
   await ollamaStore.check();
+
+  window.novelTradAPI.on("update:available", (info: any) => {
+    updateAvailable.value = true;
+    updateVersion.value = info?.version ?? "";
+  });
+  window.novelTradAPI.on("update:downloaded", () => {
+    updateDownloading.value = false;
+    updateDownloaded.value = true;
+  });
+  window.novelTradAPI.on("update:error", () => {
+    updateChecking.value = false;
+    updateDownloading.value = false;
+  });
 });
 
 async function create() {
@@ -150,6 +186,28 @@ async function confirmDelete(): Promise<void> {
         </div>
       </div>
     </div>
+
+    <!-- Bannière de mise à jour -->
+    <section v-if="updateAvailable" class="card update-banner">
+      <h2>🔄 Mise à jour disponible</h2>
+      <p>Version <strong>{{ updateVersion }}</strong> est disponible.</p>
+      <div class="update-actions">
+        <button v-if="!updateDownloaded" class="btn-primary" @click="downloadUpdate" :disabled="updateDownloading">
+          {{ updateDownloading ? "Téléchargement..." : "Télécharger" }}
+        </button>
+        <button v-if="updateDownloaded" class="btn-primary" @click="installUpdate">
+          Installer et redémarrer
+        </button>
+      </div>
+    </section>
+    <section v-else class="card update-check">
+      <div class="update-row">
+        <span>NovelTrad 2.0.4</span>
+        <button class="btn-ghost" @click="checkUpdate" :disabled="updateChecking">
+          {{ updateChecking ? "Vérification..." : "Vérifier mise à jour" }}
+        </button>
+      </div>
+    </section>
 
     <section class="card">
       <h2>Projets recents</h2>
@@ -361,5 +419,52 @@ select {
 
 .btn-danger:hover {
   opacity: 0.9;
+}
+
+/* Bannière de mise à jour */
+.update-banner {
+  border: 1px solid var(--accent);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.update-banner h2 {
+  color: var(--accent);
+}
+
+.update-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.update-check {
+  padding: 8px 16px;
+}
+
+.update-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 4px 12px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-ghost:hover {
+  background: var(--bg-tertiary);
+}
+
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
