@@ -1,0 +1,4 @@
+## 2024-05-28 - [Arbitrary IPC Channel Execution via ContextBridge]
+**Vulnerability:** The preload script (`apps/desktop/src/preload/index.ts`) blindly forwarded all `ipcRenderer.invoke` and `ipcRenderer.on` calls from the renderer process without validating the `channel` argument.
+**Learning:** This breaks `contextIsolation` by allowing the untrusted renderer process to access ANY internal Electron IPC channel or arbitrary `ipcMain` handlers, bypassing intended security boundaries. Exposing unmodified `ipcRenderer.invoke/on` is a critical security risk.
+**Prevention:** Always validate the `channel` argument against a strict, statically defined allowlist (e.g., `IPC_CHANNELS`) in the preload script before passing it to `ipcRenderer`. Throw an error and reject the call if the channel is not in the allowlist.
