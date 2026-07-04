@@ -1,18 +1,7 @@
 import type { SettingsManager } from "./SettingsManager.js";
 import type { OllamaModelInfo } from "@shared/types/index.js";
 import { net } from "electron";
-import fs from "node:fs";
-import path from "node:path";
-
-function debugLog(msg: string): void {
-  const line = `[${new Date().toISOString()}] ${msg}\n`;
-  console.log(msg);
-  try {
-    const dir = path.join(process.env.APPDATA || "", "NovelTrad");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, "debug.log"), line, "utf-8");
-  } catch { /* best effort */ }
-}
+import { logger } from "../utils/logger.js";
 
 export class OllamaManager {
   constructor(private settings: SettingsManager) {}
@@ -24,21 +13,21 @@ export class OllamaManager {
   async isAvailable(): Promise<boolean> {
     const host = this.getHost();
     const url = `${host}/api/tags`;
-    debugLog(`[Ollama] isAvailable() called, url=${url}`);
+    logger.debug(`[Ollama] isAvailable() called, url=${url}`);
 
     try {
       const res = await net.fetch(url, { signal: AbortSignal.timeout(5000) });
-      debugLog(`[Ollama] fetch response: status=${res.status}, ok=${res.ok}`);
+      logger.debug(`[Ollama] fetch response: status=${res.status}, ok=${res.ok}`);
       if (!res.ok) {
-        debugLog(`[Ollama] Not OK, returning false`);
+        logger.debug(`[Ollama] Not OK, returning false`);
         return false;
       }
       const text = await res.text();
       const parsed = JSON.parse(text);
-      debugLog(`[Ollama] Connection successful (${parsed.models?.length ?? 0} models)`);
+      logger.debug(`[Ollama] Connection successful (${parsed.models?.length ?? 0} models)`);
       return true;
     } catch (e) {
-      debugLog(`[Ollama] Connection FAILED: ${(e as Error).message}\n${(e as Error).stack}`);
+      logger.debug(`[Ollama] Connection FAILED: ${(e as Error).message}`, e as Error);
       return false;
     }
   }

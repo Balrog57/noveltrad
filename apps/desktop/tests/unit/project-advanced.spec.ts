@@ -5,6 +5,19 @@ import os from "node:os";
 import crypto from "node:crypto";
 import type { DuplicateInfo } from "@shared/types/index.js";
 
+// Mock electron-log (ProjectManager imports logger which imports electron-log)
+vi.mock("electron-log", () => ({
+  default: {
+    initialize: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    transports: { console: { format: vi.fn() }, file: { format: vi.fn() } },
+  },
+  initialize: vi.fn(),
+}));
+
 // ── Mock SQLite DB (évite le "database is locked" de node-sqlite3-wasm) ──
 // Cette mock supporte les requêtes utilisées par ProjectManager :
 //   - SELECT * FROM chapters WHERE id = ? AND project_id = ?

@@ -6,6 +6,19 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Mock electron-log (OllamaManager imports logger which imports electron-log)
+vi.mock("electron-log", () => ({
+  default: {
+    initialize: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    transports: { console: { format: vi.fn() }, file: { format: vi.fn() } },
+  },
+  initialize: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // Helpers pour créer des objets Response-like
 // ---------------------------------------------------------------------------

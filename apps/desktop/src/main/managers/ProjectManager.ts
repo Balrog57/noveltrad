@@ -13,6 +13,7 @@ import type { SettingsManager } from "./SettingsManager.js";
 import { createProjectDatabase, runMigrations } from "../db/connection.js";
 import { ProjectRepository } from "../db/repositories/ProjectRepository.js";
 import { expandHome } from "../utils/paths.js";
+import { logger } from "../utils/logger.js";
 import chardet from "chardet";
 import iconv from "iconv-lite";
 import mammoth from "mammoth";
@@ -132,9 +133,9 @@ export class ProjectManager {
         const project = await this.open(projectPath);
         projects.push(project);
       } catch (err) {
-        console.warn(
+        logger.warn(
           `Impossible d'ouvrir le projet recent ${projectPath}:`,
-          err,
+          err as Error,
         );
       }
     }
@@ -790,7 +791,7 @@ export class ProjectManager {
           }
         } catch {
           // Fichier EPUB corrompu ou non lisible — ignorer cet entry
-          console.warn(
+          logger.warn(
             `[ProjectManager] Entry EPUB illisible : ${entry.entryName}`,
           );
         }
@@ -900,7 +901,7 @@ export class ProjectManager {
       if (code === "und") return null;
 
       if (score < LANGUAGE_CONFIDENCE_THRESHOLD) {
-        console.warn(
+        logger.warn(
           `[ProjectManager] Confiance de détection de langue faible : ${code} (${(score * 100).toFixed(1)}%). Seuil : ${LANGUAGE_CONFIDENCE_THRESHOLD * 100}%`,
         );
         return null;
@@ -912,7 +913,7 @@ export class ProjectManager {
         confidence: score,
       };
     } catch {
-      console.warn("[ProjectManager] Erreur lors de la détection de langue.");
+      logger.warn("[ProjectManager] Erreur lors de la détection de langue.");
       return null;
     }
   }
