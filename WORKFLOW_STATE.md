@@ -726,12 +726,64 @@ The `pullModel()` and `streamChat()` source code uses a `lines.pop() + buffer` N
 - ✅ **Tests**: 737 passed, 45 suites, 0 failed (`npm run test --workspace=apps/desktop`)
 - ✅ **No regressions**: All 737 existing tests preserved
 
+## Review Findings (Phase 0 — Fix Ollama via net.fetch)
+
+### ✅ T1. OllamaManager.ts — PASS
+- `import { net } from "electron"` present (line 3)
+- **4/4** `net.fetch()` calls in isAvailable (L30), listModels (L48), pullModel (L69), testModel (L99)
+- Zero bare `fetch()` calls confirmed by grep
+- `AbortSignal.timeout()` present: isAvailable (5s), listModels (10s), testModel (120s)
+  - Minor: pullModel() has no timeout — acceptable for long-running streaming download
+- DebugLog reduced from ~7 to 5 lines (4 essential + 1 error catch) — close to the 2-3 target, genuinely useful
+- NDJSON streaming preserved (`res.body?.getReader()`, buffer+split pattern L75-L92)
+- No `node:http` fallback
+
+### ✅ T2. OllamaProvider.ts — PASS
+- `import { net } from "electron"` present (line 1)
+- **4/4** `net.fetch()` calls in listModels (L17), chat (L24), streamChat (L48), embeddings (L90)
+- Zero bare `fetch()` calls confirmed by grep
+- `AbortSignal.timeout()` present in all 4 methods
+- NDJSON streaming preserved with AsyncGenerator (L44-L85)
+- No `node:http` fallback
+
+### ✅ T3. ollama-manager.spec.ts — PASS
+- `vi.mock("electron", () => ({ net: { fetch: mockNetFetch } }))` at line 64
+- No `vi.mock("ollama", ...)` — confirmed by grep (0 results)
+- Mock helpers: `mockJsonResponse`, `mockStreamResponse`, `mockErrorResponse` — all return Response-like with `.ok`, `.json()`, `.text()`, `.body.getReader()`
+- 11 tests: isAvailable (3), listModels (3), pullModel (3), testModel (2)
+- NDJSON streaming mock pattern correct: dummy cleanup line ensures "success" is not last non-empty line (avoids `lines.pop()` swallowing it)
+
+### ✅ T4. providers.spec.ts — PASS
+- `vi.mock("electron", ...)` for OllamaProvider tests (L44-46)
+- `vi.mock("openai", ...)` for OpenAiCompatibleProvider tests (L56-62) — unchanged
+- No `vi.mock("ollama", ...)` — confirmed
+- 16 tests total: 8 OllamaProvider + 8 OpenAiCompatibleProvider (unchanged)
+- NDJSON streaming mock pattern correct
+
+### ✅ T4. Build & Verify — PASS
+- Type-check: 0 errors
+- Tests: **737 passed, 45 suites, 0 failed** — no regressions
+- All existing test suites preserved
+
+### Observations mineures
+- **DebugLog count** in `isAvailable()`: 5 lines (not exactly 2-3 as spec suggests, but significantly reduced from 7 and all essential for diagnostics)
+- **pullModel() lacks AbortSignal.timeout()**: streaming download — intentional omission, would break long pulls
+
+### Verdict
+**ACCEPT** — All 4 tasks correctly implemented. Zero regressions. No critical issues.
+
+## Current Status
+- ✅ **Phase 0 — Fix Ollama via net.fetch** : REVIEWED AND ACCEPTED
+- All 8 `fetch()` → `net.fetch()` replacements verified in both source files
+- Tests rewritten with `electron` mock, zero references to `vi.mock("ollama")`
+- 737 tests pass, type-check clean
+
 ## Next Agent
-→ **reviewer** : Merci de review le commit Phase 0 (fix Ollama via net.fetch). Vérifier :
-1. T1 : OllamaManager.ts — toutes les `fetch()` remplacées par `net.fetch()`, `import { net } from "electron"` ajouté, debugLog réduit
-2. T2 : OllamaProvider.ts — toutes les `fetch()` remplacées par `net.fetch()`, `import { net } from "electron"` ajouté
-3. Tests : plus de `vi.mock("ollama")`, les mocks utilisent `electron`/`net.fetch` avec Response-like objects
-4. Aucune régression (737 tests, type-check clean)
+→ **tester** : Run the full test suite + verify build. Focus on:
+1. `npm run test --workspace=apps/desktop` → 737 tests, 0 failures
+2. `npm run type-check --workspace=apps/desktop` → 0 errors
+3. `npm run build --workspace=apps/desktop` → generar installeur, lancer, vérifier détection Ollama sur HomeView
+4. Vérifier `%APPDATA%/NovelTrad/debug.log` → entrées `[Ollama]` présentes
 
 ---
 
@@ -1627,7 +1679,83 @@ After v2.0.6/v2.0.7 commits, 5 features broke: Ollama detection, Console tab, Se
 - 737 tests (45 suites), type-check 0 erreurs
 - Plan Phase 0 rédigé et révisé par debater (4 corrections appliquées)
 - Plan de stabilisation V2 complet avec Phases 3-7 reportées post-v2.1
-- En attente de l'implementor pour exécuter Phase 0
+- **Phase 0 fix terminé et reviewé** : OllamaManager.ts + OllamaProvider.ts + tests réécrits avec electron mock
+- **EN COURS** : Validation automatisée complète de la Phase 0 (suite de tests + pnpm verify)
+
+## Open Questions
+- Exigence utilisateur : validation AUTOMATIQUE (pas manuelle) avant Phase 0.1
+- Objectifs couverture : 90% OllamaManager, 90% OllamaProvider, 85% IPC handlers
+- Tests E2E requis : 5 scénarios Playwright (HomeView badge, wizard, pull, test)
+- Tests non-régression requis : project open/create, menus, settings, console, auto-update, logs
+- Commande unique `pnpm verify` requise (lint + typecheck + unit + integration + E2E + build)
+- Rapport de validation finale avec nombre de tests, couverture, zones non couvertes, risques résiduels
+
+## Plan — Validation Phase 0 (détail, révisé par debater)
+
+### P0-pre. Fix RagEngine → net.fetch()
+- **File**: `src/main/services/RagEngine.ts` — remplacer 2 `fetch()` (L28, L142) par `net.fetch()`
+- **File**: `tests/unit/rag-engine.spec.ts` — remplacer `vi.stubGlobal("fetch", ...)` par `vi.mock("electron", ...)`
+- **Validation**: 16 tests rag-engine passent
+
+### P0. Vérification aucun fetch() natif dans Main Process
+- **Action**: Grep `src/main/` pour `fetch(` et `globalThis.fetch`
+- **Objectif**: 0 occurrence de fetch natif (hors `net.fetch`)
+
+### P1. Tests unitaires OllamaManager (expansion 11→22 tests)
+- **File**: `tests/unit/ollama-manager.spec.ts`
+- **Tests ajoutés**: timeout réseau, erreur HTTP, JSON invalide, réponse vide, pullModel sans body, listModels HTTP error, testModel erreur HTTP, testModel réponse vide
+- **Objectif**: 90% couverture OllamaManager
+
+### P2. Tests unitaires OllamaProvider (expansion 8→18 tests)
+- **File**: `tests/unit/providers.spec.ts`
+- **Tests ajoutés**: timeout, erreur HTTP, JSON invalide, embeddings vide, streaming multi-chunks, streamChat reader null, embeddings erreur HTTP, chat message.content undefined
+- **Objectif**: 90% couverture OllamaProvider
+
+### P3. Tests d'intégration IPC Ollama (nouveau, ~11 tests)
+- **File**: `tests/unit/ollama-ipc.spec.ts`
+- **Tests**: is-available (true/false/error/logs), list-models (ok/error), pull-model (ok/progress/error), test-model (ok/error), validation Zod, mesure temps de réponse
+- **Objectif**: 85% couverture handlers/ollama.ts
+
+### P4. Tests non-régression IPC router (smoke test)
+- **File**: `tests/unit/non-regression.spec.ts`
+- **Tests**: registerIpcRouter() charge tous handlers sans erreur, chaque canal attendu est dans IPC_CHANNELS, types de retour corrects
+- **Pas de tests vagues** — c'est un smoke test du routeur IPC
+
+### P5. Couverture ciblée
+- **Action**: `vitest run --coverage` → vérifier 90/90/85
+- **Si pas atteint**: ajouter tests manquants
+
+### P6. Tests E2E Ollama (Playwright, 5 scénarios)
+- **File**: `tests/e2e/ollama.spec.ts`
+- **Détection auto**: `beforeAll` teste disponibilité Ollama via `net.fetch("http://localhost:11434/api/tags")`, skip si indisponible
+- **Cas 1**: HomeView badge "Ollama disponible"
+- **Cas 2**: HomeView badge "Non disponible" (skip si pas serveur)
+- **Cas 3**: Wizard détection auto + affichage modèles
+- **Cas 4**: Téléchargement modèle avec progression
+- **Cas 5**: Test modèle retour OK
+
+### P7. Commande npm run verify
+- **File**: `package.json` — script "verify"
+- **Script**: lint → typecheck → test → build → test:e2e
+- **Utiliser `npm run`** (pas pnpm, projet npm workspaces)
+- **Build**: `npm run build` (inclut electron-vite build + electron-builder)
+
+### P8. Rapport de validation finale
+- **File**: `docs/PHASE0_VALIDATION_REPORT.md`
+
+## Files To Change (Phase 0 validation)
+- `apps/desktop/tests/unit/ollama-manager.spec.ts` — expand (+11 tests)
+- `apps/desktop/tests/unit/providers.spec.ts` — expand (+10 tests)
+- `apps/desktop/tests/unit/ollama-ipc.spec.ts` — new (~11 tests)
+- `apps/desktop/tests/e2e/ollama.spec.ts` — new (5 scénarios)
+- `apps/desktop/tests/unit/non-regression.spec.ts` — new (~7 tests)
+- `apps/desktop/package.json` — add verify script
+- `docs/PHASE0_VALIDATION_REPORT.md` — new
 
 ## Next Agent
-→ **implementor** : Implémenter le plan Phase 0 (fix Ollama via net.fetch) tel que décrit dans la section "Phase 0" ci-dessus.
+→ **debater** : Review ce plan de validation Phase 0. Vérifier :
+1. Est-ce que les tests couvrent tous les cas listés par l'utilisateur ?
+2. Est-ce que les objectifs de couverture (90/90/85) sont réalistes ?
+3. Est-ce que `pnpm verify` est correctement structuré ?
+4. Y a-t-il des manques dans les tests E2E ou de non-régression ?
+5. Y a-t-il un meilleur ordre d'implémentation ?

@@ -94,12 +94,13 @@ function setupLogForwarding(): void {
   /**
    * SDD §4.12 — Transfert des logs main process vers le renderer.
    * Intercepte console.log/warn/error et les envoie via IPC 'log'.
+   * Utilise getMainWindow() pour survivre à un recrément de fenêtre.
    */
   const sendToRenderer = (
     level: "debug" | "info" | "warn" | "error",
     message: string,
   ): void => {
-    const win = mainWindow;
+    const win = getMainWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send("log", {
         level,
@@ -132,20 +133,23 @@ function setupLogForwarding(): void {
 function registerGlobalShortcuts(): void {
   // SDD §4.15 — Keyboard shortcuts
   globalShortcut.register("Control+N", () => {
-    if (mainWindow?.isFocused()) {
-      mainWindow.webContents.send("navigate", "/");
+    const win = getMainWindow();
+    if (win && !win.isDestroyed() && win.isFocused()) {
+      win.webContents.send("navigate", "/");
     }
   });
 
   globalShortcut.register("Control+O", () => {
-    if (mainWindow?.isFocused()) {
-      mainWindow.webContents.send("menu", "open-project");
+    const win = getMainWindow();
+    if (win && !win.isDestroyed() && win.isFocused()) {
+      win.webContents.send("menu", "open-project");
     }
   });
 
   globalShortcut.register("Control+Shift+T", () => {
-    if (mainWindow?.isFocused()) {
-      mainWindow.webContents.send("menu", "translate-current");
+    const win = getMainWindow();
+    if (win && !win.isDestroyed() && win.isFocused()) {
+      win.webContents.send("menu", "translate-current");
     }
   });
 }
@@ -196,8 +200,14 @@ app.whenReady().then(async () => {
     {
       label: "Fichier",
       submenu: [
-        { label: "Nouveau projet", accelerator: "CmdOrCtrl+N", click: () => mainWindow?.webContents.send("navigate", "/") },
-        { label: "Ouvrir un projet", accelerator: "CmdOrCtrl+O", click: () => mainWindow?.webContents.send("menu", "open-project") },
+        { label: "Nouveau projet", accelerator: "CmdOrCtrl+N", click: () => {
+          const win = getMainWindow();
+          if (win && !win.isDestroyed()) win.webContents.send("navigate", "/");
+        }},
+        { label: "Ouvrir un projet", accelerator: "CmdOrCtrl+O", click: () => {
+          const win = getMainWindow();
+          if (win && !win.isDestroyed()) win.webContents.send("menu", "open-project");
+        }},
         { type: "separator" },
         { role: "quit", label: "Quitter" },
       ],
@@ -205,7 +215,10 @@ app.whenReady().then(async () => {
     {
       label: "Aide",
       submenu: [
-        { label: "Guide d'utilisation", click: () => mainWindow?.webContents.send("navigate", "/help") },
+        { label: "Guide d'utilisation", click: () => {
+          const win = getMainWindow();
+          if (win && !win.isDestroyed()) win.webContents.send("navigate", "/help");
+        }},
         { label: "GitHub", click: async () => { const { shell } = await import("electron"); await shell.openExternal("https://github.com/Balrog57/noveltrad"); } },
       ],
     },

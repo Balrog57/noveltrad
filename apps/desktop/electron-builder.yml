@@ -10,6 +10,7 @@ directories:
   buildResources: build
 files:
   - "out/**/*"
+  - "node_modules/**/*"
   - "build/**/*"
   - "resources/**/*"
 publish:

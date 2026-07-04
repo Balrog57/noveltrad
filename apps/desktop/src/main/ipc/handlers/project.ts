@@ -245,6 +245,18 @@ export function registerProjectHandlers(): void {
     },
   );
 
+  ipcMain.handle("project:open-dialog", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+      title: "Sélectionner un projet NovelTrad",
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    const projectPath = result.filePaths[0];
+    return projectManager.open(projectPath);
+  });
+
   ipcMain.handle("dialog:open-file", async (_event, options) => {
     const result = await dialog.showOpenDialog(options);
     return { canceled: result.canceled, filePaths: result.filePaths };

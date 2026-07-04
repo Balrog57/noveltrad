@@ -200,8 +200,12 @@ async function saveConfig(): Promise<void> {
 }
 
 async function finish(): Promise<void> {
-  await saveConfig();
-  await settings.set("firstRunCompleted", true);
+  try {
+    await saveConfig();
+    await settings.set("firstRunCompleted", true);
+  } catch (e) {
+    console.warn("Failed to save settings:", e);
+  }
   emit("close");
 }
 
@@ -442,6 +446,7 @@ onBeforeUnmount(() => {
             <button
               v-if="step < totalSteps"
               class="btn-primary"
+              :disabled="!canProceed"
               @click="nextStep"
             >
               {{ nextLabel }}

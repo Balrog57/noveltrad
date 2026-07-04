@@ -136,6 +136,58 @@ describe("OllamaManager (SDD §19)", () => {
       const result = await manager.isAvailable();
       expect(result).toBe(false);
     });
+
+    it("retourne false en cas de timeout réseau (AbortError)", async () => {
+      const abortError = new DOMException("The operation was aborted", "AbortError");
+      mockNetFetch.mockRejectedValue(abortError);
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      const result = await manager.isAvailable();
+      expect(result).toBe(false);
+    });
+
+    it("retourne false si la réponse HTTP est une erreur (500)", async () => {
+      mockNetFetch.mockResolvedValue(mockErrorResponse(500));
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      const result = await manager.isAvailable();
+      expect(result).toBe(false);
+    });
+
+    it("retourne false si le JSON de la réponse est invalide", async () => {
+      mockNetFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve("{ invalid json"),
+        json: () => Promise.reject(new Error("Unexpected token")),
+        body: null,
+      });
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      const result = await manager.isAvailable();
+      expect(result).toBe(false);
+    });
   });
 
   // ── listModels() ────────────────────────────────────────────────────
@@ -214,6 +266,35 @@ describe("OllamaManager (SDD §19)", () => {
       const manager = new OllamaManager(new SettingsManager());
 
       await expect(manager.listModels()).rejects.toThrow("Ollama not running");
+    });
+
+    it("propage une erreur HTTP 500", async () => {
+      mockNetFetch.mockResolvedValue(mockErrorResponse(500));
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      await expect(manager.listModels()).rejects.toThrow("HTTP 500");
+    });
+
+    it("gère une réponse avec models undefined", async () => {
+      mockNetFetch.mockResolvedValue(mockJsonResponse({}));
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      const models = await manager.listModels();
+      expect(models).toEqual([]);
     });
   });
 
@@ -303,6 +384,40 @@ describe("OllamaManager (SDD §19)", () => {
         manager.pullModel("nonexistent"),
       ).rejects.toThrow("Model not found");
     });
+
+    it("propage une erreur HTTP 500", async () => {
+      mockNetFetch.mockResolvedValue(mockErrorResponse(500));
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      await expect(manager.pullModel("bad-model")).rejects.toThrow("HTTP 500");
+    });
+
+    it("lance une erreur si le reader est null (pas de body)", async () => {
+      mockNetFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(""),
+        json: () => Promise.reject(new Error("Not JSON")),
+        body: null,
+      });
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      await expect(manager.pullModel("model")).rejects.toThrow("No response body");
+    });
   });
 
   // ── testModel() ─────────────────────────────────────────────────────
@@ -347,6 +462,37 @@ describe("OllamaManager (SDD §19)", () => {
       await expect(manager.testModel("nonexistent")).rejects.toThrow(
         "Model not loaded",
       );
+    });
+
+    it("propage une erreur HTTP 500", async () => {
+      mockNetFetch.mockResolvedValue(mockErrorResponse(500));
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      await expect(manager.testModel("bad-model")).rejects.toThrow("HTTP 500");
+    });
+
+    it("retourne une chaîne vide si message.content est undefined", async () => {
+      mockNetFetch.mockResolvedValue(
+        mockJsonResponse({ message: {} }),
+      );
+
+      const { OllamaManager } = await import(
+        "../../src/main/managers/OllamaManager.js"
+      );
+      const { SettingsManager } = await import(
+        "../../src/main/managers/SettingsManager.js"
+      );
+      const manager = new OllamaManager(new SettingsManager());
+
+      const result = await manager.testModel("qwen3.5:9b");
+      expect(result).toBe("");
     });
   });
 });

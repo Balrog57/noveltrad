@@ -13,10 +13,16 @@ export const useOllamaStore = defineStore("ollama", () => {
       if (host) {
         await window.novelTradAPI.invoke("settings:set", "ollamaHost", host);
       }
+      console.log("[Ollama store] Calling ollama:is-available...");
       available.value = await window.novelTradAPI.invoke("ollama:is-available");
+      console.log("[Ollama store] available =", available.value);
       if (available.value) {
         models.value = await window.novelTradAPI.invoke("ollama:list-models");
+        console.log("[Ollama store] models =", models.value.length);
       }
+    } catch (e) {
+      console.error("[Ollama store] IPC failed:", e);
+      available.value = false;
     } finally {
       loading.value = false;
     }

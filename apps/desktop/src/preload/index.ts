@@ -6,7 +6,13 @@ export interface NovelTradAPI {
 }
 
 const api: NovelTradAPI = {
-  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  invoke: (channel, ...args) => {
+    console.log(`[IPC invoke] ${channel}`, ...args);
+    return ipcRenderer.invoke(channel, ...args).catch((err) => {
+      console.error(`[IPC invoke] ${channel} FAILED:`, err.message);
+      throw err;
+    });
+  },
   on: (channel, callback) => {
     ipcRenderer.on(channel, (_event, ...args) => callback(...args));
     return () => {

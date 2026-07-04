@@ -7,6 +7,7 @@ export const IPC_CHANNELS = [
   "project:stats",
   "project:refresh-source",
   "project:detect-duplicate",
+  "project:open-dialog",
   "ollama:list-models",
   "ollama:pull-model",
   "ollama:pull-progress",

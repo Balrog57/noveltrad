@@ -13,7 +13,10 @@ const settings = new SettingsManager();
 const ollamaManager = new OllamaManager(settings);
 
 export function registerOllamaHandlers(): void {
+  console.log("[IPC] Ollama handlers registered");
+
   ipcMain.handle("ollama:is-available", async (_event, host?: unknown) => {
+    console.log(`[IPC] ollama:is-available called, host=${host}`);
     hostSchema.parse(host);
     return ollamaManager.isAvailable();
   });

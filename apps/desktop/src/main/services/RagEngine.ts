@@ -1,5 +1,6 @@
 import type { ProjectDatabase } from "../db/connection.js";
 import type { RagMatch } from "@shared/types/index.js";
+import { net } from "electron";
 import { logger } from "../utils/logger.js";
 import similarity from "compute-cosine-similarity";
 
@@ -25,13 +26,14 @@ export class RagEngine {
    * Retourne un vecteur de nombres (dimensions dépendent du modèle).
    */
   async computeEmbedding(text: string): Promise<number[]> {
-    const response = await fetch(`${this.ollamaHost}/api/embeddings`, {
+    const response = await net.fetch(`${this.ollamaHost}/api/embeddings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: this.embeddingModel,
         prompt: text,
       }),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
@@ -139,7 +141,9 @@ export class RagEngine {
    */
   async isAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.ollamaHost}/api/tags`);
+      const response = await net.fetch(`${this.ollamaHost}/api/tags`, {
+        signal: AbortSignal.timeout(5000),
+      });
       if (!response.ok) return false;
 
       const data = (await response.json()) as {

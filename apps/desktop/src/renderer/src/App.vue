@@ -11,6 +11,7 @@ const showWizard = ref(false);
 
 onMounted(async () => {
   await settings.load();
+  console.log("[App] Settings loaded:", JSON.stringify(settings.data));
   // SDD §4.18 : afficher le wizard au premier lancement
   if (settings.data.firstRunCompleted === false) {
     showWizard.value = true;
@@ -20,10 +21,16 @@ onMounted(async () => {
   window.novelTradAPI.on("navigate", (route: unknown) => {
     if (typeof route === "string") router.push(route);
   });
-  window.novelTradAPI.on("menu", (action: unknown) => {
+  window.novelTradAPI.on("menu", async (action: unknown) => {
     if (action === "open-project") {
-      // Ouvre le dialogue de sélection de dossier (via IPC)
-      window.novelTradAPI.invoke("project:open-dialog").catch(() => {});
+      try {
+        const project = await window.novelTradAPI.invoke<{ id: string } | null>("project:open-dialog");
+        if (project?.id) {
+          router.push({ name: "project", params: { projectId: project.id } });
+        }
+      } catch {
+        // L'utilisateur a annulé le dialogue
+      }
     }
   });
 });

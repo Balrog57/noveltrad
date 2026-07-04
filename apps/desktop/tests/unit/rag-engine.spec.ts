@@ -1,5 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
+// ---------------------------------------------------------------------------
+// Mock electron/net.fetch (must be hoisted with vi.hoisted)
+// ---------------------------------------------------------------------------
+
+const { mockNetFetch } = vi.hoisted(() => ({
+  mockNetFetch: vi.fn(),
+}));
+
+vi.mock("electron", () => ({
+  net: { fetch: mockNetFetch },
+}));
+
 // Mock electron-log avant d'importer quoi que ce soit qui l'utilise
 vi.mock("electron-log", () => ({
   default: {
@@ -108,6 +120,7 @@ describe("RagEngine", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    mockNetFetch.mockReset();
   });
 
   // ── computeEmbedding ──
@@ -115,17 +128,14 @@ describe("RagEngine", () => {
   describe("computeEmbedding", () => {
     it("devrait calculer un embedding via l'API Ollama", async () => {
       const fakeEmbedding = [0.1, 0.2, 0.3, 0.4, 0.5];
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ embedding: fakeEmbedding }),
-        }),
-      );
+      mockNetFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ embedding: fakeEmbedding }),
+      });
 
       const result = await engine.computeEmbedding("Hello world");
       expect(result).toEqual(fakeEmbedding);
-      expect(fetch).toHaveBeenCalledWith(
+      expect(mockNetFetch).toHaveBeenCalledWith(
         `${OLLAMA_HOST}/api/embeddings`,
         expect.objectContaining({
           method: "POST",
@@ -136,14 +146,11 @@ describe("RagEngine", () => {
     });
 
     it("devrait lancer une erreur si l'API répond avec un statut d'erreur", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: false,
-          status: 500,
-          statusText: "Internal Server Error",
-        }),
-      );
+      mockNetFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      });
 
       await expect(engine.computeEmbedding("test")).rejects.toThrow(
         "Erreur Ollama embeddings (500)",
@@ -151,10 +158,7 @@ describe("RagEngine", () => {
     });
 
     it("devrait propager les erreurs réseau", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockRejectedValue(new Error("Connexion refusée")),
-      );
+      mockNetFetch.mockRejectedValue(new Error("Connexion refusée"));
 
       await expect(engine.computeEmbedding("test")).rejects.toThrow(
         "Connexion refusée",
@@ -216,15 +220,12 @@ describe("RagEngine", () => {
 
   describe("findSimilar", () => {
     it("devrait retourner les K paragraphes les plus similaires", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            embedding: [0.1, 0.2, 0.3],
-          }),
+      mockNetFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          embedding: [0.1, 0.2, 0.3],
         }),
-      );
+      });
 
       // Pré-remplir la DB avec des embeddings
       engine.storeEmbedding("proj-1_ch1", "p1", [0.1, 0.2, 0.3]);
@@ -240,13 +241,10 @@ describe("RagEngine", () => {
     });
 
     it("devrait retourner un tableau vide si aucun embedding n'existe", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ embedding: [0.1, 0.2] }),
-        }),
-      );
+      mockNetFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ embedding: [0.1, 0.2] }),
+      });
 
       const results = await engine.findSimilar("test", "empty-project");
       expect(results).toEqual([]);
@@ -257,53 +255,41 @@ describe("RagEngine", () => {
 
   describe("isAvailable", () => {
     it("devrait retourner true si le modèle d'embedding est trouvé", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            models: [{ name: "nomic-embed-text:latest" }],
-          }),
+      mockNetFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          models: [{ name: "nomic-embed-text:latest" }],
         }),
-      );
+      });
 
       const available = await engine.isAvailable();
       expect(available).toBe(true);
     });
 
     it("devrait retourner false si le modèle d'embedding est absent", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            models: [{ name: "qwen3.5:9b" }],
-          }),
+      mockNetFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          models: [{ name: "qwen3.5:9b" }],
         }),
-      );
+      });
 
       const available = await engine.isAvailable();
       expect(available).toBe(false);
     });
 
     it("devrait retourner false si Ollama est injoignable", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockRejectedValue(new Error("Connexion refusée")),
-      );
+      mockNetFetch.mockRejectedValue(new Error("Connexion refusée"));
 
       const available = await engine.isAvailable();
       expect(available).toBe(false);
     });
 
     it("devrait retourner false si la réponse Ollama n'est pas OK", async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: false,
-          status: 503,
-        }),
-      );
+      mockNetFetch.mockResolvedValue({
+        ok: false,
+        status: 503,
+      });
 
       const available = await engine.isAvailable();
       expect(available).toBe(false);

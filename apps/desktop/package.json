@@ -13,7 +13,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "lint": "eslint . --ext .ts,.vue",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "verify": "npm run lint && npm run type-check && npm run test && npm run build && npm run test:e2e"
   },
   "dependencies": {
     "@lucide/vue": "^1.23.0",
@@ -35,7 +36,6 @@
     "jsdom": "^24.1.0",
     "mammoth": "^1.8.0",
     "node-sqlite3-wasm": "^0.8.59",
-    "ollama": "^0.5.2",
     "openai": "^4.104.0",
     "pinia": "^2.1.7",
     "sbd": "^1.0.19",
