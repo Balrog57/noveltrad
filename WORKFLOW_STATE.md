@@ -700,12 +700,35 @@ Type-check: 0 errors.
 ```
 
 ## Current Status
-- ✅ **Phase 0 — Fix Ollama via net.fetch** : COMPLET. All 4 tasks implemented.
-  - T1: OllamaManager.ts — `fetch()` replaced with `net.fetch()` from Electron, debugLog reduced to 3 essential lines + error catch
-  - T2: OllamaProvider.ts — `fetch()` replaced with `net.fetch()` across all 4 methods (listModels, chat, streamChat, embeddings)
-  - T3: Tests rewritten — both test files now mock `vi.mock("electron", () => ({ net: { fetch: mockNetFetch } }))` instead of `vi.mock("ollama", ...)`. Stream/NDJSON tests use Response-like mock objects with `.ok`, `.json()`, `.text()`, `.body.getReader()`
-  - T4: Build & Verify — type-check 0 errors, 737 tests pass (45 suites, 0 failed)
-- ✅ **commit** : `fix(ollama): use Electron net.fetch() for reliable HTTP in main process`
+- ✅ **Phase 0 — Fix Ollama via net.fetch** : COMPLET + VALIDÉ AUTOMATIQUEMENT.
+  - T1: OllamaManager.ts — `fetch()` replaced with `net.fetch()` from Electron
+  - T2: OllamaProvider.ts — `fetch()` replaced with `net.fetch()` across all 5 methods
+  - T3: RagEngine.ts — 2 bare `fetch()` replaced with `net.fetch()` with `AbortSignal.timeout()`
+  - T4: Tests rewritten — all test files mock `vi.mock("electron", () => ({ net: { fetch: mockNetFetch } }))`
+  - T5: Phase 0 validation suite — 45 new tests, all per-file coverage targets exceeded
+- ✅ **Commits** :
+  - `9ef38a5` — `fix(ollama): use Electron net.fetch() for reliable HTTP in main process`
+  - `870286e` — `test(ollama): Phase 0 validation suite — 45 new tests, all per-file coverage targets met`
+- ⏳ **Phase 0.1 — Stabilisation** : EN COURS. Freeze features, create `stabilization-v2` branch.
+
+### Phase 0 Validation Results
+- **782 tests, 0 failures** (baseline: 737 → +45 new tests)
+- **OllamaManager.ts**: 100% statements (target ≥90%) ✅
+- **OllamaProvider.ts**: 98.98% statements (target ≥90%) ✅
+- **handlers/ollama.ts**: 100% statements (target ≥85%) ✅
+- **RagEngine.ts**: 100% statements ✅
+- **Global**: 49.88% stmts, 78.64% branches, 83.09% functions ✅
+- **Validation report**: `docs/PHASE0_VALIDATION_REPORT.md`
+
+### Phase 0.1 Plan — Stabilisation
+1. **Create `stabilization-v2` branch** from main
+2. **Freeze features**: No new features until v2.1
+3. **Phase 1**: Full code audit (all files vs SDD)
+4. **Phase 2**: Fix identified issues
+5. **Phases 3-7**: Deferred post-v2.1 (architecture rewrites)
+6. **Phase 8**: Test coverage improvement
+7. **Phase 9**: CI/CD improvements
+8. **Phase 10**: Release v2.1
 
 ## Implementation Notes (Phase 0 — Fix Ollama bug via net.fetch)
 
