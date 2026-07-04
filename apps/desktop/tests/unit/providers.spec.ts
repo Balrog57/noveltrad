@@ -1,28 +1,48 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Mock Ollama — une seule fois au niveau du fichier
+// Mock electron/net.fetch for OllamaProvider
 // ---------------------------------------------------------------------------
 
-const ollamaMockChat = vi.fn().mockImplementation((opts: { stream?: boolean }) => {
-  if (opts.stream) {
-    return (async function* () {
-      yield { message: { content: "Bonjour le monde" } };
-    })();
-  }
-  return Promise.resolve({
-    message: { content: "Bonjour le monde" },
-  });
-});
-const ollamaMockList = vi.fn();
-const ollamaMockEmbeddings = vi.fn();
+const mockNetFetch = vi.fn();
 
-vi.mock("ollama", () => ({
-  Ollama: vi.fn().mockImplementation(() => ({
-    chat: ollamaMockChat,
-    list: ollamaMockList,
-    embeddings: ollamaMockEmbeddings,
-  })),
+function mockJsonResponse(data: unknown, status = 200, ok = true) {
+  const bodyStr = JSON.stringify(data);
+  return {
+    ok,
+    status,
+    text: () => Promise.resolve(bodyStr),
+    json: () => Promise.resolve(data),
+    body: null,
+  };
+}
+
+function mockStreamResponse(chunks: string[]) {
+  let i = 0;
+  return {
+    ok: true,
+    status: 200,
+    text: () => Promise.resolve(chunks.join("")),
+    json: () => Promise.reject(new Error("Not JSON")),
+    body: {
+      getReader: () => ({
+        read: () => {
+          if (i < chunks.length) {
+            const encoder = new TextEncoder();
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode(chunks[i++]),
+            });
+          }
+          return Promise.resolve({ done: true, value: undefined });
+        },
+      }),
+    },
+  };
+}
+
+vi.mock("electron", () => ({
+  net: { fetch: mockNetFetch },
 }));
 
 // ---------------------------------------------------------------------------
@@ -47,15 +67,7 @@ vi.mock("openai", () => ({
 
 describe("OllamaProvider", () => {
   beforeEach(() => {
-    // ollamaMockChat a déjà une implémentation par défaut qui gère stream et non-stream
-    // On remet juste les autres mocks
-    ollamaMockChat.mockClear();
-    ollamaMockList.mockResolvedValue({
-      models: [{ name: "qwen3.5:9b" }, { name: "nomic-embed-text:latest" }],
-    });
-    ollamaMockEmbeddings.mockResolvedValue({
-      embedding: [0.1, 0.2, 0.3],
-    });
+    mockNetFetch.mockReset();
   });
 
   afterEach(() => {
@@ -78,6 +90,15 @@ describe("OllamaProvider", () => {
   });
 
   it("devrait lister les modèles disponibles", async () => {
+    mockNetFetch.mockResolvedValue(
+      mockJsonResponse({
+        models: [
+          { name: "qwen3.5:9b" },
+          { name: "nomic-embed-text:latest" },
+        ],
+      }),
+    );
+
     const { OllamaProvider } = await import(
       "../../src/main/services/providers/OllamaProvider"
     );
@@ -88,15 +109,33 @@ describe("OllamaProvider", () => {
   });
 
   it("devrait envoyer un chat et retourner le contenu", async () => {
+    mockNetFetch.mockResolvedValue(
+      mockJsonResponse({ message: { content: "Bonjour le monde" } }),
+    );
+
     const { OllamaProvider } = await import(
       "../../src/main/services/providers/OllamaProvider"
     );
     const provider = new OllamaProvider("ollama", "Ollama", "qwen3.5:9b");
-    const result = await provider.chat([{ role: "user", content: "Bonjour" }]);
+    const result = await provider.chat([
+      { role: "user", content: "Bonjour" },
+    ]);
     expect(result).toBe("Bonjour le monde");
   });
 
   it("devrait streamer un chat", async () => {
+    // The NDJSON line must NOT be the last non-empty line after split("\n")
+    // because lines.pop() moves the last fragment into buffer.
+    // Adding a dummy line ensures the real content is processed in the for loop.
+    mockNetFetch.mockResolvedValue(
+      mockStreamResponse([
+        JSON.stringify({ message: { content: "Bonjour le monde" } }) +
+          "\n" +
+          JSON.stringify({ message: { content: "" } }) +
+          "\n",
+      ]),
+    );
+
     const { OllamaProvider } = await import(
       "../../src/main/services/providers/OllamaProvider"
     );
@@ -111,6 +150,10 @@ describe("OllamaProvider", () => {
   });
 
   it("devrait générer des embeddings", async () => {
+    mockNetFetch.mockResolvedValue(
+      mockJsonResponse({ embedding: [0.1, 0.2, 0.3] }),
+    );
+
     const { OllamaProvider } = await import(
       "../../src/main/services/providers/OllamaProvider"
     );
@@ -125,6 +168,10 @@ describe("OllamaProvider", () => {
   });
 
   it("devrait retourner true si Ollama est disponible", async () => {
+    mockNetFetch.mockResolvedValue(
+      mockJsonResponse({ models: [{ name: "qwen3.5:9b" }] }),
+    );
+
     const { OllamaProvider } = await import(
       "../../src/main/services/providers/OllamaProvider"
     );
@@ -134,6 +181,10 @@ describe("OllamaProvider", () => {
   });
 
   it("devrait supporter l'option jsonMode", async () => {
+    mockNetFetch.mockResolvedValue(
+      mockJsonResponse({ message: { content: "ok" } }),
+    );
+
     const { OllamaProvider } = await import(
       "../../src/main/services/providers/OllamaProvider"
     );
@@ -141,21 +192,23 @@ describe("OllamaProvider", () => {
     await provider.chat([{ role: "user", content: "JSON" }], {
       jsonMode: true,
     });
-    expect(ollamaMockChat).toHaveBeenCalledWith(
-      expect.objectContaining({ format: "json" }),
+
+    // Verify that format: "json" was in the request body
+    expect(mockNetFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat"),
+      expect.objectContaining({
+        body: expect.stringContaining('"json"'),
+      }),
     );
   });
 
   it("devrait retourner false si Ollama est indisponible", async () => {
-    ollamaMockList.mockRejectedValue(new Error("Connexion refusée"));
+    mockNetFetch.mockRejectedValue(new Error("Connexion refusée"));
+
     const { OllamaProvider } = await import(
       "../../src/main/services/providers/OllamaProvider"
     );
-    const provider = new OllamaProvider(
-      "ollama",
-      "Ollama",
-      "qwen3.5:9b",
-    );
+    const provider = new OllamaProvider("ollama", "Ollama", "qwen3.5:9b");
     const available = await provider.isAvailable();
     expect(available).toBe(false);
   });
