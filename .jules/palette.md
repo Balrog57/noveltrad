@@ -1,0 +1,3 @@
+## 2024-07-04 - Dynamic List Item Removal Accessibility
+**Learning:** In dynamic form lists (like aliases or forbidden terms), icon-only remove buttons often lack ARIA labels, creating accessibility issues. Furthermore, when the application logic prevents removing the last item, failing to visually and programmatically disable the remove button creates confusion.
+**Action:** Always add `aria-label` and `title` to icon-only remove buttons in dynamic lists. Ensure the button is properly disabled (`:disabled`) when the minimum item count is reached, and provide clear disabled visual states (e.g., `opacity: 0.5`, `cursor: not-allowed`) along with `:not(:disabled)` on hover states.

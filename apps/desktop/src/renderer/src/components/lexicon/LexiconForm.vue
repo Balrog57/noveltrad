@@ -234,7 +234,14 @@ function onCancel(): void {
             class="form-input"
             placeholder="Alias..."
           />
-          <button type="button" class="form-list-btn" @click="removeAlias(idx)">
+          <button
+            type="button"
+            class="form-list-btn"
+            aria-label="Supprimer cet alias"
+            title="Supprimer cet alias"
+            :disabled="form.aliases.length <= 1"
+            @click="removeAlias(idx)"
+          >
             ✕
           </button>
         </div>
@@ -314,6 +321,9 @@ function onCancel(): void {
           <button
             type="button"
             class="form-list-btn"
+            aria-label="Supprimer cette interdiction"
+            title="Supprimer cette interdiction"
+            :disabled="form.forbidden.length <= 1"
             @click="removeForbidden(idx)"
           >
             ✕
@@ -450,9 +460,14 @@ function onCancel(): void {
   border-radius: 4px;
 }
 
-.form-list-btn:hover {
+.form-list-btn:hover:not(:disabled) {
   color: var(--error);
   background-color: var(--bg-tertiary);
+}
+
+.form-list-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .form-list-add {
