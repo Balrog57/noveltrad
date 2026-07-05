@@ -1,10 +1,23 @@
-import type { QualityReport, LexiconEntry } from "@shared/types/index.js";
+import type {
+  QualityReport,
+  LexiconEntry,
+  ConsistencyReport,
+} from "@shared/types/index.js";
+import { HallucinationDetector } from "./HallucinationDetector.js";
 
 export class QualityChecker {
+  private hallucinationDetector: HallucinationDetector;
+
+  constructor(hallucinationDetector?: HallucinationDetector) {
+    this.hallucinationDetector =
+      hallucinationDetector ?? new HallucinationDetector();
+  }
+
   async evaluate(
     source: string,
     target: string,
     _lexicon: LexiconEntry[],
+    consistencyReport?: ConsistencyReport,
   ): Promise<QualityReport> {
     // Version simplifiee sans IA pour le MVP : scoring heuristique
     const sourceLen = source.length;
@@ -16,8 +29,29 @@ export class QualityChecker {
     );
 
     const grammarScore = this.checkGrammar(target);
-    const consistencyScore = sourceLen > 0 && targetLen > 0 ? 90 : 0;
     const styleScore = this.checkStyle(target);
+
+    // SDD §12.6 : score d'hallucination via HallucinationDetector
+    let hallucinationScore: number;
+    try {
+      const hReport = this.hallucinationDetector.detect(
+        source,
+        target,
+        "source",
+        "target",
+      );
+      hallucinationScore = hReport.score ?? 95;
+    } catch {
+      hallucinationScore = 95;
+    }
+
+    // SDD §12.5 : cohérence via ConsistencyReport
+    const consistencyScore =
+      consistencyReport && sourceLen > 0 && targetLen > 0
+        ? consistencyReport.globalScore
+        : sourceLen > 0 && targetLen > 0
+          ? 90
+          : 0;
 
     const scores = {
       consistency: consistencyScore,
@@ -25,7 +59,7 @@ export class QualityChecker {
       fluency: styleScore,
       style: styleScore,
       lexicon: 90,
-      hallucination: 95,
+      hallucination: hallucinationScore,
       length: lengthScore,
       dialogue: 90,
     };
