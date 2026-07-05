@@ -141,7 +141,7 @@ export interface AgentOutput {
 }
 
 export interface ConsistencyReport {
-  metrics: Array<{ name: string; source: number; target: number; ok: boolean }>;
+  metrics: Array<{ name: string; source: number; target: number; ok: boolean; score: number }>;
   warnings: Array<{ severity: "low" | "medium" | "high"; message: string }>;
   globalScore: number;
 }

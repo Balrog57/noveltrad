@@ -433,8 +433,8 @@ describe("ConsistencyAgent", () => {
   beforeEach(() => {
     const fakeReport: ConsistencyReport = {
       metrics: [
-        { name: "length", source: 10, target: 12, ok: true },
-        { name: "sentences", source: 1, target: 1, ok: true },
+        { name: "length", source: 10, target: 12, ok: true, score: 100 },
+        { name: "sentences", source: 1, target: 1, ok: true, score: 100 },
       ],
       warnings: [],
       globalScore: 95,
@@ -900,6 +900,190 @@ describe("ExportAgent", () => {
       options: { format: "txt", title: "Test" },
     });
     expect(output.metadata?.exportPath).toBe("/path/to/output.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Validation Zod (SDD §8.13) — +2 tests par agent (output validé / invalide)
+// ---------------------------------------------------------------------------
+
+describe("Agent validateOutput — TranslateAgent", () => {
+  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const mockTm = { fuzzyMatches: vi.fn().mockReturnValue([]) } as unknown as TranslationMemoryEngine;
+  const agent = new TranslateAgent(CONFIG, mockRouter, mockTm);
+
+  it("devrait valider une sortie correcte (output validé)", () => {
+    const valid = { paragraphs: [makeParagraph({ translatedText: "x", status: "translated" })] };
+    expect(() => agent.validateOutput(valid)).not.toThrow();
+  });
+
+  it("devrait lever une erreur sur une sortie invalide (output invalide → fallback)", () => {
+    expect(() => agent.validateOutput({ paragraphs: "not-an-array" })).toThrow();
+  });
+});
+
+describe("Agent validateOutput — PreTranslateAgent", () => {
+  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const agent = new PreTranslateAgent(CONFIG, mockRouter);
+
+  it("devrait valider une sortie correcte", () => {
+    expect(() => agent.validateOutput({ paragraphs: [makeParagraph()] })).not.toThrow();
+  });
+
+  it("devrait lever sur une sortie invalide", () => {
+    expect(() => agent.validateOutput({ paragraphs: null })).toThrow();
+  });
+});
+
+describe("Agent validateOutput — SplitAgent", () => {
+  const agent = new SplitAgent(CONFIG);
+
+  it("devrait valider une sortie correcte", () => {
+    expect(() => agent.validateOutput({ paragraphs: [makeParagraph()] })).not.toThrow();
+  });
+
+  it("devrait lever sur une sortie invalide", () => {
+    expect(() => agent.validateOutput({ paragraphs: [{ id: "x" }] })).toThrow();
+  });
+});
+
+describe("Agent validateOutput — ConsistencyAgent", () => {
+  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn() } as unknown as AiRouter;
+  const mockChecker = {} as unknown as ConsistencyChecker;
+  const agent = new ConsistencyAgent(CONFIG, mockChecker, mockRouter);
+
+  it("devrait valider un rapport de cohérence correct", () => {
+    expect(() =>
+      agent.validateOutput({
+        report: {
+          metrics: [{ name: "paragraphs", source: 5, target: 5, ok: true, score: 100 }],
+          warnings: [],
+          globalScore: 90,
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("devrait lever sur un rapport sans globalScore", () => {
+    expect(() =>
+      agent.validateOutput({ report: { metrics: [], warnings: [] } }),
+    ).toThrow();
+  });
+});
+
+describe("Agent validateOutput — LexiconAgent", () => {
+  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn() } as unknown as AiRouter;
+  const mockLexicon = {} as unknown as LexiconEngine;
+  const agent = new LexiconAgent(CONFIG, mockLexicon, mockRouter);
+
+  it("devrait valider une sortie lexique correcte", () => {
+    expect(() =>
+      agent.validateOutput({
+        text: "Le dragon",
+        substitutions: [{ before: "x", after: "y", locked: false }],
+      }),
+    ).not.toThrow();
+  });
+
+  it("devrait lever sur une sortie lexique invalide", () => {
+    expect(() =>
+      agent.validateOutput({ text: "ok" }),
+    ).toThrow();
+  });
+});
+
+describe("Agent validateOutput — GrammarAgent", () => {
+  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const agent = new GrammarAgent(CONFIG, mockRouter);
+
+  it("devrait valider une sortie texte correcte", () => {
+    expect(() => agent.validateOutput({ text: "Corrigé" })).not.toThrow();
+  });
+
+  it("devrait lever sur une sortie sans champ text", () => {
+    expect(() => agent.validateOutput({ metadata: {} })).toThrow();
+  });
+});
+
+describe("Agent validateOutput — StyleAgent", () => {
+  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const agent = new StyleAgent(CONFIG, mockRouter);
+
+  it("devrait valider une sortie texte correcte", () => {
+    expect(() => agent.validateOutput({ text: "Stylisé" })).not.toThrow();
+  });
+
+  it("devrait lever sur une sortie sans champ text", () => {
+    expect(() => agent.validateOutput({ metadata: {} })).toThrow();
+  });
+});
+
+describe("Agent validateOutput — PolishAgent", () => {
+  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const agent = new PolishAgent(CONFIG, mockRouter);
+
+  it("devrait valider une sortie texte correcte", () => {
+    expect(() => agent.validateOutput({ text: "Poli" })).not.toThrow();
+  });
+
+  it("devrait lever sur une sortie sans champ text", () => {
+    expect(() => agent.validateOutput({ metadata: {} })).toThrow();
+  });
+});
+
+describe("Agent validateOutput — QaAgent", () => {
+  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn() } as unknown as AiRouter;
+  const mockQc = { evaluate: vi.fn() } as unknown as QualityChecker;
+  const agent = new QaAgent(CONFIG, mockRouter, mockQc);
+
+  it("devrait valider un rapport QA correct", () => {
+    expect(() =>
+      agent.validateOutput({
+        report: {
+          consistency: 90,
+          grammar: 90,
+          fluency: 90,
+          style: 90,
+          lexicon: 90,
+          hallucination: 90,
+          length: 90,
+          dialogue: 90,
+          globalScore: 90,
+          comments: "ok",
+        },
+        score: 90,
+      }),
+    ).not.toThrow();
+  });
+
+  it("devrait lever sur un score hors limites", () => {
+    expect(() =>
+      agent.validateOutput({
+        report: {
+          consistency: 90, grammar: 90, fluency: 90,
+          style: 90, lexicon: 90, hallucination: 90,
+          length: 90, dialogue: 90, globalScore: 90, comments: "x",
+        },
+        score: 999,
+      }),
+    ).toThrow();
+  });
+});
+
+describe("Agent validateOutput — ExportAgent", () => {
+  const mockExport = {} as unknown as ExportEngine;
+  const agent = new ExportAgent(CONFIG, mockExport);
+
+  it("devrait valider une sortie export correcte", () => {
+    expect(() =>
+      agent.validateOutput({ metadata: { exportPath: "/out.epub" } }),
+    ).not.toThrow();
+  });
+
+  it("devrait lever sur une sortie sans exportPath", () => {
+    expect(() =>
+      agent.validateOutput({ metadata: {} }),
+    ).toThrow();
   });
 });
 

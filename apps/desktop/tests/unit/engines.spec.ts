@@ -32,6 +32,171 @@ describe("ConsistencyChecker", () => {
     expect(report.warnings.length).toBeGreaterThan(0);
     expect(report.globalScore).toBeLessThan(100);
   });
+
+  // ── Dialogues ──
+
+  it("dialogues: mismatch >20% triggers warning", () => {
+    const checker = new ConsistencyChecker();
+    // source has 0 dialogue markers, target has many
+    const source = ["Hello world."];
+    const target = ["« Bonjour », dit-il. « Comment vas-tu ? »"];
+    const report = checker.check(source, target, []);
+    const dialogueWarnings = report.warnings.filter((w) =>
+      w.message.includes("dialogue"),
+    );
+    expect(dialogueWarnings.length).toBeGreaterThan(0);
+  });
+
+  it("dialogues: matching counts produce no warning", () => {
+    const checker = new ConsistencyChecker();
+    const source = ['"Hello," he said, "how are you?"'];
+    const target = ['« Bonjour », dit-il, « comment allez-vous ? »'];
+    const report = checker.check(source, target, []);
+    const dialogueWarnings = report.warnings.filter((w) =>
+      w.message.includes("dialogue"),
+    );
+    expect(dialogueWarnings.length).toBe(0);
+  });
+
+  it("dialogues: no dialogue markers does not warn", () => {
+    const checker = new ConsistencyChecker();
+    const source = ["Hello world this is a simple text."];
+    const target = ["Bonjour le monde ceci est un texte simple."];
+    const report = checker.check(source, target, []);
+    const dialogueWarnings = report.warnings.filter((w) =>
+      w.message.includes("dialogue"),
+    );
+    expect(dialogueWarnings.length).toBe(0);
+  });
+
+  // ── Numbers ──
+
+  it("numbers: all present produces no warning", () => {
+    const checker = new ConsistencyChecker();
+    const source = ["There are 3 apples and 5 oranges."];
+    const target = ["Il y a 3 pommes et 5 oranges."];
+    const report = checker.check(source, target, []);
+    const numberWarnings = report.warnings.filter((w) =>
+      w.message.includes("Nombre"),
+    );
+    expect(numberWarnings.length).toBe(0);
+  });
+
+  it("numbers: missing number triggers warning", () => {
+    const checker = new ConsistencyChecker();
+    const source = ["There are 3 apples and 5 oranges."];
+    const target = ["Il y a des pommes et des oranges."];
+    const report = checker.check(source, target, []);
+    const numberWarnings = report.warnings.filter((w) =>
+      w.message.includes("absent de la cible"),
+    );
+    // Both "3" and "5" are missing → 2 warnings
+    expect(numberWarnings.length).toBe(2);
+  });
+
+  it("numbers: extra number in target triggers warning", () => {
+    const checker = new ConsistencyChecker();
+    const source = ["Hello world."];
+    const target = ["Bonjour le monde 42."];
+    const report = checker.check(source, target, []);
+    const numberWarnings = report.warnings.filter((w) =>
+      w.message.includes("absent du source"),
+    );
+    expect(numberWarnings.length).toBe(1);
+  });
+
+  // ── Markup ──
+
+  it("markup: mismatch triggers warning", () => {
+    const checker = new ConsistencyChecker();
+    const source = ["This is **bold** and _italic_."];
+    const target = ["Ceci est **bold**."]; // missing _italic_
+    const report = checker.check(source, target, []);
+    const markupWarnings = report.warnings.filter((w) =>
+      w.message.includes("Balises"),
+    );
+    expect(markupWarnings.length).toBeGreaterThan(0);
+  });
+
+  it("markup: matching markup produces no warning", () => {
+    const checker = new ConsistencyChecker();
+    const source = ["This is **bold** and <em>emphasized</em>."];
+    const target = ["Ceci est **gras** et <em>emphase</em>."];
+    const report = checker.check(source, target, []);
+    const markupWarnings = report.warnings.filter((w) =>
+      w.message.includes("Balises"),
+    );
+    expect(markupWarnings.length).toBe(0);
+  });
+
+  it("markup: no markup produces no warning", () => {
+    const checker = new ConsistencyChecker();
+    const source = ["Hello world."];
+    const target = ["Bonjour le monde."];
+    const report = checker.check(source, target, []);
+    const markupWarnings = report.warnings.filter((w) =>
+      w.message.includes("Balises"),
+    );
+    expect(markupWarnings.length).toBe(0);
+  });
+
+  // ── Score formula ──
+
+  it("score formula: weighted average computed correctly", () => {
+    const checker = new ConsistencyChecker();
+    // Perfect match — all metrics should be 100
+    const source = ["Hello world. How are you?"];
+    const target = ["Bonjour le monde. Comment allez-vous ?"];
+    const report = checker.check(source, target, []);
+    expect(report.globalScore).toBe(100);
+
+    // Now force a partial failure: paragraph mismatch
+    const report2 = checker.check(["a", "b", "c"], ["a", "b"], []);
+    // paragraphs weight=30 → score 0, rest 100
+    // weighted = (0*30 + 100*15 + 100*15 + 100*10 + 100*15 + 100*10 + 100*5) / 100
+    // = (0 + 1500 + 1500 + 1000 + 1500 + 1000 + 500) / 100 = 7000/100 = 70
+    // cap paragraphIssue → ≤50
+    expect(report2.globalScore).toBeLessThanOrEqual(50);
+  });
+
+  it("score formula: caps applied correctly", () => {
+    const checker = new ConsistencyChecker();
+    // Missing locked term + missing number = both caps applied
+    const source = ["Hello Dr.Martin, call me at 555."];
+    const target = ["Bonjour, appelle-moi au 555."]; // Dr.Martin is a locked term missing
+    const report = checker.check(source, target, [
+      {
+        id: "1",
+        projectId: "p1",
+        term: "Dr.Martin",
+        translation: "Dr.Martin",
+        category: "name",
+        aliases: [],
+        locked: true,
+        priority: 10,
+      },
+    ]);
+    // lockedNameMissing cap → ≤70
+    expect(report.globalScore).toBeLessThanOrEqual(70);
+  });
+
+  // ── Tolerances ──
+
+  it("tolerances: zh-fr uses SDD §11.3 bounds", () => {
+    const checker = new ConsistencyChecker();
+    const tol = checker.getTolerance("zh-fr");
+    expect(tol.sentenceRatioMin).toBe(0.95);
+    expect(tol.sentenceRatioMax).toBe(1.05);
+    expect(tol.lengthRatioMin).toBe(0.5);
+    expect(tol.lengthRatioMax).toBe(1.5);
+  });
+
+  it("tolerances: unknown pair falls back to default", () => {
+    const checker = new ConsistencyChecker();
+    const tol = checker.getTolerance("de-es");
+    expect(tol.sentenceRatioMin).toBe(0.7);
+    expect(tol.sentenceRatioMax).toBe(1.5);
+  });
 });
 
 describe("QualityChecker", () => {

@@ -515,16 +515,17 @@ describe("ConsistencyChecker — tolérances configurables", () => {
 
   describe("check avec tolérances", () => {
     it("devrait accepter un ratio de longueur dans la tolérance zh-fr", () => {
-      // Source chinois (long), cible française (environ 2x plus long) — ratio ~2.0
+      // SDD §11.3 : zh-fr length ratio 0.5-1.5
+      // Source chinois ~89 chars (sans ponctuation), cible française ~109 chars → ratio ~1.22 ✓
       const source = [
         "这是一个关于英雄的很长很长的故事，他去了远方寻找宝藏。在这个过程中他遇到了很多困难和挑战，但是他从来没有放弃过。最终他找到了宝藏并且回到了家乡。他的故事被人们传颂了很久很久，成为了传说中的传奇。",
       ];
       const target = [
-        "Ceci est une longue histoire sur un héros qui est parti chercher un trésor. Il a rencontré beaucoup de difficultés mais n'a jamais abandonné. Finalement il a trouvé le trésor et est rentré chez lui.",
+        "Un h\u00e9ros partit pour un long voyage. Il surmonta beaucoup d\u2019\u00e9preuves sans abandonner. Il trouva le tr\u00e9sor et rentra chez lui.",
       ];
       const report = checker.check(source, target, [], "zh-fr");
 
-      // Le ratio de longueur devrait être dans la tolérance zh-fr (max 2.5)
+      // Le ratio de longueur devrait \u00eatre dans la tol\u00e9rance zh-fr (max 1.5)
       const lengthMetric = report.metrics.find((m) => m.name === "length");
       expect(lengthMetric).toBeDefined();
       expect(lengthMetric?.ok).toBe(true);
@@ -552,14 +553,19 @@ describe("ConsistencyChecker — tolérances configurables", () => {
 
     it("devrait ignorer la ponctuation si ignorePunctuationMismatch est true", () => {
       const source = ["Hello, world! How are you?"];
-      const target = ["Bonjour le monde。 Comment allez-vous ？"];
+      // Target with CJK punctuation, zh-fr ignores it → length ratio stays in bounds
+      // Source sans ponctuation: 23 chars, target sans ponctuation: ~30 chars → ratio ~1.30 ✓
+      const target = ["Bonjour monde。 Comment vas-tu ？"];
 
       // Avec zh-fr (ignorePunctuationMismatch = true), la ponctuation est ignorée
       const report = checker.check(source, target, [], "zh-fr");
       const lengthMetric = report.metrics.find((m) => m.name === "length");
       expect(lengthMetric).toBeDefined();
-      // Le ratio devrait être calculé sans ponctuation
+      // Source sans ponctuation: "Hello world How are you" (~22 chars)
+      // Target sans ponctuation: "Bonjour le monde Comment allez-vous" (~32 chars)
+      // Ratio ~1.45, dans la tolérance zh-fr (max 1.5)
       expect(lengthMetric?.ok).toBe(true);
+      expect(lengthMetric?.score).toBe(100);
     });
 
     it("devrait compter les phrases avec les métriques", () => {
