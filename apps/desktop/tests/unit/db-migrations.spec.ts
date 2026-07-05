@@ -84,17 +84,17 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     runMigrations(db, tempDir);
 
     const rows = getMigrations(db);
-    expect(rows.length).toBe(10);
+    expect(rows.length).toBe(11);
     expect(rows[0].version).toBe(1);
-    expect(rows[9].version).toBe(10);
-    expect(rows[9].name).toBe("010_tm_enhancements.sql");
+    expect(rows[10].version).toBe(11);
+    expect(rows[10].name).toBe("011_rag_vectors.sql");
 
     // Vérifier que la colonne metadata a été ajoutée à chapters
     expect(columnExists(db, "chapters", "metadata")).toBe(true);
   });
 
-  // ── Test 2 : DB existante v1-v8 → seules v9 et v10 s'exécutent ──
-  it("existing DB with v1–v8 only runs v9 and v10", () => {
+  // ── Test 2 : DB existante v1-v8 → seules v9-v11 s'exécutent ──
+  it("existing DB with v1–v8 only runs v9, v10 and v11", () => {
     // Simuler une DB existante du système inline : créer les tables v1-v8
     // et laisser __migrations vide (comme le faisait l'ancien système)
     execSql(
@@ -132,6 +132,14 @@ describe("runMigrations — file-based unified runner (T2)", () => {
         last_used_at TEXT, created_at TEXT NOT NULL
       )`,
     );
+    // La migration v4 crée embeddings (nécessaire pour v11)
+    execSql(
+      db,
+      `CREATE TABLE IF NOT EXISTS embeddings (
+        id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL, paragraph_id TEXT NOT NULL,
+        embedding_json TEXT NOT NULL, created_at TEXT NOT NULL
+      )`,
+    );
 
     // Créer les fichiers dans le dossier temporaire
     writeMigration(
@@ -146,19 +154,22 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     );
     writeMigration(tempDir, "009_chapter_metadata.sql", "ALTER TABLE chapters ADD COLUMN metadata TEXT");
     writeMigration(tempDir, "010_tm_enhancements.sql", "ALTER TABLE translation_memory ADD COLUMN normalized_hash TEXT");
+    writeMigration(tempDir, "011_rag_vectors.sql", "CREATE INDEX IF NOT EXISTS idx_test ON embeddings(paragraph_id)");
 
     runMigrations(db, tempDir);
 
     const rows = getMigrations(db);
     // La détection héritage marque v1-v8 comme appliquées (8 entrées legacy),
     // seules v9 et v10 sont réellement exécutées via les fichiers
-    expect(rows.length).toBe(10);
+    expect(rows.length).toBe(11);
     expect(rows[0].version).toBe(1);
     expect(rows[7].version).toBe(8);
     expect(rows[8].version).toBe(9);
     expect(rows[8].name).toBe("009_chapter_metadata.sql");
     expect(rows[9].version).toBe(10);
     expect(rows[9].name).toBe("010_tm_enhancements.sql");
+    expect(rows[10].version).toBe(11);
+    expect(rows[10].name).toBe("011_rag_vectors.sql");
     expect(columnExists(db, "chapters", "metadata")).toBe(true);
   });
 

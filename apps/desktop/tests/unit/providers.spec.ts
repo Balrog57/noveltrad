@@ -343,8 +343,8 @@ describe("OllamaProvider", () => {
     const provider = new OllamaProvider("ollama", "Ollama", "nomic-embed-text");
 
     await expect(provider.embeddings(["test"])).rejects.toThrow("HTTP 500");
-    // 1 tentative + 3 retries = 4 appels
-    expect(mockNetFetch).toHaveBeenCalledTimes(4);
+    // 1 tentative batch (/api/embed) + 1 tentative per-text + 3 retries = 5 appels
+    expect(mockNetFetch).toHaveBeenCalledTimes(5);
   }, 15000);
 
   it("devrait gérer un tableau vide sur embeddings", async () => {

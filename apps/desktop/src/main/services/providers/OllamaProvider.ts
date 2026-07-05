@@ -128,6 +128,25 @@ export class OllamaProvider implements AiProvider {
   }
 
   async embeddings(texts: string[]): Promise<number[][]> {
+    // T13 : Tentative d'appel batch via /api/embed (Ollama 0.5+)
+    try {
+      const res = await net.fetch(`${this.host}/api/embed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: this.model, input: texts }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { embeddings: number[][] };
+        if (data.embeddings?.length === texts.length) {
+          return data.embeddings;
+        }
+      }
+    } catch {
+      // Fallback: per-text /api/embeddings
+    }
+
+    // Fallback: process one by one via /api/embeddings
     const results: number[][] = [];
     for (const text of texts) {
       const embedding = await pRetry(
