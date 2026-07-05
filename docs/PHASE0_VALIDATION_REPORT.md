@@ -1,7 +1,7 @@
 # Phase 0 Validation Report — Ollama net.fetch() Migration
 
 **Date:** 2026-07-05
-**Version:** v2.0.7 (apps/desktop)
+**Version:** v2.1.0 (apps/desktop)
 **Status:** ✅ PASSED — All targets met
 
 ---
