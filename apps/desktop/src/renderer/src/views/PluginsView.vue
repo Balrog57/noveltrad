@@ -29,7 +29,7 @@ const configError = ref("");
 
 const configModalVisible = computed(() => configPluginId.value !== null);
 const configPluginName = computed(() => {
-  if (!configPluginId.value) return "";
+  if (!configPluginId.value) {return "";}
   const plugin = store.plugins.find((p) => p.id === configPluginId.value);
   return plugin?.name || configPluginId.value;
 });
@@ -168,7 +168,7 @@ function cancelConfig() {
 
 /** Sauvegarde la configuration du plugin */
 async function saveConfig() {
-  if (!configPluginId.value) return;
+  if (!configPluginId.value) {return;}
   configError.value = "";
   const result = await store.setConfig(configPluginId.value, { ...configValues.value });
   if (result.success) {
@@ -302,7 +302,7 @@ function showToast(message: string) {
             class="config-input"
             type="text"
             :placeholder="field.label"
-          />
+          >
           <!-- Champ number -->
           <input
             v-else-if="field.type === 'number'"
@@ -310,10 +310,10 @@ function showToast(message: string) {
             class="config-input"
             type="number"
             step="0.01"
-          />
+          >
           <!-- Champ boolean -->
           <label v-else-if="field.type === 'boolean'" class="config-checkbox-label">
-            <input v-model="configValues[field.key]" type="checkbox" class="config-checkbox" />
+            <input v-model="configValues[field.key]" type="checkbox" class="config-checkbox">
             Activer
           </label>
           <!-- Type inconnu : afficher en texte -->
@@ -323,7 +323,7 @@ function showToast(message: string) {
             class="config-input"
             type="text"
             :placeholder="field.label"
-          />
+          >
         </div>
       </div>
       <div v-if="configError" class="config-error-msg">{{ configError }}</div>

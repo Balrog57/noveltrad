@@ -3,7 +3,7 @@ import { ref } from "vue";
 import type { LexiconEntry } from "@shared/types/index.js";
 import NtTable, { type Column } from "../ui/NtTable.vue";
 
-const props = defineProps<{
+const _props = defineProps<{
   entries: LexiconEntry[];
 }>();
 
@@ -51,28 +51,28 @@ function closeContextMenu(): void {
 }
 
 function handleEdit(): void {
-  if (contextMenu.value.entry) emit("edit", contextMenu.value.entry);
+  if (contextMenu.value.entry) {emit("edit", contextMenu.value.entry);}
   closeContextMenu();
 }
 
 function handleDuplicate(): void {
-  if (contextMenu.value.entry) emit("duplicate", contextMenu.value.entry);
+  if (contextMenu.value.entry) {emit("duplicate", contextMenu.value.entry);}
   closeContextMenu();
 }
 
 function handleDelete(): void {
-  if (contextMenu.value.entry) emit("delete", contextMenu.value.entry);
+  if (contextMenu.value.entry) {emit("delete", contextMenu.value.entry);}
   closeContextMenu();
 }
 
 function handleMerge(): void {
-  if (contextMenu.value.entry) emit("merge", contextMenu.value.entry);
+  if (contextMenu.value.entry) {emit("merge", contextMenu.value.entry);}
   closeContextMenu();
 }
 
 /** Affiche un aperçu compact des alias */
 function aliasPreview(aliases: string[]): string {
-  if (!aliases || aliases.length === 0) return "—";
+  if (!aliases || aliases.length === 0) {return "—";}
   return aliases.slice(0, 3).join(", ") + (aliases.length > 3 ? "…" : "");
 }
 </script>
@@ -114,7 +114,7 @@ function aliasPreview(aliases: string[]): string {
       <button class="context-item" @click="handleEdit">Modifier</button>
       <button class="context-item" @click="handleDuplicate">Dupliquer</button>
       <button class="context-item" @click="handleMerge">Fusionner</button>
-      <hr class="context-divider" />
+      <hr class="context-divider">
       <button class="context-item context-item--danger" @click="handleDelete">
         Supprimer
       </button>

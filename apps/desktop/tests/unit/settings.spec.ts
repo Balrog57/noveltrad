@@ -21,7 +21,7 @@ vi.mock("node:fs", () => {
   const mockFsRecord: Record<string, unknown> = {
     existsSync: vi.fn((p: string) => memExists.has(p)),
     readFileSync: vi.fn((p: string, _enc?: string) => {
-      if (!memFs.has(p)) throw new Error(`ENOENT: ${p}`);
+      if (!memFs.has(p)) {throw new Error(`ENOENT: ${p}`);}
       return memFs.get(p) as string;
     }),
     writeFileSync: vi.fn((p: string, data: string) => {

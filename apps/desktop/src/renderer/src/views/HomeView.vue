@@ -91,7 +91,7 @@ function openDeleteDialog(projectId: string, projectName: string): void {
 
 /** Supprime le projet (SDD §5.11) */
 async function confirmDelete(): Promise<void> {
-  if (!deleteProjectId.value) return;
+  if (!deleteProjectId.value) {return;}
   deleteError.value = null;
   try {
     await window.novelTradAPI.invoke("project:delete", deleteProjectId.value, deleteRemoveFiles.value);
@@ -128,7 +128,7 @@ async function confirmDelete(): Promise<void> {
       <h2>Nouveau projet</h2>
       <label>
         Nom
-        <input v-model="newProject.name" placeholder="Mon roman" />
+        <input v-model="newProject.name" placeholder="Mon roman">
       </label>
       <label>
         Langue source
@@ -165,7 +165,7 @@ async function confirmDelete(): Promise<void> {
           <strong>{{ deleteProjectName }}</strong> ?
         </p>
         <label class="checkbox-label">
-          <input type="checkbox" v-model="deleteRemoveFiles" />
+          <input v-model="deleteRemoveFiles" type="checkbox">
           <span>Supprimer les fichiers du disque</span>
         </label>
         <p class="modal-hint">
@@ -192,7 +192,7 @@ async function confirmDelete(): Promise<void> {
       <h2>🔄 Mise à jour disponible</h2>
       <p>Version <strong>{{ updateVersion }}</strong> est disponible.</p>
       <div class="update-actions">
-        <button v-if="!updateDownloaded" class="btn-primary" @click="downloadUpdate" :disabled="updateDownloading">
+        <button v-if="!updateDownloaded" class="btn-primary" :disabled="updateDownloading" @click="downloadUpdate">
           {{ updateDownloading ? "Téléchargement..." : "Télécharger" }}
         </button>
         <button v-if="updateDownloaded" class="btn-primary" @click="installUpdate">
@@ -203,7 +203,7 @@ async function confirmDelete(): Promise<void> {
     <section v-else class="card update-check">
       <div class="update-row">
         <span>NovelTrad 2.0.4</span>
-        <button class="btn-ghost" @click="checkUpdate" :disabled="updateChecking">
+        <button class="btn-ghost" :disabled="updateChecking" @click="checkUpdate">
           {{ updateChecking ? "Vérification..." : "Vérifier mise à jour" }}
         </button>
       </div>
@@ -220,9 +220,7 @@ async function confirmDelete(): Promise<void> {
           @contextmenu.prevent="openDeleteDialog(p.id, p.name)"
         >
           <strong>{{ p.name }}</strong>
-          <span class="meta"
-            >{{ p.sourceLanguage }} → {{ p.targetLanguage }}</span
-          >
+          <span class="meta">{{ p.sourceLanguage }} → {{ p.targetLanguage }}</span>
         </li>
       </ul>
       <p v-else class="empty">Aucun projet recent.</p>

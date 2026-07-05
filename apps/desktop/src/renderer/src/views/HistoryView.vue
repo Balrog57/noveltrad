@@ -22,7 +22,7 @@ const chapterId = computed(
 
 /** Titre du chapitre (si filtré par chapitre) */
 const chapterTitle = computed(() => {
-  if (!chapterId.value) return null;
+  if (!chapterId.value) {return null;}
   const ch = projectStore.chapters.find((c) => c.id === chapterId.value);
   return ch?.title ?? "Chapitre";
 });
@@ -81,7 +81,7 @@ function triggerLabel(trigger: string): string {
 /** Sélectionne un snapshot et calcule le diff avec le plus récent */
 function selectSnapshot(row: Record<string, unknown>): void {
   const snapshot = historyStore.snapshots.find((s) => s.id === row.id);
-  if (!snapshot) return;
+  if (!snapshot) {return;}
   historyStore.selectedSnapshot = snapshot;
   // Diff avec le snapshot le plus récent
   const latest = historyStore.sortedSnapshots[0];
@@ -110,7 +110,7 @@ async function executeRollback(): Promise<void> {
   if (!snapshotToRollback.value && historyStore.selectedSnapshot) {
     snapshotToRollback.value = historyStore.selectedSnapshot;
   }
-  if (!snapshotToRollback.value || !chapterId.value) return;
+  if (!snapshotToRollback.value || !chapterId.value) {return;}
   await historyStore.rollback(
     projectId.value,
     chapterId.value,
@@ -127,7 +127,7 @@ async function executePartialRollback(): Promise<void> {
     !chapterId.value ||
     historyStore.selectedParagraphIds.size === 0
   )
-    return;
+    {return;}
 
   partialRollbackLoading.value = true;
   await historyStore.rollbackPartial(
@@ -142,7 +142,7 @@ async function executePartialRollback(): Promise<void> {
 
 /** Crée un snapshot manuel */
 async function createManualSnapshot(): Promise<void> {
-  if (!chapterId.value) return;
+  if (!chapterId.value) {return;}
   // Charger les paragraphes actuels
   if (editorStore.chapterId !== chapterId.value) {
     await editorStore.loadChapter(chapterId.value);
@@ -192,8 +192,8 @@ watch(chapterId, (newVal, oldVal) => {
         <button
           v-if="chapterId"
           class="btn-toolbar btn-primary"
-          @click="createManualSnapshot"
           :disabled="historyStore.loading"
+          @click="createManualSnapshot"
         >
           Snapshot manuel
         </button>
@@ -337,8 +337,7 @@ watch(chapterId, (newVal, oldVal) => {
           <h3>Restaurer certains paragraphes</h3>
           <p class="modal-subtitle">
             Sélectionnez les paragraphes à restaurer depuis la version
-            <strong>v{{ historyStore.selectedSnapshot?.versionNumber }}</strong
-            >.
+            <strong>v{{ historyStore.selectedSnapshot?.versionNumber }}</strong>.
           </p>
 
           <!-- Sélection tout/rien -->
@@ -349,14 +348,14 @@ watch(chapterId, (newVal, oldVal) => {
                 :checked="
                   historyStore.selectedParagraphIds.size ===
                     historyStore.snapshotParagraphs.length &&
-                  historyStore.snapshotParagraphs.length > 0
+                    historyStore.snapshotParagraphs.length > 0
                 "
                 @change="
                   historyStore.toggleAllParagraphs(
                     ($event.target as HTMLInputElement).checked,
                   )
                 "
-              />
+              >
               Tout sélectionner
             </label>
             <span class="partial-count">
@@ -380,7 +379,7 @@ watch(chapterId, (newVal, oldVal) => {
                 class="paragraph-checkbox"
                 @click.stop
                 @change="historyStore.toggleParagraph(p.id)"
-              />
+              >
               <div class="paragraph-content">
                 <span class="paragraph-index">#{{ p.index }}</span>
                 <span class="paragraph-text-source">{{ p.sourceText }}</span>
@@ -411,7 +410,7 @@ watch(chapterId, (newVal, oldVal) => {
               class="btn-toolbar btn-partial"
               :disabled="
                 historyStore.selectedParagraphIds.size === 0 ||
-                partialRollbackLoading
+                  partialRollbackLoading
               "
               @click="executePartialRollback"
             >

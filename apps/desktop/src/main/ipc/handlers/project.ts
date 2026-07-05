@@ -2,7 +2,7 @@ import { ipcMain, dialog } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { z } from "zod";
-import type { DuplicateInfo, RefreshStrategy } from "@shared/types/index.js";
+import type { RefreshStrategy } from "@shared/types/index.js";
 import { ProjectManager } from "../../managers/ProjectManager.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import { createProjectDatabase } from "../../db/connection.js";
@@ -55,7 +55,7 @@ export function registerProjectHandlers(): void {
       db.close();
       return found !== undefined;
     });
-    if (!projectPath) throw new Error(`Projet non trouve : ${projectId}`);
+    if (!projectPath) {throw new Error(`Projet non trouve : ${projectId}`);}
     return projectPath;
   });
 
@@ -131,7 +131,7 @@ export function registerProjectHandlers(): void {
         (settings.get("recentProjects") as string[] | undefined) ?? [];
       const projectPath = recent.find((p) => {
         const dbPath = path.join(p, "project.db");
-        if (!fs.existsSync(dbPath)) return false;
+        if (!fs.existsSync(dbPath)) {return false;}
         const db = createProjectDatabase(p);
         const found = new ProjectRepository(db).getById(parsedProjectId);
         db.close();
@@ -246,7 +246,7 @@ export function registerProjectHandlers(): void {
     "project:detect-duplicate",
     async (_event, payload: { projectId: string; filePath: string }) => {
       const parsed = detectDuplicateSchema.parse(payload);
-      return projectManager.detectDuplicate(parsed.projectId, parsed.filePath) as DuplicateInfo | null;
+      return projectManager.detectDuplicate(parsed.projectId, parsed.filePath);
     },
   );
 

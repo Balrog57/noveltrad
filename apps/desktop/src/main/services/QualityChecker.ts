@@ -53,7 +53,7 @@ export class QualityChecker {
     let penalty = 0;
     for (const pattern of errors) {
       const matches = text.match(pattern);
-      if (matches) penalty += matches.length * 5;
+      if (matches) {penalty += matches.length * 5;}
     }
     return Math.max(0, 100 - penalty);
   }
@@ -67,7 +67,7 @@ export class QualityChecker {
     let penalty = 0;
     for (const pattern of awkwardPatterns) {
       const matches = text.match(pattern);
-      if (matches) penalty += matches.length * 10;
+      if (matches) {penalty += matches.length * 10;}
     }
     return Math.max(0, 100 - penalty);
   }

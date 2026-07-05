@@ -11,13 +11,13 @@ withDefaults(
 
 /** Pourcentage affiché */
 function percentText(value: number): string {
-  if (value < 0) return "...";
+  if (value < 0) {return "...";}
   return `${Math.round(Math.max(0, Math.min(100, value)))}%`;
 }
 
 /** Largeur de remplissage */
 function fillWidth(value: number): string {
-  if (value < 0) return "100%";
+  if (value < 0) {return "100%";}
   return `${Math.max(0, Math.min(100, value))}%`;
 }
 

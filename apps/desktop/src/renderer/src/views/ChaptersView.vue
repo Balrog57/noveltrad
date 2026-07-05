@@ -8,7 +8,6 @@ import NtBadge from "../components/ui/NtBadge.vue";
 import NtEmptyState from "../components/ui/NtEmptyState.vue";
 import NtTooltip from "../components/ui/NtTooltip.vue";
 import type { Chapter } from "@shared/types/index.js";
-import { useHistoryStore } from "../stores/history";
 
 const tmxImporting = ref(false);
 const tmxExporting = ref(false);
@@ -54,7 +53,7 @@ function openEditor(chapter: Chapter): void {
 }
 
 async function translateChapter(chapter: Chapter) {
-  if (!projectId) return;
+  if (!projectId) {return;}
   const projectPath = await window.novelTradAPI.invoke<string>(
     "project:path",
     projectId,
@@ -69,7 +68,7 @@ async function translateChapter(chapter: Chapter) {
 
 function progressFor(chapterId: string): string {
   const p = workflowStore.progress;
-  if (!p) return "";
+  if (!p) {return "";}
   const batchPrefix =
     p.batchTotalChapters && p.batchChapterIndex !== undefined
       ? `[${p.batchChapterIndex + 1}/${p.batchTotalChapters}] `
@@ -99,8 +98,8 @@ async function batchTranslate(): Promise<void> {
 }
 
 /** SDD §7.9 : traduire uniquement les chapitres sélectionnés */
-async function batchTranslateSelection(): Promise<void> {
-  if (workflowStore.selectedChapterIds.length === 0) return;
+async function _batchTranslateSelection(): Promise<void> {
+  if (workflowStore.selectedChapterIds.length === 0) {return;}
   const projectPath = await window.novelTradAPI.invoke<string>(
     "project:path",
     projectId,
@@ -157,7 +156,7 @@ function onDrop(e: DragEvent): void {
   dragCounter = 0;
 
   const files = e.dataTransfer?.files;
-  if (!files || files.length === 0) return;
+  if (!files || files.length === 0) {return;}
 
   // Extraire les chemins natifs (Electron expose .path sur File)
   const filePaths: string[] = [];
@@ -294,7 +293,7 @@ async function importTmx(): Promise<void> {
     properties: ["openFile"],
   });
 
-  if (result.canceled || result.filePaths.length === 0) return;
+  if (result.canceled || result.filePaths.length === 0) {return;}
 
   tmxImporting.value = true;
   try {
@@ -327,7 +326,7 @@ async function exportTmx(): Promise<void> {
     filters: [{ name: "TMX", extensions: ["tmx"] }],
   });
 
-  if (result.canceled || !result.filePath) return;
+  if (result.canceled || !result.filePath) {return;}
 
   tmxExporting.value = true;
   try {
@@ -355,7 +354,7 @@ function openRefreshDialog(chapterId: string): void {
 
 /** Rafraîchit un chapitre depuis son fichier source (SDD §5.8) */
 async function confirmRefresh(): Promise<void> {
-  if (!refreshChapterId.value) return;
+  if (!refreshChapterId.value) {return;}
   refreshingId.value = refreshChapterId.value;
   refreshMessage.value = null;
   showRefreshDialog.value = false;
@@ -434,7 +433,7 @@ async function contextDeleteChapter(chapter: Chapter): Promise<void> {
   const confirmed = confirm(
     `Voulez-vous vraiment supprimer le chapitre "${chapter.title || chapter.id}" ?`,
   );
-  if (!confirmed) return;
+  if (!confirmed) {return;}
 
   try {
     await window.novelTradAPI.invoke("chapter:delete", {
@@ -475,21 +474,17 @@ onUnmounted(() => {
       <div v-if="isDragging" class="drop-overlay">
         <span class="drop-icon">&#x1F4C4;</span>
         <span class="drop-text">Deposez vos fichiers ici</span>
-        <span class="drop-formats"
-          >Formats supportes : TXT, MD, DOCX, EPUB</span
-        >
+        <span class="drop-formats">Formats supportes : TXT, MD, DOCX, EPUB</span>
       </div>
       <div v-else class="drop-hint">
-        <span
-          >Glissez-deposez des fichiers (TXT, MD, DOCX, EPUB) pour les
-          importer</span
-        >
+        <span>Glissez-deposez des fichiers (TXT, MD, DOCX, EPUB) pour les
+          importer</span>
       </div>
     </div>
 
     <!-- Barre de progression import -->
     <div v-if="importProgress" class="import-progress">
-      <span class="spinner"></span>
+      <span class="spinner" />
       <span>Import en cours...</span>
     </div>
 
@@ -535,10 +530,10 @@ onUnmounted(() => {
             type="checkbox"
             :checked="
               workflowStore.selectedChapterIds.length === chapters.length &&
-              chapters.length > 0
+                chapters.length > 0
             "
             @change="toggleSelectAll"
-          />
+          >
           <span>Tout sélectionner</span>
         </label>
       </NtTooltip>
@@ -574,13 +569,13 @@ onUnmounted(() => {
             type="checkbox"
             :checked="workflowStore.isSelected(ch.id)"
             @change="toggleSelection(ch.id)"
-          />
+          >
         </div>
         <div
           class="chapter-info"
-          @click="openEditor(ch)"
           role="button"
           tabindex="0"
+          @click="openEditor(ch)"
           @keydown.enter="openEditor(ch)"
         >
           <strong>{{ ch.title || ch.id }}</strong>
@@ -633,15 +628,15 @@ onUnmounted(() => {
         <h3>Rafraîchir depuis le fichier source</h3>
         <p>Le fichier source original a été modifié. Comment souhaitez-vous appliquer les changements ?</p>
         <label class="radio-label">
-          <input type="radio" v-model="refreshStrategy" value="replace" />
+          <input v-model="refreshStrategy" type="radio" value="replace">
           <span><strong>Remplacer</strong> — écraser les paragraphes existants</span>
         </label>
         <label class="radio-label">
-          <input type="radio" v-model="refreshStrategy" value="merge" />
+          <input v-model="refreshStrategy" type="radio" value="merge">
           <span><strong>Fusionner</strong> — ajouter uniquement les nouveaux paragraphes</span>
         </label>
         <label class="radio-label">
-          <input type="radio" v-model="refreshStrategy" value="new-version" />
+          <input v-model="refreshStrategy" type="radio" value="new-version">
           <span><strong>Nouvelle version</strong> — créer un chapitre distinct</span>
         </label>
         <div class="modal-actions">

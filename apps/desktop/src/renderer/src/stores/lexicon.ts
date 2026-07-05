@@ -178,7 +178,7 @@ export const useLexiconStore = defineStore("lexicon", () => {
   }
 
   /** Détecte les conflits entre les entrées du lexique */
-  async function findConflicts(projectId: string): Promise<void> {
+  async function findConflicts(_projectId: string): Promise<void> {
     loading.value = true;
     error.value = null;
     try {

@@ -219,7 +219,7 @@ export class ConsistencyChecker {
    * sur la ponctuation CJK (。！？) est appliqué.
    */
   private countSentences(text: string): number {
-    if (!text.trim()) return 0;
+    if (!text.trim()) {return 0;}
     const sbdSentences = tokenizer.sentences(text, {});
     const sentences = sbdSentences.flatMap((s: string) =>
       s.split(/[。！？]+/).filter((p: string) => p.trim().length > 0),

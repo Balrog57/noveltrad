@@ -91,7 +91,7 @@ describe("Example Export PDF plugin", () => {
 
   it("le plugin enregistre un export pdf dans ExportEngine", async () => {
     const exportEngine = new ExportEngine();
-    const registerSpy = vi.spyOn(exportEngine, "registerRenderer");
+    const _registerSpy = vi.spyOn(exportEngine, "registerRenderer");
 
     const host = new PluginHost(
       {

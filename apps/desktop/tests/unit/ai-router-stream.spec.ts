@@ -74,7 +74,7 @@ describe("AiRouter.streamChat", () => {
     const router = new AiRouter();
 
     await expect(async () => {
-      for await (const _ of router.streamChat("unknown-provider", [])) {
+      for await (const _chunk of router.streamChat("unknown-provider", [])) {
         // ne devrait jamais arriver
       }
     }).rejects.toThrow("Provider inconnu");

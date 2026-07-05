@@ -33,7 +33,7 @@ function isInactive(): boolean {
 
 /** Gère le clic : bloque si loading ou disabled */
 function onClick(event: MouseEvent): void {
-  if (isInactive()) return;
+  if (isInactive()) {return;}
   emit("click", event);
 }
 </script>

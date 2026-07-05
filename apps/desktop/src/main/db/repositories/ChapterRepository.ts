@@ -28,7 +28,7 @@ export class ChapterRepository {
     const row = this.db
       .prepare("SELECT * FROM chapters WHERE id = ?")
       .get([id]) as Record<string, unknown> | undefined;
-    if (!row) return undefined;
+    if (!row) {return undefined;}
     return this.map(row);
   }
 

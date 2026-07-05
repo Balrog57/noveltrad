@@ -21,7 +21,7 @@ vi.mock("electron-log", () => ({
 import { execFile } from "node:child_process";
 vi.mock("node:child_process");
 
-import { runEpubcheck, type RunEpubcheckResult } from "../../src/main/services/ExportEngine";
+import { runEpubcheck } from "../../src/main/services/ExportEngine";
 
 // Mock fs.existsSync pour contrôler la détection d'epubcheck.jar
 import fs from "node:fs";

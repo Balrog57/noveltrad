@@ -19,7 +19,7 @@ import iconv from "iconv-lite";
 import mammoth from "mammoth";
 import AdmZip from "adm-zip";
 import * as cheerio from "cheerio";
-import { franc, francAll } from "franc";
+import { francAll } from "franc";
 
 /** Formats de fichiers supportés pour l'import */
 const SUPPORTED_EXTENSIONS = [".txt", ".md", ".docx", ".epub"] as const;
@@ -147,7 +147,7 @@ export class ProjectManager {
       (this.settings.get("recentProjects") as string[] | undefined) ?? [];
     const projectPath = recent.find((p) => {
       const dbPath = path.join(p, "project.db");
-      if (!fs.existsSync(dbPath)) return false;
+      if (!fs.existsSync(dbPath)) {return false;}
       const db = createProjectDatabase(p);
       const project = new ProjectRepository(db).getById(projectId);
       db.close();
@@ -304,7 +304,7 @@ export class ProjectManager {
       case "new-version": {
         // Créer un nouveau chapitre distinct (importSource re-découpe correctement)
         const newChapters = await this.importSource(projectId, originalFilePath);
-        return newChapters[0]!;
+        return newChapters[0];
       }
       case "merge": {
         // Ajouter uniquement les nouveaux paragraphes (non présents dans l'actuel)
@@ -346,7 +346,7 @@ export class ProjectManager {
               crypto.randomUUID(),
               chapterId,
               i + 1,
-              merged[i]!,
+              merged[i],
               null,
               "pending",
             ]);
@@ -403,7 +403,7 @@ export class ProjectManager {
               crypto.randomUUID(),
               chapterId,
               i + 1,
-              newParagraphs[i]!,
+              newParagraphs[i],
               null,
               "pending",
             ]);
@@ -685,7 +685,7 @@ export class ProjectManager {
 
   async listChapters(projectId: string): Promise<Chapter[]> {
     const projectPath = (
-      (this.settings.get("recentProjects") as string[]) ?? []
+      (this.settings.get("recentProjects")) ?? []
     ).find((p) => {
       const db = createProjectDatabase(p);
       const found = new ProjectRepository(db).getById(projectId);
@@ -731,7 +731,7 @@ export class ProjectManager {
    */
   private resolveProjectPath(projectId: string): string {
     const projectPath = (
-      (this.settings.get("recentProjects") as string[]) ?? []
+      (this.settings.get("recentProjects")) ?? []
     ).find((p) => {
       const db = createProjectDatabase(p);
       const found = new ProjectRepository(db).getById(projectId);
@@ -811,7 +811,7 @@ export class ProjectManager {
   private extractPlainText(filePath: string): string {
     const encoding = chardet.detectFileSync(filePath) ?? "utf-8";
     const buffer = fs.readFileSync(filePath);
-    return iconv.decode(buffer, encoding as string);
+    return iconv.decode(buffer, encoding);
   }
 
   /**
@@ -893,12 +893,12 @@ export class ProjectManager {
 
     try {
       const results = francAll(text, { minLength: 20 });
-      if (results.length === 0) return null;
+      if (results.length === 0) {return null;}
 
       const [code, score] = results[0];
 
       // 'und' = indéterminé
-      if (code === "und") return null;
+      if (code === "und") {return null;}
 
       if (score < LANGUAGE_CONFIDENCE_THRESHOLD) {
         logger.warn(

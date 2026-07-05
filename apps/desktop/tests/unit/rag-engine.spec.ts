@@ -57,7 +57,7 @@ class MockRagDatabase {
         if (sql.includes("SELECT id FROM embeddings")) {
           const paragraphId = params[0] as string;
           for (const [, row] of this.embeddings) {
-            if (row.paragraph_id === paragraphId) return { id: row.id };
+            if (row.paragraph_id === paragraphId) {return { id: row.id };}
           }
           return undefined;
         }

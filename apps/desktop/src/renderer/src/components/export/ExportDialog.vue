@@ -98,7 +98,7 @@ const outputFileName = computed(() => {
 
 /** Chemin de sortie complet */
 const outputPath = computed(() => {
-  if (!outputFolder.value) return "";
+  if (!outputFolder.value) {return "";}
   // Utiliser path.join côté renderer (pas idéal mais fonctionne)
   const folder = outputFolder.value.replace(/\\/g, "/");
   const name = outputFileName.value;
@@ -113,7 +113,7 @@ async function browseFolder(): Promise<void> {
   }>("dialog:open-file", {
     properties: ["openDirectory"],
   });
-  if (!result || result.canceled || !result.filePaths?.length) return;
+  if (!result || result.canceled || !result.filePaths?.length) {return;}
   outputFolder.value = result.filePaths[0];
 }
 
@@ -271,13 +271,13 @@ async function doExport(): Promise<void> {
 }
 
 function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+  if (bytes < 1024) {return `${bytes} o`;}
+  if (bytes < 1024 * 1024) {return `${(bytes / 1024).toFixed(1)} Ko`;}
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
 function closeDialog(): void {
-  if (exporting.value) return;
+  if (exporting.value) {return;}
   emit("close");
 }
 
@@ -310,7 +310,7 @@ function clearToast(): void {
             v-model="bilingualMode"
             type="checkbox"
             :disabled="exporting"
-          />
+          >
           <span>Mode bilingue (source + traduction)</span>
         </label>
       </div>
@@ -324,7 +324,7 @@ function clearToast(): void {
             type="radio"
             value="chapter"
             :disabled="exporting"
-          />
+          >
           <span>Chapitre courant uniquement</span>
         </label>
         <label class="form-checkbox">
@@ -333,7 +333,7 @@ function clearToast(): void {
             type="radio"
             value="selection"
             :disabled="exporting || !hasSelection"
-          />
+          >
           <span>
             Sélection ({{ selectedChapterIds?.length ?? 0 }} chapitre(s))
           </span>
@@ -344,7 +344,7 @@ function clearToast(): void {
             type="radio"
             value="all"
             :disabled="exporting"
-          />
+          >
           <span>Tous les chapitres</span>
         </label>
       </div>
@@ -360,7 +360,7 @@ function clearToast(): void {
             placeholder="C:\Utilisateurs\..."
             :disabled="exporting"
             readonly
-          />
+          >
           <button
             class="btn-secondary"
             :disabled="exporting"
@@ -378,7 +378,7 @@ function clearToast(): void {
       <div class="form-group">
         <label class="form-label">Options</label>
         <label class="form-checkbox">
-          <input v-model="includeTitle" type="checkbox" :disabled="exporting" />
+          <input v-model="includeTitle" type="checkbox" :disabled="exporting">
           <span>Inclure le titre</span>
         </label>
         <label class="form-checkbox">
@@ -386,7 +386,7 @@ function clearToast(): void {
             v-model="includeParagraphNumbers"
             type="checkbox"
             :disabled="exporting"
-          />
+          >
           <span>Numéroter les paragraphes</span>
         </label>
       </div>

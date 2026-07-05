@@ -1803,3 +1803,27 @@ After v2.0.6/v2.0.7 commits, 5 features broke: Ollama detection, Console tab, Se
 3. **Test on Windows**: Install exe, verify Ollama detection works
 4. **M1/M2 deferred**: SettingsManager singleton + DB caching (post-v2.1)
 5. **v2.2 features**: New features from deferred phases
+
+---
+
+## ESLint Fix Session (2026-07-05)
+
+### Problem
+`npm run lint` had no config — ESLint `^8.57.0` in devDependencies but no `.eslintrc*`. Running `lint` failed.
+
+### Changes
+1. **`.eslintrc.cjs`** — Created with:
+   - `@typescript-eslint/parser` + `plugin:@typescript-eslint/recommended`
+   - `plugin:vue/vue3-recommended` for `.vue` files with `extraFileExtensions: [".vue"]`
+   - Relaxed rules: `eqeqeq: "smart"`, `no-explicit-any: off`, `ban-ts-comment: off`
+   - Test file overrides: `curly` off, broader `varsIgnorePattern: "^_"`
+   - `varsIgnorePattern: "^_"` in main config for intentional unused vars
+2. **WorkflowView.vue** — Fixed `\U0001F504` → `\u{1F504}` (invalid JS escape → valid ES2015+ Unicode)
+3. **Auto-fixed 207 warnings** via `eslint --fix` (curly braces, prefer-const, Vue formatting)
+4. **Removed unused imports/vars** across ~20 files (source + tests)
+5. **Disabled type-aware rules** (`no-unnecessary-type-assertion: off`) — `parserOptions.project` not set, type-checking handled by `vue-tsc`
+
+### Results
+- `npm run lint` → **0 errors, 0 warnings**
+- `npm run test` → **782 passed, 0 failed**
+- `npm run type-check` → **0 errors**

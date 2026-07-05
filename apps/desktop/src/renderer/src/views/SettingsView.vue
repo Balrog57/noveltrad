@@ -228,7 +228,7 @@ onUnmounted(() => {
       <h2>Ollama</h2>
       <label>
         Hote Ollama
-        <input v-model="settings.data.ollamaHost" />
+        <input v-model="settings.data.ollamaHost">
       </label>
       <button
         class="btn-primary"
@@ -246,14 +246,14 @@ onUnmounted(() => {
       </ul>
       <label class="label-mt">
         Modele par defaut
-        <input v-model="settings.data.defaultModel" placeholder="qwen3.5:9b" />
+        <input v-model="settings.data.defaultModel" placeholder="qwen3.5:9b">
       </label>
       <label class="label-mt">
         Modele de pre-traduction
         <input
           v-model="settings.data.defaultPreTranslateModel"
           placeholder="qwen3.5:4b"
-        />
+        >
       </label>
     </section>
 
@@ -261,11 +261,11 @@ onUnmounted(() => {
       <h2>Langues par defaut</h2>
       <label>
         Source
-        <input v-model="settings.data.sourceLanguage" />
+        <input v-model="settings.data.sourceLanguage">
       </label>
       <label>
         Cible
-        <input v-model="settings.data.targetLanguage" />
+        <input v-model="settings.data.targetLanguage">
       </label>
     </section>
 
@@ -276,10 +276,10 @@ onUnmounted(() => {
         <input
           v-model="settings.data.defaultProjectsPath"
           placeholder="~/NovelTrad Projects"
-        />
+        >
       </label>
       <label class="form-checkbox">
-        <input v-model="settings.data.ragEnabled" type="checkbox" />
+        <input v-model="settings.data.ragEnabled" type="checkbox">
         <span>Activer RAG (memoire contextuelle)</span>
       </label>
     </section>
@@ -298,7 +298,7 @@ onUnmounted(() => {
           min="0"
           max="100"
           placeholder="70"
-        />
+        >
       </label>
       <p class="hint">
         Le workflow met en pause si le score de qualite est inferieur a ce
@@ -339,7 +339,7 @@ onUnmounted(() => {
                 parseFloat(($event.target as HTMLInputElement).value),
               )
             "
-          />
+          >
         </label>
         <label>
           Ratio phrases max
@@ -355,7 +355,7 @@ onUnmounted(() => {
                 parseFloat(($event.target as HTMLInputElement).value),
               )
             "
-          />
+          >
         </label>
         <label>
           Ratio longueur min
@@ -371,7 +371,7 @@ onUnmounted(() => {
                 parseFloat(($event.target as HTMLInputElement).value),
               )
             "
-          />
+          >
         </label>
         <label>
           Ratio longueur max
@@ -387,7 +387,7 @@ onUnmounted(() => {
                 parseFloat(($event.target as HTMLInputElement).value),
               )
             "
-          />
+          >
         </label>
       </div>
 
@@ -401,7 +401,7 @@ onUnmounted(() => {
               ($event.target as HTMLInputElement).checked,
             )
           "
-        />
+        >
         <span>Ignorer les nombres dans les dialogues</span>
       </label>
       <label class="form-checkbox">
@@ -414,7 +414,7 @@ onUnmounted(() => {
               ($event.target as HTMLInputElement).checked,
             )
           "
-        />
+        >
         <span>Ignorer les differences de ponctuation</span>
       </label>
     </section>
@@ -458,7 +458,7 @@ onUnmounted(() => {
             v-model="settings.data.apiKey"
             type="password"
             placeholder="sk-..."
-          />
+          >
         </label>
       </div>
     </section>
@@ -501,11 +501,11 @@ onUnmounted(() => {
         </select>
       </label>
 
-      <button class="btn-danger" @click="resetPreferences" style="margin-top: 12px;">
+      <button class="btn-danger" style="margin-top: 12px;" @click="resetPreferences">
         Reinitialiser les preferences
       </button>
 
-      <button class="btn-danger" @click="restartWizard" style="margin-top: 8px;">
+      <button class="btn-danger" style="margin-top: 8px;" @click="restartWizard">
         Relancer le wizard de premier demarrage
       </button>
     </section>
@@ -533,7 +533,7 @@ onUnmounted(() => {
           v-model="settings.data.autoUpdateCheck"
           type="checkbox"
           @change="settings.set('autoUpdateCheck', settings.data.autoUpdateCheck ?? true)"
-        />
+        >
         <span>Verification automatique</span>
       </label>
 

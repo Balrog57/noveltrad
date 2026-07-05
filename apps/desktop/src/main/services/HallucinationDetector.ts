@@ -98,7 +98,7 @@ export class HallucinationDetector {
    * @returns Ensemble d'entités nommées (en minuscules pour comparaison)
    */
   extractNamedEntities(text: string, language: string): Set<string> {
-    if (!text) return new Set();
+    if (!text) {return new Set();}
 
     const entities = new Set<string>();
 
@@ -162,7 +162,7 @@ export class HallucinationDetector {
 
     for (const entity of targetEntities) {
       // Si l'entité est présente dans le source, ce n'est pas une invention
-      if (sourceEntities.has(entity)) continue;
+      if (sourceEntities.has(entity)) {continue;}
 
       // Si les deux langues sont CJK, comparaison directe
       if (sourceIsCjk && targetIsCjk) {
@@ -220,7 +220,7 @@ export class HallucinationDetector {
       // Extraire le numéro
       const numMatch = ref.match(/(\d+|[ivxlcdm]+)/i);
       const num = numMatch?.[1]?.toLowerCase();
-      if (!num) continue;
+      if (!num) {continue;}
 
       // Vérifier si ce numéro apparaît dans le source
       const sourceHasNum = sourceChapters.some((sc) =>

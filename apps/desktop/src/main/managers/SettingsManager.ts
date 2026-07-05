@@ -1,9 +1,10 @@
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
+import type { z } from "zod";
 import { appSettingsSchema } from "@shared/schemas/index.js";
 
-export type AppSettings = import("zod").z.infer<typeof appSettingsSchema>;
+export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export class SettingsManager {
   private readonly configPath: string;

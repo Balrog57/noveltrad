@@ -32,8 +32,8 @@ function getRouter(): AiRouter {
   if (!_router) {
     const settings = new SettingsManager();
     _router = new AiRouter();
-    const defaultModel = settings.get("defaultModel") as string;
-    const ollamaHost = settings.get("ollamaHost") as string;
+    const defaultModel = settings.get("defaultModel");
+    const ollamaHost = settings.get("ollamaHost");
     _router.register(
       new OllamaProvider("ollama-default", "Ollama local", defaultModel, ollamaHost),
     );

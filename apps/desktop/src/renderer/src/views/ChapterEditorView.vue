@@ -51,13 +51,13 @@ let sourceObserver: IntersectionObserver | null = null;
 let targetObserver: IntersectionObserver | null = null;
 
 function setupSourceObserver(): void {
-  if (!leftPanelRef.value) return;
+  if (!leftPanelRef.value) {return;}
   sourceObserver?.disconnect();
   sourceObserver = new IntersectionObserver(
     (entries) => {
-      if (syncingScroll) return;
+      if (syncingScroll) {return;}
       const visible = entries.filter((e) => e.isIntersecting);
-      if (visible.length === 0) return;
+      if (visible.length === 0) {return;}
       const indices = visible
         .map((e) => {
           const el = e.target as HTMLElement;
@@ -71,13 +71,13 @@ function setupSourceObserver(): void {
 }
 
 function setupTargetObserver(): void {
-  if (!rightPanelRef.value) return;
+  if (!rightPanelRef.value) {return;}
   targetObserver?.disconnect();
   targetObserver = new IntersectionObserver(
     (entries) => {
-      if (syncingScroll) return;
+      if (syncingScroll) {return;}
       const visible = entries.filter((e) => e.isIntersecting);
-      if (visible.length === 0) return;
+      if (visible.length === 0) {return;}
       const indices = visible
         .map((e) => {
           const el = e.target as HTMLElement;
@@ -95,7 +95,7 @@ function setupTargetObserver(): void {
  * Quand l'utilisateur fait défiler le panneau source → le panneau cible suit.
  */
 function syncTargetScroll(): void {
-  if (syncingScroll || !rightPanelRef.value) return;
+  if (syncingScroll || !rightPanelRef.value) {return;}
   syncingScroll = true;
   const targetEl = targetParagraphRefs.value.get(
     `target-${visibleSourceIndex.value}`,
@@ -115,7 +115,7 @@ function syncTargetScroll(): void {
  * Synchronise le scroll quand l'utilisateur fait défiler le panneau cible → le panneau source suit.
  */
 function syncSourceScroll(): void {
-  if (syncingScroll || !leftPanelRef.value) return;
+  if (syncingScroll || !leftPanelRef.value) {return;}
   syncingScroll = true;
   const sourceEl = sourceParagraphRefs.value.get(
     `source-${visibleTargetIndex.value}`,
@@ -174,14 +174,14 @@ function onTranslationInput(paragraph: Paragraph, event: Event): void {
 // --- Sauvegarde avec debounce ---
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedSave(): void {
-  if (saveTimer) clearTimeout(saveTimer);
+  if (saveTimer) {clearTimeout(saveTimer);}
   saveTimer = setTimeout(() => {
     editorStore.saveAll();
   }, 2000); // 2 secondes après la dernière modification
 }
 
 async function saveManually(): Promise<void> {
-  if (saveTimer) clearTimeout(saveTimer);
+  if (saveTimer) {clearTimeout(saveTimer);}
   await editorStore.saveAll();
 }
 
@@ -267,7 +267,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (saveTimer) clearTimeout(saveTimer);
+  if (saveTimer) {clearTimeout(saveTimer);}
   sourceObserver?.disconnect();
   targetObserver?.disconnect();
 });
@@ -344,9 +344,7 @@ onUnmounted(() => {
                 <span class="paragraph-number">{{
                   paragraph.indexInChapter
                 }}</span>
-                <span v-if="editorStore.isDirty(paragraph.id)" class="dirty-dot"
-                  >●</span
-                >
+                <span v-if="editorStore.isDirty(paragraph.id)" class="dirty-dot">●</span>
               </div>
               <textarea
                 class="translation-textarea"

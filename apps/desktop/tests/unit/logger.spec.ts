@@ -24,7 +24,7 @@ vi.mock("electron-log", () => ({
 }));
 
 // Import the module under test (will trigger configureTransports + initialize)
-import { logger, StructuredLogger, type LogEntry } from "../../src/main/utils/logger";
+import { logger, type LogEntry } from "../../src/main/utils/logger";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,7 +33,7 @@ import { logger, StructuredLogger, type LogEntry } from "../../src/main/utils/lo
 function lastEntry(level: "info" | "warn" | "error" | "debug" = "info"): LogEntry {
   const mockFn = vi.mocked(electronLog[level]);
   const call = mockFn.mock.lastCall;
-  if (!call) throw new Error(`electronLog.${level} was never called`);
+  if (!call) {throw new Error(`electronLog.${level} was never called`);}
   return call[0] as LogEntry;
 }
 

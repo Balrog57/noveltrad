@@ -77,7 +77,7 @@ test.describe("Full Workflow E2E", () => {
   });
 
   test("app launches and shows home page", async () => {
-    if (!window) return;
+    if (!window) {return;}
     await expect(window).toHaveTitle("NovelTrad 2.0");
     await expect(window.locator("main h1")).toContainText("NovelTrad 2.0");
     await expect(
@@ -86,7 +86,7 @@ test.describe("Full Workflow E2E", () => {
   });
 
   test("should create a project, navigate, and open editor", async () => {
-    if (!window) return;
+    if (!window) {return;}
 
     // --- Phase 1 : Création du projet ---
     const createBtn = window.locator("button", { hasText: "Nouveau projet" });
@@ -113,7 +113,7 @@ test.describe("Full Workflow E2E", () => {
 
     try {
       // Créer via IPC direct et naviguer
-      const proj = await window.evaluate(async ({ name, src, tgt }: { name: string; src: string; tgt: string }) => {
+      const _proj = await window.evaluate(async ({ name, src, tgt }: { name: string; src: string; tgt: string }) => {
         const api = (window as any).novelTradAPI;
         const project = await api.invoke("project:create", {
           name,

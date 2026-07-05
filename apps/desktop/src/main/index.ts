@@ -53,7 +53,7 @@ function setupErrorHandlers(): void {
 
 function setupCspHeaders(): void {
   // Désactivé en mode production pour éviter les conflits avec le protocole file://
-  if (!process.env.VITE_DEV_SERVER_URL) return;
+  if (!process.env.VITE_DEV_SERVER_URL) {return;}
 
   // SDD §1.1 — Content Security Policy (dev mode only)
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -202,11 +202,11 @@ app.whenReady().then(async () => {
       submenu: [
         { label: "Nouveau projet", accelerator: "CmdOrCtrl+N", click: () => {
           const win = getMainWindow();
-          if (win && !win.isDestroyed()) win.webContents.send("navigate", "/");
+          if (win && !win.isDestroyed()) {win.webContents.send("navigate", "/");}
         }},
         { label: "Ouvrir un projet", accelerator: "CmdOrCtrl+O", click: () => {
           const win = getMainWindow();
-          if (win && !win.isDestroyed()) win.webContents.send("menu", "open-project");
+          if (win && !win.isDestroyed()) {win.webContents.send("menu", "open-project");}
         }},
         { type: "separator" },
         { role: "quit", label: "Quitter" },
@@ -217,7 +217,7 @@ app.whenReady().then(async () => {
       submenu: [
         { label: "Guide d'utilisation", click: () => {
           const win = getMainWindow();
-          if (win && !win.isDestroyed()) win.webContents.send("navigate", "/help");
+          if (win && !win.isDestroyed()) {win.webContents.send("navigate", "/help");}
         }},
         { label: "GitHub", click: async () => { const { shell } = await import("electron"); await shell.openExternal("https://github.com/Balrog57/noveltrad"); } },
       ],

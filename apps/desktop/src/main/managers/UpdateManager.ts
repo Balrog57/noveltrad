@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import updater from "electron-updater";
 const { autoUpdater } = updater;
-import { dialog, BrowserWindow } from "electron";
+import type { BrowserWindow } from "electron";
+import { dialog } from "electron";
 import { logger } from "../utils/logger.js";
 
 export interface UpdateInfo {
@@ -62,7 +63,7 @@ export class UpdateManager extends EventEmitter {
   }
 
   async check(): Promise<void> {
-    if (this.checking) return;
+    if (this.checking) {return;}
     this.checking = true;
     try {
       await autoUpdater.checkForUpdates();

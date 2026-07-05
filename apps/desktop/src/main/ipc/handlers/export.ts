@@ -13,7 +13,6 @@ import { createProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { ChapterRepository } from "../../db/repositories/ChapterRepository.js";
 import { ParagraphRepository } from "../../db/repositories/ParagraphRepository.js";
-import { assertWithinProject } from "../../utils/paths.js";
 
 const exportEngine = new ExportEngine();
 const settings = new SettingsManager();
@@ -25,7 +24,7 @@ const settings = new SettingsManager();
 function resolveProjectPath(projectId: string): string {
   const recent = (settings.get("recentProjects") as string[] | undefined) ?? [];
   const projectPath = recent.find((p) => {
-    if (!fs.existsSync(path.join(p, "project.db"))) return false;
+    if (!fs.existsSync(path.join(p, "project.db"))) {return false;}
     const db = createProjectDatabase(p);
     const found = new ProjectRepository(db).getById(projectId);
     db.close();

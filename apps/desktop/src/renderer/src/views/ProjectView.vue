@@ -24,7 +24,7 @@ const projectId = (route.params.projectId as string) || "";
 /** Label du dernier statut workflow */
 const workflowStatusLabel = computed(() => {
   const s = projectStore.stats?.lastWorkflowStatus;
-  if (!s) return "Aucun";
+  if (!s) {return "Aucun";}
   const labels: Record<string, string> = {
     pending: "En attente",
     running: "En cours",
@@ -39,15 +39,15 @@ const workflowStatusLabel = computed(() => {
 /** Couleur du badge statut workflow */
 const workflowStatusColor = computed(() => {
   const s = projectStore.stats?.lastWorkflowStatus;
-  if (s === "completed") return "var(--success)";
-  if (s === "failed") return "var(--error)";
-  if (s === "running") return "var(--warning)";
+  if (s === "completed") {return "var(--success)";}
+  if (s === "failed") {return "var(--error)";}
+  if (s === "running") {return "var(--warning)";}
   return "var(--text-secondary)";
 });
 
 /** Date de creation formatee */
 const createdAtFormatted = computed(() => {
-  if (!project.value?.createdAt) return "";
+  if (!project.value?.createdAt) {return "";}
   return new Date(project.value.createdAt).toLocaleDateString("fr-FR");
 });
 
@@ -69,7 +69,7 @@ async function importFile() {
       properties: ["openFile"],
     },
   );
-  if (!result || !result.filePaths?.length) return;
+  if (!result || !result.filePaths?.length) {return;}
   await window.novelTradAPI.invoke(
     "chapter:import",
     projectId,
@@ -79,7 +79,7 @@ async function importFile() {
 }
 
 async function translate() {
-  if (!project.value) return;
+  if (!project.value) {return;}
   starting.value = true;
   try {
     await workflowStore.start(project.value.path);

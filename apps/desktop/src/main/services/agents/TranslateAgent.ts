@@ -86,7 +86,7 @@ export class TranslateAgent implements Agent {
   }
 
   private buildLexiconBlock(entries?: AgentInput["lexicon"]): string {
-    if (!entries?.length) return "";
+    if (!entries?.length) {return "";}
     const lines = entries.map(
       (e) => `- ${e.term} → ${e.translation}${e.locked ? " (LOCKED)" : ""}`,
     );
@@ -94,13 +94,13 @@ export class TranslateAgent implements Agent {
   }
 
   private buildMemoryBlock(input: AgentInput): string {
-    if (!input.chapterId || !input.projectId) return "";
+    if (!input.chapterId || !input.projectId) {return "";}
     const matches = this.tmEngine.fuzzyMatches(
       input.paragraphs?.[0]?.sourceText ?? "",
       input.projectId,
       3,
     );
-    if (!matches.length) return "";
+    if (!matches.length) {return "";}
     const lines = matches.map((m) => `- "${m.sourceText}" → "${m.targetText}"`);
     return `--- TRANSLATION MEMORY ---\n${lines.join("\n")}\n--- END TM ---\n\n`;
   }
@@ -113,9 +113,9 @@ export class TranslateAgent implements Agent {
     paragraphId: string,
     ragContext?: Record<string, RagMatch[]>,
   ): string {
-    if (!ragContext) return "";
+    if (!ragContext) {return "";}
     const matches = ragContext[paragraphId];
-    if (!matches?.length) return "";
+    if (!matches?.length) {return "";}
 
     const lines = matches.map(
       (m) => `Source: ${m.sourceText}\nTraduction: ${m.translatedText}`,

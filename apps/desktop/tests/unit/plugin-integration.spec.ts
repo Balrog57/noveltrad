@@ -87,7 +87,7 @@ describe("AiRouter plugin provider resolver", () => {
     };
 
     router.setPluginProviderResolver((id) => {
-      if (id === "plugin-test") return pluginProvider;
+      if (id === "plugin-test") {return pluginProvider;}
       return undefined;
     });
 
@@ -140,7 +140,7 @@ describe("AgentFactory plugin agent callback", () => {
       qualityChecker: {} as any,
       exportEngine: {} as any,
       getPluginAgent: (stage: string, _config: AgentConfig): Agent | undefined => {
-        if (stage === "split") return mockAgent as any;
+        if (stage === "split") {return mockAgent as any;}
         return undefined;
       },
     });

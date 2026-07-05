@@ -40,14 +40,14 @@ const sortDir = ref<"asc" | "desc">("asc");
 
 /** Lignes triées (si le tri est actif) */
 const sortedRows = computed(() => {
-  if (!props.sortable || !sortKey.value) return props.rows;
+  if (!props.sortable || !sortKey.value) {return props.rows;}
   const dir = sortDir.value === "asc" ? 1 : -1;
   return [...props.rows].sort((a, b) => {
     const va = a[sortKey.value!];
     const vb = b[sortKey.value!];
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
+    if (va == null && vb == null) {return 0;}
+    if (va == null) {return 1;}
+    if (vb == null) {return -1;}
     const sa = String(va);
     const sb = String(vb);
     return sa.localeCompare(sb, "fr", { sensitivity: "base" }) * dir;
@@ -56,7 +56,7 @@ const sortedRows = computed(() => {
 
 /** Gère le clic sur un en-tête de colonne pour le tri */
 function onHeaderClick(col: Column): void {
-  if (!props.sortable || !col.sortable) return;
+  if (!props.sortable || !col.sortable) {return;}
   if (sortKey.value === col.key) {
     // Inverse la direction
     sortDir.value = sortDir.value === "asc" ? "desc" : "asc";
@@ -69,7 +69,7 @@ function onHeaderClick(col: Column): void {
 
 /** Icône de tri pour une colonne */
 function sortIcon(col: Column): string {
-  if (sortKey.value !== col.key) return "↕";
+  if (sortKey.value !== col.key) {return "↕";}
   return sortDir.value === "asc" ? "↑" : "↓";
 }
 </script>

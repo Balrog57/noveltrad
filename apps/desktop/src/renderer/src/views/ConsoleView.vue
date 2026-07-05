@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, nextTick, watch } from "vue";
 import { useLogsStore, type LogLevel } from "../stores/logs";
 
 const logsStore = useLogsStore();
@@ -110,7 +110,7 @@ async function exportLogs(): Promise<void> {
           type="text"
           placeholder="Rechercher..."
           aria-label="Rechercher dans les logs"
-        />
+        >
         <button
           class="btn-secondary"
           aria-label="Effacer les logs"

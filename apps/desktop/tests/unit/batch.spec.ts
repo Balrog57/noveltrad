@@ -15,7 +15,7 @@ vi.mock("electron-log", () => ({
 import { setActivePinia, createPinia } from "pinia";
 import { ExportEngine } from "../../src/main/services/ExportEngine";
 import { exportBatchSchema } from "@shared/schemas/export.js";
-import type { ExportInput, Paragraph } from "@shared/types/index.js";
+import type { Paragraph } from "@shared/types/index.js";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";

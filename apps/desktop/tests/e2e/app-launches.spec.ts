@@ -54,7 +54,7 @@ test.describe("App Launch", () => {
   });
 
   test("app launches and shows home", async () => {
-    if (!window) return;
+    if (!window) {return;}
     await window.waitForTimeout(2000);
     const url = window.url();
     console.log('Test - URL:', url);

@@ -185,7 +185,7 @@ test.describe("Ollama E2E (Phase 0 validation)", () => {
     // Appeler le handler ollama:test-model via IPC
     const result = await window.evaluate(async () => {
       const api = (window as any).novelTradAPI;
-      if (!api?.invoke) return null;
+      if (!api?.invoke) {return null;}
       return api.invoke("ollama:test-model", "qwen3.5:9b");
     });
 

@@ -124,7 +124,7 @@ export function registerWorkflowHandlers(): void {
     const parsed = z.object({ projectPath: projectPathSchema }).parse({ projectPath });
     const db = createProjectDatabase(parsed.projectPath);
     const project = new ProjectRepository(db).getByPath(parsed.projectPath);
-    if (!project) throw new Error(`Projet non trouve : ${parsed.projectPath}`);
+    if (!project) {throw new Error(`Projet non trouve : ${parsed.projectPath}`);}
     const jobs = new JobRepository(db).listByProject(project.id);
     db.close();
     return jobs;
@@ -144,7 +144,7 @@ export function registerWorkflowHandlers(): void {
     const parsed = z
       .object({ projectPath: projectPathSchema, job: jobSchema })
       .parse({ projectPath, job });
-    await workflowEngine.resumeBatch(parsed.projectPath, parsed.job as Job);
+    await workflowEngine.resumeBatch(parsed.projectPath, parsed.job);
     return { ok: true };
   });
 }

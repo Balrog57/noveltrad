@@ -30,7 +30,7 @@ export class JobRepository {
   getJob(id: string): Job | undefined {
     const row = this.db.prepare("SELECT * FROM jobs WHERE id = ?").get([id]) as
       Record<string, unknown> | undefined;
-    if (!row) return undefined;
+    if (!row) {return undefined;}
     return this.mapJob(row);
   }
 
@@ -102,7 +102,7 @@ export class JobRepository {
     const row = this.db
       .prepare("SELECT * FROM job_steps WHERE id = ?")
       .get([id]) as Record<string, unknown> | undefined;
-    if (!row) return undefined;
+    if (!row) {return undefined;}
     return this.mapStep(row);
   }
 

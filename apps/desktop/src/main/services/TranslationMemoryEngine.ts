@@ -12,7 +12,7 @@ export class TranslationMemoryEngine {
   }
 
   exactMatch(text: string, projectId: string): string | null {
-    if (!this.db) return null;
+    if (!this.db) {return null;}
     const row = this.db
       .prepare(
         "SELECT target_text FROM translation_memory WHERE project_id = ? AND source_text = ?",
@@ -26,7 +26,7 @@ export class TranslationMemoryEngine {
     projectId: string,
     limit = 5,
   ): TranslationMemoryMatch[] {
-    if (!this.db) return [];
+    if (!this.db) {return [];}
     const rows = this.db
       .prepare(
         "SELECT source_text, target_text, usage_count FROM translation_memory WHERE project_id = ?",
@@ -55,7 +55,7 @@ export class TranslationMemoryEngine {
     sourceLanguage: string,
     targetLanguage: string,
   ): void {
-    if (!this.db) return;
+    if (!this.db) {return;}
     const existing = this.db
       .prepare(
         "SELECT id FROM translation_memory WHERE project_id = ? AND source_text = ?",
@@ -89,7 +89,7 @@ export class TranslationMemoryEngine {
    * Retourne le nombre d'entrées importées.
    */
   importTmx(filePath: string, projectId: string): number {
-    if (!this.db) return 0;
+    if (!this.db) {return 0;}
     const xml = fs.readFileSync(filePath, "utf-8");
     const parser = new XMLParser({
       ignoreAttributes: false,
@@ -97,18 +97,18 @@ export class TranslationMemoryEngine {
     });
     const parsed = parser.parse(xml);
     const tmx = parsed?.tmx;
-    if (!tmx) throw new Error("Fichier TMX invalide : balise <tmx> introuvable.");
+    if (!tmx) {throw new Error("Fichier TMX invalide : balise <tmx> introuvable.");}
 
     const body = tmx.body;
     const tus = body?.tu;
-    if (!tus) return 0;
+    if (!tus) {return 0;}
 
     const tuArray = Array.isArray(tus) ? tus : [tus];
     let imported = 0;
 
     for (const tu of tuArray) {
       const tuvs = tu?.tuv;
-      if (!tuvs) continue;
+      if (!tuvs) {continue;}
 
       const tuvArray = Array.isArray(tuvs) ? tuvs : [tuvs];
       let sourceText = "";
@@ -144,7 +144,7 @@ export class TranslationMemoryEngine {
    * Exporte la mémoire de traduction au format TMX 1.4 (SDD §9.7).
    */
   exportTmx(filePath: string, projectId: string): void {
-    if (!this.db) return;
+    if (!this.db) {return;}
     const rows = this.db
       .prepare(
         "SELECT source_text, target_text, source_language, target_language FROM translation_memory WHERE project_id = ?",

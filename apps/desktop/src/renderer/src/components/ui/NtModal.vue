@@ -40,7 +40,7 @@ watch(
 
 /** Gestionnaire clavier : Échap pour fermer */
 function onKeydown(e: KeyboardEvent): void {
-  if (!props.visible) return;
+  if (!props.visible) {return;}
   if (e.key === "Escape") {
     emit("close");
   }
@@ -49,7 +49,7 @@ function onKeydown(e: KeyboardEvent): void {
     const focusable = modalRef.value.querySelectorAll<HTMLElement>(
       'input, button, select, textarea, [tabindex]:not([tabindex="-1"])',
     );
-    if (focusable.length === 0) return;
+    if (focusable.length === 0) {return;}
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     if (e.shiftKey) {

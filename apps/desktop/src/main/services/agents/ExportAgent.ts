@@ -17,7 +17,7 @@ export class ExportAgent implements Agent {
   ) {}
 
   async execute(input: AgentInput): Promise<AgentOutput> {
-    if (!input.projectId) throw new Error("projectId requis pour export");
+    if (!input.projectId) {throw new Error("projectId requis pour export");}
     const exportInput: ExportInput = {
       projectId: input.projectId,
       title: (input.options?.title as string) ?? "Export",

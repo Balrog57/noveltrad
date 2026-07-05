@@ -38,7 +38,7 @@ export class AiCache {
       .get([key]) as
       { response: string; created_at: string; ttl_days: number } | undefined;
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     const createdAt = new Date(row.created_at);
     const expiresAt = new Date(createdAt);
@@ -84,7 +84,7 @@ export class AiCache {
       )
       .get() as { total_size: number } | undefined;
 
-    if (!sizeRow || sizeRow.total_size <= maxSizeBytes) return;
+    if (!sizeRow || sizeRow.total_size <= maxSizeBytes) {return;}
 
     // Récupère les entrées les plus anciennes triées par created_at ASC
     const entries = this.db
@@ -96,7 +96,7 @@ export class AiCache {
     let toFree = sizeRow.total_size - maxSizeBytes;
 
     for (const entry of entries) {
-      if (toFree <= 0) break;
+      if (toFree <= 0) {break;}
       this.db.prepare("DELETE FROM ai_cache WHERE key = ?").run([entry.key]);
       toFree -= entry.entry_size;
     }

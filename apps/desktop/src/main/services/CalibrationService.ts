@@ -68,7 +68,7 @@ export class CalibrationService {
         }
       | undefined;
 
-    if (!row) return undefined;
+    if (!row) {return undefined;}
     return {
       model: row.model,
       dimension: row.dimension,

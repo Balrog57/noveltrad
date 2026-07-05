@@ -58,7 +58,7 @@ export class RagEngine {
     const existing = this.db
       .prepare("SELECT id FROM embeddings WHERE paragraph_id = ?")
       .get([paragraphId]);
-    if (existing) return;
+    if (existing) {return;}
 
     this.db
       .prepare(
@@ -102,7 +102,7 @@ export class RagEngine {
       translated_text: string | null;
     }>;
 
-    if (rows.length === 0) return [];
+    if (rows.length === 0) {return [];}
 
     // 3. Calculer la similarité cosinus pour chaque embedding stocké
     const scored: RagMatch[] = rows.map((row) => {
@@ -129,9 +129,9 @@ export class RagEngine {
    * Retourne une valeur entre -1 et 1 (1 = identiques, 0 = orthogonaux).
    */
   cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
+    if (a.length !== b.length) {return 0;}
     const result = similarity(a, b);
-    if (result === null || !isFinite(result)) return 0;
+    if (result === null || !isFinite(result)) {return 0;}
     // Clamp to [-1, 1] due to floating-point imprecision
     return Math.max(-1, Math.min(1, result));
   }
@@ -144,7 +144,7 @@ export class RagEngine {
       const response = await net.fetch(`${this.ollamaHost}/api/tags`, {
         signal: AbortSignal.timeout(5000),
       });
-      if (!response.ok) return false;
+      if (!response.ok) {return false;}
 
       const data = (await response.json()) as {
         models?: Array<{ name: string }>;

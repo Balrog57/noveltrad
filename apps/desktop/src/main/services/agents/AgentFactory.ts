@@ -1,7 +1,5 @@
 import type {
   WorkflowStage,
-  AgentInput,
-  AgentOutput,
 } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
 import type { Agent, AgentConfig } from "./Agent.js";
@@ -46,7 +44,7 @@ export class AgentFactory {
     // SDD §15 : vérifier d'abord si un plugin fournit un agent pour ce stage
     if (this.services.getPluginAgent) {
       const pluginAgent = this.services.getPluginAgent(stage, config);
-      if (pluginAgent) return pluginAgent;
+      if (pluginAgent) {return pluginAgent;}
     }
 
     switch (stage) {

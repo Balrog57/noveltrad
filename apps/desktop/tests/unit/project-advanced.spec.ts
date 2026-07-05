@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
-import type { DuplicateInfo } from "@shared/types/index.js";
 
 // Mock electron-log (ProjectManager imports logger which imports electron-log)
 vi.mock("electron-log", () => ({
@@ -48,7 +47,7 @@ function createMockDb(initialData?: {
   const projects: MockRow[] = initialData?.projects ?? [];
   const paragraphs: MockRow[] = initialData?.paragraphs ?? [];
 
-  const matchParams = (row: MockRow, params: unknown[]): boolean => {
+  const _matchParams = (_row: MockRow, _params: unknown[]): boolean => {
     // Les paramètres ? sont positionnels — on ne vérifie que les colonnes connues
     return true; // Simplification : laisse la logique applicative filtrer
   };

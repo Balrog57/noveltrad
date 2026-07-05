@@ -46,7 +46,7 @@ export class SecretStore {
    * - ciphertext : données chiffrées
    */
   encrypt(plaintext: string): string {
-    if (!plaintext) return "";
+    if (!plaintext) {return "";}
 
     const iv = crypto.randomBytes(IV_LENGTH);
     const cipher = crypto.createCipheriv(ALGORITHM, this.masterKey, iv);
@@ -68,7 +68,7 @@ export class SecretStore {
    * Retourne la chaîne en clair, ou chaîne vide si l'entrée est vide.
    */
   decrypt(encrypted: string): string {
-    if (!encrypted) return "";
+    if (!encrypted) {return "";}
 
     try {
       const combined = Buffer.from(encrypted, "base64");

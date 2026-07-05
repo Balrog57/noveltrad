@@ -40,7 +40,7 @@ class MockAiCacheDb {
         }
         return undefined;
       },
-      all: (params: unknown[]): unknown[] => {
+      all: (_params: unknown[]): unknown[] => {
         if (sql.includes("ORDER BY created_at ASC")) {
           return [...this.data]
             .sort(

@@ -23,7 +23,6 @@ import type { AiRouter } from "../services/AiRouter.js";
 import type { LexiconEngine } from "../services/LexiconEngine.js";
 import type { ExportEngine } from "../services/ExportEngine.js";
 import type { Logger } from "@shared/types/index.js";
-import { createPluginAiRouter, createPluginLexiconEngine } from "./types.js";
 
 // Type pour le registre des contributions
 export interface ContributionRegistry {
@@ -98,10 +97,9 @@ export class PluginContext implements PluginContextInterface {
 
   /** Crée un aiRouter filtré par la permission "ai" */
   private createGuardedAiRouter(realRouter: AiRouter) {
-    const self = this;
     return {
       chat: (providerId: string, messages: unknown[], options?: unknown) => {
-        self.assertPermission("ai");
+        this.assertPermission("ai");
         return realRouter.chat(
           providerId,
           messages as Parameters<AiRouter["chat"]>[1],
@@ -109,7 +107,7 @@ export class PluginContext implements PluginContextInterface {
         );
       },
       streamChat: (providerId: string, messages: unknown[], options?: unknown) => {
-        self.assertPermission("ai");
+        this.assertPermission("ai");
         return realRouter.streamChat(
           providerId,
           messages as Parameters<AiRouter["streamChat"]>[1],
@@ -121,10 +119,9 @@ export class PluginContext implements PluginContextInterface {
 
   /** Crée un lexiconEngine filtré par la permission "lexicon" */
   private createGuardedLexiconEngine(realEngine: LexiconEngine) {
-    const self = this;
     return {
       apply: (text: string, entries?: unknown[]) => {
-        self.assertPermission("lexicon");
+        this.assertPermission("lexicon");
         return realEngine.apply(text, entries as Parameters<LexiconEngine["apply"]>[1]);
       },
     };

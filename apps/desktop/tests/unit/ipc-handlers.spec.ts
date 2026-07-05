@@ -32,8 +32,8 @@ vi.mock("../../src/main/services/providers/OllamaProvider.js", () => ({
 vi.mock("../../src/main/managers/SettingsManager.js", () => ({
   SettingsManager: vi.fn().mockImplementation(() => ({
     get: vi.fn((key: string) => {
-      if (key === "defaultModel") return "qwen3.5:9b";
-      if (key === "ollamaHost") return "http://localhost:11434";
+      if (key === "defaultModel") {return "qwen3.5:9b";}
+      if (key === "ollamaHost") {return "http://localhost:11434";}
       return "";
     }),
   })),

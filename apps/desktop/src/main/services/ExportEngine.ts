@@ -167,16 +167,6 @@ export class ExportEngine {
       const safeName = projectTitle.replace(/[^a-z0-9]/gi, "_");
       const outputPath = path.join(outputDir, `${safeName}.epub`);
 
-      const input: ExportInput = {
-        projectId,
-        title: projectTitle,
-        author,
-        paragraphs: allParagraphs,
-        format: "epub",
-        outputPath,
-        options,
-      };
-
       // Pour l'EPUB multi-chapitres, on génère un EPUB avec un chapitre par chapitre
       const buffer = this.toEpubMultiChapter(
         projectTitle,
@@ -538,7 +528,7 @@ p { margin: 1em 0; text-align: justify; }
 
   private toTxt(input: ExportInput): string {
     const parts: string[] = [];
-    if (input.title) parts.push(input.title, "");
+    if (input.title) {parts.push(input.title, "");}
     for (const p of input.paragraphs) {
       const prefix = this.pn(input, p.indexInChapter);
       const text = input.options?.bilingual

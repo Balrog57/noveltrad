@@ -1,7 +1,6 @@
 import { ipcMain } from "electron";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import { createProjectDatabase, runMigrations } from "../../db/connection.js";
-import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { ParagraphRepository } from "../../db/repositories/ParagraphRepository.js";
 import { ChapterRepository } from "../../db/repositories/ChapterRepository.js";
 import {
@@ -15,31 +14,6 @@ import fs from "node:fs";
 const settings = new SettingsManager();
 const migrationsDir = path.join(__dirname, "../../db/migrations");
 
-/**
- * Résout le chemin du dossier projet à partir de `projectId`.
- */
-function resolveProjectPath(projectId: string): string {
-  const recent = (settings.get("recentProjects") as string[] | undefined) ?? [];
-  const projectPath = recent.find((p) => {
-    if (!fs.existsSync(path.join(p, "project.db"))) return false;
-    const db = createProjectDatabase(p);
-    const found = new ProjectRepository(db).getById(projectId);
-    db.close();
-    return found !== undefined;
-  });
-  if (!projectPath) throw new Error(`Projet non trouvé : ${projectId}`);
-  return projectPath;
-}
-
-/**
- * Charge la base de données du projet et exécute les migrations.
- */
-function openProjectDb(projectPath: string) {
-  const db = createProjectDatabase(projectPath);
-  runMigrations(db, migrationsDir);
-  return db;
-}
-
 export function registerParagraphHandlers(): void {
   // Récupérer les paragraphes d'un chapitre
   ipcMain.handle("chapter:get-paragraphs", async (_event, payload) => {
@@ -52,7 +26,7 @@ export function registerParagraphHandlers(): void {
     let foundDb: SqliteDatabase | null = null;
 
     for (const projectPath of recent) {
-      if (!fs.existsSync(path.join(projectPath, "project.db"))) continue;
+      if (!fs.existsSync(path.join(projectPath, "project.db"))) {continue;}
       const db = createProjectDatabase(projectPath);
       runMigrations(db, migrationsDir);
       const chapter = new ChapterRepository(db).getById(chapterId);
@@ -88,7 +62,7 @@ export function registerParagraphHandlers(): void {
     let foundDb: SqliteDatabase | null = null;
 
     for (const projectPath of recent) {
-      if (!fs.existsSync(path.join(projectPath, "project.db"))) continue;
+      if (!fs.existsSync(path.join(projectPath, "project.db"))) {continue;}
       const db = createProjectDatabase(projectPath);
       runMigrations(db, migrationsDir);
       chapterRepo = new ChapterRepository(db);

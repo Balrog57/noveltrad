@@ -62,7 +62,7 @@ test.describe("Lexicon E2E", () => {
   let app: ElectronApplication;
   let window: Page;
   let projectId: string;
-  let tempFiles: string[] = [];
+  const tempFiles: string[] = [];
 
   test.beforeAll(async () => {
     try {
@@ -90,7 +90,7 @@ test.describe("Lexicon E2E", () => {
         const proj = await api.invoke("project:create", {
           name, sourceLanguage: src, targetLanguage: tgt, parentPath: "~/NovelTrad Projects"
         });
-        if (proj?.id) document.location.hash = `#/project/${proj.id}`;
+        if (proj?.id) {document.location.hash = `#/project/${proj.id}`;}
       }, { name: projectName, src: "en", tgt: "fr" });
 
       await window.waitForFunction(
@@ -123,7 +123,7 @@ test.describe("Lexicon E2E", () => {
   });
 
   test.afterAll(async () => {
-    for (const f of tempFiles) removeTempFile(f);
+    for (const f of tempFiles) {removeTempFile(f);}
     await app?.close();
   });
 

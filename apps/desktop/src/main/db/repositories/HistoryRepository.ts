@@ -281,7 +281,7 @@ export class HistoryRepository {
          WHERE hs.id = ?`,
       )
       .get([id]) as Record<string, unknown> | undefined;
-    if (!row) return null;
+    if (!row) {return null;}
 
     const snapshot = this.mapRow(row);
     snapshot.paragraphs = this.getParagraphsFromRow(row);
@@ -301,7 +301,7 @@ export class HistoryRepository {
          WHERE hs.id = ?`,
       )
       .get([snapshotId]) as Record<string, unknown> | undefined;
-    if (!row) return [];
+    if (!row) {return [];}
     return this.getParagraphsFromRow(row);
   }
 
@@ -319,7 +319,7 @@ export class HistoryRepository {
          LIMIT 1`,
       )
       .get([chapterId]) as Record<string, unknown> | undefined;
-    if (!row) return null;
+    if (!row) {return null;}
 
     const snapshot = this.mapRow(row);
     snapshot.paragraphs = this.getParagraphsFromRow(row);
@@ -337,7 +337,7 @@ export class HistoryRepository {
   ): Paragraph[] {
     const meta = this.parseMetadata(row.metadata);
     const rawData = String(row.paragraphs);
-    if (!rawData) return [];
+    if (!rawData) {return [];}
 
     // Décompresser si nécessaire
     const jsonStr = meta.isCompressed
@@ -432,7 +432,7 @@ export class HistoryRepository {
       meta.triggeredBy === "manual" ||
       meta.triggeredBy === "rollback" ||
       meta.triggeredBy === "workflow"
-        ? (meta.triggeredBy as SnapshotTrigger)
+        ? (meta.triggeredBy)
         : "workflow";
 
     const stepScore = row.step_score;

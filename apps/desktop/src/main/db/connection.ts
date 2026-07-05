@@ -391,7 +391,7 @@ export function runMigrations(db: Database, migrationsDir?: string): void {
 
   const recorded = new Map<number, string>();
   for (const m of MIGRATIONS) {
-    if (applied.has(m.version)) continue;
+    if (applied.has(m.version)) {continue;}
     if (!recorded.has(m.version)) {
       recorded.set(m.version, m.name);
     }
@@ -413,12 +413,12 @@ export function runMigrations(db: Database, migrationsDir?: string): void {
 
     for (const file of files) {
       const version = parseInt(file.split("_")[0], 10);
-      if (applied.has(version) || recorded.has(version)) continue;
+      if (applied.has(version) || recorded.has(version)) {continue;}
 
       const appliedRow = db
         .prepare("SELECT 1 FROM __migrations WHERE version = ?")
         .get([version]);
-      if (appliedRow) continue;
+      if (appliedRow) {continue;}
 
       const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
       db.exec(sql);

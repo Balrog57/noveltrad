@@ -22,7 +22,7 @@ const visible = ref(true);
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 /** Couleur de fond selon le type */
-function bgColor(): string {
+function _bgColor(): string {
   switch (props.type) {
     case "success":
       return "var(--success)";
@@ -59,14 +59,14 @@ function dismiss(): void {
 
 onMounted(() => {
   // Pas d'auto-dismiss pour les erreurs
-  if (props.type === "error") return;
+  if (props.type === "error") {return;}
   if (props.duration > 0) {
     timer = setTimeout(dismiss, props.duration);
   }
 });
 
 onUnmounted(() => {
-  if (timer) clearTimeout(timer);
+  if (timer) {clearTimeout(timer);}
 });
 </script>
 

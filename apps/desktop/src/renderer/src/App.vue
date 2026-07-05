@@ -19,7 +19,7 @@ onMounted(async () => {
 
   // Écoute les événements du menu natif
   window.novelTradAPI.on("navigate", (route: unknown) => {
-    if (typeof route === "string") router.push(route);
+    if (typeof route === "string") {router.push(route);}
   });
   window.novelTradAPI.on("menu", async (action: unknown) => {
     if (action === "open-project") {

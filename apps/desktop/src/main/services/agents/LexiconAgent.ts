@@ -13,7 +13,7 @@ export class LexiconAgent implements Agent {
   ) {}
 
   async execute(input: AgentInput): Promise<AgentOutput> {
-    if (!input.projectId || !input.text) return { text: input.text };
+    if (!input.projectId || !input.text) {return { text: input.text };}
     const result = this.lexiconEngine.apply(input.text, input.lexicon ?? []);
     return {
       text: result.text,

@@ -15,7 +15,7 @@ export class OllamaProvider implements AiProvider {
 
   async listModels(): Promise<string[]> {
     const res = await net.fetch(`${this.host}/api/tags`, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
     const data = await res.json();
     return data.models.map((m: { name: string }) => m.name);
   }
@@ -36,7 +36,7 @@ export class OllamaProvider implements AiProvider {
       }),
       signal: AbortSignal.timeout(300_000),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
     const data = await res.json();
     return data.message.content;
   }
@@ -60,14 +60,14 @@ export class OllamaProvider implements AiProvider {
       }),
       signal: AbortSignal.timeout(300_000),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
     const reader = res.body?.getReader();
-    if (!reader) throw new Error("No response body");
+    if (!reader) {throw new Error("No response body");}
     const decoder = new TextDecoder();
     let buffer = "";
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {break;}
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n").filter(Boolean);
       buffer = lines.pop() ?? "";
@@ -93,7 +93,7 @@ export class OllamaProvider implements AiProvider {
         body: JSON.stringify({ model: this.model, prompt: text }),
         signal: AbortSignal.timeout(60_000),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
       const data = await res.json();
       results.push(data.embedding);
     }

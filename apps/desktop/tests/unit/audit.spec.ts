@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { AuditService, AUDIT_ACTIONS } from "../../src/main/services/AuditService";
-import type { AuditEntry } from "@shared/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Mock SQLite DB (same pattern as tmx.spec.ts and ai-cache.spec.ts)

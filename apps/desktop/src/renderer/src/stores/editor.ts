@@ -46,19 +46,19 @@ export const useEditorStore = defineStore("editor", () => {
   /** Met à jour un paragraphe localement (marque comme modifié) */
   function updateParagraph(updated: Paragraph): void {
     const idx = paragraphs.value.findIndex((p) => p.id === updated.id);
-    if (idx === -1) return;
+    if (idx === -1) {return;}
     paragraphs.value[idx] = { ...updated };
     dirtyParagraphs.value = new Set([...dirtyParagraphs.value, updated.id]);
   }
 
   /** Sauvegarde uniquement les paragraphes modifiés via IPC */
   async function saveAll(): Promise<void> {
-    if (!chapterId.value || paragraphs.value.length === 0) return;
+    if (!chapterId.value || paragraphs.value.length === 0) {return;}
     // Fix 5 : Ne sauvegarder que les paragraphes modifiés (dirty)
     const dirtyList = paragraphs.value.filter((p) =>
       dirtyParagraphs.value.has(p.id),
     );
-    if (dirtyList.length === 0) return;
+    if (dirtyList.length === 0) {return;}
     loading.value = true;
     error.value = null;
     try {
@@ -78,7 +78,7 @@ export const useEditorStore = defineStore("editor", () => {
   /** Réinitialise un paragraphe à son état source (efface la traduction) */
   function resetParagraph(paragraphId: string): void {
     const paragraph = paragraphs.value.find((p) => p.id === paragraphId);
-    if (!paragraph) return;
+    if (!paragraph) {return;}
     paragraph.translatedText = undefined;
     paragraph.status = "pending";
     dirtyParagraphs.value = new Set([...dirtyParagraphs.value, paragraphId]);

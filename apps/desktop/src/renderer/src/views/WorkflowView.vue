@@ -1,19 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useProjectStore } from "../stores/project";
 import { useWorkflowStore } from "../stores/workflow";
-import { useLogsStore } from "../stores/logs";
 import NtProgressBar from "../components/ui/NtProgressBar.vue";
 import type { Job, Step, WorkflowStage } from "@shared/types/index.js";
 
-const route = useRoute();
-const router = useRouter();
+const _route = useRoute();
 const projectStore = useProjectStore();
 const workflowStore = useWorkflowStore();
-const logsStore = useLogsStore();
-
-const projectId = computed(() => route.params.projectId as string);
 
 /** Jobs chargés */
 const jobs = ref<Job[]>([]);
@@ -29,18 +24,8 @@ const showInputSnapshot = ref(false);
 const showOutputSnapshot = ref(false);
 
 const selectedJob = computed(() => {
-  if (!selectedJobId.value) return null;
+  if (!selectedJobId.value) {return null;}
   return jobs.value.find((j) => j.id === selectedJobId.value) ?? null;
-});
-
-/** Étapes du job sélectionné */
-const steps = computed(() => {
-  if (!selectedJob.value) return [];
-  // Les steps sont mis à jour via le progress event
-  return workflowStore.progress &&
-    workflowStore.progress.jobId === selectedJobId.value
-    ? [workflowStore.progress.step]
-    : [];
 });
 
 /** Steps stockées localement (mise à jour via progress) */
@@ -50,8 +35,8 @@ const localSteps = ref<Step[]>([]);
 watch(
   () => workflowStore.progress,
   (p) => {
-    if (!p || !selectedJobId.value) return;
-    if (p.jobId !== selectedJobId.value) return;
+    if (!p || !selectedJobId.value) {return;}
+    if (p.jobId !== selectedJobId.value) {return;}
 
     const idx = localSteps.value.findIndex((s) => s.id === p.step.id);
     if (idx >= 0) {
@@ -73,7 +58,7 @@ watch(
 
 /** Charge la liste des jobs du projet */
 async function loadJobs(): Promise<void> {
-  if (!projectStore.currentProject) return;
+  if (!projectStore.currentProject) {return;}
   try {
     jobs.value = await workflowStore.list(projectStore.currentProject.path);
   } catch {
@@ -106,7 +91,7 @@ function statusIconFor(status: string): string {
     case "pending":
       return "\u23F3"; // ⏳
     case "running":
-      return "\U0001F504"; // 🔄
+      return "\u{1F504}"; // 🔄
     case "completed":
       return "\u2705"; // ✅
     case "failed":
@@ -197,16 +182,16 @@ function jobStatusClass(status: Job["status"]): string {
 
 /** Formater la dur\u00E9e en ms */
 function formatDuration(ms?: number): string {
-  if (ms == null) return "\u2014";
-  if (ms < 1000) return `${ms}ms`;
+  if (ms == null) {return "\u2014";}
+  if (ms < 1000) {return `${ms}ms`;}
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) {return `${s}s`;}
   const m = Math.floor(s / 60);
   return `${m}min ${s % 60}s`;
 }
 
 /** Formater le timestamp */
-function formatTime(ts: number): string {
+function _formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString("fr-FR");
 }
 
@@ -216,7 +201,7 @@ function formatSnapshot(snapshot: Record<string, unknown>): string {
   const keys = Object.keys(snapshot).filter(
     (k) => k !== "model" && k !== "providerId",
   );
-  if (keys.length === 0) return JSON.stringify(snapshot, null, 2);
+  if (keys.length === 0) {return JSON.stringify(snapshot, null, 2);}
   const filtered: Record<string, unknown> = {};
   for (const key of keys) {
     filtered[key] = snapshot[key];
@@ -229,7 +214,7 @@ function formatSnapshot(snapshot: Record<string, unknown>): string {
 /** Pourcentage de progression du job */
 function jobProgress(job: Job): number {
   if (!localSteps.value.length && job.id === selectedJobId.value)
-    return job.status === "completed" ? 100 : 0;
+    {return job.status === "completed" ? 100 : 0;}
   if (job.id !== selectedJobId.value) {
     return job.status === "completed" ? 100 : job.status === "failed" ? -1 : 0;
   }
@@ -241,35 +226,35 @@ function jobProgress(job: Job): number {
 
 /** Pause le workflow */
 async function pauseWorkflow(): Promise<void> {
-  if (!selectedJobId.value) return;
+  if (!selectedJobId.value) {return;}
   await workflowStore.pause(selectedJobId.value);
   await loadJobs();
 }
 
 /** Reprend le workflow */
 async function resumeWorkflow(): Promise<void> {
-  if (!selectedJobId.value) return;
+  if (!selectedJobId.value) {return;}
   await workflowStore.resume(selectedJobId.value);
   await loadJobs();
 }
 
 /** Annule le workflow */
 async function cancelWorkflow(): Promise<void> {
-  if (!selectedJobId.value) return;
+  if (!selectedJobId.value) {return;}
   await workflowStore.cancel(selectedJobId.value);
   await loadJobs();
 }
 
 /** R\u00E9essaie une \u00E9tape */
 async function retryStep(): Promise<void> {
-  if (!selectedJobId.value || !selectedStep.value) return;
+  if (!selectedJobId.value || !selectedStep.value) {return;}
   await workflowStore.retryStep(selectedJobId.value, selectedStep.value.id);
   await loadJobs();
 }
 
 /** R\u00E9essaie \u00E0 partir d'un stage */
 async function retryFrom(): Promise<void> {
-  if (!selectedJobId.value || !selectedStep.value) return;
+  if (!selectedJobId.value || !selectedStep.value) {return;}
   await workflowStore.retryFrom(selectedJobId.value, selectedStep.value.stage);
   await loadJobs();
 }
@@ -358,7 +343,7 @@ onUnmounted(() => {
               <button
                 v-if="
                   selectedJob.status === 'running' ||
-                  selectedJob.status === 'paused'
+                    selectedJob.status === 'paused'
                 "
                 class="btn-danger"
                 @click="cancelWorkflow"

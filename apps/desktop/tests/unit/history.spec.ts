@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import zlib from "node:zlib";
 import type {
   DiffResult,
@@ -295,7 +295,7 @@ describe("HistorySnapshot / rollback logic", () => {
   });
 
   it("devrait calculer la versionNumber correctement après rollback", () => {
-    const snapshots: HistorySnapshot[] = [
+    const _snapshots: HistorySnapshot[] = [
       {
         id: "s1",
         projectId: "p1",

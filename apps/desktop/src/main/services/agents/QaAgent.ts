@@ -20,8 +20,6 @@ const CALIBRATABLE_DIMENSIONS = [
   "dialogue",
 ] as const;
 
-type CalibratableDimension = (typeof CALIBRATABLE_DIMENSIONS)[number];
-
 export class QaAgent implements Agent {
   readonly id = "qa";
   readonly name = "QA";
@@ -61,7 +59,7 @@ export class QaAgent implements Agent {
    * Si aucun CalibrationService n'est fourni, retourne le rapport tel quel.
    */
   private applyCalibration(report: QualityReport): QualityReport {
-    if (!this.calibrationService) return report;
+    if (!this.calibrationService) {return report;}
 
     const model = this.config.model;
     const calibrated: QualityReport = { ...report };

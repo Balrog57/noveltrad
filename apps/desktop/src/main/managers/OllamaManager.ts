@@ -35,7 +35,7 @@ export class OllamaManager {
   async listModels(): Promise<OllamaModelInfo[]> {
     const host = this.getHost();
     const res = await net.fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
     const parsed = await res.json();
     return (parsed.models ?? []).map((m: { name: string; size: number; details?: { parameter_size?: string; quantization_level?: string } }) => ({
       name: m.name,
@@ -60,14 +60,14 @@ export class OllamaManager {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, stream: true }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
     const reader = res.body?.getReader();
-    if (!reader) throw new Error("No response body");
+    if (!reader) {throw new Error("No response body");}
     const decoder = new TextDecoder();
     let buffer = "";
-    while (true) {
+    for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {break;}
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n").filter(Boolean);
       buffer = lines.pop() ?? "";
@@ -75,7 +75,7 @@ export class OllamaManager {
         try {
           const progress = JSON.parse(line);
           onProgress?.(progress);
-          if (progress.status === "success") return;
+          if (progress.status === "success") {return;}
         } catch { /* ignore partial lines */ }
       }
     }
@@ -95,7 +95,7 @@ export class OllamaManager {
       }),
       signal: AbortSignal.timeout(120_000),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
     const parsed = await res.json();
     return parsed.message?.content ?? "";
   }

@@ -47,12 +47,12 @@ function resolveProjectPath(projectId: string): string {
   const recent = (settings.get("recentProjects") as string[] | undefined) ?? [];
   const projectPath = recent.find((p) => {
     const dbPath = path.join(p, "project.db");
-    if (!fs.existsSync(dbPath)) return false;
+    if (!fs.existsSync(dbPath)) {return false;}
     const db = createProjectDatabase(p);
     const found = new ProjectRepository(db).getById(projectId);
     db.close();
     return found !== undefined;
   });
-  if (!projectPath) throw new Error(`Projet non trouve : ${projectId}`);
+  if (!projectPath) {throw new Error(`Projet non trouve : ${projectId}`);}
   return projectPath;
 }

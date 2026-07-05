@@ -37,13 +37,13 @@ function resolveProjectPath(projectId: string): string {
   const recent =
     (settings.get("recentProjects") as string[] | undefined) ?? [];
   const projectPath = recent.find((p) => {
-    if (!fs.existsSync(path.join(p, "project.db"))) return false;
+    if (!fs.existsSync(path.join(p, "project.db"))) {return false;}
     const db = createProjectDatabase(p);
     const found = new ProjectRepository(db).getById(projectId);
     db.close();
     return found !== undefined;
   });
-  if (!projectPath) throw new Error(`Projet non trouvé : ${projectId}`);
+  if (!projectPath) {throw new Error(`Projet non trouvé : ${projectId}`);}
   return projectPath;
 }
 
@@ -112,7 +112,7 @@ export function registerHistoryHandlers(): void {
       }
       return repo.listByProject(projectId);
     } finally {
-      if (db) db.close();
+      if (db) {db.close();}
     }
   });
 
@@ -139,7 +139,7 @@ export function registerHistoryHandlers(): void {
 
       return computeDiff(paragraphsA, paragraphsB);
     } finally {
-      if (db) db.close();
+      if (db) {db.close();}
     }
   });
 
@@ -202,7 +202,7 @@ export function registerHistoryHandlers(): void {
 
       return { success: true, snapshotId: rollbackSnapshotId };
     } finally {
-      if (db) db.close();
+      if (db) {db.close();}
     }
   });
 
@@ -279,7 +279,7 @@ export function registerHistoryHandlers(): void {
         restoredCount: selectedParagraphs.length,
       };
     } finally {
-      if (db) db.close();
+      if (db) {db.close();}
     }
   });
 
@@ -299,7 +299,7 @@ export function registerHistoryHandlers(): void {
 
       return paragraphs;
     } finally {
-      if (db) db.close();
+      if (db) {db.close();}
     }
   });
 
@@ -345,10 +345,10 @@ export function registerHistoryHandlers(): void {
         }
 
         const created = repo.getById(snapshotId);
-        if (!created) throw new Error("Échec de création du snapshot.");
+        if (!created) {throw new Error("Échec de création du snapshot.");}
         return created;
       } finally {
-        if (db) db.close();
+        if (db) {db.close();}
       }
     },
   );
@@ -373,7 +373,7 @@ export function registerHistoryHandlers(): void {
 
       return entries;
     } finally {
-      if (db) db.close();
+      if (db) {db.close();}
     }
   });
 }

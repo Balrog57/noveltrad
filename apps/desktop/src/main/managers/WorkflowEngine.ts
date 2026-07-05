@@ -99,7 +99,7 @@ class WorkflowRunner extends EventEmitter {
 
     const projectRepo = new ProjectRepository(this.db);
     const found = projectRepo.getByPath(projectPath);
-    if (!found) throw new Error(`Projet non trouve : ${projectPath}`);
+    if (!found) {throw new Error(`Projet non trouve : ${projectPath}`);}
     this.project = found;
 
     this.sourceLanguage = this.project.sourceLanguage;
@@ -158,7 +158,7 @@ class WorkflowRunner extends EventEmitter {
   }
 
   async startBatch(chapterIds: string[]): Promise<Job> {
-    if (chapterIds.length === 0) throw new Error("Aucun chapitre selectionne");
+    if (chapterIds.length === 0) {throw new Error("Aucun chapitre selectionne");}
 
     this.job = {
       id: crypto.randomUUID(),
@@ -211,7 +211,7 @@ class WorkflowRunner extends EventEmitter {
   private async runSingle(chapterId?: string): Promise<Job> {
     if (chapterId) {
       this.chapter = this.chapterRepo.getById(chapterId);
-      if (!this.chapter) throw new Error(`Chapitre non trouve : ${chapterId}`);
+      if (!this.chapter) {throw new Error(`Chapitre non trouve : ${chapterId}`);}
       this.paragraphs = this.paragraphRepo.listByChapter(chapterId);
     }
 
@@ -332,13 +332,13 @@ class WorkflowRunner extends EventEmitter {
 
   async retryStep(stepId: string): Promise<void> {
     const step = this.steps.find((s) => s.id === stepId);
-    if (!step) throw new Error(`Etape inconnue : ${stepId}`);
+    if (!step) {throw new Error(`Etape inconnue : ${stepId}`);}
     await this.runStep(step);
   }
 
   async retryFrom(stage: WorkflowStage): Promise<void> {
     const startIndex = STAGES.indexOf(stage);
-    if (startIndex === -1) throw new Error(`Stage inconnu : ${stage}`);
+    if (startIndex === -1) {throw new Error(`Stage inconnu : ${stage}`);}
     for (let i = startIndex; i < this.steps.length; i++) {
       const step = this.steps[i];
       step.status = "pending";
@@ -656,10 +656,10 @@ class WorkflowRunner extends EventEmitter {
    * traduits du chapitre courant.
    */
   private async storeEmbeddingsForChapter(): Promise<void> {
-    if (!this.chapter || !this.ragEngine) return;
+    if (!this.chapter || !this.ragEngine) {return;}
 
     for (const paragraph of this.paragraphs) {
-      if (!paragraph.translatedText) continue;
+      if (!paragraph.translatedText) {continue;}
       try {
         const embedding = await this.ragEngine.computeEmbedding(
           paragraph.sourceText,

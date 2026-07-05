@@ -64,23 +64,23 @@ const MAX_MESSAGE_LENGTH = 1000;
 
 /** Check whether `obj` is a plain object with at least one known LogContext key. */
 function isLogContext(obj: unknown): obj is LogContext {
-  if (typeof obj !== "object" || obj === null) return false;
-  if (obj instanceof Error) return false;
-  if (Array.isArray(obj)) return false;
+  if (typeof obj !== "object" || obj === null) {return false;}
+  if (obj instanceof Error) {return false;}
+  if (Array.isArray(obj)) {return false;}
   return Object.keys(obj).some((key) => KNOWN_CONTEXT_KEYS.has(key));
 }
 
 /** Check whether `obj` is a plain (non-Error, non-Array) object. */
 function isPlainObject(obj: unknown): obj is Record<string, unknown> {
-  if (typeof obj !== "object" || obj === null) return false;
-  if (obj instanceof Error) return false;
-  if (Array.isArray(obj)) return false;
+  if (typeof obj !== "object" || obj === null) {return false;}
+  if (obj instanceof Error) {return false;}
+  if (Array.isArray(obj)) {return false;}
   return true;
 }
 
 /** Recursively redact sensitive keys in-place. */
 function redactSensitiveData(value: unknown): unknown {
-  if (typeof value !== "object" || value === null) return value;
+  if (typeof value !== "object" || value === null) {return value;}
 
   if (Array.isArray(value)) {
     return value.map(redactSensitiveData);
@@ -168,19 +168,19 @@ export class StructuredLogger {
 
     if (args.length === 1 && args[0] instanceof Error) {
       // Old-style: logger.error("msg", error)
-      const err = args[0] as Error;
+      const err = args[0];
       entry.error = err.stack || err.message;
     } else if (args.length === 1 && isLogContext(args[0])) {
       // New-style: logger.info("msg", { correlationId: "x", durationMs: 100 })
       // Also accepts arbitrary fields (e.g. apiKey, which will be redacted below)
       const ctx = args[0] as Record<string, unknown>;
-      if (ctx.correlationId !== undefined) entry.correlationId = String(ctx.correlationId);
-      if (ctx.durationMs !== undefined) entry.durationMs = Number(ctx.durationMs);
-      if (ctx.tokensIn !== undefined) entry.tokensIn = Number(ctx.tokensIn);
-      if (ctx.tokensOut !== undefined) entry.tokensOut = Number(ctx.tokensOut);
-      if (ctx.error !== undefined) entry.error = String(ctx.error);
-      if (ctx.projectId !== undefined) entry.projectId = String(ctx.projectId);
-      if (ctx.chapterId !== undefined) entry.chapterId = String(ctx.chapterId);
+      if (ctx.correlationId !== undefined) {entry.correlationId = String(ctx.correlationId);}
+      if (ctx.durationMs !== undefined) {entry.durationMs = Number(ctx.durationMs);}
+      if (ctx.tokensIn !== undefined) {entry.tokensIn = Number(ctx.tokensIn);}
+      if (ctx.tokensOut !== undefined) {entry.tokensOut = Number(ctx.tokensOut);}
+      if (ctx.error !== undefined) {entry.error = String(ctx.error);}
+      if (ctx.projectId !== undefined) {entry.projectId = String(ctx.projectId);}
+      if (ctx.chapterId !== undefined) {entry.chapterId = String(ctx.chapterId);}
       // Pass through any extra keys not explicitly handled (they'll be redacted)
       for (const key of Object.keys(ctx)) {
         if (!KNOWN_CONTEXT_KEYS.has(key) && !(key in entry)) {
@@ -190,7 +190,7 @@ export class StructuredLogger {
     } else if (args.length === 1 && isPlainObject(args[0])) {
       // Old-style: logger.info("msg", { arbitrary: "fields" })
       // Merge fields into the entry (they will be redacted below)
-      Object.assign(entry, args[0] as Record<string, unknown>);
+      Object.assign(entry, args[0]);
     } else if (args.length > 0) {
       // Multiple unstructured extra args → keep as extra array
       entry.extra = args.map((a) => (a instanceof Error ? a.stack || a.message : a));
@@ -228,7 +228,7 @@ function configureTransports(): void {
     if (electronLog.transports?.console) {
       electronLog.transports.console.format = ({ data }: { data: unknown[] }) => {
         if (isStructuredEntry(data)) {
-          const entry = data[0] as LogEntry;
+          const entry = data[0];
           const ts = entry.timestamp.slice(0, 19).replace("T", " ");
           let text = `[${ts}] [${entry.level}] [${entry.component}] ${entry.message}`;
           if (entry.durationMs !== undefined) {

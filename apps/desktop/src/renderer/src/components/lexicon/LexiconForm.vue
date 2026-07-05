@@ -88,7 +88,7 @@ function addAlias(): void {
   form.value.aliases.push("");
 }
 function removeAlias(idx: number): void {
-  if (form.value.aliases.length <= 1) return;
+  if (form.value.aliases.length <= 1) {return;}
   form.value.aliases.splice(idx, 1);
 }
 
@@ -96,7 +96,7 @@ function addForbidden(): void {
   form.value.forbidden.push("");
 }
 function removeForbidden(idx: number): void {
-  if (form.value.forbidden.length <= 1) return;
+  if (form.value.forbidden.length <= 1) {return;}
   form.value.forbidden.splice(idx, 1);
 }
 
@@ -114,7 +114,7 @@ function validate(): boolean {
 
 // --- Soumission ---
 function onSubmit(): void {
-  if (!validate()) return;
+  if (!validate()) {return;}
   const entry: LexiconEntry = {
     id: props.entry?.id ?? crypto.randomUUID(),
     projectId: props.entry?.projectId ?? "",
@@ -152,7 +152,7 @@ function onCancel(): void {
           type="text"
           class="form-input"
           placeholder="Ex : 功法"
-        />
+        >
         <p v-if="errors.term" class="form-error">{{ errors.term }}</p>
       </div>
 
@@ -167,7 +167,7 @@ function onCancel(): void {
           type="text"
           class="form-input"
           placeholder="Ex : Technique de cultivation"
-        />
+        >
         <p v-if="errors.translation" class="form-error">
           {{ errors.translation }}
         </p>
@@ -233,7 +233,7 @@ function onCancel(): void {
             type="text"
             class="form-input"
             placeholder="Alias..."
-          />
+          >
           <button type="button" class="form-list-btn" @click="removeAlias(idx)">
             ✕
           </button>
@@ -279,7 +279,7 @@ function onCancel(): void {
           class="form-range"
           min="0"
           max="10"
-        />
+        >
         <div class="range-labels">
           <span>0 (basse)</span>
           <span>10 (haute)</span>
@@ -289,11 +289,9 @@ function onCancel(): void {
       <!-- Verrouillage -->
       <div class="form-group">
         <label class="form-checkbox">
-          <input v-model="form.locked" type="checkbox" />
-          <span
-            >Verrouillage (la traduction ne sera pas modifiée
-            automatiquement)</span
-          >
+          <input v-model="form.locked" type="checkbox">
+          <span>Verrouillage (la traduction ne sera pas modifiée
+            automatiquement)</span>
         </label>
       </div>
 
@@ -310,7 +308,7 @@ function onCancel(): void {
             type="text"
             class="form-input"
             placeholder="Traduction à éviter..."
-          />
+          >
           <button
             type="button"
             class="form-list-btn"
@@ -333,7 +331,7 @@ function onCancel(): void {
           type="text"
           class="form-input"
           placeholder="Ex : gōng fǎ"
-        />
+        >
       </div>
     </form>
 

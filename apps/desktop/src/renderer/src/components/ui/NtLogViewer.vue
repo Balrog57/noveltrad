@@ -34,7 +34,7 @@ let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Fait défiler vers le bas si autoScroll est activé */
 function scrollToBottom(): void {
-  if (!props.autoScroll || !scrollRef.value) return;
+  if (!props.autoScroll || !scrollRef.value) {return;}
   scrollRef.value.scrollTop = scrollRef.value.scrollHeight;
 }
 
@@ -42,7 +42,7 @@ function scrollToBottom(): void {
 watch(
   () => props.entries.length,
   () => {
-    if (scrollTimer) clearTimeout(scrollTimer);
+    if (scrollTimer) {clearTimeout(scrollTimer);}
     scrollTimer = setTimeout(() => {
       nextTick(scrollToBottom);
     }, 0);
@@ -50,7 +50,7 @@ watch(
 );
 
 onUnmounted(() => {
-  if (scrollTimer) clearTimeout(scrollTimer);
+  if (scrollTimer) {clearTimeout(scrollTimer);}
 });
 
 /** Classe CSS selon le niveau */

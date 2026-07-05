@@ -95,14 +95,14 @@ function nextStep(): void {
   }
   if (step.value < totalSteps) {
     step.value++;
-    if (step.value === 2) detectOllama();
-    if (step.value === 3) detectModel();
-    if (step.value === 5) void settings.set("firstRunCompleted", true);
+    if (step.value === 2) {detectOllama();}
+    if (step.value === 3) {detectModel();}
+    if (step.value === 5) {void settings.set("firstRunCompleted", true);}
   }
 }
 
 function prevStep(): void {
-  if (step.value > 1) step.value--;
+  if (step.value > 1) {step.value--;}
 }
 
 function skip(): void {
@@ -152,7 +152,7 @@ async function detectModel(): Promise<void> {
 }
 
 async function pullModel(): Promise<void> {
-  if (pullingModel.value) return;
+  if (pullingModel.value) {return;}
   pullingModel.value = true;
   pullPercent.value = -1; // indéterminé
   pullStatus.value = "Préparation du téléchargement...";
@@ -264,10 +264,8 @@ onBeforeUnmount(() => {
             </template>
             <template v-else-if="ollamaStatus === 'available'">
               <span class="status-dot ok" />
-              <span
-                >✅ Ollama détecté — {{ ollama.models.length }} modèle(s)
-                trouvé(s)</span
-              >
+              <span>✅ Ollama détecté — {{ ollama.models.length }} modèle(s)
+                trouvé(s)</span>
             </template>
             <template v-else>
               <span class="status-dot error" />
@@ -366,7 +364,7 @@ onBeforeUnmount(() => {
                 v-model="projectsPath"
                 type="text"
                 placeholder="~/NovelTrad Projects"
-              />
+              >
             </label>
           </div>
         </div>

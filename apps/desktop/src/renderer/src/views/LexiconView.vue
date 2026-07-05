@@ -6,7 +6,7 @@ import { useProjectStore } from "../stores/project";
 import LexiconTable from "../components/lexicon/LexiconTable.vue";
 import LexiconForm from "../components/lexicon/LexiconForm.vue";
 import NtModal from "../components/ui/NtModal.vue";
-import type { LexiconEntry, CandidateTerm, LexiconSuggestion } from "@shared/types/index.js";
+import type { LexiconEntry, LexiconSuggestion } from "@shared/types/index.js";
 
 const route = useRoute();
 const lexiconStore = useLexiconStore();
@@ -74,7 +74,7 @@ function handleCancel(): void {
 }
 
 async function handleDelete(entry: LexiconEntry): Promise<void> {
-  if (!confirm(`Supprimer l'entrée "${entry.term}" ?`)) return;
+  if (!confirm(`Supprimer l'entrée "${entry.term}" ?`)) {return;}
   await lexiconStore.deleteEntry(entry.id, projectId.value);
 }
 
@@ -102,7 +102,7 @@ function openImport(): void {
 }
 
 async function doImport(): Promise<void> {
-  if (!importData.value.trim()) return;
+  if (!importData.value.trim()) {return;}
   await lexiconStore.importLexicon(
     projectId.value,
     importFormat.value,
@@ -150,7 +150,7 @@ async function openCandidates(): Promise<void> {
 }
 
 async function doExtract(): Promise<void> {
-  if (!candidateText.value.trim()) return;
+  if (!candidateText.value.trim()) {return;}
   await lexiconStore.extractCandidates(
     candidateText.value,
     projectStore.currentProject?.sourceLanguage ?? "auto",
@@ -188,7 +188,7 @@ function openSuggestModal(): void {
 }
 
 async function doSuggest(): Promise<void> {
-  if (!suggestTerm.value.trim()) return;
+  if (!suggestTerm.value.trim()) {return;}
   await lexiconStore.suggestTranslation(
     suggestTerm.value.trim(),
     suggestContext.value.trim(),
@@ -214,7 +214,7 @@ function applySuggestion(suggestion: LexiconSuggestion): void {
 
 async function addSelectedCandidates(): Promise<void> {
   for (const candidate of lexiconStore.candidates) {
-    if (!selectedCandidates.value.has(candidate.term)) continue;
+    if (!selectedCandidates.value.has(candidate.term)) {continue;}
     const entry: LexiconEntry = {
       id: crypto.randomUUID(),
       projectId: projectId.value,
@@ -244,7 +244,7 @@ async function addSelectedCandidates(): Promise<void> {
             type="text"
             class="search-input"
             placeholder="Rechercher un terme, une traduction…"
-          />
+          >
         </div>
         <!-- Filtre par catégorie -->
         <select v-model="lexiconStore.categoryFilter" class="filter-select">
@@ -373,7 +373,7 @@ async function addSelectedCandidates(): Promise<void> {
     <div v-if="showConflictsPanel" class="conflicts-panel">
       <div class="conflicts-header">
         <h3>⚠️ Conflits détectés ({{ lexiconStore.conflicts.length }})</h3>
-        <button class="btn-icon" @click="closeConflicts" title="Fermer">&times;</button>
+        <button class="btn-icon" title="Fermer" @click="closeConflicts">&times;</button>
       </div>
       <div v-if="lexiconStore.loading" class="loading-msg">Analyse en cours…</div>
       <div v-else class="conflicts-list">
@@ -405,7 +405,7 @@ async function addSelectedCandidates(): Promise<void> {
             type="text"
             class="form-input"
             placeholder="Entrez un terme inconnu…"
-          />
+          >
         </div>
         <div class="form-group">
           <label class="form-label">Contexte (optionnel)</label>
@@ -497,7 +497,7 @@ async function addSelectedCandidates(): Promise<void> {
                 type="checkbox"
                 :checked="selectedCandidates.has(c.term)"
                 @change="toggleCandidate(c.term)"
-              />
+              >
               <span class="candidate-term">{{ c.term }}</span>
             </label>
             <span class="candidate-occ"> {{ c.occurrences }} occ. </span>

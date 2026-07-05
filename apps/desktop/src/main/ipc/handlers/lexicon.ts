@@ -17,7 +17,6 @@ import {
   lexiconSuggestSchema,
 } from "@shared/schemas/lexicon.js";
 import type { LexiconEntry } from "@shared/types/index.js";
-import type { Database as SqliteDatabase } from "node-sqlite3-wasm";
 import path from "node:path";
 import fs from "node:fs";
 import { assertWithinProject } from "../../utils/paths.js";
@@ -32,13 +31,13 @@ const lexiconEngine = new LexiconEngine();
 function resolveProjectPath(projectId: string): string {
   const recent = (settings.get("recentProjects") as string[] | undefined) ?? [];
   const projectPath = recent.find((p) => {
-    if (!fs.existsSync(path.join(p, "project.db"))) return false;
+    if (!fs.existsSync(path.join(p, "project.db"))) {return false;}
     const db = createProjectDatabase(p);
     const found = new ProjectRepository(db).getById(projectId);
     db.close();
     return found !== undefined;
   });
-  if (!projectPath) throw new Error(`Projet non trouvé : ${projectId}`);
+  if (!projectPath) {throw new Error(`Projet non trouvé : ${projectId}`);}
   // SDD §21.3 — Vérifier que le chemin projet est dans un répertoire légitime
   const allRecent = (settings.get("recentProjects") as string[] | undefined) ?? [];
   const validBase = allRecent.find((base) => {
@@ -169,12 +168,11 @@ export function registerLexiconHandlers(): void {
 
   // Suggérer une traduction pour un terme inconnu via IA
   ipcMain.handle("lexicon:suggest", async (_event, payload) => {
-    const { term, context, projectId } = lexiconSuggestSchema.parse(payload);
+    const { term, context } = lexiconSuggestSchema.parse(payload);
 
-    // Résoudre le chemin projet et récupérer les paramètres LLM
-    const projectPath = resolveProjectPath(projectId);
-    const ollamaHost = (settings.get("ollamaHost") as string) ?? "http://localhost:11434";
-    const defaultModel = (settings.get("defaultModel") as string) ?? "qwen3.5:9b";
+    // Récupérer les paramètres LLM
+    const ollamaHost = (settings.get("ollamaHost")) ?? "http://localhost:11434";
+    const defaultModel = (settings.get("defaultModel")) ?? "qwen3.5:9b";
 
     // Créer un AiRouter avec le provider Ollama
     const aiRouter = new AiRouter();
@@ -220,7 +218,7 @@ function parseImportData(
     case "tsv": {
       const sep = format === "csv" ? "," : "\t";
       const lines = data.trim().split("\n");
-      if (lines.length < 2) return [];
+      if (lines.length < 2) {return [];}
       const headers = parseCsvLine(lines[0], sep);
       const entries: LexiconEntry[] = [];
       for (let i = 1; i < lines.length; i++) {
@@ -278,11 +276,11 @@ function mapFromDb(entry: LexiconEntry): LexiconEntry {
   const meta = entry.metadata ?? {};
   return {
     ...entry,
-    gender: (meta as Record<string, unknown>).gender
-      ? String((meta as Record<string, unknown>).gender)
+    gender: (meta).gender
+      ? String((meta).gender)
       : undefined,
-    pronunciation: (meta as Record<string, unknown>).pronunciation
-      ? String((meta as Record<string, unknown>).pronunciation)
+    pronunciation: (meta).pronunciation
+      ? String((meta).pronunciation)
       : undefined,
   };
 }
@@ -292,8 +290,8 @@ function mapFromDb(entry: LexiconEntry): LexiconEntry {
  */
 function mapToDb(entry: LexiconEntry): LexiconEntry {
   const meta: Record<string, unknown> = { ...(entry.metadata ?? {}) };
-  if (entry.gender) meta.gender = entry.gender;
-  if (entry.pronunciation) meta.pronunciation = entry.pronunciation;
+  if (entry.gender) {meta.gender = entry.gender;}
+  if (entry.pronunciation) {meta.pronunciation = entry.pronunciation;}
   return {
     ...entry,
     metadata: Object.keys(meta).length > 0 ? meta : undefined,

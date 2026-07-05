@@ -74,7 +74,7 @@ function onInput(event: Event): void {
         :aria-invalid="hasError || undefined"
         :aria-describedby="error ? `${inputId}-error` : undefined"
         @input="onInput"
-      />
+      >
     </div>
     <p
       v-if="error"

@@ -64,7 +64,7 @@ export class LexiconEngine {
     if (isChinese) {
       // Nettoyer : retirer ponctuation et espaces
       const cleaned = text.replace(
-        /[\s，。！？；：“”‘’「」『』、…\.\?,;:!"'\s]+/g,
+        /[\s，。！？；：""''「」『』、….,?!;:"'!\s]+/g,
         "",
       );
       // Extraire groupes de 2-6 caractères chinois
@@ -72,7 +72,7 @@ export class LexiconEngine {
         for (let i = 0; i <= cleaned.length - len; i++) {
           const gram = cleaned.slice(i, i + len);
           // Ignorer si contient des caractères non-chinois
-          if (!/^[\u4e00-\u9fff]+$/.test(gram)) continue;
+          if (!/^[\u4e00-\u9fff]+$/.test(gram)) {continue;}
           frequency.set(gram, (frequency.get(gram) ?? 0) + 1);
         }
       }
@@ -113,11 +113,11 @@ export class LexiconEngine {
   private guessCategory(term: string, language: string): string {
     // Catégories basées sur des patterns communs
     if (language === "zh") {
-      if (/[姓名称号]/.test(term)) return "personnage";
-      if (/[国城山湖海河州府镇村]/.test(term)) return "lieu";
-      if (/[功法术技招式]/.test(term)) return "technique";
-      if (/[剑刀枪弓棍斧锤鞭]/.test(term)) return "arme";
-      if (/[丹丹药草花]/.test(term)) return "objet";
+      if (/[姓名称号]/.test(term)) {return "personnage";}
+      if (/[国城山湖海河州府镇村]/.test(term)) {return "lieu";}
+      if (/[功法术技招式]/.test(term)) {return "technique";}
+      if (/[剑刀枪弓棍斧锤鞭]/.test(term)) {return "arme";}
+      if (/[丹丹药草花]/.test(term)) {return "objet";}
     } else {
       const lower = term.toLowerCase();
       if (
@@ -125,21 +125,21 @@ export class LexiconEngine {
           lower,
         )
       )
-        return "personnage";
+        {return "personnage";}
       if (
         /\b(city|village|kingdom|mountain|river|palace|temple|cave|forest)\b/.test(
           lower,
         )
       )
-        return "lieu";
+        {return "lieu";}
       if (/\b(sword|blade|spear|bow|staff|dagger|axe|hammer)\b/.test(lower))
-        return "arme";
+        {return "arme";}
       if (
         /\b(skill|technique|art|spell|magic|formation|pill|elixir)\b/.test(
           lower,
         )
       )
-        return "technique";
+        {return "technique";}
     }
     return "general";
   }
@@ -256,7 +256,7 @@ export class LexiconEngine {
 
         // Éviter les paires déjà vues
         const pairKey = `${a.id}:${b.id}`;
-        if (seen.has(pairKey)) continue;
+        if (seen.has(pairKey)) {continue;}
         seen.add(pairKey);
 
         // 1. Duplicate term : même normalisé

@@ -29,11 +29,11 @@ export class AiRouter {
   get(id: string): AiProvider {
     // SDD §15 : vérifier d'abord les providers built-in
     const provider = this.providers.get(id);
-    if (provider) return provider;
+    if (provider) {return provider;}
     // SDD §15 : puis vérifier les plugins
     if (this.getPluginProviderFn) {
       const pluginProvider = this.getPluginProviderFn(id);
-      if (pluginProvider) return pluginProvider;
+      if (pluginProvider) {return pluginProvider;}
     }
     throw new Error(`Provider inconnu : ${id}`);
   }

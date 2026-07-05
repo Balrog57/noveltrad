@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref } from "vue";
 import type { DiffResult, ParagraphChange } from "@shared/types/index.js";
 import { diff_match_patch as DiffMatchPatch } from "diff-match-patch";
 import NtSplitPane from "../editor/NtSplitPane.vue";
@@ -70,7 +70,7 @@ function changeLabel(change: ParagraphChange): string {
 function paragraphLineDiffs(
   change: ParagraphChange,
 ): Array<{ type: "equal" | "added" | "removed"; text: string }> | null {
-  if (!showLineLevel.value) return null;
+  if (!showLineLevel.value) {return null;}
   if (change.type === "added" && change.targetAfter) {
     return lineDiff("", change.targetAfter);
   }
@@ -92,14 +92,14 @@ function toggleMode(): void {
 <template>
   <div class="nt-diff-viewer">
     <div class="diff-toolbar">
-      <span class="diff-stats" v-if="diff">
+      <span v-if="diff" class="diff-stats">
         {{ diff.changes.length }} changement{{
           diff.changes.length > 1 ? "s" : ""
         }}
       </span>
       <div class="diff-toggle-group">
         <label class="toggle-label">
-          <input type="checkbox" v-model="showLineLevel" />
+          <input v-model="showLineLevel" type="checkbox">
           Afficher au niveau ligne
         </label>
         <button class="btn-mode" @click="toggleMode">

@@ -34,7 +34,7 @@ class MockCalibrationDatabase {
           const dimension = params[1] as string;
           const key = `${model}:${dimension}`;
           const row = this.rows.get(key);
-          if (!row) return undefined;
+          if (!row) {return undefined;}
           return {
             model: row.model,
             dimension: row.dimension,

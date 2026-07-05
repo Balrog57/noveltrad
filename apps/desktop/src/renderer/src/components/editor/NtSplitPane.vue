@@ -67,7 +67,7 @@ function onDividerMouseDown(e: MouseEvent): void {
 }
 
 function onMouseMove(e: MouseEvent): void {
-  if (!dragging || !containerRef.value) return;
+  if (!dragging || !containerRef.value) {return;}
   const dx = e.clientX - startX;
   const totalWidth = containerRef.value.offsetWidth;
   const newPercent = startPercent + (dx / totalWidth) * 100;

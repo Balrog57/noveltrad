@@ -23,11 +23,8 @@ import type {
   PluginManifest,
   NovelTradPlugin,
   PluginPermission,
-  PluginStatus,
 } from "@shared/types/index.js";
 import { SENSITIVE_PERMISSIONS } from "@shared/types/index.js";
-import type { AiRouter } from "../services/AiRouter.js";
-import type { LexiconEngine } from "../services/LexiconEngine.js";
 import type { ExportEngine } from "../services/ExportEngine.js";
 import { logger } from "../utils/logger.js";
 import { assertWithinProject } from "../utils/paths.js";
@@ -242,7 +239,7 @@ export class PluginHost {
    */
   async deactivatePlugin(pluginId: string): Promise<void> {
     const loaded = this.plugins.get(pluginId);
-    if (!loaded) return;
+    if (!loaded) {return;}
 
     // Appeler deactivate()
     try {
@@ -329,7 +326,7 @@ export class PluginHost {
 
         // Si le plugin a des permissions sensibles et n'est pas encore activé
         const hasSensitive = manifest.permissions?.some((p: PluginPermission) =>
-          (SENSITIVE_PERMISSIONS as readonly PluginPermission[]).includes(p),
+          (SENSITIVE_PERMISSIONS).includes(p),
         );
 
         if (hasSensitive && this.enabledPluginIds.has(manifest.id)) {
@@ -392,8 +389,8 @@ export class PluginHost {
 
   /** Valide le nonce de permissions */
   validatePermissionNonce(nonce: string): boolean {
-    if (!this.permissionNonce) return false;
-    if (Date.now() > this.permissionNonceExpiry) return false;
+    if (!this.permissionNonce) {return false;}
+    if (Date.now() > this.permissionNonceExpiry) {return false;}
     return this.permissionNonce === nonce;
   }
 
@@ -448,7 +445,7 @@ export class PluginHost {
   /** Récupère la configuration runtime d'un plugin depuis son PluginContext */
   getPluginConfig(pluginId: string): Record<string, unknown> {
     const plugin = this.plugins.get(pluginId);
-    if (!plugin?.context) return {};
+    if (!plugin?.context) {return {};}
     return (plugin.context as PluginContext).getConfig<Record<string, unknown>>();
   }
 
@@ -468,20 +465,20 @@ export class PluginHost {
    * Débounce de 500ms pour éviter les reloads multiples.
    */
   watch(callback?: PluginChangeCallback): void {
-    if (!process.env.VITE_DEV_SERVER_URL) return; // Désactivé en production
+    if (!process.env.VITE_DEV_SERVER_URL) {return;} // Désactivé en production
 
     if (callback) {
       this.changeCallbacks.push(callback);
     }
 
-    if (this.watcher) return; // Déjà en cours
+    if (this.watcher) {return;} // Déjà en cours
 
     let debounceTimer: NodeJS.Timeout | null = null;
 
     this.watcher = fs.watch(this.pluginDir, { recursive: true }, (eventType, filename) => {
-      if (debounceTimer) clearTimeout(debounceTimer);
+      if (debounceTimer) {clearTimeout(debounceTimer);}
       debounceTimer = setTimeout(async () => {
-        if (!filename) return;
+        if (!filename) {return;}
 
         // Déterminer quel plugin est concerné
         const parts = filename.split(path.sep);
@@ -489,7 +486,7 @@ export class PluginHost {
 
         // Trouver le plugin par son dossier
         const pluginId = this.findPluginIdByFolder(pluginFolder);
-        if (!pluginId) return;
+        if (!pluginId) {return;}
 
         logger.info(`[PluginHost] Hot-reload détecté pour "${pluginFolder}"`);
 
@@ -545,7 +542,7 @@ export class PluginHost {
    * Enregistre les contributions déclarées dans le manifest.
    */
   private registerContributions(manifest: PluginManifest, instance: NovelTradPlugin): void {
-    if (!manifest.contributions) return;
+    if (!manifest.contributions) {return;}
 
     // Agents
     if (manifest.contributions.agents) {
@@ -594,7 +591,7 @@ export class PluginHost {
    * (et non une fonction dynamique enregistrée par activate()).
    */
   private unregisterContributions(manifest: PluginManifest, instance: NovelTradPlugin): void {
-    if (!manifest.contributions) return;
+    if (!manifest.contributions) {return;}
 
     if (manifest.contributions.agents) {
       for (const agent of manifest.contributions.agents) {
@@ -654,7 +651,7 @@ export class PluginHost {
   private findPluginIdByFolder(folderName: string): string | undefined {
     for (const [id, loaded] of this.plugins) {
       const expectedFolder = this.getPluginFolderName(loaded.manifest);
-      if (expectedFolder === folderName) return id;
+      if (expectedFolder === folderName) {return id;}
     }
     return undefined;
   }

@@ -14,7 +14,7 @@ export function registerSettingsHandlers(): void {
       .object({ key: settingsKeySchema.optional() })
       .parse({ key });
     if (parsed.key)
-      return settings.get(parsed.key as keyof ReturnType<typeof settings.getAll>);
+      {return settings.get(parsed.key as keyof ReturnType<typeof settings.getAll>);}
     return settings.getAll();
   });
 

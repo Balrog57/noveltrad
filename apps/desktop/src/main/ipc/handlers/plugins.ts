@@ -15,8 +15,8 @@
 
 import { ipcMain } from "electron";
 import { z } from "zod";
-import { PluginHost } from "../../plugins/PluginHost.js";
-import { SettingsManager } from "../../managers/SettingsManager.js";
+import type { PluginHost } from "../../plugins/PluginHost.js";
+import type { SettingsManager } from "../../managers/SettingsManager.js";
 import { logger } from "../../utils/logger.js";
 import type { PluginPermission } from "@shared/types/index.js";
 import { SENSITIVE_PERMISSIONS } from "@shared/types/index.js";
@@ -63,7 +63,7 @@ let pendingPermissions: SensitivePluginInfo = [];
 
 export function registerPluginHandlers(): void {
   ipcMain.handle("plugin:list", () => {
-    if (!pluginHost) return [];
+    if (!pluginHost) {return [];}
     return pluginHost.list().map((p) => ({
       id: p.manifest.id,
       name: p.manifest.name,
@@ -80,16 +80,16 @@ export function registerPluginHandlers(): void {
 
   ipcMain.handle("plugin:enable", async (_event, pluginId: unknown) => {
     const id = pluginIdSchema.parse(pluginId);
-    if (!pluginHost) throw new Error("PluginHost non initialisé");
+    if (!pluginHost) {throw new Error("PluginHost non initialisé");}
     const plugin = pluginHost.get(id);
-    if (!plugin) throw new Error(`Plugin inconnu : ${id}`);
+    if (!plugin) {throw new Error(`Plugin inconnu : ${id}`);}
 
     // SDD §21.4 — Vérifier les permissions sensibles :
     // un plugin demandant project-write, fs-write ou network ne peut pas
     // être activé directement via plugin:enable. L'utilisateur doit passer
     // par le flux plugin:request-permissions → plugin:confirm-permissions.
     const hasSensitive = plugin.manifest.permissions?.some((p: PluginPermission) =>
-      (SENSITIVE_PERMISSIONS as readonly PluginPermission[]).includes(p),
+      (SENSITIVE_PERMISSIONS).includes(p),
     );
     if (hasSensitive) {
       return {
@@ -115,7 +115,7 @@ export function registerPluginHandlers(): void {
 
   ipcMain.handle("plugin:disable", async (_event, pluginId: unknown) => {
     const id = pluginIdSchema.parse(pluginId);
-    if (!pluginHost) throw new Error("PluginHost non initialisé");
+    if (!pluginHost) {throw new Error("PluginHost non initialisé");}
     try {
       await pluginHost.deactivatePlugin(id);
       // Persister l'état
@@ -133,7 +133,7 @@ export function registerPluginHandlers(): void {
 
   ipcMain.handle("plugin:uninstall", async (_event, pluginId: unknown) => {
     const id = pluginIdSchema.parse(pluginId);
-    if (!pluginHost) throw new Error("PluginHost non initialisé");
+    if (!pluginHost) {throw new Error("PluginHost non initialisé");}
     try {
       await pluginHost.uninstallPlugin(id);
       if (settingsManager) {
@@ -158,7 +158,7 @@ export function registerPluginHandlers(): void {
 
   ipcMain.handle("plugin:get-config", async (_event, pluginId: unknown) => {
     const id = pluginIdSchema.parse(pluginId);
-    if (!pluginHost) throw new Error("PluginHost non initialisé");
+    if (!pluginHost) {throw new Error("PluginHost non initialisé");}
     try {
       const plugin = pluginHost.get(id);
       const config = pluginHost.getPluginConfig(id);
@@ -175,7 +175,7 @@ export function registerPluginHandlers(): void {
 
   ipcMain.handle("plugin:set-config", async (_event, pluginId: unknown, config: unknown) => {
     const parsed = setConfigSchema.parse({ pluginId, config });
-    if (!pluginHost) throw new Error("PluginHost non initialisé");
+    if (!pluginHost) {throw new Error("PluginHost non initialisé");}
     try {
       pluginHost.setPluginConfig(parsed.pluginId, parsed.config as Record<string, unknown>);
       return { success: true };
@@ -190,7 +190,7 @@ export function registerPluginHandlers(): void {
    * Inclut un nonce CSRF pour sécuriser la confirmation (Sécurité #5).
    */
   ipcMain.handle("plugin:request-permissions", () => {
-    if (!pluginHost) return { plugins: [], nonce: "" };
+    if (!pluginHost) {return { plugins: [], nonce: "" };}
     const sensitive = pluginHost.getPendingPermissionPlugins();
     const nonce = pluginHost.generatePermissionNonce();
     pendingPermissions = sensitive.map((p) => ({
@@ -208,7 +208,7 @@ export function registerPluginHandlers(): void {
    */
   ipcMain.handle("plugin:confirm-permissions", async (_event, payload: unknown) => {
     const parsed = confirmPermissionsSchema.parse(payload);
-    if (!pluginHost) throw new Error("PluginHost non initialisé");
+    if (!pluginHost) {throw new Error("PluginHost non initialisé");}
 
     // Valider le nonce CSRF
     if (!pluginHost.validatePermissionNonce(parsed.nonce)) {

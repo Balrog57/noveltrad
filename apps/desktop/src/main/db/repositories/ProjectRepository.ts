@@ -25,7 +25,7 @@ export class ProjectRepository {
     const row = this.db
       .prepare("SELECT * FROM projects WHERE path = ?")
       .get([projectPath]) as Record<string, unknown> | undefined;
-    if (!row) return undefined;
+    if (!row) {return undefined;}
     return this.map(row);
   }
 
@@ -33,7 +33,7 @@ export class ProjectRepository {
     const row = this.db
       .prepare("SELECT * FROM projects WHERE id = ?")
       .get([id]) as Record<string, unknown> | undefined;
-    if (!row) return undefined;
+    if (!row) {return undefined;}
     return this.map(row);
   }
 
