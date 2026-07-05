@@ -1411,10 +1411,124 @@ Tests: 98 new tests across 8 files, 434 total (29 suites), all passing.
 Type-check: 0 errors.
 ```
 
+## Review Findings — T4 (Wire LLM prompts in 3 agents)
+
+### Verification — Commands executed 2026-07-05
+
+```
+npm run test --workspace=apps/desktop      → 815 tests, 52 files, 0 failed ✅
+npm run type-check --workspace=apps/desktop → 0 errors ✅
+npm run lint --workspace=apps/desktop       → 0 errors, 15 warnings (1 T4-related) ✅
+```
+
+### ConsistencyAgent review
+
+| Check | Result |
+|-------|--------|
+| Imports `CONSISTENCY_SYSTEM_PROMPT` + `buildConsistencyUserPrompt` | ✅ |
+| Constructor receives `aiRouter: AiRouter` | ✅ |
+| Phase 1: LLM call via `aiRouter.chat()` with `{jsonMode: true}` | ✅ |
+| Parses JSON response via `aiRouter.tryParseJson()` | ✅ |
+| Extracts `warnings[]` + `globalScore` from LLM | ✅ |
+| Fallback on error via try/catch + `logger.warn` | ✅ |
+| Phase 2: Heuristic `this.checker.check()` always runs | ✅ |
+| Phase 3: Merge LLM + heuristic warnings, dedup by message | ✅ |
+| Score: average of LLM + heuristic, fallback heuristic-only | ✅ |
+| `buildLexiconBlock()` helper for user prompt | ✅ |
+
+### LexiconAgent review
+
+| Check | Result |
+|-------|--------|
+| Imports `LEXICON_SYSTEM_PROMPT` + `buildLexiconUserPrompt` | ✅ |
+| Constructor receives `aiRouter: AiRouter` | ✅ |
+| Phase 1: LLM call via `aiRouter.chat()` with `{jsonMode: true}` | ✅ |
+| Parses `text` + `substitutions[]` from LLM | ✅ |
+| Fallback on error via try/catch + `logger.warn` | ✅ |
+| Phase 2: `lexiconEngine.apply(llmText ?? text, lexicon)` — engine receives LLM-corrected or original text | ✅ |
+| Phase 3: Merge substitutions deduplicated by `before`+`after` | ✅ |
+| Returns `engineResult.text` (engine has final say) | ✅ |
+| ⚠️ Deviation from plan: no `confidence > 0.8` filter | See note below |
+
+### QaAgent review
+
+| Check | Result |
+|-------|--------|
+| Imports `QA_SYSTEM_PROMPT` + `buildQaUserPrompt` | ✅ |
+| Constructor receives `aiRouter`, `qualityChecker`, optional `calibrationService` | ✅ |
+| Phase 1: LLM evaluation via `aiRouter.chat()` with `{jsonMode: true}` | ✅ |
+| Parses 8 dimensions + `globalScore` + `comments` | ✅ |
+| Fallback to `qualityChecker.evaluate()` on parse or network error | ✅ |
+| Calibration applied via `applyCalibration()` (8 dimensions + weighted globalScore) | ✅ |
+| Returns `{ report, score }` | ✅ |
+| ⚠️ Lint: `llmAvailable` assigned but never read (dead code, harmless) | See note below |
+
+### AgentFactory review
+
+| Check | Result |
+|-------|--------|
+| `create("consistency")` passes `this.services.aiRouter` | ✅ |
+| `create("lexicon")` passes `this.services.aiRouter` | ✅ |
+| `create("qa")` passes `this.services.aiRouter` + `this.services.qualityChecker` + `this.services.calibrationService` | ✅ |
+| Pre-existing agents unchanged | ✅ |
+
+### Tests review (agents.spec.ts)
+
+| Test | Verdict |
+|------|---------|
+| ConsistencyAgent: LLM call with CONSISTENCY_SYSTEM_PROMPT | ✅ |
+| ConsistencyAgent: Merge LLM + heuristic warnings, avg score 85 | ✅ |
+| ConsistencyAgent: Fallback → heuristic only, score 90 | ✅ |
+| LexiconAgent: LLM call with LEXICON_SYSTEM_PROMPT | ✅ |
+| LexiconAgent: LLM text fed to engine + substitutions merged | ✅ |
+| LexiconAgent: Fallback → engine receives original text | ✅ |
+| QaAgent: LLM call with jsonMode:true, QA_SYSTEM_PROMPT | ✅ |
+| QaAgent: LLM score used as primary, QualityChecker NOT called | ✅ |
+| QaAgent: Fallback → QualityChecker called, score=87 | ✅ |
+| Pre-existing agent tests (Translate, PreTranslate, Grammar, Style, Polish, Export, Factory) | ✅ All pass |
+
+### Issues found
+
+#### LOW — LexiconAgent: no confidence filter >0.8 (deviation from plan)
+
+- **Plan spec**: "Appliquer les substitutions à haut `confidence` (>0.8)"
+- **Implementation**: LLM produces `{text, substitutions: [{before, after, locked}]}` — no `confidence` field. The LLM-modified `text` is passed through `lexiconEngine.apply()` which enforces locked/forbidden terms deterministically.
+- **Assessment**: This is a **design improvement**. Instead of trusting LLM self-reported confidence scores, the code feeds LLM output through the deterministic lexicon engine. Locked terms are always enforced, forbidden terms always blocked. The engine is the gatekeeper — more robust than confidence filters.
+- **Verdict**: Acceptable deviation. No fix needed.
+
+#### LOW — QaAgent: `llmAvailable` unused (dead code)
+
+- **Affected file**: `QaAgent.ts:52,92`
+- **Issue**: Variable `llmAvailable` is declared (`let llmAvailable = false` at line 52) and assigned (`llmAvailable = true` at line 92) but never read.
+- **Impact**: None — the LLM-vs-fallback logic uses try/catch flow control correctly. The variable is vestigial from a possible earlier design that needed it.
+- **Lint warning**: `'llmAvailable' is assigned a value but never used.`
+- **Fix**: Remove `let llmAvailable = false;` (line 52) and `llmAvailable = true;` (line 92). 2-line cleanup.
+- **Verdict**: Non-blocking. Can be cleaned up in a future commit.
+
+### Positive verifications
+
+| Check | Result |
+|-------|--------|
+| All 3 agents use `{jsonMode: true}` in LLM calls | ✅ |
+| All 3 agents handle LLM errors gracefully (try/catch + logger.warn) | ✅ |
+| All 3 agents fall back to heuristic behavior when LLM fails | ✅ |
+| Prompt imports resolve correctly (consistency.system.js, lexicon.system.js, qa.system.js) | ✅ |
+| AgentFactory passes `aiRouter` to all 3 new agents | ✅ |
+| 51 tests in agents.spec.ts (42 pre-existing + 9 new), all pass | ✅ |
+| 815 total tests, 0 failures, no regressions | ✅ |
+| Type-check: 0 errors | ✅ |
+| Lint: 0 errors (15 pre-existing warnings + 1 T4 warning) | ✅ |
+| Commit atomic: `16c5f73` touches only 5 source files + WORKFLOW_STATE.md | ✅ |
+
+### Verdict
+
+**ACCEPT** — The implementation is correct, well-tested, and conforms to the plan with one design improvement (LexiconAgent engine enforcement instead of LLM confidence filter). The `llmAvailable` dead code in QaAgent is cosmetic only. All 3 agents follow the same hybrid LLM+heuristic pattern with proper fallback. Zero regressions in the 815-test suite.
+
 ## Current Status
-- ✅ **T4 — Câbler prompts LLM dans 3 agents** : IMPLÉMENTÉ. ConsistencyAgent, LexiconAgent, QaAgent wired to LLM via `aiRouter.chat()` with `{jsonMode: true}`. Merge LLM + heuristic results. AgentFactory updated. +9 tests (815 total, 52 files, 0 failed). Type-check clean.
+- ✅ **T4 — Câbler prompts LLM dans 3 agents** : IMPLÉMENTÉ + REVIEWED. ConsistencyAgent, LexiconAgent, QaAgent wired to LLM via `aiRouter.chat()` with `{jsonMode: true}`. Merge LLM + heuristic results. AgentFactory updated. +9 tests (815 total, 52 files, 0 failed). Type-check clean, lint 0 errors.
   - Commit : `16c5f73 feat(agents): wire LLM prompts in ConsistencyAgent, LexiconAgent, QaAgent`
-  - Prochain agent : `reviewer`
+  - Review verdict : **ACCEPT** — 1 design improvement noted, 1 cosmetic dead-code variable (non-blocking).
+  - Prochain agent : `tester`
 - ✅ **Phase 0 — Fix Ollama via net.fetch** : COMPLET + VALIDÉ AUTOMATIQUEMENT.
   - T1: OllamaManager.ts — `fetch()` replaced with `net.fetch()` from Electron
   - T2: OllamaProvider.ts — `fetch()` replaced with `net.fetch()` across all 5 methods
@@ -1534,8 +1648,30 @@ Le plan est bien structuré, le séquencement optimal, les dépendances correcte
 - ✅ Aucune dépendance cachée entre phases
 - ✅ T14 indépendant de T13 (le graphe de dépendances a une flèche cosmétique T13→T14, non fonctionnelle)
 
-## Next Agent
-→ **implementor** : Implémenter les 15 tâches dans l'ordre T1→T15. Détail dans la section "## Plan — Conformité SDD".
+## Current Status
+- ✅ **T5 — PromptLoader DB + fallback TS** : IMPLÉMENTÉ. Nouveau service PromptLoader avec override DB + fallback TS constant. Modifié AiRouter avec `setPromptLoader()`. +9 tests (824 total, 53 files, 0 failed). Type-check clean.
+  - **Fichier créé** : `apps/desktop/src/main/services/prompts/PromptLoader.ts`
+    - Classe `PromptLoader` : `load(promptId)` → query DB `SELECT content FROM prompts WHERE id = ? AND active = 1 ORDER BY version DESC LIMIT 1`. Si trouvé → retourné. Sinon → fallback PROMPT_MAP (10 constantes importées des *.system.ts).
+    - `listCustomPrompts()` → retourne les prompts DB actifs (latest version par ID).
+    - `resetToDefault(promptId)` → `UPDATE prompts SET active = 0`.
+    - DB error → graceful degradation vers fallback TS constant.
+    - `PROMPT_MAP` : 10 prompts (translate, pre-translate, grammar, style, polish, split, consistency, lexicon, qa, export).
+  - **Fichier modifié** : `apps/desktop/src/main/services/AiRouter.ts`
+    - Ajout champ privé `promptLoader?: PromptLoader`
+    - Ajout méthode `setPromptLoader(loader)` — méthode additive. Les agents continuent leurs imports directs.
+  - **Fichier créé** : `apps/desktop/tests/unit/prompt-loader.spec.ts` — 9 tests :
+    1. Prompt trouvé en DB → retourné ✅
+    2. Prompt absent DB → fallback constante TS ✅
+    3. Version DB vide → fallback ✅
+    4. `listCustomPrompts()` retourne les overrides ✅
+    5. `resetToDefault()` désactive l'override → fallback ✅
+    6. Version multiple → latest active choisie ✅
+    7. Prompt désactivé (active=0) → fallback ✅
+    8. Erreur DB → fallback constante TS (graceful degradation) ✅
+    9. PromptId inconnu (ni DB ni fallback) → erreur ✅
+- ✅ **T4 — Câbler prompts LLM dans 3 agents** : IMPLÉMENTÉ + REVIEWED. ConsistencyAgent, LexiconAgent, QaAgent wired to LLM via `aiRouter.chat()` with `{jsonMode: true}`. Merge LLM + heuristic results. AgentFactory updated. +9 tests (815 total, 52 files, 0 failed). Type-check clean, lint 0 errors.
+  - Commit : `16c5f73 feat(agents): wire LLM prompts in ConsistencyAgent, LexiconAgent, QaAgent`
+  - Review verdict : **ACCEPT** — 1 design improvement noted, 1 cosmetic dead-code variable (non-blocking).
 
 Rappel des contraintes :
 - 1 commit atomique par tâche
@@ -2728,8 +2864,5 @@ fix(db): unified migration runner — source unique .sql, remove inline array
 ```
 
 ## Next Agent
-→ **`reviewer`** — Review T2 commit. Files changed:
-- `apps/desktop/src/main/db/migrations/009_chapter_metadata.sql` (new)
-- `apps/desktop/src/main/db/connection.ts` (rewritten — remove inline array, file-only runner)
-- `apps/desktop/tests/unit/db-migrations.spec.ts` (new, 5 tests)
+→ **reviewer** : Review T5 (PromptLoader DB + fallback TS). Vérifier les 3 fichiers modifiés, les 9 tests, l'absence de régression (824 tests, 0 failed), et le type-check (0 errors).
 

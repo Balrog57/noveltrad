@@ -5,11 +5,13 @@ import type {
   ChatOptions,
 } from "@shared/types/index.js";
 import type { AiCache } from "./AiCache.js";
+import type { PromptLoader } from "./prompts/PromptLoader.js";
 import { logger } from "../utils/logger.js";
 
 export class AiRouter {
   private providers: Map<string, AiProvider> = new Map();
   private aiCache?: AiCache;
+  private promptLoader?: PromptLoader;
   /** SDD §15 : callback pour obtenir un provider depuis un plugin */
   private getPluginProviderFn?: (id: string) => AiProvider | undefined;
 
@@ -25,6 +27,15 @@ export class AiRouter {
   /** Active le cache des réponses IA (SDD §22.1) */
   setCache(cache: AiCache): void {
     this.aiCache = cache;
+  }
+
+  /**
+   * Enregistre un PromptLoader pour la résolution de prompts avec override DB
+   * (SDD §25 — Prompt Book). Méthode additive : les agents continuent d'utiliser
+   * leurs imports directs ; le loader offre une capacité d'override runtime.
+   */
+  setPromptLoader(loader: PromptLoader): void {
+    this.promptLoader = loader;
   }
 
   get(id: string): AiProvider {
