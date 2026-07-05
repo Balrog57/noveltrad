@@ -21,6 +21,26 @@ interface WorkerInput {
 }
 
 /**
+ * Résout la classe d'agent à partir des exports d'un module ESM.
+ * Cherche un export nommé qui est une classe avec prototype.execute.
+ * Les agents sont exportés en nom (ex: `export class TranslateAgent`),
+ * pas en `export default` — le worker doit inspecter toutes les clés.
+ *
+ * Exporté pour faciliter les tests unitaires.
+ */
+export function resolveAgentClass(
+  agentModule: Record<string, unknown>,
+):
+  | (new (cfg?: Record<string, unknown>) => { execute: (input: unknown) => Promise<unknown> })
+  | undefined {
+  return Object.values(agentModule).find(
+    (v) => typeof v === "function" && typeof v.prototype?.execute === "function",
+  ) as
+    | (new (cfg?: Record<string, unknown>) => { execute: (input: unknown) => Promise<unknown> })
+    | undefined;
+}
+
+/**
  * Exécute un agent identifié par agentId avec les données fournies.
  * Retourne le résultat via parentPort.postMessage().
  */
@@ -41,11 +61,11 @@ async function executeAgent(data: WorkerInput): Promise<void> {
     return;
   }
 
-  const AgentClass = agentModule.default as
-    | (new (cfg?: Record<string, unknown>) => { execute: (input: unknown) => unknown })
-    | undefined;
+  // Trouver la classe d'agent avec execute() parmi toutes les
+  // exportations nommées (les agents sont exportés en nom, pas en default).
+  const AgentClass = resolveAgentClass(agentModule);
 
-  if (typeof AgentClass === "function") {
+  if (AgentClass) {
     const instance = new AgentClass(config);
     if (typeof instance.execute === "function") {
       const output = await instance.execute(input);
@@ -59,7 +79,7 @@ async function executeAgent(data: WorkerInput): Promise<void> {
   } else {
     parentPort?.postMessage({
       success: false,
-      error: `Agent "${agentId}" non exécutable`,
+      error: `Agent "${agentId}" non exécutable — aucune classe avec execute() trouvée`,
     });
   }
 }

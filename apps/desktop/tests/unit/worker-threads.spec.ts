@@ -2,12 +2,13 @@
  * Tests pour l'infrastructure Worker threads (SDD §22.2)
  *
  * Vérifie le wrapper runAgentInWorker, le schéma useWorkerThreads,
- * l'exécution réelle via workerData (fix du deadlock),
- * et l'intégration dans WorkflowRunner.runStep().
+ * la résolution des exports nommés (T14 fix), et l'intégration
+ * dans WorkflowRunner.runStep().
  */
 
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import { resolveAgentClass } from "../../src/main/workers/agent-worker.js";
 
 // ---------------------------------------------------------------------------
 // Schéma répliqué depuis shared/schemas/index.ts
@@ -16,6 +17,23 @@ import { z } from "zod";
 const appSettingsSchema = z.object({
   useWorkerThreads: z.boolean().default(true),
 });
+
+// ---------------------------------------------------------------------------
+// Agent factice pour tester resolveAgentClass
+// ---------------------------------------------------------------------------
+
+class FakeTranslationAgent {
+  execute(_input: unknown): Promise<unknown> {
+    return Promise.resolve({ translated: true });
+  }
+}
+
+class NotAnAgent {
+  // Pas de méthode execute()
+  greet(): string {
+    return "hello";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -77,6 +95,27 @@ describe("Worker threads (SDD §22.2)", () => {
         "../../src/main/workers/agent-worker.js"
       );
       expect(typeof workerMod.runAgentInWorker).toBe("function");
+    });
+  });
+
+  describe("resolveAgentClass — named export resolution (T14)", () => {
+    it("trouve une classe avec execute() parmi les exports nommés", () => {
+      const mod: Record<string, unknown> = {
+        FakeTranslationAgent,
+        NotAnAgent,
+      };
+      const found = resolveAgentClass(mod);
+      expect(found).toBe(FakeTranslationAgent);
+    });
+
+    it("retourne undefined si aucune classe avec execute() n'est trouvée", () => {
+      const mod: Record<string, unknown> = {
+        NotAnAgent,
+        someString: "hello",
+        someNumber: 42,
+      };
+      const found = resolveAgentClass(mod);
+      expect(found).toBeUndefined();
     });
   });
 });
