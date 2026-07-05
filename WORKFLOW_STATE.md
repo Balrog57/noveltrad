@@ -1622,14 +1622,26 @@ Avec R1-R5, les Volumes 19 (Tests — handlers/managers testés) et 22 (Performa
 - ✅ 0 algorithme standard custom (tout en packages npm eprouves)
 - ✅ Build installable genere
 
-## Current Status
-- Application prete a etre installee via dist/NovelTrad-2.0.2-setup.exe
-- Branche: fix/sandbox-permissions-worker
-- 16 commits, +82 tests, couverture 48.98%
-- Aucun ecart SDD, reutilisation maximale
+## Current Status — ✅ v2.1.1 RELEASED (main branch, 2026-07-05)
+
+- **Branche unique** : `main` (only `gh-pages` on remote for docs)
+- **PRs** : 0 ouvertes
+- **Release** : https://github.com/Balrog57/noveltrad/releases/tag/v2.1.1
+- **Installeur** : `NovelTrad-2.1.1-setup.exe` (99.98 MB) attaché à la release
+- **Version** : 2.1.1 (root, desktop, shared)
+- **Tests** : 782 passed (47 suites), 0 failed
+- **Lint** : 0 errors, 0 warnings
+- **Type-check** : 0 errors
+- **Commits** : 3c18abc → 19bbcc2 → 31c265c
+
+### v2.1.1 changelog summary
+- 🔒 **Security**: IPC channel allowlist in preload with validateChannel() — contextIsolation hardening
+- ⚡ **Performance**: SQLite BEGIN/COMMIT transactions on ParagraphRepository and LexiconRepository bulk writes
+- ♿ **Accessibility**: NtTable, HomeView, LexiconForm keyboard navigation + aria-labels + :focus-visible
+- 🧹 **Housekeeping**: 14 duplicate PRs closed, 16 stale branches deleted, ESLint fully configured
 
 ## Next Agent
-@reviewer — review finale des 16 commits.
+→ **user** : v2.1.1 est déployée sur GitHub. Tout est propre : 1 branche, 0 PR, installer disponible.
 
 ---
 
