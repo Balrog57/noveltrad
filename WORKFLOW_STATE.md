@@ -445,6 +445,58 @@ Security review of the three T1 changes (CSP headers in production, preload IPC 
 
 **Commit** : `fix(consistency): 7/7 metrics, weighted score formula, SDD §11.5 caps, corrected tolerances`
 
+**Implémentation — T7 terminée** :
+- `apps/desktop/src/main/services/ConsistencyChecker.ts` :
+  - Ajout de 3 méthodes privées : `compareDialogues()` (regex `「」""''—«»`, warning si écart >20%), `compareNumbers()` (regex `/\d+/g`, map occurrences, warning si nombre absent/doublon), `compareMarkup()` (Markdown `**_[]()` + HTML `<em><strong><a>`, warning si mismatch).
+  - Appel des 3 méthodes dans `check()`, production de warnings dans `ConsistencyReport.warnings`.
+  - **Nouvelle formule de score** : moyenne pondérée SDD §11.5 — `{paragraphs:30, sentences:15, dialogues:15, length:10, namedEntities:15, numbers:10, markup:5}`. `score = Σ(metric.score * weight) / 100`.
+  - **Caps SDD §11.5** : paragraphIssue → ≤50, lockedNameMissing → ≤70, missingNumber → ≤80.
+  - **Tolérances corrigées SDD §11.3** : zh-fr/ja-fr/ko-fr sentence 0.95-1.05 (était 0.5-2.0), length 0.5-1.5 (était 0.6-2.5). zh-en/ja-en sentence 0.8-1.2 (était 0.6-1.8). Ponctuation CJK améliorée : ajout de `，` et `《》` à la regex de suppression.
+  - Métrique `namedEntities` extraite de la vérification des termes verrouillés du lexique.
+  - 7 métriques dans `metrics[]` avec champ `score` (0-100) ajouté au type.
+- `packages/shared/src/types/index.ts` — ajout `score: number` au type metric de `ConsistencyReport`.
+- `apps/desktop/tests/unit/engines.spec.ts` — +13 tests (3 dialogues, 3 numbers, 3 markup, 2 score formula, 2 tolerances).
+- `apps/desktop/tests/unit/quality-advanced.spec.ts` — ajustement des données de test pour les nouvelles tolérances zh-fr (ratio de longueur resserré).
+- `apps/desktop/tests/unit/agents.spec.ts` — ajout `score: 100` aux metrics fake.
+- `apps/desktop/tests/unit/agent-io-schemas.spec.ts` — ajout `score: 100` aux metrics fake.
+- **État** : `npm run type-check` ✓, `npm run test` ✓ (871 tests, 54 files, 0 failed).
+- **Commit** : `42ac785 fix(consistency): 7/7 metrics, weighted score formula, SDD §11.5 caps, corrected tolerances`
+
+---
+
+### T8 — HallucinationDetector câblé dans QualityChecker (1j) — P3
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/QualityChecker.ts` :
+  - Importer `HallucinationDetector` depuis `./HallucinationDetector`.
+  - Dans `evaluate()`, remplacer le `hallucination: 95` hardcodé par `this.hallucinationDetector.detect(source, target, "source", "target").score || 95`.
+  - Instancier `HallucinationDetector` dans le constructeur de `QualityChecker` (ou l'injecter).
+  - Brancher `ConsistencyReport.globalScore` dans la dimension `consistency` : remplacer `consistency: 90` hardcodé par le score réel du `ConsistencyChecker` passé en paramètre.
+  - Conserver les dimensions heuristiques (grammar, length) comme fallback, mais les 5 dimensions qui étaient constantes deviennent dynamiques.
+
+**Tests** :
+- `apps/desktop/tests/unit/quality-checker.spec.ts` — **nouveau** : 6 tests.
+  1. HallucinationDetector trouve des entités inventées → score <90.
+  2. HallucinationDetector clean → score ≥80.
+  3. ConsistencyReport faible → dimension consistency basse (45).
+  4. ConsistencyReport parfait → consistency = 100.
+  5. evaluate() complet → 8 dimensions toutes calculées.
+  6. HallucinationDetector erreur → fallback 95.
+
+**Commit** : `feat(quality): wire HallucinationDetector + ConsistencyReport into QualityChecker`
+
+**Implémentation — T8 terminée** :
+- `apps/desktop/src/main/services/QualityChecker.ts` :
+  - Import de `HallucinationDetector` depuis `./HallucinationDetector.js`.
+  - Import de `ConsistencyReport` depuis `@shared/types/index.js`.
+  - Constructeur accepte `HallucinationDetector` optionnel (instanciation par défaut).
+  - `evaluate()` accepte `consistencyReport?: ConsistencyReport` en 4e paramètre.
+  - Remplacement du `hallucination: 95` hardcodé par `this.hallucinationDetector.detect(source, target, "source", "target").score || 95` avec try/catch (fallback 95).
+  - Remplacement du `consistency: 90` hardcodé par `consistencyReport?.globalScore ?? (sourceLen>0 && targetLen>0 ? 90 : 0)`.
+- `apps/desktop/tests/unit/quality-checker.spec.ts` — nouveau : 6 tests (invented entities → <90, clean → ≥80, low consistency report → 45, perfect → 100, 8 dimensions, error fallback → 95).
+- **État** : `npm run type-check` ✓, `npm run test` ✓ (877 tests, 55 files, 0 failed).
+- **Commit** : `4893a47 feat(quality): wire HallucinationDetector + ConsistencyReport into QualityChecker`
+
 ---
 
 ### T8 — HallucinationDetector câblé dans QualityChecker (1j) — P3
@@ -1525,20 +1577,19 @@ npm run lint --workspace=apps/desktop       → 0 errors, 15 warnings (1 T4-rela
 **ACCEPT** — The implementation is correct, well-tested, and conforms to the plan with one design improvement (LexiconAgent engine enforcement instead of LLM confidence filter). The `llmAvailable` dead code in QaAgent is cosmetic only. All 3 agents follow the same hybrid LLM+heuristic pattern with proper fallback. Zero regressions in the 815-test suite.
 
 ## Current Status
-- ✅ **T4 — Câbler prompts LLM dans 3 agents** : IMPLÉMENTÉ + REVIEWED. ConsistencyAgent, LexiconAgent, QaAgent wired to LLM via `aiRouter.chat()` with `{jsonMode: true}`. Merge LLM + heuristic results. AgentFactory updated. +9 tests (815 total, 52 files, 0 failed). Type-check clean, lint 0 errors.
-  - Commit : `16c5f73 feat(agents): wire LLM prompts in ConsistencyAgent, LexiconAgent, QaAgent`
-  - Review verdict : **ACCEPT** — 1 design improvement noted, 1 cosmetic dead-code variable (non-blocking).
-  - Prochain agent : `tester`
-- ✅ **Phase 0 — Fix Ollama via net.fetch** : COMPLET + VALIDÉ AUTOMATIQUEMENT.
-  - T1: OllamaManager.ts — `fetch()` replaced with `net.fetch()` from Electron
-  - T2: OllamaProvider.ts — `fetch()` replaced with `net.fetch()` across all 5 methods
-  - T3: RagEngine.ts — 2 bare `fetch()` replaced with `net.fetch()` with `AbortSignal.timeout()`
-  - T4: Tests rewritten — all test files mock `vi.mock("electron", () => ({ net: { fetch: mockNetFetch } }))`
-  - T5: Phase 0 validation suite — 45 new tests, all per-file coverage targets exceeded
-- ✅ **Commits** :
-  - `9ef38a5` — `fix(ollama): use Electron net.fetch() for reliable HTTP in main process`
-  - `870286e` — `test(ollama): Phase 0 validation suite — 45 new tests, all per-file coverage targets met`
-- ⏳ **Phase 0.1 — Stabilisation** : EN COURS. Freeze features, create `stabilization-v2` branch.
+- ✅ **T8 — HallucinationDetector câblé** : IMPLÉMENTÉ. 877 tests, 55 files, 0 failed. Type-check clean.
+- ✅ **T7 — ConsistencyChecker 7/7 metrics** : IMPLÉMENTÉ. 871 tests, 54 files, 0 failed. Type-check clean.
+- ✅ **T6 — Agent I/O Zod schemas (SDD §8.13)** : IMPLÉMENTÉ. 858 tests, 54 files, 0 failed. Type-check clean.
+- ✅ **T5 — PromptLoader DB + fallback TS** : REVIEWED — ACCEPT.
+- ✅ **T4 — Câbler prompts LLM dans 3 agents** : IMPLÉMENTÉ + REVIEWED.
+- ✅ **T3 — Workflow adaptatif** : IMPLÉMENTÉ.
+- ✅ **T2 — Migration runner unifié** : IMPLÉMENTÉ + REVIEWED.
+- ✅ **T1 — Sécurité critique** : IMPLÉMENTÉ + REVIEWED.
+- ✅ **Phase 0 — Fix Ollama via net.fetch** : COMPLET + VALIDÉ.
+- ✅ **Gap Analysis 2.1.3 → SDD** : COMPLET.
+
+## Next Agent
+- `reviewer` — review T7 and T8 commits.
 
 ### Phase 0 Validation Results
 - **782 tests, 0 failures** (baseline: 737 → +45 new tests)
@@ -1624,11 +1675,6 @@ The `pullModel()` and `streamChat()` source code uses a `lines.pop() + buffer` N
 ### Verdict
 **ACCEPT** — All 4 tasks correctly implemented. Zero regressions. No critical issues.
 
-## Current Status
-- ✅ **Gap Analysis 2.1.3 → SDD** : COMPLET (`docs/audit/GAP_ANALYSIS_2.1.3_to_SDD.md`).
-- ✅ **Plan de conformité SDD** : 15 tâches séquencées (T1-T15), revu par debater, 4 corrections appliquées.
-- ✅ **Debate** : ACCEPT with 4 revisions (applied). Verdict: plan solide, prêt pour implémentation.
-
 ## Debate Notes (2026-07-05)
 
 ### Verdict : ACCEPT with 4 targeted revisions
@@ -1648,27 +1694,89 @@ Le plan est bien structuré, le séquencement optimal, les dépendances correcte
 - ✅ Aucune dépendance cachée entre phases
 - ✅ T14 indépendant de T13 (le graphe de dépendances a une flèche cosmétique T13→T14, non fonctionnelle)
 
-## Current Status
-- ✅ **T5 — PromptLoader DB + fallback TS** : IMPLÉMENTÉ. Nouveau service PromptLoader avec override DB + fallback TS constant. Modifié AiRouter avec `setPromptLoader()`. +9 tests (824 total, 53 files, 0 failed). Type-check clean.
-  - **Fichier créé** : `apps/desktop/src/main/services/prompts/PromptLoader.ts`
-    - Classe `PromptLoader` : `load(promptId)` → query DB `SELECT content FROM prompts WHERE id = ? AND active = 1 ORDER BY version DESC LIMIT 1`. Si trouvé → retourné. Sinon → fallback PROMPT_MAP (10 constantes importées des *.system.ts).
-    - `listCustomPrompts()` → retourne les prompts DB actifs (latest version par ID).
-    - `resetToDefault(promptId)` → `UPDATE prompts SET active = 0`.
-    - DB error → graceful degradation vers fallback TS constant.
-    - `PROMPT_MAP` : 10 prompts (translate, pre-translate, grammar, style, polish, split, consistency, lexicon, qa, export).
-  - **Fichier modifié** : `apps/desktop/src/main/services/AiRouter.ts`
-    - Ajout champ privé `promptLoader?: PromptLoader`
-    - Ajout méthode `setPromptLoader(loader)` — méthode additive. Les agents continuent leurs imports directs.
-  - **Fichier créé** : `apps/desktop/tests/unit/prompt-loader.spec.ts` — 9 tests :
-    1. Prompt trouvé en DB → retourné ✅
-    2. Prompt absent DB → fallback constante TS ✅
-    3. Version DB vide → fallback ✅
-    4. `listCustomPrompts()` retourne les overrides ✅
-    5. `resetToDefault()` désactive l'override → fallback ✅
-    6. Version multiple → latest active choisie ✅
-    7. Prompt désactivé (active=0) → fallback ✅
-    8. Erreur DB → fallback constante TS (graceful degradation) ✅
-    9. PromptId inconnu (ni DB ni fallback) → erreur ✅
+## Review Findings — T5 (PromptLoader)
+
+### Verification — Commands executed 2026-07-05
+
+```
+npm run test --workspace=apps/desktop      → 824 tests, 53 files, 0 failed ✅
+npm run type-check --workspace=apps/desktop → 0 errors ✅
+npm run lint --workspace=apps/desktop       → 0 errors, 16 warnings (1 T5-related) ✅
+```
+
+### PromptLoader.ts review
+
+| Check | Result |
+|-------|--------|
+| 10 prompts in PROMPT_MAP | ✅ All match *.system.ts exports |
+| DB resolution: correct SQL pattern | ✅ `ORDER BY version DESC LIMIT 1` |
+| Graceful degradation on DB error | ✅ try/catch with silent fallback |
+| `resetToDefault()` sets active=0 | ✅ |
+| `listCustomPrompts()` dedup by latest version | ✅ |
+| Unknown promptId throws Error | ✅ Test 8b confirms |
+| No side effects on agents | ✅ Additive design — agents keep direct imports |
+
+### AiRouter.ts review
+
+| Check | Result |
+|-------|--------|
+| `setPromptLoader()` method | ✅ Minimal, additive, follows existing pattern (setCache, setPluginProviderResolver) |
+| Import: `type PromptLoader` (not value import) | ✅ No circular dependency |
+| `promptLoader` field: `private promptLoader?: PromptLoader` | ✅ |
+
+### prompt-loader.spec.ts review
+
+| Test | Verdict |
+|------|---------|
+| 1. Prompt trouvé en DB → retourné | ✅ |
+| 2. Prompt absent DB → fallback TS | ✅ |
+| 3. Version DB vide → fallback | ✅ |
+| 4. `listCustomPrompts()` | ✅ |
+| 5. `resetToDefault()` désactive | ✅ |
+| 6. Version multiple → latest active | ✅ |
+| 7. Prompt désactivé (active=0) | ✅ |
+| 8. Erreur DB → fallback (graceful) | ✅ |
+| 8b. PromptId inconnu → erreur | ✅ |
+| Mock DB pattern follows node-sqlite3-wasm style | ✅ Same as AiCache/other tests |
+
+### Issues found
+
+#### LOW — Unused `params` in test mock (line 51)
+
+- **Affected file**: `prompt-loader.spec.ts:51`
+- **Issue**: Parameter `params` in `all(params?: unknown[])` is declared but never read (the mock filters from `this.data` directly).
+- **Lint warning**: `'params' is defined but never used.`
+- **Fix**: Prefix with underscore: `_params`.
+- **Verdict**: Non-blocking. 1-line fix, can be done later.
+
+### Verdict
+
+**ACCEPT** — Clean implementation, well-tested, zero regressions. One cosmetic lint warning on test file.
+
+- ✅ **T6 — Agent I/O Zod schemas (SDD §8.13)** : IMPLÉMENTÉ.
+  - **Fichier créé** : `packages/shared/src/schemas/agent-io.ts` — 8 schémas Zod :
+    - `agentInputSchema` : validation des entrées agent (projectId, paragraphs, text, lexicon, options).
+    - `textOutputSchema` : GrammarAgent, StyleAgent, PolishAgent.
+    - `paragraphsOutputSchema` : SplitAgent, PreTranslateAgent, TranslateAgent.
+    - `consistencyOutputSchema` : ConsistencyAgent (metrics, warnings, globalScore 0-100).
+    - `lexiconOutputSchema` : LexiconAgent (text, substitutions).
+    - `qaOutputSchema` : QaAgent (8 dimensions 0-100, globalScore, score, comments).
+    - `exportOutputSchema` : ExportAgent (metadata.exportPath).
+  - **Fichier modifié** : `packages/shared/src/schemas/index.ts` — ajout `export * from "./agent-io.js"`.
+  - **Fichier modifié** : `apps/desktop/src/main/services/agents/Agent.ts` — converti de `interface Agent` à `abstract class Agent` :
+    - Champs ajoutés : `inputSchema?: z.ZodSchema`, `outputSchema?: z.ZodSchema`.
+    - Méthode `validateOutput(raw)` : parse via `outputSchema` si défini, sinon `raw as AgentOutput`. Lève `ZodError` si invalide.
+    - Interface `AgentConfig` conservée séparément.
+  - **Fichiers modifiés** : 10 agents (Split, PreTranslate, Translate, Consistency, Lexicon, Grammar, Style, Polish, Qa, Export) — passage de `implements Agent` à `extends Agent` + `super()` dans constructeur + `readonly outputSchema = ...`.
+  - **Fichier modifié** : `apps/desktop/src/main/managers/WorkflowEngine.ts` — dans `runStep()`, après `agent.execute()`, appel à `agent.validateOutput(output)` si `agent.outputSchema` défini. Logger warning si la validation échoue (fallback sur sortie brute).
+  - **Fichier modifié** : `apps/desktop/src/main/services/agents/AgentFactory.ts` — import `Agent` comme valeur (plus `type`).
+  - **Fichier créé** : `apps/desktop/tests/unit/agent-io-schemas.spec.ts` — 14 tests (10 planifiés + 4 supplémentaires lexicon/export) :
+    1-5 : validations réussies (input, textOutput, paragraphsOutput, consistencyOutput, qaOutput).
+    6-10 : validations échouées (missing projectId, missing text, invalid status, score >100, missing globalScore).
+    11-14 : tests lexicon (valid/invalid) + export (valid/invalid).
+  - **Fichier modifié** : `apps/desktop/tests/unit/agents.spec.ts` — +20 tests (2 par agent : output validé, output invalide → throw) 🠆 71 tests total (51 → 71).
+  - **État** : `npm run type-check` ✓, `npm run test` ✓ (858 tests, 54 files, +34 tests, 0 failed), `npm run lint` ✓ (0 errors, 15 warnings tous pré-existants).
+  - **Prochain agent** : `tester` — confirmer les résultats et passer à T7.
 - ✅ **T4 — Câbler prompts LLM dans 3 agents** : IMPLÉMENTÉ + REVIEWED. ConsistencyAgent, LexiconAgent, QaAgent wired to LLM via `aiRouter.chat()` with `{jsonMode: true}`. Merge LLM + heuristic results. AgentFactory updated. +9 tests (815 total, 52 files, 0 failed). Type-check clean, lint 0 errors.
   - Commit : `16c5f73 feat(agents): wire LLM prompts in ConsistencyAgent, LexiconAgent, QaAgent`
   - Review verdict : **ACCEPT** — 1 design improvement noted, 1 cosmetic dead-code variable (non-blocking).
