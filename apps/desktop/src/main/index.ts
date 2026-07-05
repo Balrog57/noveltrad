@@ -168,8 +168,20 @@ async function createWindow(): Promise<BrowserWindow> {
       nodeIntegration: false,
       allowRunningInsecureContent: false,
       webSecurity: true,
-      preload: path.join(__dirname, "../preload/index.mjs"),
+      // Preload is built as CommonJS (`.cjs`) — see electron.vite.config.ts.
+      // Required because `sandbox: true` cannot load an ESM preload
+      // (https://github.com/electron/electron/issues/41460).
+      preload: path.join(__dirname, "../preload/index.cjs"),
     },
+  });
+
+  // Surface any future preload failure in the logs instead of failing silently
+  // (this is what masked the ESM/sandbox incompatibility for so long).
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    logger.error(
+      `[preload-error] Failed to load preload script: ${preloadPath} — ${error.message}`,
+      error,
+    );
   });
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
