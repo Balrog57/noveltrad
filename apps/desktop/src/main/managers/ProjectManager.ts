@@ -751,20 +751,67 @@ export class ProjectManager {
    */
   private async extractDocx(filePath: string): Promise<string> {
     const buffer = fs.readFileSync(filePath);
-    const result = await mammoth.convertToHtml({ buffer });
+    // SDD §5.5 : styleMap Heading 1 → h1 chapter markers
+    const result = await mammoth.convertToHtml(
+      { buffer },
+      {
+        styleMap: [
+          "p[style-name='Heading 1'] => h1:fresh",
+          "p[style-name='heading 1'] => h1:fresh",
+          "p[style-name='Titre 1'] => h1:fresh",
+        ],
+      },
+    );
     return this.htmlToMarkdown(result.value);
   }
 
   /**
    * Extrait le texte d'un fichier EPUB via adm-zip + cheerio (SDD §5.9).
+   * Respecte l'ordre du spine défini dans content.opf (SDD §13.4).
    */
   private async extractEpub(filePath: string): Promise<string> {
     const zip = new AdmZip(filePath);
     const entries = zip.getEntries();
-    const textParts: string[] = [];
 
+    // SDD §13.4 : lire le spine pour obtenir l'ordre correct des chapitres
+    const spineOrder: string[] = this.readEpubSpine(zip);
+
+    // Extraire les fichiers HTML dans l'ordre du spine
+    const textParts: string[] = [];
+    const extracted = new Set<string>();
+
+    // D'abord extraire dans l'ordre du spine
+    for (const href of spineOrder) {
+      const resolvedEntry = entries.find(
+        (e) =>
+          e.entryName === href ||
+          e.entryName.endsWith(`/${href}`) ||
+          e.entryName.endsWith(href),
+      );
+      if (
+        resolvedEntry &&
+        !resolvedEntry.isDirectory &&
+        !extracted.has(resolvedEntry.entryName)
+      ) {
+        try {
+          const content = resolvedEntry.getData().toString("utf-8");
+          const $ = cheerio.load(content);
+          $("script, style, nav, header, footer, .toc, .nav").remove();
+          const text = $.text();
+          if (text.trim()) {
+            textParts.push(text);
+            extracted.add(resolvedEntry.entryName);
+          }
+        } catch {
+          logger.warn(
+            `[ProjectManager] Entry EPUB illisible (spine) : ${resolvedEntry.entryName}`,
+          );
+        }
+      }
+    }
+
+    // Fallback : fichiers HTML restants non couverts par le spine
     for (const entry of entries) {
-      // Ignorer les fichiers non-HTML/XHTML et les fichiers système
       const entryName = entry.entryName.toLowerCase();
       if (
         entryName.startsWith("mimetype") ||
@@ -779,18 +826,16 @@ export class ProjectManager {
         entryName.endsWith(".html") ||
         entryName.endsWith(".htm");
 
-      if (isContent && !entry.isDirectory) {
+      if (isContent && !entry.isDirectory && !extracted.has(entry.entryName)) {
         try {
           const content = entry.getData().toString("utf-8");
           const $ = cheerio.load(content);
-          // Extraire le texte en préservant la structure
           $("script, style, nav, header, footer, .toc, .nav").remove();
           const text = $.text();
           if (text.trim()) {
             textParts.push(text);
           }
         } catch {
-          // Fichier EPUB corrompu ou non lisible — ignorer cet entry
           logger.warn(
             `[ProjectManager] Entry EPUB illisible : ${entry.entryName}`,
           );
@@ -803,6 +848,54 @@ export class ProjectManager {
     }
 
     return textParts.join("\n\n");
+  }
+
+  /**
+   * SDD §13.4 : Lit l'ordre du spine depuis content.opf.
+   * Retourne la liste des hrefs dans l'ordre du spine.
+   * Public pour testabilité.
+   */
+  readEpubSpine(zip: AdmZip): string[] {
+    const entries = zip.getEntries();
+    const opfEntry = entries.find((e) =>
+      e.entryName.toLowerCase().endsWith(".opf"),
+    );
+
+    if (!opfEntry) {
+      logger.warn("[ProjectManager] content.opf introuvable — fallback ordre alphabétique");
+      return [];
+    }
+
+    const opfContent = opfEntry.getData().toString("utf-8");
+    const $ = cheerio.load(opfContent, { xmlMode: true });
+
+    // Résoudre l'espace de noms OPF
+    const spineItems = $("spine > itemref").toArray();
+    const manifestItems = $("manifest > item").toArray();
+
+    // Construire une map id → href depuis le manifest
+    const idToHref = new Map<string, string>();
+    for (const item of manifestItems) {
+      const id = $(item).attr("id");
+      const href = $(item).attr("href");
+      if (id && href) {
+        idToHref.set(id, href);
+      }
+    }
+
+    // Résoudre l'ordre du spine
+    const hrefs: string[] = [];
+    for (const itemref of spineItems) {
+      const idref = $(itemref).attr("idref");
+      if (idref) {
+        const href = idToHref.get(idref);
+        if (href) {
+          hrefs.push(href);
+        }
+      }
+    }
+
+    return hrefs;
   }
 
   /**
