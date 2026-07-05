@@ -11,6 +11,7 @@ import {
   AlignmentType,
 } from "docx";
 import AdmZip from "adm-zip";
+import epub from "epub-gen-memory";
 import type {
   ExportInput,
   ExportFormat,
@@ -168,7 +169,7 @@ export class ExportEngine {
       const outputPath = path.join(outputDir, `${safeName}.epub`);
 
       // Pour l'EPUB multi-chapitres, on génère un EPUB avec un chapitre par chapitre
-      const buffer = this.toEpubMultiChapter(
+      const buffer = await this.toEpubMultiChapter(
         projectTitle,
         author ?? projectTitle,
         chapters,
@@ -237,7 +238,7 @@ export class ExportEngine {
    * SDD §13.6 : génère un EPUB multi-chapitres agrégé.
    * Chaque chapitre devient un item dans le manifest + spine.
    */
-  private toEpubMultiChapter(
+  private async toEpubMultiChapter(
     title: string,
     author: string,
     chapters: BatchChapterInput[],
@@ -246,27 +247,14 @@ export class ExportEngine {
       includeParagraphNumbers?: boolean;
       bilingual?: boolean;
     },
-  ): Buffer {
-    const zip = new AdmZip();
-    zip.addFile("mimetype", Buffer.from("application/epub+zip"), "", 0o644);
+  ): Promise<Buffer> {
+    const css = `body { font-family: Georgia, serif; line-height: 1.6; max-width: 700px; margin: 2em auto; }
+h1, h2 { text-align: center; }
+p { margin: 1em 0; text-align: justify; }
+[lang="source"] { color: #64748b; font-style: italic; }`;
 
-    const containerXml = `\u003c?xml version="1.0"?\u003e
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-  <rootfiles>
-    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-  </rootfiles>
-</container>`;
-    zip.addFile("META-INF/container.xml", Buffer.from(containerXml));
-
-    // Générer un fichier HTML par chapitre + construire le manifest/spine
-    const manifestItems: string[] = [];
-    const spineItems: string[] = [];
-    const navItems: string[] = [];
-
-    chapters.forEach((ch, index) => {
-      const fileName = `chapter${index + 1}.html`;
-      const chapterTitle = ch.title || `Chapitre ${index + 1}`;
-
+    const content = chapters.map((ch, _index) => {
+      const chapterTitle = ch.title || `Chapitre ${_index + 1}`;
       const paragraphsHtml = ch.paragraphs
         .map((p) => {
           const prefix = options?.includeParagraphNumbers
@@ -279,75 +267,21 @@ export class ExportEngine {
         })
         .join("\n");
 
-      const html = `<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <meta charset="UTF-8">
-  <title>${this.escapeHtml(chapterTitle)}</title>
-  <link rel="stylesheet" type="text/css" href="style.css"/>
-</head>
-<body>
-  <h2>${this.escapeHtml(chapterTitle)}</h2>
-  ${paragraphsHtml}
-</body>
-</html>`;
-      zip.addFile(`OEBPS/${fileName}`, Buffer.from(html));
-
-      const itemId = `chapter${index + 1}`;
-      manifestItems.push(
-        `<item id="${itemId}" href="${fileName}" media-type="application/xhtml+xml"/>`,
-      );
-      spineItems.push(`<itemref idref="${itemId}"/>`);
-      navItems.push(
-        `<li><a href="${fileName}">${this.escapeHtml(chapterTitle)}</a></li>`,
-      );
+      return {
+        title: chapterTitle,
+        content: `<h2>${this.escapeHtml(chapterTitle)}</h2>\n${paragraphsHtml}`,
+      };
     });
 
-    // CSS partagée
-    const css = `body { font-family: Georgia, serif; line-height: 1.6; max-width: 700px; margin: 2em auto; }
-h1, h2 { text-align: center; }
-p { margin: 1em 0; text-align: justify; }
-[lang="source"] { color: #64748b; font-style: italic; }`;
-    zip.addFile("OEBPS/style.css", Buffer.from(css));
+    const epubOptions = {
+      title,
+      author: author || "NovelTrad",
+      lang: "fr",
+      css,
+      version: 3 as const,
+    };
 
-    // Navigation document (nav)
-    const navHtml = `<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/opf">
-<head>
-  <meta charset="UTF-8">
-  <title>Table des matières</title>
-  <link rel="stylesheet" type="text/css" href="style.css"/>
-</head>
-<body>
-  <nav epub:type="toc">
-    <h1>Table des matières</h1>
-    <ol>
-      ${navItems.join("\n      ")}
-    </ol>
-  </nav>
-</body>
-</html>`;
-    zip.addFile("OEBPS/nav.xhtml", Buffer.from(navHtml));
-
-    const opf = `\u003c?xml version="1.0"?\u003e
-<package version="3.0" xmlns="http://www.idpf.org/2007/opf">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:title>${this.escapeXml(title)}</dc:title>
-    <dc:creator>${this.escapeXml(author)}</dc:creator>
-    <dc:language>fr</dc:language>
-  </metadata>
-  <manifest>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="css" href="style.css" media-type="text/css"/>
-    ${manifestItems.join("\n    ")}
-  </manifest>
-  <spine>
-    ${spineItems.join("\n    ")}
-  </spine>
-</package>`;
-    zip.addFile("OEBPS/content.opf", Buffer.from(opf));
-
-    return zip.toBuffer();
+    return await epub(epubOptions, content);
   }
 
   private defaultOutputPath(input: ExportInput): string {
@@ -602,42 +536,33 @@ p { margin: 1em 0; text-align: justify; }
     return Packer.toBuffer(doc);
   }
 
-  private toEpub(input: ExportInput): Buffer {
-    // Version MVP : genere un fichier EPUB minimaliste avec adm-zip
-    const zip = new AdmZip();
-    zip.addFile("mimetype", Buffer.from("application/epub+zip"), "", 0o644);
-
-    const containerXml = `\u003c?xml version="1.0"?\u003e
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-  <rootfiles>
-    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-  </rootfiles>
-</container>`;
-    zip.addFile("META-INF/container.xml", Buffer.from(containerXml));
+  private async toEpub(input: ExportInput): Promise<Buffer> {
+    const css = `body { font-family: Georgia, serif; line-height: 1.6; max-width: 700px; margin: 2em auto; }
+h1 { text-align: center; }
+p { margin: 1em 0; text-align: justify; }
+[lang="source"] { color: #64748b; font-style: italic; }`;
 
     const contentHtml = this.toHtml(input);
-    zip.addFile("OEBPS/content.html", Buffer.from(contentHtml));
+    // Strip the outer HTML wrapper since epub-gen-memory provides its own
+    const bodyMatch = /<body>\s*([\s\S]*?)\s*<\/body>/i.exec(contentHtml);
+    const bodyContent = bodyMatch ? bodyMatch[1] : contentHtml;
 
-    const creator = input.author
-      ? `\n    <dc:creator>${this.escapeXml(input.author)}</dc:creator>`
-      : "";
+    const epubOptions = {
+      title: input.title,
+      author: input.author || "NovelTrad",
+      lang: this.targetLang(input),
+      css,
+      version: 3 as const,
+    };
 
-    const opf = `\u003c?xml version="1.0"?\u003e
-<package version="3.0" xmlns="http://www.idpf.org/2007/opf">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:title>${this.escapeXml(input.title)}</dc:title>${creator}
-    <dc:language>${this.targetLang(input)}</dc:language>
-  </metadata>
-  <manifest>
-    <item id="content" href="content.html" media-type="application/xhtml+xml"/>
-  </manifest>
-  <spine>
-    <itemref idref="content"/>
-  </spine>
-</package>`;
-    zip.addFile("OEBPS/content.opf", Buffer.from(opf));
+    const content = [
+      {
+        title: input.title,
+        content: bodyContent,
+      },
+    ];
 
-    return zip.toBuffer();
+    return await epub(epubOptions, content);
   }
 
   private escapeHtml(text: string): string {
