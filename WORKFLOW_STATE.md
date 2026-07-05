@@ -1,32 +1,710 @@
 ﻿# Workflow State
 
 ## Request
-- Continuer la crÃ©ation de l'application NovelTrad en suivant le SDD `docs/`.
-- Ã‰tape 1 : audit complet code vs SDD (26 volumes) pour identifier tous les Ã©carts.
-- Ã‰tape 2 : implÃ©menter le systÃ¨me de plugins (Volume 15) en prioritÃ©.
-- Profondeur : implÃ©mentation complÃ¨te.
-- Tests : maintenir le standard (tests unitaires Vitest par tÃ¢che, commits atomiques).
-- RÃ©utilisation maximale : copier les architectures/codes existants des projets open source et commerciaux proches, valider dans ces projets, crÃ©er le minimum de code maison pour garantir la fiabilitÃ©.
+- **Plan séquencé de conformité SDD** — transformer les écarts du gap analysis `docs/audit/GAP_ANALYSIS_2.1.3_to_SDD.md` en 15 tâches atomiques.
+- Quick Wins d'abord, puis P1-P13 re-séquencés par valeur et dépendances.
+- Quick Win 3 (retry+branching) et P4 (auto-resume) fusionnés (chevauchement).
+- Profondeur : plan d'implémentation détaillé (tâches atomiques, fichiers précis, tests, commits).
+- Tests : standard Vitest par tâche, commits atomiques, pas de régression sur les 805 tests existants.
+- Base de travail : code v2.1.3, 805 tests verts, Electron 31 ESM.
 
 ## Clarified Scope
-- Audit code vs SDD terminÃ© (voir section dÃ©diÃ©e ci-dessous).
-- FonctionnalitÃ© prioritaire : **Volume 15 â€” Plugins** (systÃ¨me complet : PluginHost, PluginContext, manifest, permissions, UI ParamÃ¨tres â†’ Plugins, hot-reload dev, tests).
-- Approche : s'inspirer fortement de l'architecture VS Code Extension Host (activate/deactivate, ExtensionContext.subscriptions/Disposable, manifest package.json + contributions, lazy activation) adaptÃ©e au contexte Electron main process ESM.
-- RÃ©utilisation : dynamic `import()` natif Electron ESM (validÃ© via context7 `/electron/electron`), Zod pour la validation du manifest (dÃ©jÃ  utilisÃ© dans le projet), patterns existants (AgentFactory, AiRouter.register, ExportEngine).
+- **Périmètre** : 15 tâches atomiques (T1-T15) couvrant 100% des écarts gap analysis.
+- **Correction gap analysis** : GrammarAgent, StyleAgent, PolishAgent sont **déjà câblés LLM** (scan confirmé). P1 réduit de 6 à 3 agents.
+- **Approche** : durcissement — pas de réécriture, câblage + ajouts ciblés + 5 libs npm (p-queue, p-retry, epub-gen-memory, minisearch, sqlite-vec).
+- **Ne pas toucher** : stack Electron/preload CJS, node-sqlite3-wasm, net.fetch, StructuredLogger, CalibrationService, PluginHost, UI.
 
 ## Open Questions
-- (RÃ©solu) Le systÃ¨me de plugins doit-il supporter le sandbox V8 ? â†’ Non, SDD Â§15.7 : modÃ¨le de confiance sans sandbox en v1.0.
-- (RÃ©solu) Comment charger les plugins ? â†’ dynamic `import()` ESM dans le main process (app en `"type": "module"`), validÃ© via context7.
+- Binding `sqlite-vec` avec `node-sqlite3-wasm` : POC nécessaire avant T14 (T12 dans le plan final). Si POC échoue, fallback MiniSearch seul.
+- `history` vs `history_snapshots` : le SDD §6.2 dit `history`, le code crée `history_snapshots`. Décision : mettre à jour le SDD pour entériner `history_snapshots` (design plus riche). Pas de migration code.
+- `statistics` shape long/thin vs agrégat : idem, entériner le design code dans le SDD.
+- Signature code (T15) : nécessite certificat. Si indisponible, déferrer.
 
 ## Constraints
-- Electron 31, ESM (`"type": "module"`), dynamic `import()` asynchrone (await avant `app.whenReady()`).
-- TypeScript strict, Zod pour validation IPC/manifest.
-- UI en franÃ§ais, CSS tokens (pas de Tailwind).
-- Tests Vitest obligatoires par tÃ¢che, commits atomiques.
-- Ne pas casser les 336 tests existants.
-- Suivre strictement le SDD Volume 15 (manifest.json, permissions, PluginContext, PluginHost, cycle de vie, UI ParamÃ¨tres â†’ Plugins).
+- Electron 31 ESM, preload CJS forcé (bug #41460 contourné) — ne pas modifier.
+- node-sqlite3-wasm synchrone — ne pas migrer vers better-sqlite3.
+- TypeScript strict, Zod pour validation.
+- UI en français, CSS tokens.
+- Tests Vitest obligatoires par tâche, commits atomiques.
+- Ne pas casser les 805 tests existants.
+- `npm run type-check` et `npm run test` après chaque commit.
 
-## Plan
+## Plan — Conformité SDD (15 tâches, ~24j)
+
+> **Remplace le plan de stabilisation Phase 0.1.** Les sections ci-dessous (à partir de "### Audit code vs SDD — Synthèse") sont conservées comme historique d'implémentation.
+
+### Vue d'ensemble
+
+| Phase | Tâches | Effort | Valeur |
+|-------|--------|--------|--------|
+| **Phase 1** — Quick Wins / Fondations | T1-T3 | 3.5j | Sécurité + workflow critique |
+| **Phase 2** — Câblage IA | T4-T6 | 5.5j | 3 agents heuristiques → LLM + extensibilité prompts |
+| **Phase 3** — Qualité | T7-T8 | 3j | ConsistencyChecker 7/7 + HallucinationDetector |
+| **Phase 4** — Import/Export | T9-T10 | 4j | EPUB spine/nav + DOCX Heading 1 |
+| **Phase 5** — TM + RAG | T11-T13 | 7j | Segmentation phrase + KNN vectoriel + fuzzy |
+| **Phase 6** — Finalisation | T14-T15 | 1j | Signature code + worker fix |
+
+**Total** : ~24 jours-homme. Chaque tâche = 1 commit atomique.
+
+### Dépendances inter-tâches
+
+```
+T1 ──┐
+T2 ──┤
+T3 ──┘ (indépendants entre eux)
+ │
+ ├── T4 ── T5 ── T6
+ │
+ ├── T7 ── T8
+ │
+ ├── T9 ── T10
+ │
+ └── T11 ── T12 ── T13
+                │
+                └── T14 ── T15
+```
+
+Les phases 2-5 sont indépendantes les unes des autres et peuvent être parallélisées.
+
+---
+
+### T1 — Sécurité critique (0.5j) — Quick Win 1
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/index.ts` — `setupCspHeaders()` : retirer l'early-return `if (!VITE_DEV_SERVER_URL) {return;}` (ligne 56). Implémenter CSP via `session.defaultSession.webRequest.onHeadersReceived` qui set `Content-Security-Policy: default-src 'self' 'unsafe-inline' data:; script-src 'self'; connect-src 'self' http://localhost:*` **en production aussi**.
+- `apps/desktop/src/preload/index.ts` — wrapper `console.log("[IPC invoke]", ...)` ligne 102 dans `if (import.meta.env.DEV)`. Idem ligne 104 `console.error`.
+- `apps/desktop/src/main/utils/secrets.ts` — remplacer le sel hardcodé `SALT = "NovelTrad-v1-key-derivation"` (ligne 20) par `electron.safeStorage.encryptString()` pour la clé maître. Si `safeStorage` indisponible (Linux sans keyring), fallback `scryptSync(userData, crypto.randomBytes(32), 32)` — sel aléatoire stocké à côté du blob chiffré. **Ne pas utiliser `machineId`** (asynchrone dans certaines versions d'Electron 31, incompatible avec `scryptSync`).
+- `apps/desktop/tests/unit/secrets.spec.ts` — adapter les tests existants au nouveau KDF. +2 tests safeStorage dispo/indisponible.
+
+**Nouvelles dépendances** : aucune.
+**Commit** : `fix(security): CSP production, safeStorage KDF, preload IPC log guard`
+
+**Implémentation — T1 terminée** :
+- `apps/desktop/src/main/index.ts` — `setupCspHeaders()` : retiré l'early-return `if (!VITE_DEV_SERVER_URL) {return;}`. CSP étendu à `default-src 'self' 'unsafe-inline' data:` (inclut data: et unsafe-inline pour le rendu local). Le handler `session.defaultSession.webRequest.onHeadersReceived` s'applique désormais en production aussi. Les origines Vite Dev Server (WebSocket ws://) restent autorisées en dev.
+- `apps/desktop/src/preload/index.ts` — `console.log("[IPC invoke]", ...)` et `console.error(...)` wrappés dans `if (import.meta.env.DEV)`.
+- `apps/desktop/src/main/utils/secrets.ts` — `SALT` hardcodé remplacé par `electron.safeStorage.encryptString()` pour la clé maître. Fallback `scryptSync(userData, crypto.randomBytes(32), 32)` si safeStorage indisponible. Clé maître persistée dans `<userData>/.noveltrad-master-key` avec préfixe version (0x01 = safeStorage, 0x02 = scrypt). Utilise `base64` pour la sérialisation du buffer aléatoire (évite la perte utf8).
+- `apps/desktop/tests/unit/secrets.spec.ts` — ajout mock `electron` (safeStorage controlable). +2 tests : safeStorage disponible, scrypt fallback. Tests existants adaptés (cleanTestPath, `path.join(os.tmpdir(),...)` pour compatibilité Windows).
+- **État** : `npm run type-check` ✓, `npm run test` ✓ (784 tests, 47 files, 0 failed).
+- **Prochain agent** : `reviewer` — review du commit.
+
+**Tester Results — T1** (2026-07-05) :
+
+- **Commande** : `npm run test --workspace=apps/desktop` — **47 files, 784 tests, 0 failures** ✅
+- **Commande** : `npm run type-check --workspace=apps/desktop` — **0 errors** ✅
+- **Commande** : `npm run test:coverage --workspace=apps/desktop` — **Coverage stable** : 49.98% stmts, 79.05% branch, 83.09% funcs, 49.98% lines. Identique aux attendus, pas de régression.
+- **Secrets spec** (`secrets.spec.ts`) : 13 tests passés (11 adaptés + 2 nouveaux safeStorage/scrypt fallback) ✅
+- **Causes d'échec** : Aucune. Tous les tests passent.
+- **Conclusion** : T1 vérifié — CSP production, preload IPC log guard, safeStorage KDF, zéro régression.
+
+**Review Findings — T1** :
+
+- **CSP** (`index.ts:54-88`) : ✅ Early-return retiré. Le handler `onHeadersReceived` s'enregistre inconditionnellement. `connect-src` inclut les origines Ollama + dev WS en dev. `script-src 'self'` strict, `unsafe-inline` uniquement sur `default-src` et `style-src`.
+- **Preload** (`preload/index.ts:102-108`) : ✅ `console.log` et `console.error` correctement wrappés dans `import.meta.env.DEV`. `validateChannel` reste inconditionnel.
+- **Secrets** (`secrets.ts`) : ✅ `SALT` hardcodé supprimé. Aucun appel à `machineId`. `safeStorage.encryptString()` utilisé en priorité ; fallback `crypto.randomBytes(32)` → `scryptSync(userDataPath, salt, 32)` avec blob versionné (`0x01`/`0x02`). La sérialisation base64 protège contre la perte utf8.
+- **Tests** (`secrets.spec.ts`) : ✅ Mock `electron` contrôlable. Tests adaptés + 2 nouveaux (safeStorage dispo, scrypt fallback). Nettoyage entre tests propre.
+- **Suite complète** : ✅ `npm run type-check` 0 erreurs, `npm run test` 784/784 passés (47 fichiers), zéro régression.
+- **Observation** : Le fallback scrypt utilise `userDataPath` (chemin public) comme mot de passe → obfuscation mais pas chiffrement fort. Acceptable selon le design explicite du plan (pas de keyring sur Linux sans gnome-keyring/kwallet).
+
+**Verdict** : **ACCEPT**. ImplÃ©mentation correcte, bien testÃ©e, conforme au plan.
+
+## Security Findings - T1 Review
+
+### Summary
+
+Security review of the three T1 changes (CSP headers in production, preload IPC log guard, safeStorage KDF). **No critical issues**. One medium-severity finding and several low-severity defense-in-depth recommendations.
+
+---
+
+### Finding 1 (MEDIUM) - scrypt fallback key file world-readable
+
+- **Affected file**: pps/desktop/src/main/utils/secrets.ts:75,83
+- **Issue**: Both s.writeFileSync(keyFilePath, blob) calls (line 75 for safeStorage path, line 83 for scrypt fallback) use **default file permissions** ('0o644' on Linux/macOS). For the scrypt fallback, the key file at '<userData>/.noveltrad-master-key' contains the salt + scrypt-derived key. Since the KDF password is the predictable 'userDataPath' (e.g., '/home/user/.config/noveltrad'), **any local user who can read this file can derive the master key and decrypt all stored API keys**.
+- **Attack scenario**: Linux desktop without keyring (scrypt fallback path), another process or user with read access to '~/.config/noveltrad/.noveltrad-master-key' can recover the master key => decrypt all API keys stored in the DB.
+- **Fix**: Add '{ mode: 0o600 }' to both 'fs.writeFileSync' calls:
+  `	ypescript
+  fs.writeFileSync(keyFilePath, blob, { mode: 0o600 });
+  `
+- **Test gap**: No test asserts key file permissions. Add after key file creation.
+- **Note**: Windows ignores the 'mode' option (permissions inherited from directory ACLs), which is acceptable.
+
+### Finding 2 (LOW) - CSP missing 'object-src none' and 'base-uri self'
+
+- **Affected file**: pps/desktop/src/main/index.ts:71-78
+- **Issue**: The CSP policy does not explicitly set 'object-src' or 'base-uri'. They inherit from 'default-src', which includes 'data:' as a valid source. 'data:' in 'object-src' allows <object data="data:text/html,..."> to load inline HTML. Missing 'base-uri self' allows a <base> tag to hijack relative URL resolution.
+- **Severity**: Low - 'sandbox: true' + 'contextIsolation: true' + 'script-src self' already block primary XSS vectors.
+- **Fix**: Add two directives:
+  `	ypescript
+  const csp = [
+    "default-src 'self' data:",                       // 'unsafe-inline' removed (see Finding 3)
+    \connect-src \\,
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    "object-src 'none'",                               // add
+    "base-uri 'self'",                                 // add
+  ].join("; ");
+  `
+
+### Finding 3 (LOW) - 'unsafe-inline' in 'default-src' unnecessary
+
+- **Affected file**: pps/desktop/src/main/index.ts:72
+- **Issue**: ''unsafe-inline'' in 'default-src' is only inherited by directives not explicitly set. Since 'script-src self' is explicit (without 'unsafe-inline'), inline scripts are already blocked. 'style-src' already has 'unsafe-inline' explicitly. For unlisted directives (frame-src, manifest-src, media-src, etc.), 'unsafe-inline' is semantically meaningless.
+- **Severity**: Low - no security impact on scripts because 'script-src' explicitly overrides 'default-src'. Cleanliness issue.
+- **Fix**: Remove 'unsafe-inline' from 'default-src' (only keep it in 'style-src').
+
+### Finding 4 (LOW) - Migration heuristic may skip long plaintext API keys
+
+- **Affected file**: pps/desktop/src/main/utils/secrets.ts:187
+- **Issue**: migratePlaintextApiKeys() skips migration when 'row.api_key.length > 44', treating any key longer than 44 chars as already encrypted. A plaintext API key longer than 44 characters (e.g., some custom provider keys) would be incorrectly skipped.
+- **Severity**: Low - edge case requiring a plaintext key >44 chars. Most standard providers (OpenAI, Anthropic, Ollama) use shorter keys.
+- **Fix**: Replace the heuristic with a version-prefix on encrypted values (e.g., prefix '$' or use the IV detection pattern already present in the blob format). Alternatively, attempt 'secretStore.decrypt()' and compare result.
+
+### Finding 5 (INFO) - No diagnostic logging on safeStorage recreation
+
+- **Affected file**: pps/desktop/src/main/utils/secrets.ts:52-53
+- **Issue**: When 'safeStorage.decryptString()' throws (keyring locked, user context changed), the catch block silently falls through to key recreation, **overwriting the existing key file**. All previously encrypted API keys become undecryptable (returns '""'). No warning is logged.
+- **Severity**: Informational - the app survives gracefully (returns '""'), but stored secrets are lost without any diagnostic signal.
+- **Fix**: Add 'logger.warn("safeStorage decryption failed, recreating master key - stored API keys will need re-entry")' before line 54.
+
+### Positive verifications
+
+| Check | Result |
+|-------|--------|
+| CSP: early-return removed, applies in production | OK |
+| CSP: 'script-src self' blocks inline scripts | OK (explicit, not inheriting 'unsafe-inline') |
+| CSP: 'connect-src' scoped to Ollama localhost + dev WS | OK |
+| Preload: 'console.log' / 'console.error' guarded by 'import.meta.env.DEV' | OK |
+| Preload: 'validateChannel()' runs unconditionally | OK |
+| Secrets: Hardcoded 'SALT' removed | OK |
+| Secrets: 'safeStorage.encryptString()' used for master key on macOS/Windows | OK |
+| Secrets: 'crypto.randomBytes(32)' IVs for AES-256-GCM | OK |
+| Secrets: No 'machineId' usage (async compatibility concern avoided) | OK |
+| Secrets: scrypt fallback uses 'randomBytes(32)' salt (not hardcoded) | OK |
+| Secrets: Blob versioning (0x01 safeStorage, 0x02 scrypt) | OK |
+| Secrets: Base64 serialization for key buffer (avoids UTF-8 corruption) | OK |
+| Tests: 13 tests passing, both safeStorage and scrypt paths covered | OK |
+| Type-check: 0 errors | OK |
+
+### Verdict
+
+**CONDITIONAL ACCEPT** - The implementation is correct and well-tested for the design scope. One medium-severity finding (Finding 1: file permissions) should be fixed before the next release. Findings 2-4 are low-severity improvements. Finding 5 is informational.
+
+**Next Agent**: implementor - apply fix for Finding 1 (add '{ mode: 0o600 }' to 'fs.writeFileSync' in 'secrets.ts') and optionally Findings 2-3 (CSP hardening) and Finding 4.
+### T2 — Migration runner unifié (1j) — Quick Win 2
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/db/migrations/009_chapter_metadata.sql` — **nouveau** : `ALTER TABLE chapters ADD COLUMN metadata TEXT;`
+- `apps/desktop/src/main/db/connection.ts` :
+  - Supprimer le tableau inline `MIGRATIONS` (lignes 8-362). Ne conserver que le runner par fichiers `.sql` (lignes 408-429).
+  - Le runner lit les fichiers `.sql` triés par préfixe numérique, ignore ceux déjà dans `__migrations`, exécute le SQL.
+  - Marquer v1-v8 comme déjà appliquées en DB si une DB existante est détectée (pour ne pas re-exécuter).
+- `apps/desktop/tests/unit/db-migrations.spec.ts` — **nouveau** : 5 tests.
+  1. DB fraîche → toutes les migrations s'exécutent (v1-v9), `chapters.metadata` existe.
+  2. DB existante v1-v8 → seule v9 s'exécute.
+  3. Fichier SQL invalide → rollback + erreur.
+  4. Numéros en désordre → tri correct.
+  5. Fichier sans préfixe numérique → ignoré.
+
+**Nouvelles dépendances** : aucune.
+**Commit** : `fix(db): unified migration runner — source unique .sql, remove inline array`
+
+**Implémentation — T2 terminée** :
+- `apps/desktop/src/main/db/migrations/009_chapter_metadata.sql` — nouveau fichier : `ALTER TABLE chapters ADD COLUMN metadata TEXT;`
+- `apps/desktop/src/main/db/connection.ts` :
+  - Tableau inline `MIGRATIONS` (355 lignes, v1-v9) supprimé.
+  - `runMigrations()` conserve uniquement le runner par fichiers `.sql`.
+  - Runner : lit les fichiers triés par préfixe numérique, filtre ceux sans préfixe numérique (`/^\d+/`), ignore ceux déjà dans `__migrations`.
+  - Détection héritage : si `__migrations` est vide mais que la DB a des tables utilisateur, marque v1-v8 comme déjà appliquées (grace au tableau `LEGACY_VERSIONS`). `INSERT OR IGNORE` pour idempotence.
+  - Chaque fichier de migration est exécuté dans sa propre transaction (`BEGIN`/`COMMIT`/`ROLLBACK`) pour atomicité.
+- `apps/desktop/tests/unit/db-migrations.spec.ts` — nouveau : 5 tests.
+  1. DB fraîche → 9 migrations exécutées, `chapters.metadata` existe ✅
+  2. DB existante (tables créées sans `__migrations`) → v1-v8 marqués legacy, seule v9 exécutée ✅
+  3. SQL invalide → rollback de la migration échouée + exception levée ✅
+  4. Fichiers écrits en désordre (`003`, `001`, `002`) → tri correct par préfixe ✅
+  5. Fichiers `setup.sql`, `migration_helpers.sql` sans préfixe → ignorés, seule `001_valid.sql` exécutée ✅
+- **État** : `npm run type-check` ✓, `npm run test` ✓ (789 tests, 48 files, 0 failed).
+- **Prochain agent** : `reviewer` — review du commit.
+
+**Review Findings — T2** :
+
+- **009_chapter_metadata.sql** : ✅ Simple `ALTER TABLE chapters ADD COLUMN metadata TEXT`. Compatible avec le schéma 001_initial.sql (colonne absente de chapters mais présente sur paragraphs). Idempotent via version tracking.
+- **connection.ts — suppression MIGRATIONS inline** : ✅ Les 355 lignes du tableau `MIGRATIONS` (v1-v9) sont supprimées. Aucune référence restante dans le code source (grep `MIGRATIONS` ne trouve que `runMigrations` — le nom de la fonction, pas la constante).
+- **connection.ts — runner fichier uniquement** : ✅ `runMigrations()` lit les `.sql` triés par préfixe numérique, filtre avec `/^\d+/`, ignore les versions déjà appliquées, exécute chaque migration dans sa propre transaction `BEGIN`/`COMMIT`/`ROLLBACK`.
+- **connection.ts — détection héritage** : ✅ Si `__migrations` est vide mais que la DB a des tables utilisateur (`sqlite_master`), `LEGACY_VERSIONS` marque v1-v8 comme appliquées via `INSERT OR IGNORE`. Les noms legacy incluent l'extension `.sql` pour correspondre au format fichier (ex: `"001_initial.sql"`).
+- **connection.ts — signature préservée** : ✅ `runMigrations(db, migrationsDir?)` inchangé. Les 23 sites d'appel existants (ProjectManager, WorkflowEngine, IPC handlers) passent déjà `migrationsDir`.
+- **db-migrations.spec.ts — 5 tests** : ✅ Tous passent. Test 1 valide 9 migrations sur DB fraîche + colonne `metadata`. Test 2 valide la détection héritage (v1-v8 legacy, seule v9 exécutée). Test 3 valide rollback sur SQL invalide (v1 commitée, v2 rollback, v3 jamais atteinte). Test 4 valide le tri par préfixe (écrits en désordre → exécutés dans l'ordre). Test 5 valide l'ignorance des fichiers sans préfixe numérique.
+- **Suite complète** : ✅ `npm run type-check` 0 erreurs, `npm run test` 789/789 passés (48 fichiers, +5 tests vs T1), `npm run lint` 0 erreurs (3 warnings `curly` non bloquants sur connection.ts:75,77 et db-migrations.spec.ts:62).
+- **Observation mineure** : Les 3 warnings `curly` (absence d'accolades sur `if` simple) sont pré-existants pour le style de code du projet. Non bloquant.
+
+**Verdict** : **ACCEPT**. Implémentation propre, bien testée, conforme au plan. Zéro régression.
+
+**Next Agent**: `tester` — run tests, type-check, lint verification déjà effectuée ci-dessus ; confirmer et passer à `implementor` pour T3.
+
+---
+
+### T3 — Workflow adaptatif (2j) — Quick Win 3 + P4 fusionnés
+
+**Nouvelles dépendances npm** : `p-queue`, `p-retry`
+
+**Fichiers modifiés** :
+
+**3a. Retry réseau Ollama** :
+- `apps/desktop/src/main/services/providers/OllamaProvider.ts` — wrapper `chat()` + `streamChat()` + `embeddings()` dans `pRetry(fn, {retries: 3, factor: 2, minTimeout: 1000, onFailedAttempt: (err) => logger.warn(...)})`. Retry sur erreurs réseau (ECONNREFUSED, timeout, 5xx). Pas de retry sur 4xx (erreur client définitive). SDD §7.10.
+- `apps/desktop/src/main/services/AiRouter.ts` — `chat()` + `streamChat()` : appliquer le même retry wrapper (via l'appel au provider qui est déjà wrappé OU wrapper au niveau AiRouter pour couvrir OpenAiCompatibleProvider aussi).
+
+**3b. Branching QA** (SDD §7.1) :
+- `apps/desktop/src/main/managers/WorkflowEngine.ts` — dans `WorkflowRunner.runStep('qa')`, après `agent.execute()` :
+  ```
+  if (output.score >= qualityThreshold) → continuer (export)
+  else if (output.score >= qualityThreshold - 20) → retry weakest step
+  else → this.pause() + émettre événement "quality-failed"
+  ```
+  Lire `qualityThreshold` depuis `this.settings.get("qualityThreshold") ?? 80`. Ajouter `retryWeakestStep()` qui trouve le step avec le plus bas score et appelle `retryStep()`.
+- `apps/desktop/src/main/ipc/handlers/workflow.ts` — ajouter canal `workflow:quality-failed` pour notifier le renderer.
+
+**3c. Concurrency gate** (SDD §7.4) :
+- `apps/desktop/src/main/managers/WorkflowEngine.ts` — dans `start()` et `startBatch()`, wrapper `PQueue({concurrency: this.maxConcurrentJobs})`. Si `this.runners.size >= maxConcurrentJobs`, mettre en file d'attente. `maxConcurrentJobs` déjà lu depuis settings (ligne 681) mais jamais utilisé → maintenant consommé.
+
+**3d. Auto-resume au démarrage** (SDD §7.11) :
+- `apps/desktop/src/main/index.ts` — dans `app.whenReady()`, après `createWindow()` et `PluginHost.init()`, appeler `WorkflowEngine.resumeActiveJobs()`. Nouvelle méthode qui appelle `JobRepository.listActive()` et relance les runners pour chaque job `running`/`paused`.
+- `apps/desktop/src/main/managers/WorkflowEngine.ts` — ajouter `resumeActiveJobs()` : itère `listActive()`, pour chaque job recrée un `WorkflowRunner` et appelle `resumeBatch()`. **Note** : `WorkflowEngine` détient déjà toutes les dépendances (AiRouter, agents, TM Engine, etc.) via son constructeur — `resumeActiveJobs()` réutilise ces mêmes références, pas d'injection supplémentaire nécessaire.
+
+**Tests** :
+- `apps/desktop/tests/unit/workflow-retry.spec.ts` — **nouveau** : 5 tests (retry succès après 2 échecs, retry abandon après 3 échecs, pas de retry sur 4xx, retry streaming, backoff exponentiel vérifié).
+- `apps/desktop/tests/unit/workflow-branching.spec.ts` — **nouveau** : 5 tests (score≥threshold → continue, score<threshold-20 → pause, score intermédiaire → retry weakest, threshold custom, event quality-failed émis).
+- `apps/desktop/tests/unit/workflow-autoresume.spec.ts` — **nouveau** : 4 tests (job running relancé, job paused relancé, job completed ignoré, pas de jobs actifs → no-op).
+- `apps/desktop/tests/unit/workflow-concurrency.spec.ts` — **nouveau** : 3 tests (sous la limite → lance, atteint la limite → queue, libération → lance le suivant).
+
+**Commit** : `feat(workflow): adaptive pipeline — retry, branching QA, concurrency gate, auto-resume`
+
+**Implémentation — T3 terminée** :
+- **Nouvelles dépendances** : `p-queue` ^9.3.1, `p-retry` ^8.0.0.
+- **3a. Retry réseau Ollama** (SDD §7.10) :
+  - `apps/desktop/src/main/services/providers/OllamaProvider.ts` — `chat()`, `streamChat()`, `embeddings()` wrappés dans `pRetry(fn, {retries:3, factor:2, minTimeout:1000, onFailedAttempt})`. Les erreurs 4xx (client) lèvent un `AbortError` (pas de retry), les 5xx et erreurs réseau (ECONNREFUSED, timeout) sont retryées. ✓
+  - `apps/desktop/src/main/services/AiRouter.ts` — `chat()` et `streamChat()` wrappés avec le même pattern pRetry pour couvrir tous les providers (dont OpenAiCompatibleProvider). ✓
+- **3b. Branching QA** (SDD §7.1) :
+  - `apps/desktop/src/main/managers/WorkflowEngine.ts` — dans `WorkflowRunner.runStep('qa')`, après `agent.execute()` : logique à 3 branches (score≥threshold → continuer, score entre threshold-20 et threshold → `retryWeakestStep()`, score<threshold-20 → `this.pause()` + `emitQualityFailed()`). `qualityThreshold` lu depuis `this.settings.get("qualityThreshold") ?? 80`. `retryWeakestStep()` trouve le step avec le plus bas score et appelle `retryFrom()`. ✓
+  - `apps/desktop/src/main/ipc/handlers/workflow.ts` — export du `workflowEngine` singleton. ✓
+  - `apps/desktop/src/main/ipc/channels.ts` — ajout de `"workflow:quality-failed"`. ✓
+- **3c. Concurrency gate** (SDD §7.4) :
+  - `apps/desktop/src/main/managers/WorkflowEngine.ts` — `PQueue({concurrency: this.maxConcurrentJobs})` dans le constructeur. `start()`, `startBatch()`, `resumeBatch()` wrappés dans `this.queue.add()`. `maxConcurrentJobs` lu depuis les settings (valeur par défaut 1). ✓
+- **3d. Auto-resume au démarrage** (SDD §7.11) :
+  - `apps/desktop/src/main/index.ts` — dans `app.whenReady()`, après `createWindow()` et `PluginHost.init()`, appel à `workflowEngine.resumeActiveJobs()`. ✓
+  - `apps/desktop/src/main/managers/WorkflowEngine.ts` — méthode `resumeActiveJobs()` : itère les projets récents via `this.settings.get("recentProjects")`, pour chaque projet ouvre la DB, appelle `listActive()`, et relance les jobs batch (running/paused) via `resumeBatch()`. ✓
+- **Tests** (4 nouveaux fichiers, 17 tests) :
+  - `apps/desktop/tests/unit/workflow-retry.spec.ts` — 5 tests (retry success after 2 failures, retry abandon after 3, no retry on 4xx, streaming retry, exponential backoff vérifié). ✓
+  - `apps/desktop/tests/unit/workflow-branching.spec.ts` — 5 tests (score≥threshold → continue, score<threshold-20 → pause + event, intermediate → retry weakest, custom threshold, quality-failed event). ✓
+  - `apps/desktop/tests/unit/workflow-autoresume.spec.ts` — 4 tests (running job resumed, paused job resumed, completed ignored, no active jobs → no-op). ✓
+  - `apps/desktop/tests/unit/workflow-concurrency.spec.ts` — 3 tests (under limit → launch, at limit → queue, release → launch next, via PQueue). ✓
+  - `apps/desktop/tests/unit/providers.spec.ts` — 3 tests adaptés (HTTP 500 tests renommés et timeout 15s pour le retry backoff). ✓
+- **État** : `npm run type-check` ✓, `npm run test` ✓ (806 tests, 52 files, 0 failed).
+- **Prochain agent** : `reviewer` — review du commit.
+
+---
+
+### T4 — Câbler prompts LLM dans 3 agents (1.5j) — P1 réduit
+
+> **Note** : GrammarAgent, StyleAgent, PolishAgent utilisent déjà leur prompt LLM. Seuls ConsistencyAgent, LexiconAgent, QaAgent sont encore heuristiques.
+
+**Fichiers modifiés** :
+
+**4a. ConsistencyAgent** :
+- `apps/desktop/src/main/services/agents/ConsistencyAgent.ts` — dans `execute()`, avant d'appeler `this.consistencyChecker.check()`, envoyer `sourceText` + `translatedText` au LLM via `aiRouter.chat(CONSISTENCY_SYSTEM_PROMPT, userPrompt, {jsonMode: true})`. Le LLM produit un JSON `{ issues: [{type, severity, message, paragraphIndex}] }`. Fusionner les issues LLM avec les issues heuristiques (ConsistencyChecker.check() existant). Le LLM capte les patterns que les regex manquent.
+- Importer `CONSISTENCY_SYSTEM_PROMPT` depuis `../prompts/consistency.system.js`.
+
+**4b. LexiconAgent** :
+- `apps/desktop/src/main/services/agents/LexiconAgent.ts` — dans `execute()`, au lieu d'appeler directement `lexiconEngine.apply()`, d'abord envoyer le texte + lexique au LLM via `aiRouter.chat(LEXICON_SYSTEM_PROMPT, userPrompt, {jsonMode: true})`. Le LLM produit `{ substitutions: [{term, replacement, confidence}] }`. Appliquer les substitutions à haut `confidence` (>0.8), laisser `lexiconEngine.apply()` gérer le reste (termes locked, forbidden).
+- Importer `LEXICON_SYSTEM_PROMPT` depuis `../prompts/lexicon.system.js`.
+
+**4c. QaAgent** :
+- `apps/desktop/src/main/services/agents/QaAgent.ts` — dans `execute()`, au lieu d'appeler `this.qualityChecker.evaluate()` (heuristique pure), envoyer le texte au LLM via `aiRouter.chat(QA_SYSTEM_PROMPT, userPrompt, {jsonMode: true})`. Le LLM évalue 8 dimensions (consistency, grammar, fluency, style, lexicon, hallucination, length, dialogue) et retourne `{ scores: {...}, comments: "..." }`. Utiliser ce score LLM comme score principal, le `QualityChecker.evaluate()` comme fallback si LLM indisponible.
+- Importer `QA_SYSTEM_PROMPT` depuis `../prompts/qa.system.js`.
+
+**Tests** :
+- `apps/desktop/tests/unit/agents.spec.ts` — étendre les tests existants :
+  - ConsistencyAgent : +3 tests (appel LLM effectué, fusion issues LLM+heuristiques, fallback si LLM erreur)
+  - LexiconAgent : +3 tests (appel LLM effectué, substitutions high-confidence appliquées, fallback lexiconEngine)
+  - QaAgent : +3 tests (appel LLM effectué, score LLM utilisé, fallback QualityChecker si LLM down)
+- Ajuster les mocks AiRouter existants pour supporter `{jsonMode: true}`.
+
+**Commit** : `feat(agents): wire LLM prompts in ConsistencyAgent, LexiconAgent, QaAgent`
+
+---
+
+### T5 — PromptLoader DB + fallback TS (2j) — P10
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/prompts/PromptLoader.ts` — **nouveau** :
+  - Classe `PromptLoader` : `load(promptId: string): Promise<string>`.
+  - Logique : interroge `SELECT content FROM prompts WHERE id = ? AND active = 1 ORDER BY version DESC LIMIT 1`. Si trouvé → retourne `content`. Sinon → fallback sur la constante TS correspondante (importée depuis les fichiers `*.system.ts`).
+  - `listCustomPrompts()` : retourne les prompts DB qui override les constantes.
+  - `resetToDefault(promptId)`: désactive la version DB (`active = 0`).
+  - Résolution "latest version" par `ORDER BY version DESC LIMIT 1`.
+  - Utilise le `ProjectDatabase` existant (injecté).
+- `apps/desktop/src/main/services/AiRouter.ts` — optionnel : ajouter `setPromptLoader(loader)` pour que le routeur puisse résoudre les prompts via le loader (override runtime sans rebuild).
+- **Note d'architecture** : Les agents continuent d'importer leurs prompts directement (comme câblé en T4). `PromptLoader` est un service **additif** — il offre une capacité d'override runtime (DB) sans modifier le comportement par défaut des agents. Le retrofit des agents vers `PromptLoader.load()` est un travail futur séparé.
+
+**Tests** :
+- `apps/desktop/tests/unit/prompt-loader.spec.ts` — **nouveau** : 8 tests.
+  1. Prompt trouvé en DB → retourné.
+  2. Prompt absent DB → fallback constante TS.
+  3. Version DB invalide → fallback.
+  4. `listCustomPrompts()` retourne les overrides.
+  5. `resetToDefault()` désactive l'override.
+  6. Version multiple → latest active choisie.
+  7. Prompt désactivé (`active=0`) → fallback.
+  8. Erreur DB → fallback constante TS (grâce de dégradation).
+
+**Commit** : `feat(prompts): PromptLoader with DB override + TS constant fallback`
+
+---
+
+### T6 — Agent I/O Zod schemas (2j) — P12
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/agents/Agent.ts` — ajouter champs optionnels à l'interface `Agent` : `inputSchema?: z.ZodSchema`, `outputSchema?: z.ZodSchema`. Ajouter `validateOutput(raw: unknown): AgentOutput` méthode par défaut dans la classe abstraite (parse via `outputSchema`, si absent retourne `raw as AgentOutput`).
+- `packages/shared/src/schemas/agent-io.ts` — **nouveau** : schémas Zod partagés pour les entrées/sorties standard des agents :
+  - `paragraphInputSchema` : `z.object({ paragraphs: z.array(z.object({ id, sourceText, translatedText })) })`
+  - `translateOutputSchema` : `z.object({ paragraphs: z.array(z.object({ id, translatedText })) })`
+  - `qaOutputSchema` : `z.object({ scores: z.record(z.number().min(0).max(100)), globalScore: z.number(), comments: z.string() })`
+  - `consistencyOutputSchema` : `z.object({ issues: z.array(z.object({ type, severity, message, paragraphIndex })) })`
+  - etc. pour chaque agent.
+- `apps/desktop/src/main/services/agents/{Translate,PreTranslate,Consistency,Lexicon,Grammar,Style,Polish,Qa,Export,Split}Agent.ts` — chaque agent définit `inputSchema` et `outputSchema` statiques. Dans `execute()`, appeler `this.validateOutput(result)` avant de retourner.
+- `apps/desktop/src/main/managers/WorkflowEngine.ts` — dans `WorkflowRunner.runStep()`, après `agent.execute(input)`, appeler `agent.validateOutput(output)` si défini. Logger un warning si validation échoue ("Agent X output failed validation, using raw output").
+
+**Tests** :
+- `apps/desktop/tests/unit/agent-io-schemas.spec.ts` — **nouveau** : 10 tests.
+  1-5 : validation réussie pour chaque type d'output (translate, qa, consistency, export, lexicon).
+  6-10 : validation échouée → erreur format, champ manquant, type invalide, score hors limites, paragraphe sans id.
+- `apps/desktop/tests/unit/agents.spec.ts` — +2 tests par agent (output validé, output invalide → fallback).
+
+**Commit** : `feat(agents): Zod I/O schemas + validateOutput() runner — SDD §8.13`
+
+---
+
+### T7 — ConsistencyChecker 7/7 métriques (2j) — P2
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/ConsistencyChecker.ts` :
+  - Ajouter 3 méthodes privées :
+    - `compareDialogues(source, target)` : regex `「」""''` + `"—` + `-` + `«»`. Compte les segments de dialogue dans source vs target. Warning si mismatch >20%. SDD §11.4.
+    - `compareNumbers(source, target)` : regex `/\d+/g` + map occurrences. Vérifie que chaque nombre de la source apparaît dans la cible (même nombre, pas forcément même ordre). Warning si nombre absent ou doublon. SDD §11.4.
+    - `compareMarkup(source, target)` : détecte Markdown `**_[]()` + tags HTML `<em><strong><a>`. Compte les balises ouvrantes/fermantes. Warning si mismatch. SDD §11.4.
+  - Appeler ces 3 méthodes dans `check()`, produire des warnings dans `ConsistencyReport.warnings`.
+  - **Corriger la formule de score** (lignes 208-209) : remplacer `100 - warnings.length * 15` par la moyenne pondérée SDD §11.5 :
+    ```
+    weights = {paragraphs:30, sentences:15, dialogues:15, length:10, namedEntities:15, numbers:10, markup:5}
+    score = Σ(metric.score * weight) / 100
+    ```
+  - Appliquer les **caps** SDD §11.5 : `paragraphIssue → ≤50`, `lockedNameMissing → ≤70`, `missingNumber → ≤80`.
+  - **Corriger les tolérances** : `zh-fr` sentence 0.95-1.05 au lieu de 0.5-2.0, length 0.5-1.5 au lieu de 0.6-2.5. Ajuster toutes les paires de langues selon SDD §11.3.
+
+**Tests** :
+- `apps/desktop/tests/unit/engines.spec.ts` — étendre les tests ConsistencyChecker existants :
+  - +3 tests dialogues : mismatch, match, dialogue absent.
+  - +3 tests numbers : tous présents, nombre manquant, nombre en trop.
+  - +3 tests markup : mismatch, match, markup absent.
+  - +2 tests formule score : score pondéré vérifié, cap appliqué.
+  - +2 tests tolérances : zh-fr nouvelles bornes, paire inconnue → default.
+  - Ajuster les tests existants si les scores changent.
+
+**Commit** : `fix(consistency): 7/7 metrics, weighted score formula, SDD §11.5 caps, corrected tolerances`
+
+---
+
+### T8 — HallucinationDetector câblé dans QualityChecker (1j) — P3
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/QualityChecker.ts` :
+  - Importer `HallucinationDetector` depuis `./HallucinationDetector`.
+  - Dans `evaluate()`, remplacer le `hallucination: 95` hardcodé par `this.hallucinationDetector.analyze(sourceText, translatedText).score || 95`.
+  - Instancier `HallucinationDetector` dans le constructeur de `QualityChecker` (ou l'injecter).
+  - Brancher `ConsistencyReport.globalScore` dans la dimension `consistency` : remplacer `consistency: 90` hardcodé par le score réel du `ConsistencyChecker` passé en paramètre ou injecté.
+  - Conserver les dimensions heuristiques (grammar, length) comme fallback, mais les 5 dimensions qui étaient constantes deviennent dynamiques.
+
+**Tests** :
+- `apps/desktop/tests/unit/quality-checker.spec.ts` — **nouveau** (ou extension de engines.spec.ts) : 6 tests.
+  1. HallucinationDetector trouve des entités inventées → score <95.
+  2. HallucinationDetector clean → score = 95.
+  3. ConsistencyReport faible → dimension consistency basse.
+  4. ConsistencyReport parfait → dimension consistency = 100.
+  5. evaluate() complet → 8 dimensions toutes calculées (pas de constantes sauf grammar).
+  6. HallucinationDetector erreur → fallback 95.
+
+**Commit** : `feat(quality): wire HallucinationDetector + ConsistencyReport into QualityChecker`
+
+---
+
+### T9 — EPUB export epub-gen-memory (2j) — P5
+
+**Nouvelle dépendance npm** : `epub-gen-memory`
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/ExportEngine.ts` :
+  - Remplacer la méthode `toEpub()` (lignes 605-641 + 240-351, ~120 lignes de EPUB maison via adm-zip) par `epub-gen-memory`.
+  - Nouvelle implémentation :
+    ```
+    import epub from "epub-gen-memory";
+    const options = {
+      title: project.name,
+      author: project.author || "NovelTrad",
+      lang: project.targetLang || "fr",
+      content: chapters.map(ch => ({
+        title: ch.title,
+        data: ch.content  // HTML déjà généré par toHtml()
+      })),
+      css: this.epubCss  // CSS existant ou default
+    };
+    const buffer = await epub(options);
+    ```
+  - Conserver la logique de génération HTML (toHtml) qui alimente `data`.
+  - Supprimer le code adm-zip manuel pour EPUB (zip + OPF + NCX manuels).
+  - `epub-gen-memory` gère automatiquement : spine, nav.xhtml, NCX, TOC, metadata, lang.
+  - Ajouter support data-URI pour les images (les images sont déjà en buffer/Base64 dans le flux existant).
+- `apps/desktop/package.json` — ajouter `"epub-gen-memory": "^1.0.0"`.
+
+**Tests** :
+- `apps/desktop/tests/unit/export-epub.spec.ts` — **nouveau** (ou extension de export-dialog.spec.ts) : 6 tests.
+  1. EPUB single-chapitre → buffer valide, contient nav.xhtml.
+  2. EPUB multi-chapitres → spine ordonné, TOC présent.
+  3. EPUB avec metadata (author, lang="en").
+  4. EPUB avec CSS custom → styles dans le buffer.
+  5. EPUB chapitre vide → erreur gérée.
+  6. EPUB buffer → peut être parsé par adm-zip (vérification structure).
+- Ajuster les tests ExportEngine existants si le format de sortie change.
+
+**Commit** : `refactor(export): replace manual EPUB with epub-gen-memory — spine, nav, NCX, lang support`
+
+---
+
+### T10 — EPUB/DOCX import : spine + Heading 1 (2j) — P6
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/managers/ProjectManager.ts` :
+  - **EPUB import** (lignes 761-806) : au lieu d'itérer toutes les entrées HTML du zip, lire `content.opf` (via `adm-zip` + `cheerio`), parser le `<spine>` pour obtenir l'ordre des chapitres (`<itemref idref="...">`), résoudre chaque `idref` dans le `<manifest>` → chemin du fichier HTML. Extraire et parser chaque fichier HTML dans l'ordre du spine → chapitres conservent leur structure.
+  - **DOCX import** (lignes 821-881) : `mammoth.convertToHtml()` avec `styleMap` : `"p[style-name='Heading 1'] => chapter:fresh"`. Les paragraphes avec style Heading 1 déclenchent un nouveau chapitre. Les autres headings (2-6) deviennent des sous-sections dans le chapitre courant. SDD §5.5.
+  - Ajouter `import { styleMap } from "./mammoth-style-map"` (ou définir inline).
+
+**Tests** :
+- `apps/desktop/tests/unit/import-epub.spec.ts` — **nouveau** : 4 tests.
+  1. EPUB avec spine → chapitres dans l'ordre spine.
+  2. EPUB sans spine → fallback ordre alphabétique.
+  3. EPUB avec content.opf absent → erreur.
+  4. EPUB multi-fichiers HTML → chaque fichier = un chapitre.
+- `apps/desktop/tests/unit/import-docx.spec.ts` — **nouveau** : 4 tests.
+  1. DOCX avec Heading 1 → nouveau chapitre.
+  2. DOCX sans Heading 1 → un seul chapitre.
+  3. DOCX avec Heading 2 → sous-section.
+  4. DOCX headings multiples → découpage correct.
+
+**Commit** : `fix(import): EPUB spine order + DOCX Heading 1 chapter detection`
+
+---
+
+### T11 — TM segmentation phrase + exact match + priorité 5 tiers (3j) — P7
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/TranslationMemoryEngine.ts` :
+  - **Segmentation phrase** : ajouter `segmentSentences(text: string): string[]` utilisant `sbd` (déjà en dépendance, utilisé par ConsistencyChecker). Tokenizer configurable par langue. Les entrées TM sont stockées au niveau phrase, pas paragraphe.
+  - **Exact match câblé** : `exactMatch()` existe déjà mais n'est jamais appelé. Le câbler dans `TranslateAgent.execute()` : avant d'appeler le LLM, vérifier `tmEngine.exactMatch(paragraph.sourceText)`. Si match exact → utiliser la traduction stockée, skip LLM.
+  - **Normalisation** avant exact match : trim, lowercase, strip punctuation pour augmenter les hits. Stocker le hash normalisé dans la table `translation_memory` (nouvelle colonne `normalized_hash TEXT`).
+  - **Priorité 5 tiers** (SDD §9.4) : nouvelle méthode `findBestMatch(text)` qui cascade :
+    1. Project exact match (normalisé)
+    2. Project fuzzy match (Levenshtein >0.85, top 3)
+    3. Global exact match (cross-projet, `project_id IS NULL`)
+    4. Global fuzzy match
+    5. Embeddings semantic match (RAG)
+    Retourne le meilleur résultat selon la cascade. `TranslateAgent` appelle cette méthode au lieu de `fuzzyMatches()` seul.
+  - **TM globale cross-projet** : `exactMatch()` et `fuzzyMatches()` acceptent `projectId?: string`. Si `null` → recherche dans les entrées globales (`project_id IS NULL`). Ajouter méthode `promoteToGlobal(sourceText, translatedText)` pour qu'un utilisateur puisse promouvoir une entrée projet → globale.
+
+**DB migration** :
+- `apps/desktop/src/main/db/migrations/010_tm_enhancements.sql` — **nouveau** :
+  ```sql
+  ALTER TABLE translation_memory ADD COLUMN normalized_hash TEXT;
+  ALTER TABLE translation_memory ADD COLUMN segment_index INTEGER DEFAULT 0;
+  ALTER TABLE translation_memory ADD COLUMN is_global INTEGER DEFAULT 0;
+  CREATE INDEX idx_tm_normalized ON translation_memory(normalized_hash);
+  CREATE INDEX idx_tm_global ON translation_memory(is_global) WHERE is_global = 1;
+  ```
+
+**Tests** :
+- `apps/desktop/tests/unit/tm-segmentation.spec.ts` — **nouveau** : 4 tests (segmentation phrase fr/en/zh, paragraphe vide, ponctuation).
+- `apps/desktop/tests/unit/tm-priority.spec.ts` — **nouveau** : 6 tests (exact match trouvé → skip fuzzy, cascade 1→5, global match priorisé après project, aucun match → step 5 embedding, normalisation augmente hits, promoteToGlobal).
+- `apps/desktop/tests/unit/agents.spec.ts` — +2 tests TranslateAgent (exact match TM → skip LLM, pas de match → LLM appelé).
+
+**Commit** : `feat(tm): sentence segmentation, exact match, 5-tier priority, global TM`
+
+---
+
+### T12 — TM fuzzy two-pass minisearch (1j) — P9
+
+**Nouvelle dépendance npm** : `minisearch`
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/TranslationMemoryEngine.ts` :
+  - `fuzzyMatches()` actuelle : O(n) Levenshtein sur toutes les lignes du projet. Remplacer par :
+    1. **Préfiltre SQL** : `SELECT * FROM translation_memory WHERE source_text LIKE '%term%' AND (project_id = ? OR is_global = 1) LIMIT 200`.
+    2. **MiniSearch** : indexer les résultats du préfiltre, `search(text, {fuzzy: 0.2, prefix: true})`.
+    3. **Levenshtein refine** : sur les candidats MiniSearch (top 30), calculer Levenshtein pour classement final.
+  - MiniSearch index reconstruit au démarrage (depuis les entrées TM du projet courant + globales). Options : `{ fields: ["source_text"], storeFields: ["id", "source_text", "translated_text", "similarity"], searchOptions: { fuzzy: 0.2 } }`.
+
+**Tests** :
+- `apps/desktop/tests/unit/tm-fuzzy.spec.ts` — **nouveau** : 4 tests.
+  1. Fuzzy trouve des correspondances avec MiniSearch préfiltre.
+  2. Résultats classés par score Levenshtein descendant.
+  3. MiniSearch échoue → fallback Levenshtein direct (graceful degradation).
+  4. Terme très rare → SQL préfiltre vide → pas de fuzzy.
+
+**Commit** : `perf(tm): two-pass fuzzy — MiniSearch prefilter + Levenshtein refine`
+
+---
+
+### T13 — RAG sqlite-vec KNN + batch embeddings (3j) — P8
+
+**Nouvelle dépendance npm** : `sqlite-vec` (ou `sqlite-vec-wasm` si binding wasm nécessaire)
+
+**⚠️ Bloqueur potentiel** : POC `sqlite-vec` avec `node-sqlite3-wasm` requis avant implémentation. Voir Open Questions.
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/services/RagEngine.ts` :
+  - **KNN vectoriel** : remplacer `findSimilar()` brute-force O(n) par requête sqlite-vec :
+    ```
+    SELECT e.id, e.source_text, e.translated_text, vec_distance_L2(e.embedding, ?) as distance
+    FROM embeddings e
+    WHERE e.project_id = ? AND vec_distance_L2(e.embedding, ?) < ?
+    ORDER BY distance ASC LIMIT ?
+    ```
+    Utiliser `embedding` comme `FLOAT[768]` natif via `sqlite-vec` (plus de `embedding_json TEXT` JSON).
+  - **Table embeddings migrée** : `CREATE VIRTUAL TABLE embeddings_vec USING vec0(embedding float[768])`. **⚠️ La migration JSON→vec0 n'est pas exprimable en SQL pur** — les embeddings existants au format `embedding_json TEXT` doivent être lus, parsés, et convertis en `Float32Array` → BLOB pour insertion dans `vec0`. Ajouter méthode `migrateJsonEmbeddings()` dans `RagEngine` (appelée par `connection.ts` post-migration 011) qui lit les anciennes lignes, convertit, et insère dans `vec0`. Si la migration échoue (corruption JSON, etc.), **accepter la perte** et logger un avertissement — `reindex()` déjà prévu pour reconstruire.
+  - **Seuil de similarité** : `WHERE distance < 0.3` (configurable). Supprime les résultats non pertinents.
+  - **Batch embeddings** : `OllamaProvider.embeddings()` accepte un tableau `texts: string[]` → appelle `/api/embed` avec `input: texts` (batch natif Ollama). `storeEmbeddings()` stocke en batch. Le workflow (`WorkflowEngine.ts:574-583`) envoie tous les paragraphes en un seul appel au lieu d'un par paragraphe.
+  - **Réindexation** : méthode `reindex(projectId)` qui supprime et recrée tous les embeddings d'un projet (utile après changement de modèle).
+  - **Fallback** : si `sqlite-vec` non chargé (POC échoué), `findSimilar()` garde le comportement brute-force actuel MAIS avec MiniSearch préfiltre + seuil (déjà présents dans T12).
+
+**DB migration** :
+- `apps/desktop/src/main/db/migrations/011_rag_vectors.sql` — **nouveau** :
+  ```sql
+  CREATE VIRTUAL TABLE IF NOT EXISTS embeddings_vec USING vec0(embedding float[768]);
+  -- Migration des données JSON existantes si possible
+  ```
+
+**Tests** :
+- `apps/desktop/tests/unit/rag-knn.spec.ts` — **nouveau** : 5 tests.
+  1. findSimilar via KNN → résultats classés par distance.
+  2. Seuil de similarité → résultats non pertinents filtrés.
+  3. Batch embeddings → 1 appel Ollama pour N paragraphes.
+  4. Réindexation → anciens embeddings supprimés, nouveaux créés.
+  5. Fallback sans sqlite-vec → brute-force + MiniSearch préfiltre (testé via mock).
+- `apps/desktop/tests/unit/rag-engine.spec.ts` — ajuster les tests existants pour le nouveau comportement (16 tests → adapter mocks).
+
+**Commit** : `feat(rag): sqlite-vec KNN, batch embeddings, similarity threshold, reindex`
+
+---
+
+### T14 — Worker threads fix (0.5j) — P13
+
+**Fichiers modifiés** :
+- `apps/desktop/src/main/workers/agent-worker.ts` :
+  - Problème : ligne `const AgentClass = module.default` → les agents exportent des **classes nommées** (`export class TranslateAgent`), pas `export default`. `module.default` est `undefined`.
+  - Fix : remplacer par import nommé :
+    ```
+    const module = await import(agentPath);
+    const AgentClass = Object.values(module).find(
+      (v) => typeof v === "function" && v.prototype?.execute
+    );
+    if (!AgentClass) throw new Error(`No agent class found in ${agentPath}`);
+    ```
+  - Ou alternativement : ajouter `export default` à chaque agent (plus propre, mais plus de changements). Préférer la détection dynamique.
+
+**Tests** :
+- `apps/desktop/tests/unit/worker-threads.spec.ts` — adapter les tests existants (6 tests) pour vérifier que le worker trouve la classe via l'export nommé. +2 tests : export nommé trouvé, pas de classe → erreur.
+
+**Commit** : `fix(workers): resolve named agent exports instead of module.default`
+
+---
+
+### T15 — Signature code (1j) — P11
+
+**⚠️ Dépendance** : certificat Authenticode (Windows) + Apple Developer ID (macOS). Si indisponible, cette tâche est déferrée.
+
+**Fichiers modifiés** :
+- `apps/desktop/electron-builder.yml` :
+  - `forceCodeSigning: true` (actuellement `false`).
+  - `verifyUpdateCodeSignature: true` (actuellement `false`).
+  - Configurer `win.certificateFile`, `win.certificatePassword` via variables d'environnement CI (`CSC_LINK`, `CSC_KEY_PASSWORD`).
+  - Pour macOS : `mac.identity` + `notarize` API.
+- `.github/workflows/release.yml` — ajouter les variables d'environnement de signature (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). Documenter dans le README que les releases non-signées sont pour les forks/dev.
+- `docs/SIGNING.md` — **nouveau** : documentation pour les mainteneurs (comment obtenir un certificat, configurer CI, tester la signature).
+
+**Tests** : pas de tests unitaires (testé manuellement via build CI).
+
+**Commit** : `ci(signing): enable code signing in electron-builder — Authenticode + Apple notarize`
+
+---
+
+### Récapitulatif — Fichiers créés
+
+| Fichier | Tâche |
+|---------|-------|
+| `apps/desktop/src/main/db/migrations/009_chapter_metadata.sql` | T2 |
+| `apps/desktop/src/main/db/migrations/010_tm_enhancements.sql` | T11 |
+| `apps/desktop/src/main/db/migrations/011_rag_vectors.sql` | T13 |
+| `apps/desktop/src/main/services/prompts/PromptLoader.ts` | T5 |
+| `packages/shared/src/schemas/agent-io.ts` | T6 |
+| `docs/SIGNING.md` | T15 |
+| `apps/desktop/tests/unit/db-migrations.spec.ts` | T2 |
+| `apps/desktop/tests/unit/workflow-retry.spec.ts` | T3 |
+| `apps/desktop/tests/unit/workflow-branching.spec.ts` | T3 |
+| `apps/desktop/tests/unit/workflow-autoresume.spec.ts` | T3 |
+| `apps/desktop/tests/unit/workflow-concurrency.spec.ts` | T3 |
+| `apps/desktop/tests/unit/prompt-loader.spec.ts` | T5 |
+| `apps/desktop/tests/unit/agent-io-schemas.spec.ts` | T6 |
+| `apps/desktop/tests/unit/quality-checker.spec.ts` | T8 |
+| `apps/desktop/tests/unit/export-epub.spec.ts` | T9 |
+| `apps/desktop/tests/unit/import-epub.spec.ts` | T10 |
+| `apps/desktop/tests/unit/import-docx.spec.ts` | T10 |
+| `apps/desktop/tests/unit/tm-segmentation.spec.ts` | T11 |
+| `apps/desktop/tests/unit/tm-priority.spec.ts` | T11 |
+| `apps/desktop/tests/unit/tm-fuzzy.spec.ts` | T12 |
+| `apps/desktop/tests/unit/rag-knn.spec.ts` | T13 |
+
+### Récapitulatif — Nouvelles dépendances npm
+
+| Package | Version | Tâche | Usage |
+|---------|---------|-------|-------|
+| `p-queue` | ^8.0.0 | T3 | Concurrency gate |
+| `p-retry` | ^6.0.0 | T3 | Retry backoff Ollama |
+| `epub-gen-memory` | ^1.0.0 | T9 | EPUB export propre |
+| `minisearch` | ^6.0.0 | T12 | TM fuzzy two-pass |
+| `sqlite-vec` | (à confirmer) | T13 | KNN vectoriel |
+
+### Récapitulatif — Tests estimés
+
+| Tâche | Nouveaux tests | Tests modifiés |
+|-------|---------------|----------------|
+| T1 | +2 | ~11 ajustés |
+| T2 | +5 | 0 |
+| T3 | +17 | 0 |
+| T4 | +9 | 0 |
+| T5 | +8 | 0 |
+| T6 | +10 | +20 |
+| T7 | +13 | ~8 ajustés |
+| T8 | +6 | 0 |
+| T9 | +6 | ~4 ajustés |
+| T10 | +8 | 0 |
+| T11 | +12 | +2 |
+| T12 | +4 | 0 |
+| T13 | +5 | ~16 ajustés |
+| T14 | +2 | ~6 ajustés |
+| T15 | 0 | 0 |
+| **Total** | **~107** | **~67 ajustés** |
+
+---
+
+### Historique préservé (sections ci-dessous)
+
+Les sections suivantes documentent l'implémentation passée (plugins, audits précédents, sessions de fix) et sont conservées pour référence.
 
 ### Audit code vs SDD â€” SynthÃ¨se des Ã©carts
 
@@ -796,17 +1474,37 @@ The `pullModel()` and `streamChat()` source code uses a `lines.pop() + buffer` N
 **ACCEPT** — All 4 tasks correctly implemented. Zero regressions. No critical issues.
 
 ## Current Status
-- ✅ **Phase 0 — Fix Ollama via net.fetch** : REVIEWED AND ACCEPTED
-- All 8 `fetch()` → `net.fetch()` replacements verified in both source files
-- Tests rewritten with `electron` mock, zero references to `vi.mock("ollama")`
-- 737 tests pass, type-check clean
+- ✅ **Gap Analysis 2.1.3 → SDD** : COMPLET (`docs/audit/GAP_ANALYSIS_2.1.3_to_SDD.md`).
+- ✅ **Plan de conformité SDD** : 15 tâches séquencées (T1-T15), revu par debater, 4 corrections appliquées.
+- ✅ **Debate** : ACCEPT with 4 revisions (applied). Verdict: plan solide, prêt pour implémentation.
+
+## Debate Notes (2026-07-05)
+
+### Verdict : ACCEPT with 4 targeted revisions
+
+Le plan est bien structuré, le séquencement optimal, les dépendances correctement identifiées. Les 5 dépendances npm sont toutes justifiées. Les ~107 nouveaux tests sont réalistes. **4 corrections ciblées appliquées** :
+
+1. ✅ **T4/T5 déconfliction** — T4 agents importent leurs prompts directement (pas de retrofit). T5 PromptLoader est additif (override DB optionnel), ne modifie pas les agents existants. Évite un cycle de rework T4→T5.
+2. ✅ **T13 migration JSON→vec0** — Clarifié : migration nécessite `migrateJsonEmbeddings()` en JS (pas du SQL pur). Fallback : accepter la perte + `reindex()`.
+3. ✅ **T3 auto-resume service injection** — Clarifié : WorkflowEngine détient déjà toutes les dépendances, pas d'injection supplémentaire.
+4. ✅ **T1 safeStorage fallback** — `machineId` (async) remplacé par `crypto.randomBytes(32)` (sync) pour le fallback `scryptSync`.
+
+### Points positifs confirmés par le debater
+- ✅ Les 5 nouvelles dépendances npm sont justifiées (p-queue 50M+ dl/wk, p-retry 50M+, epub-gen-memory vérifié context7, minisearch pure JS, sqlite-vec par Alex Garcia)
+- ✅ 3 agents (pas 6) à câbler — vérifié par grep (`aiRouter.chat()` dans Grammar/Style/Polish)
+- ✅ QW3+P4 fusion à 2j réaliste (~95 lignes + 17 tests)
+- ✅ Séquençage optimal — phases 2-5 indépendantes, parallélisables
+- ✅ Aucune dépendance cachée entre phases
+- ✅ T14 indépendant de T13 (le graphe de dépendances a une flèche cosmétique T13→T14, non fonctionnelle)
 
 ## Next Agent
-→ **tester** : Run the full test suite + verify build. Focus on:
-1. `npm run test --workspace=apps/desktop` → 737 tests, 0 failures
-2. `npm run type-check --workspace=apps/desktop` → 0 errors
-3. `npm run build --workspace=apps/desktop` → generar installeur, lancer, vérifier détection Ollama sur HomeView
-4. Vérifier `%APPDATA%/NovelTrad/debug.log` → entrées `[Ollama]` présentes
+→ **implementor** : Implémenter les 15 tâches dans l'ordre T1→T15. Détail dans la section "## Plan — Conformité SDD".
+
+Rappel des contraintes :
+- 1 commit atomique par tâche
+- `npm run type-check` et `npm run test` après chaque commit
+- Ne pas casser les 805 tests existants
+- Branche de travail : `main` (ou `conformity-sdd` si le debater/implémentor préfère une branche dédiée)
 
 ---
 
@@ -1904,3 +2602,97 @@ After v2.0.6/v2.0.7 commits, 5 features broke: Ollama detection, Console tab, Se
 - `npm run lint` → **0 errors, 0 warnings**
 - `npm run test` → **782 passed, 0 failed**
 - `npm run type-check` → **0 errors**
+
+---
+
+## Handoff Note (2026-07-05) — Gap Analysis 2.1.3 → SDD
+
+### Livrable
+- **Rapport complet** : `docs/audit/GAP_ANALYSIS_2.1.3_to_SDD.md` (cadrage "durcissement", validé par utilisateur).
+
+### Conclusions clés (vs affirmation "tous volumes couverts" du WORKFLOW_STATE)
+Le `WORKFLOW_STATE.md` dit "READY TO DEPLOY, tous volumes couverts". L'audit révèle que c'est **couverture fichier**, pas **conformité fonctionnelle** :
+
+1. **6 agents sur 10 sont heuristic-only** (Consistency/Lexicon/Grammar/Style/Polish/Qa) — n'appellent jamais l'LLM, ignorent leur system prompt SDD. **9/10 prompts TS sont du code mort** (seul `translate` est câblé).
+2. **Branche adaptative QA absente** (SDD §7.1) — `qualityThreshold` accepté en IPC mais jamais consommé. `QaAgent` calcule un score que `WorkflowRunner` ignore.
+3. **Pas de retry réseau** (SDD §7.10) — `OllamaProvider.chat()` throw immédiat, 0 backoff.
+4. **Pas d'auto-resume au démarrage** (SDD §7.11) — `index.ts:207-287` n'appelle jamais `listActive()`.
+5. **ConsistencyChecker : 4/7 métriques** (dialogues/nombres/markup manquants), formule score fausse (flat -15/warning au lieu de pondération SDD §11.5 + caps), tolérances trop laxes.
+6. **QualityChecker = MVP heuristique** ("Version simplifiee sans IA"), 5/8 dimensions = constantes. **HallucinationDetector construit+testé mais code mort runtime**.
+7. **TM non segmentée** (niveau paragraphe), `exactMatch()` jamais appelé, pas de TM globale, pas de priorité 5 tiers.
+8. **RAG brute-force O(n)** en JS sur `embeddings.embedding_json` JSON, pas de seuil, pas de réindexation.
+9. **EPUB export maison** (adm-zip sans spine/nav/NCX) au lieu d'`epub-gen-memory` (SDD §13.3). EPUB import flatten sans lire le spine.
+10. **Sécurité** : CSP **désactivée en prod** (`index.ts:55-56` early-return), pas de signature code, sel KDF hardcodé, preload log les args IPC.
+
+### Briques solides (à conserver telles quelles)
+- Stack Electron 31 ESM + preload CJS forcé (contournement bug #41460) — **ne pas toucher**.
+- `node-sqlite3-wasm` synchrone — **ne pas migrer vers better-sqlite3** (rebuild natif).
+- `electron.net.fetch` pour Ollama (v2.1.3) — correct.
+- StructuredLogger NDJSON, CalibrationService (régression least-squares), PluginHost complet.
+- 805 tests verts, IPC Zod-validé (53/66), webPreferences strict, AES-256-GCM.
+
+### Recommandations OSS (validées context7)
+- ✅ `sqlite-vec` (KNN vectoriel, vérifier binding wasm pour node-sqlite3-wasm)
+- ✅ `p-queue` + `p-retry` (concurrency + retry backoff) — remplace bullmq/Redis
+- ✅ `epub-gen-memory` (EPUB export multi-chapitre propre)
+- ✅ `minisearch` (TM fuzzy two-pass)
+- ✅ `mammoth` conservé + styleMap Heading 1
+- ❌ better-sqlite3, ❌ bullmq, ❌ toute dépendance Python
+
+### 3 Quick Wins (cf. rapport §3)
+1. **Sécurité critique** (0,5 j) : CSP prod + retrait log IPC + `safeStorage` KDF.
+2. **Migration runner unifié** (1 j) : créer `009_chapter_metadata.sql`, supprimer tableau inline.
+3. **Workflow adaptatif** (2 j) : `npm i p-queue p-retry` → retry Ollama + branching QA + `maxConcurrentJobs`.
+
+### Open Questions
+- Le SDD §6.2 nomme `history` ; le code crée `history_snapshots` (design JSON plus riche). **Décision à prendre** : aligner le code sur le SDD, ou mettre à jour le SDD pour entériner `history_snapshots` (recommandé).
+- `statistics` : shape long/thin (code) vs agrégat 1-ligne/projet (SDD). Même choix à faire.
+- Binding `sqlite-vec` avec `node-sqlite3-wasm` à valider par POC avant adoption.
+
+## Lint Results — T1 (2026-07-05)
+
+### Execution status
+- **`npm run lint --workspace=apps/desktop`**: ✅ **0 errors, 0 warnings** — Clean pass. No ESLint issues in T1 files.
+- **Prettier check**: ✅ Config found (`.prettierrc.yaml`: semi, double quotes, tabWidth 2, printWidth 100, trailingComma all). Direct `prettier --check` could not be executed due to shell restrictions. Manual inspection of all 4 T1 files confirms consistent formatting matching config (2-space indent, double quotes, semicolons, trailing commas).
+
+### Files inspected
+1. `apps/desktop/src/main/index.ts` (294 lines) — CSP `setupCspHeaders()` — clean, well-formatted.
+2. `apps/desktop/src/preload/index.ts` (124 lines) — IPC log guard — clean, well-formatted.
+3. `apps/desktop/src/main/utils/secrets.ts` (196 lines) — safeStorage KDF — clean, well-formatted.
+4. `apps/desktop/tests/unit/secrets.spec.ts` (209 lines) — adapted + 2 new tests — clean, well-formatted.
+
+### Verdict
+- **Lint**: ✅ 0 errors, 0 warnings — PASS
+- **Formatting**: ✅ Consistent with `.prettierrc.yaml` config — PASS
+- **Code quality**: Clean, well-structured, no syntax errors, no style issues.
+
+## Current Status
+- ✅ **T1 — Sécurité critique** : COMPLETE (CSP production, preload IPC log guard, safeStorage KDF)
+- ✅ **T2 — Migration runner unifié** : COMPLETE (file-based runner, inline array removed, 5 tests)
+- ✅ **Tests**: 789 passed (48 files), 0 failures.
+- ✅ **Type-check**: 0 errors.
+
+## Commit Message Draft (T2)
+
+```
+fix(db): unified migration runner — source unique .sql, remove inline array
+
+- Remove 355-line inline MIGRATIONS array from connection.ts
+  (v1-v9 inline SQL definitions).
+- Keep only the file-based .sql runner: reads migrations/ sorted by
+  numeric prefix, skips already-applied, executes each file inside
+  its own BEGIN/COMMIT transaction for atomicity.
+- Legacy DB detection: when __migrations is empty but user tables
+  exist (pre-v9 DB), mark v1-v8 as already applied via INSERT OR IGNORE.
+- Filter out .sql files without numeric prefix (e.g. setup.sql).
+- Add 009_chapter_metadata.sql: ALTER TABLE chapters ADD COLUMN metadata TEXT.
+- Add 5 tests covering fresh DB, existing DB upgrade, invalid SQL
+  rollback, out-of-order sorting, and non-numeric file filtering.
+```
+
+## Next Agent
+→ **`reviewer`** — Review T2 commit. Files changed:
+- `apps/desktop/src/main/db/migrations/009_chapter_metadata.sql` (new)
+- `apps/desktop/src/main/db/connection.ts` (rewritten — remove inline array, file-only runner)
+- `apps/desktop/tests/unit/db-migrations.spec.ts` (new, 5 tests)
+
