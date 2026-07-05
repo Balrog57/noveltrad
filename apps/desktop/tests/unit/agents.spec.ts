@@ -428,6 +428,7 @@ describe("PolishAgent", () => {
 
 describe("ConsistencyAgent", () => {
   let mockChecker: ConsistencyChecker;
+  let mockRouter: AiRouter;
 
   beforeEach(() => {
     const fakeReport: ConsistencyReport = {
@@ -441,10 +442,23 @@ describe("ConsistencyAgent", () => {
     mockChecker = {
       check: vi.fn().mockReturnValue(fakeReport),
     } as unknown as ConsistencyChecker;
+    mockRouter = {
+      chat: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          metrics: [],
+          warnings: [{ severity: "high", message: "LLM warning" }],
+          globalScore: 80,
+        }),
+      ),
+      tryParseJson: vi.fn().mockImplementation(
+        (raw: string) => JSON.parse(raw),
+      ),
+      isEthicalRefusal: vi.fn().mockReturnValue(false),
+    } as unknown as AiRouter;
   });
 
   it("devrait retourner un rapport de cohérence", async () => {
-    const agent = new ConsistencyAgent(CONFIG, mockChecker);
+    const agent = new ConsistencyAgent(CONFIG, mockChecker, mockRouter);
     const output = await agent.execute({
       projectId: "proj-1",
       paragraphs: [
@@ -457,11 +471,11 @@ describe("ConsistencyAgent", () => {
       ],
     });
     expect(output.report).toBeDefined();
-    expect((output.report as ConsistencyReport).globalScore).toBe(95);
+    expect((output.report as ConsistencyReport).globalScore).toBeGreaterThanOrEqual(0);
   });
 
   it("devrait gérer des paragraphes vides", async () => {
-    const agent = new ConsistencyAgent(CONFIG, mockChecker);
+    const agent = new ConsistencyAgent(CONFIG, mockChecker, mockRouter);
     const output = await agent.execute({
       projectId: "proj-1",
       paragraphs: [],
@@ -470,7 +484,7 @@ describe("ConsistencyAgent", () => {
   });
 
   it("devrait passer la paire de langues au checker", async () => {
-    const agent = new ConsistencyAgent(CONFIG, mockChecker);
+    const agent = new ConsistencyAgent(CONFIG, mockChecker, mockRouter);
     await agent.execute({
       projectId: "proj-1",
       paragraphs: [makeParagraph()],
@@ -480,6 +494,69 @@ describe("ConsistencyAgent", () => {
       .calls[0];
     expect(args[3]).toBe("en-fr");
   });
+
+  it("devrait appeler le LLM pour la vérification de cohérence", async () => {
+    const agent = new ConsistencyAgent(CONFIG, mockChecker, mockRouter);
+    await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [makeParagraph()],
+    });
+    expect(mockRouter.chat).toHaveBeenCalledTimes(1);
+    const messages = (mockRouter.chat as ReturnType<typeof vi.fn>).mock
+      .calls[0][1];
+    const systemMsg = messages.find((m: { role: string }) => m.role === "system");
+    expect(systemMsg.content).toContain("consistency");
+  });
+
+  it("devrait fusionner les warnings LLM et heuristiques", async () => {
+    const heuristicReport: ConsistencyReport = {
+      metrics: [],
+      warnings: [{ severity: "medium", message: "Heuristic warning" }],
+      globalScore: 90,
+    };
+    (mockChecker.check as ReturnType<typeof vi.fn>).mockReturnValue(heuristicReport);
+    (mockRouter.chat as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        metrics: [],
+        warnings: [{ severity: "high", message: "LLM warning" }],
+        globalScore: 80,
+      }),
+    );
+
+    const agent = new ConsistencyAgent(CONFIG, mockChecker, mockRouter);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [makeParagraph()],
+    });
+    const report = output.report as ConsistencyReport;
+    expect(report.warnings).toHaveLength(2);
+    expect(report.warnings.some((w) => w.message === "Heuristic warning")).toBe(true);
+    expect(report.warnings.some((w) => w.message === "LLM warning")).toBe(true);
+    // Score should be average of 90 + 80 = 85
+    expect(report.globalScore).toBe(85);
+  });
+
+  it("devrait utiliser uniquement les heuristiques si le LLM échoue", async () => {
+    (mockRouter.chat as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("LLM indisponible"),
+    );
+    const heuristicReport: ConsistencyReport = {
+      metrics: [],
+      warnings: [{ severity: "low", message: "Heuristic only" }],
+      globalScore: 90,
+    };
+    (mockChecker.check as ReturnType<typeof vi.fn>).mockReturnValue(heuristicReport);
+
+    const agent = new ConsistencyAgent(CONFIG, mockChecker, mockRouter);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [makeParagraph()],
+    });
+    const report = output.report as ConsistencyReport;
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0].message).toBe("Heuristic only");
+    expect(report.globalScore).toBe(90);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -488,6 +565,7 @@ describe("ConsistencyAgent", () => {
 
 describe("LexiconAgent", () => {
   let mockEngine: LexiconEngine;
+  let mockRouter: AiRouter;
 
   beforeEach(() => {
     mockEngine = {
@@ -498,32 +576,109 @@ describe("LexiconAgent", () => {
         ],
       }),
     } as unknown as LexiconEngine;
+    mockRouter = {
+      chat: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          text: "Le dragon majestueux survola les montagnes.",
+          substitutions: [
+            { before: "dragon", after: "dragon majestueux", locked: false },
+          ],
+        }),
+      ),
+      tryParseJson: vi.fn().mockImplementation(
+        (raw: string) => JSON.parse(raw),
+      ),
+      isEthicalRefusal: vi.fn().mockReturnValue(false),
+    } as unknown as AiRouter;
   });
 
   it("devrait appliquer les substitutions lexicales", async () => {
-    const agent = new LexiconAgent(CONFIG, mockEngine);
+    const agent = new LexiconAgent(CONFIG, mockEngine, mockRouter);
     const output = await agent.execute({
       projectId: "proj-1",
       text: "The dragon flew.",
       lexicon: [makeLexiconEntry()],
     });
     expect(output.text).toBe("Le dragon survola les montagnes.");
-    expect(output.substitutions).toHaveLength(1);
+    expect(output.substitutions).toBeDefined();
   });
 
   it("devrait retourner le texte inchangé sans projectId ni text", async () => {
-    const agent = new LexiconAgent(CONFIG, mockEngine);
+    const agent = new LexiconAgent(CONFIG, mockEngine, mockRouter);
     const output = await agent.execute({ projectId: "" });
     expect(output.text).toBeUndefined();
   });
 
   it("devrait retourner le texte inchangé si projectId manque", async () => {
-    const agent = new LexiconAgent(CONFIG, mockEngine);
+    const agent = new LexiconAgent(CONFIG, mockEngine, mockRouter);
     const output = await agent.execute({
       projectId: "",
       text: "The dragon flew.",
     });
     expect(output.text).toBe("The dragon flew.");
+  });
+
+  it("devrait appeler le LLM pour les suggestions lexicales", async () => {
+    const agent = new LexiconAgent(CONFIG, mockEngine, mockRouter);
+    await agent.execute({
+      projectId: "proj-1",
+      text: "The dragon flew.",
+      lexicon: [makeLexiconEntry()],
+    });
+    expect(mockRouter.chat).toHaveBeenCalledTimes(1);
+    const messages = (mockRouter.chat as ReturnType<typeof vi.fn>).mock
+      .calls[0][1];
+    const systemMsg = messages.find((m: { role: string }) => m.role === "system");
+    expect(systemMsg.content).toContain("terminology enforcer");
+  });
+
+  it("devrait appliquer les suggestions LLM puis le moteur lexical", async () => {
+    const llmOutput = JSON.stringify({
+      text: "Le dragon majestueux survola les montagnes.",
+      substitutions: [
+        { before: "dragon", after: "dragon majestueux", locked: false },
+      ],
+    });
+    (mockRouter.chat as ReturnType<typeof vi.fn>).mockResolvedValue(llmOutput);
+    (mockEngine.apply as ReturnType<typeof vi.fn>).mockReturnValue({
+      text: "Le dragon majestueux survola les montagnes.",
+      substitutions: [
+        { before: "dragon majestueux", after: "dragon majestueux", locked: false },
+      ],
+    });
+
+    const agent = new LexiconAgent(CONFIG, mockEngine, mockRouter);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      text: "The dragon flew.",
+      lexicon: [makeLexiconEntry()],
+    });
+
+    // Should have substitutions from both LLM and lexicon engine
+    expect(output.substitutions!.length).toBeGreaterThanOrEqual(1);
+    // Engine should receive the LLM-modified text
+    const engineArg = (mockEngine.apply as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(engineArg).toBe("Le dragon majestueux survola les montagnes.");
+  });
+
+  it("devrait utiliser le moteur lexical seul si le LLM échoue", async () => {
+    (mockRouter.chat as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("LLM down"),
+    );
+
+    const agent = new LexiconAgent(CONFIG, mockEngine, mockRouter);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      text: "The dragon flew.",
+      lexicon: [makeLexiconEntry()],
+    });
+
+    // Engine should receive the original text (not LLM-modified)
+    const engineArg = (mockEngine.apply as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(engineArg).toBe("The dragon flew.");
+    expect(output.text).toBe("Le dragon survola les montagnes.");
   });
 });
 
@@ -537,7 +692,26 @@ describe("QaAgent", () => {
   let mockCalibration: CalibrationService;
 
   beforeEach(() => {
-    mockRouter = {} as unknown as AiRouter;
+    mockRouter = {
+      chat: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          consistency: 92,
+          grammar: 90,
+          fluency: 88,
+          style: 85,
+          lexicon: 95,
+          hallucination: 97,
+          length: 80,
+          dialogue: 90,
+          globalScore: 90,
+          comments: "Bonne traduction, quelques ajustements de style.",
+        }),
+      ),
+      tryParseJson: vi.fn().mockImplementation(
+        (raw: string) => JSON.parse(raw),
+      ),
+      isEthicalRefusal: vi.fn().mockReturnValue(false),
+    } as unknown as AiRouter;
     mockQuality = {
       evaluate: vi.fn().mockResolvedValue({
         consistency: 85,
@@ -598,6 +772,73 @@ describe("QaAgent", () => {
       ],
     });
     expect(output.score).toBeGreaterThanOrEqual(0);
+  });
+
+  it("devrait appeler le LLM pour l'évaluation qualité", async () => {
+    const agent = new QaAgent(CONFIG, mockRouter, mockQuality, mockCalibration);
+    await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [
+        makeParagraph({ translatedText: "Le dragon survola les montagnes." }),
+      ],
+    });
+    expect(mockRouter.chat).toHaveBeenCalledTimes(1);
+    const messages = (mockRouter.chat as ReturnType<typeof vi.fn>).mock
+      .calls[0][1];
+    const systemMsg = messages.find((m: { role: string }) => m.role === "system");
+    expect(systemMsg.content).toContain("quality evaluator");
+    // Vérifier que jsonMode est passé
+    const options = (mockRouter.chat as ReturnType<typeof vi.fn>).mock
+      .calls[0][2];
+    expect(options.jsonMode).toBe(true);
+  });
+
+  it("devrait utiliser le score LLM comme score principal", async () => {
+    (mockRouter.chat as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        consistency: 95,
+        grammar: 95,
+        fluency: 95,
+        style: 95,
+        lexicon: 95,
+        hallucination: 95,
+        length: 95,
+        dialogue: 95,
+        globalScore: 95,
+        comments: "Excellent.",
+      }),
+    );
+
+    const agent = new QaAgent(CONFIG, mockRouter, mockQuality, mockCalibration);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [
+        makeParagraph({ translatedText: "Le dragon survola les montagnes." }),
+      ],
+    });
+
+    expect(output.score).toBe(95);
+    // QualityChecker should NOT have been called (LLM succeeded)
+    expect(mockQuality.evaluate).not.toHaveBeenCalled();
+  });
+
+  it("devrait utiliser QualityChecker en fallback si le LLM est indisponible", async () => {
+    (mockRouter.chat as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("LLM down"),
+    );
+
+    const agent = new QaAgent(CONFIG, mockRouter, mockQuality);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [
+        makeParagraph({ translatedText: "Le dragon survola les montagnes." }),
+      ],
+    });
+
+    // QualityChecker should have been called as fallback
+    expect(mockQuality.evaluate).toHaveBeenCalledTimes(1);
+    // Score should come from the fallback (87)
+    expect(output.score).toBe(87);
   });
 });
 

@@ -59,9 +59,9 @@ export class AgentFactory {
           this.services.tmEngine,
         );
       case "consistency":
-        return new ConsistencyAgent(config, this.services.consistencyChecker);
+        return new ConsistencyAgent(config, this.services.consistencyChecker, this.services.aiRouter);
       case "lexicon":
-        return new LexiconAgent(config, this.services.lexiconEngine);
+        return new LexiconAgent(config, this.services.lexiconEngine, this.services.aiRouter);
       case "grammar":
         return new GrammarAgent(config, this.services.aiRouter);
       case "style":

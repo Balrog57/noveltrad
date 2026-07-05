@@ -7,6 +7,11 @@ import type {
 import type { AiRouter } from "../AiRouter.js";
 import type { QualityChecker } from "../QualityChecker.js";
 import type { CalibrationService } from "../CalibrationService.js";
+import {
+  QA_SYSTEM_PROMPT,
+  buildQaUserPrompt,
+} from "../prompts/qa.system.js";
+import { logger } from "../../utils/logger.js";
 
 /** Dimensions de qualité calibrables (exclut globalScore et comments) */
 const CALIBRATABLE_DIMENSIONS = [
@@ -39,12 +44,64 @@ export class QaAgent implements Agent {
     const translatedText = paragraphs
       .map((p) => p.translatedText ?? "")
       .join("\n\n");
+    const targetLanguage =
+      (input.options?.targetLanguage as string) ?? "French";
 
-    const report = await this.qualityChecker.evaluate(
-      sourceText,
-      translatedText,
-      input.lexicon ?? [],
-    );
+    // Phase 1 : LLM evaluation (primary)
+    let report: QualityReport;
+    let llmAvailable = false;
+
+    const fallbackEvaluate = (): Promise<QualityReport> =>
+      this.qualityChecker.evaluate(
+        sourceText,
+        translatedText,
+        input.lexicon ?? [],
+      );
+
+    try {
+      const userPrompt = buildQaUserPrompt({
+        sourceText,
+        translatedText,
+        targetLanguage,
+      });
+
+      const response = await this.aiRouter.chat(
+        this.config.providerId,
+        [
+          { role: "system", content: QA_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        { jsonMode: true },
+      );
+
+      const parsed = this.aiRouter.tryParseJson(response);
+      if (parsed && typeof parsed === "object") {
+        const obj = parsed as Record<string, unknown>;
+        report = {
+          consistency: typeof obj.consistency === "number" ? obj.consistency : 50,
+          grammar: typeof obj.grammar === "number" ? obj.grammar : 50,
+          fluency: typeof obj.fluency === "number" ? obj.fluency : 50,
+          style: typeof obj.style === "number" ? obj.style : 50,
+          lexicon: typeof obj.lexicon === "number" ? obj.lexicon : 50,
+          hallucination: typeof obj.hallucination === "number" ? obj.hallucination : 50,
+          length: typeof obj.length === "number" ? obj.length : 50,
+          dialogue: typeof obj.dialogue === "number" ? obj.dialogue : 50,
+          globalScore: typeof obj.globalScore === "number" ? obj.globalScore : 50,
+          comments: String(obj.comments ?? ""),
+        };
+        llmAvailable = true;
+      } else {
+        // Phase 2 : Fallback to heuristic evaluation
+        report = await fallbackEvaluate();
+      }
+    } catch (err) {
+      logger.warn(
+        "[QaAgent] LLM evaluation failed, falling back to heuristic QualityChecker",
+        { error: (err as Error).message },
+      );
+      // Phase 2 : Fallback to heuristic evaluation
+      report = await fallbackEvaluate();
+    }
 
     // SDD §12.5 : appliquer la calibration avant le calcul du globalScore
     const calibratedReport = this.applyCalibration(report);

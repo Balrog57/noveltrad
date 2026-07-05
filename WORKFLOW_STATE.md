@@ -330,6 +330,40 @@ Security review of the three T1 changes (CSP headers in production, preload IPC 
 
 **Commit** : `feat(agents): wire LLM prompts in ConsistencyAgent, LexiconAgent, QaAgent`
 
+**Implémentation — T4 terminée** :
+- `apps/desktop/src/main/services/agents/ConsistencyAgent.ts` :
+  - Ajout `aiRouter: AiRouter` au constructeur.
+  - Import de `CONSISTENCY_SYSTEM_PROMPT` et `buildConsistencyUserPrompt` depuis `../prompts/consistency.system.js`.
+  - Phase 1 : envoie sourceText + translatedText au LLM via `aiRouter.chat(providerId, [system, user], {jsonMode: true})`.
+  - Parse la réponse JSON (metrics, warnings, globalScore) via `aiRouter.tryParseJson()`.
+  - Phase 2 : exécute `this.checker.check()` (heuristique) — toujours appelé.
+  - Phase 3 : fusion des warnings LLM + heuristiques (déduplication par message). globalScore = moyenne des deux scores.
+  - Fallback : si LLM échoue (erreur ou parse invalide), utilise uniquement les heuristiques.
+- `apps/desktop/src/main/services/agents/LexiconAgent.ts` :
+  - Ajout `aiRouter: AiRouter` au constructeur.
+  - Import de `LEXICON_SYSTEM_PROMPT` et `buildLexiconUserPrompt` depuis `../prompts/lexicon.system.js`.
+  - Phase 1 : envoie texte + lexique au LLM via `aiRouter.chat(providerId, [system, user], {jsonMode: true})`.
+  - Parse `{ text, substitutions }` de la réponse LLM.
+  - Phase 2 : appelle `lexiconEngine.apply(llmText, lexicon)` pour gérer les locked/forbidden restants.
+  - Phase 3 : fusion des substitutions LLM + engine (déduplication before+after).
+  - Fallback : si LLM échoue, `lexiconEngine.apply(input.text, lexicon)` directement.
+- `apps/desktop/src/main/services/agents/QaAgent.ts` :
+  - Import de `QA_SYSTEM_PROMPT` et `buildQaUserPrompt` depuis `../prompts/qa.system.js`.
+  - Phase 1 : envoie sourceText + translatedText + targetLanguage au LLM via `aiRouter.chat()` avec `{jsonMode: true}`.
+  - Parse le JSON en `QualityReport` (8 dimensions + globalScore + comments).
+  - Phase 2 : applique la calibration existante via `applyCalibration()`.
+  - Fallback : si LLM échoue (réseau ou parse invalide), appelle `qualityChecker.evaluate()`.
+- `apps/desktop/src/main/services/agents/AgentFactory.ts` :
+  - `create("consistency")` : passe `this.services.aiRouter` au constructeur.
+  - `create("lexicon")` : passe `this.services.aiRouter` au constructeur.
+- `apps/desktop/tests/unit/agents.spec.ts` :
+  - ConsistencyAgent : +3 tests (appel LLM effectué avec system prompt, fusion warnings LLM+heuristiques avec average score, fallback LLM indisponible → heuristiques seules).
+  - LexiconAgent : +3 tests (appel LLM effectué avec system prompt, LLM text passé à engine + substitutions fusionnées, fallback texte original passé à engine si LLM down).
+  - QaAgent : +3 tests (appel LLM effectué avec jsonMode, score LLM utilisé comme score principal [QualityChecker pas appelé], fallback QualityChecker utilisé si LLM down [score=87]).
+  - Mocks `AiRouter` ajustés : `chat()` mocké avec `mockResolvedValue(JSON.stringify(...))`, `tryParseJson` implémenté via `JSON.parse`.
+- **État** : `npm run type-check` ✓, `npm run test` ✓ (815 tests, 52 files, 0 failed, +9 tests).
+- **Prochain agent** : `reviewer` — review du commit.
+
 ---
 
 ### T5 — PromptLoader DB + fallback TS (2j) — P10
