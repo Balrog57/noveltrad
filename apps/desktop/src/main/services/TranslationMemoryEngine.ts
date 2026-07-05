@@ -33,7 +33,7 @@ export class TranslationMemoryEngine {
       .trim()
       .toLowerCase()
       .replace(
-        /[.,!?;:'"«»()\[\]{}《》「」【】、。，！？；：""''\u2018\u2019\u201c\u201d\u2013\u2014-]/g,
+        /[.,!?;:'"«»()[\]{}《》「」【】、。，！？；：""''\u2018\u2019\u201c\u201d\u2013\u2014-]/g,
         "",
       )
       .replace(/\s+/g, " ")

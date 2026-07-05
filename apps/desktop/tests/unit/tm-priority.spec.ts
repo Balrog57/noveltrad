@@ -85,7 +85,7 @@ import { TranslationMemoryEngine } from "../../src/main/services/TranslationMemo
 const NORMALIZE_CACHE: Map<string, string> = new Map();
 function normalize(t: string): string {
   if (NORMALIZE_CACHE.has(t)) return NORMALIZE_CACHE.get(t)!;
-  const result = t.trim().toLowerCase().replace(/[.,!?;:'"«»()\[\]{}《》「」【】、。，！？；：""''\u2018\u2019\u201c\u201d\u2013\u2014-]/g, "").replace(/\s+/g, " ").trim();
+  const result = t.trim().toLowerCase().replace(/[.,!?;:'"«»()[\]{}《》「」【】、。，！？；：""''\u2018\u2019\u201c\u201d\u2013\u2014-]/g, "").replace(/\s+/g, " ").trim();
   NORMALIZE_CACHE.set(t, result);
   return result;
 }
