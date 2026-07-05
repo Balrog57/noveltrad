@@ -82,6 +82,8 @@ DEFAULT_VOICES: Dict[str, str] = {
 
     # Portuguese
     "portuguese": "pt-BR-FranciscaNeural",
+    "portuguese (brazil)": "pt-BR-FranciscaNeural",
+    "portuguese (portugal)": "pt-PT-RaquelNeural",
     "pt": "pt-BR-FranciscaNeural",
     "pt-br": "pt-BR-FranciscaNeural",
     "pt-pt": "pt-PT-RaquelNeural",

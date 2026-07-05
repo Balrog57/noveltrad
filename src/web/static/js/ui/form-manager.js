@@ -323,7 +323,8 @@ export const FormManager = {
     detectBrowserLanguage() {
         // Get browser language (e.g., "fr-FR", "en-US", "zh-CN")
         const browserLang = navigator.language || navigator.userLanguage || 'en';
-        const langCode = browserLang.split('-')[0].toLowerCase();
+        const fullLangCode = browserLang.toLowerCase();
+        const langCode = fullLangCode.split('-')[0];
 
         // Map language codes to full names used in the UI
         const languageMap = {
@@ -334,7 +335,7 @@ export const FormManager = {
             'de': 'German',
             'ja': 'Japanese',
             'ko': 'Korean',
-            'pt': 'Portuguese',
+            'pt': 'Portuguese (Brazil)',
             'ru': 'Russian',
             'ar': 'Arabic',
             'it': 'Italian',
@@ -374,6 +375,11 @@ export const FormManager = {
             'sw': 'Swahili',
             'am': 'Amharic'
         };
+
+        // Regional variant overrides: check full locale before base code
+        if (fullLangCode === 'pt-pt' || fullLangCode === 'pt-pt-x') {
+            return 'Portuguese (Portugal)';
+        }
 
         return languageMap[langCode] || 'English'; // Default to English if not found
     },

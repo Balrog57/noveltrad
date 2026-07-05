@@ -201,7 +201,8 @@ def generate_translation_prompt(
     }
 
     # Try to match target language to get appropriate example
-    target_lang_lower = target_language.lower()
+    from src.utils.lang_normalize import normalize_lang_key
+    target_lang_lower = normalize_lang_key(target_language)
     example_format_text = example_texts.get(target_lang_lower, "Your translated text here")
 
     # Build the output format section outside the f-string to avoid backslash issues in Python 3.11
@@ -432,7 +433,8 @@ def generate_refinement_prompt(
         "korean": "다듬어진 텍스트는 여기에",
     }
 
-    target_lang_lower = target_language.lower()
+    from src.utils.lang_normalize import normalize_lang_key
+    target_lang_lower = normalize_lang_key(target_language)
     example_format_text = example_texts.get(target_lang_lower, "Your refined text here")
 
     output_format_section = _get_output_format_section(

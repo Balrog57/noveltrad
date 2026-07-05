@@ -11,6 +11,7 @@ from .constants import TAG0, TAG1, TAG2
 from .placeholder_examples import get_example_for_pair
 from .subtitle_examples import SUBTITLE_EXAMPLES
 from .output_examples import OUTPUT_FORMAT_EXAMPLES
+from src.utils.lang_normalize import normalize_lang_key
 
 
 def get_placeholder_example(
@@ -33,14 +34,14 @@ def get_placeholder_example(
 def get_subtitle_example(target_lang: str) -> str:
     """Get subtitle format example for a target language."""
     return SUBTITLE_EXAMPLES.get(
-        target_lang.lower(),
+        normalize_lang_key(target_lang),
         "[1]First translated line\n[2]Second translated line"
     )
 
 
 def get_output_format_example(target_lang: str, has_placeholders: bool = True) -> str:
     """Get output format example for a target language."""
-    lang_key = target_lang.lower()
+    lang_key = normalize_lang_key(target_lang)
     mode_key = "standard" if has_placeholders else "plain"
 
     if lang_key in OUTPUT_FORMAT_EXAMPLES:

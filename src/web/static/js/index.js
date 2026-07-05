@@ -650,7 +650,8 @@ async function showTTSModal(filename, filepath) {
                                     <option value="German">German (Deutsch)</option>
                                     <option value="Japanese">Japanese (日本語)</option>
                                     <option value="Korean">Korean (한국어)</option>
-                                    <option value="Portuguese">Portuguese (Português)</option>
+                                    <option value="Portuguese (Brazil)">Portuguese (Brazil) (Português)</option>
+                                    <option value="Portuguese (Portugal)">Portuguese (Portugal) (Português)</option>
                                     <option value="Russian">Russian (Русский)</option>
                                     <option value="Arabic">Arabic (العربية)</option>
                                     <!-- European -->
@@ -775,7 +776,8 @@ async function showTTSModal(filename, filepath) {
                                     <option value="it">Italian (Italiano)</option>
                                     <option value="ja">Japanese (日本語)</option>
                                     <option value="ko">Korean (한국어)</option>
-                                    <option value="pt">Portuguese (Português)</option>
+                                    <option value="pt-br">Portuguese (Brazil) (Português)</option>
+                                    <option value="pt-pt">Portuguese (Portugal) (Português)</option>
                                     <option value="ru">Russian (Русский)</option>
                                     <option value="ar">Arabic (العربية)</option>
                                     <!-- European -->
