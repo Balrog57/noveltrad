@@ -99,7 +99,7 @@ describe("OllamaManager (SDD §19)", () => {
   // ── isAvailable() ───────────────────────────────────────────────────
 
   describe("isAvailable()", () => {
-    it("retourne true quand le service Ollama répond", async () => {
+    it("retourne available:true quand le service Ollama répond", async () => {
       mockNetFetch.mockResolvedValue(
         mockJsonResponse({ models: [] }),
       );
@@ -113,14 +113,16 @@ describe("OllamaManager (SDD §19)", () => {
       const manager = new OllamaManager(new SettingsManager());
 
       const result = await manager.isAvailable();
-      expect(result).toBe(true);
+      expect(result.available).toBe(true);
+      expect(result.host).toBe("http://localhost:11434");
+      expect(result.error).toBeUndefined();
       expect(mockNetFetch).toHaveBeenCalledWith(
         "http://localhost:11434/api/tags",
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });
 
-    it("retourne false quand le service Ollama est indisponible", async () => {
+    it("retourne available:false + errorKind 'network' si connexion refusée", async () => {
       mockNetFetch.mockRejectedValue(new Error("Connection refused"));
 
       const { OllamaManager } = await import(
@@ -132,10 +134,12 @@ describe("OllamaManager (SDD §19)", () => {
       const manager = new OllamaManager(new SettingsManager());
 
       const result = await manager.isAvailable();
-      expect(result).toBe(false);
+      expect(result.available).toBe(false);
+      expect(result.error).toContain("Connection refused");
+      expect(result.errorKind).toBe("network");
     });
 
-    it("retourne false en cas d'erreur réseau", async () => {
+    it("retourne available:false + errorKind 'network' pour ECONNREFUSED", async () => {
       mockNetFetch.mockRejectedValue(new Error("ECONNREFUSED"));
 
       const { OllamaManager } = await import(
@@ -147,10 +151,12 @@ describe("OllamaManager (SDD §19)", () => {
       const manager = new OllamaManager(new SettingsManager());
 
       const result = await manager.isAvailable();
-      expect(result).toBe(false);
+      expect(result.available).toBe(false);
+      expect(result.error).toContain("ECONNREFUSED");
+      expect(result.errorKind).toBe("network");
     });
 
-    it("retourne false en cas de timeout réseau (AbortError)", async () => {
+    it("retourne available:false + errorKind 'timeout' pour AbortError", async () => {
       const abortError = new DOMException("The operation was aborted", "AbortError");
       mockNetFetch.mockRejectedValue(abortError);
 
@@ -163,10 +169,12 @@ describe("OllamaManager (SDD §19)", () => {
       const manager = new OllamaManager(new SettingsManager());
 
       const result = await manager.isAvailable();
-      expect(result).toBe(false);
+      expect(result.available).toBe(false);
+      expect(result.error).toContain("aborted");
+      expect(result.errorKind).toBe("timeout");
     });
 
-    it("retourne false si la réponse HTTP est une erreur (500)", async () => {
+    it("retourne available:false + errorKind 'http' si la réponse HTTP est une erreur (500)", async () => {
       mockNetFetch.mockResolvedValue(mockErrorResponse(500));
 
       const { OllamaManager } = await import(
@@ -178,10 +186,12 @@ describe("OllamaManager (SDD §19)", () => {
       const manager = new OllamaManager(new SettingsManager());
 
       const result = await manager.isAvailable();
-      expect(result).toBe(false);
+      expect(result.available).toBe(false);
+      expect(result.error).toContain("HTTP 500");
+      expect(result.errorKind).toBe("http");
     });
 
-    it("retourne false si le JSON de la réponse est invalide", async () => {
+    it("retourne available:false + errorKind 'parse' si le JSON de la réponse est invalide", async () => {
       mockNetFetch.mockResolvedValue({
         ok: true,
         status: 200,
@@ -199,7 +209,9 @@ describe("OllamaManager (SDD §19)", () => {
       const manager = new OllamaManager(new SettingsManager());
 
       const result = await manager.isAvailable();
-      expect(result).toBe(false);
+      expect(result.available).toBe(false);
+      expect(result.error).toContain("non-JSON");
+      expect(result.errorKind).toBe("parse");
     });
   });
 

@@ -183,7 +183,7 @@ onBeforeMount(async () => {
   try {
     appVersion.value = await window.novelTradAPI.invoke<string>("app:get-version");
   } catch {
-    appVersion.value = "2.0.1";
+    appVersion.value = "inconnue";
   }
 });
 

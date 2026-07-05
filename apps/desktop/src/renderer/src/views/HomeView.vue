@@ -11,6 +11,13 @@ const ollamaStore = useOllamaStore();
 const showCreate = ref(false);
 const creationError = ref<string | null>(null);
 
+/**
+ * Version applicative résolue dynamiquement via l'IPC `app:get-version`
+ * (évite tout littéral hardcodé sujet au drift installeur vs logiciel).
+ * Même pattern que SettingsView.vue.
+ */
+const appVersion = ref("…");
+
 // Suppression de projet (SDD §5.11)
 const showDeleteDialog = ref(false);
 const deleteProjectId = ref<string | null>(null);
@@ -50,6 +57,12 @@ function installUpdate(): void {
 onMounted(async () => {
   await projectStore.loadRecent();
   await ollamaStore.check();
+
+  try {
+    appVersion.value = await window.novelTradAPI.invoke<string>("app:get-version");
+  } catch {
+    appVersion.value = "inconnue";
+  }
 
   window.novelTradAPI.on("update:available", (info: any) => {
     updateAvailable.value = true;
@@ -110,11 +123,18 @@ async function confirmDelete(): Promise<void> {
       <h1>NovelTrad 2.0</h1>
       <p>Moteur de traduction de romans assiste par IA multi-agent.</p>
       <div class="ollama-status" :class="{ ok: ollamaStore.available }">
-        {{
+        <span>{{
           ollamaStore.available
             ? "✅ Ollama disponible"
             : "❌ Ollama non detecte"
-        }}
+        }}</span>
+        <span
+          v-if="!ollamaStore.available && ollamaStore.error"
+          class="ollama-error"
+          :title="`Host testé : ${ollamaStore.host}`"
+        >
+          — {{ ollamaStore.error }}
+        </span>
       </div>
     </header>
 
@@ -202,7 +222,7 @@ async function confirmDelete(): Promise<void> {
     </section>
     <section v-else class="card update-check">
       <div class="update-row">
-        <span>NovelTrad 2.1.1</span>
+        <span>NovelTrad {{ appVersion }}</span>
         <button class="btn-ghost" :disabled="updateChecking" @click="checkUpdate">
           {{ updateChecking ? "Vérification..." : "Vérifier mise à jour" }}
         </button>
@@ -259,6 +279,14 @@ async function confirmDelete(): Promise<void> {
 
 .ollama-status.ok {
   color: var(--success);
+}
+
+.ollama-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: help;
 }
 
 .actions {

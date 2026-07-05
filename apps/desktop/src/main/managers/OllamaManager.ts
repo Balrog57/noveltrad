@@ -3,6 +3,47 @@ import type { OllamaModelInfo } from "@shared/types/index.js";
 import { net } from "electron";
 import { logger } from "../utils/logger.js";
 
+/**
+ * Résultat du check de disponibilité Ollama.
+ *
+ * `error` et `errorKind` sont renseignés uniquement quand `available === false`,
+ * pour permettre à l'UI d'afficher la cause réelle de l'échec
+ * (ex: ECONNREFUSED ::1 → suspicion IPv6, AbortError → timeout, etc.).
+ */
+export interface OllamaAvailability {
+  available: boolean;
+  /** Host effectivement testé (utile pour l'affichage et le diagnostic). */
+  host: string;
+  /** Message d'erreur lisible (vide si succès). */
+  error?: string;
+  /**
+   * Catégorie d'erreur pour faciliter le diagnostic côté UI.
+   * - `network`      : ECONNREFUSED, ECONNRESET, échec DNS…
+   * - `timeout`      : AbortError (dépassement du timeout de 5 s)
+   * - `http`         : réponse HTTP reçue mais statut >= 400
+   * - `parse`        : réponse non-JSON ou JSON invalide
+   * - `unknown`      : autre
+   */
+  errorKind?: "network" | "timeout" | "http" | "parse" | "unknown";
+}
+
+function classifyError(e: unknown): "network" | "timeout" | "unknown" {
+  const name = (e as { name?: string })?.name;
+  const message = (e as Error)?.message ?? "";
+  if (name === "AbortError" || /aborted|timeout/i.test(message)) {
+    return "timeout";
+  }
+  if (
+    name === "TypeError" ||
+    /ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENOTFOUND|fetch failed|connection refused/i.test(
+      message,
+    )
+  ) {
+    return "network";
+  }
+  return "unknown";
+}
+
 export class OllamaManager {
   constructor(private settings: SettingsManager) {}
 
@@ -10,25 +51,45 @@ export class OllamaManager {
     return this.settings.get("ollamaHost") || "http://localhost:11434";
   }
 
-  async isAvailable(): Promise<boolean> {
+  /**
+   * Vérifie la disponibilité d'Ollama en interrogeant `/api/tags`.
+   *
+   * Retourne une structure enrichie `{ available, host, error?, errorKind? }`
+   * plutôt qu'un simple booléen, afin que l'UI puisse afficher la cause
+   * réelle d'un échec (très utile pour diagnostiquer le piège IPv6
+   * `localhost` → `::1` vs Ollama bindé sur `127.0.0.1` sous Windows).
+   */
+  async isAvailable(): Promise<OllamaAvailability> {
     const host = this.getHost();
     const url = `${host}/api/tags`;
-    logger.debug(`[Ollama] isAvailable() called, url=${url}`);
+    logger.info(`[Ollama] isAvailable() → ${url}`);
 
     try {
       const res = await net.fetch(url, { signal: AbortSignal.timeout(5000) });
-      logger.debug(`[Ollama] fetch response: status=${res.status}, ok=${res.ok}`);
       if (!res.ok) {
-        logger.debug(`[Ollama] Not OK, returning false`);
-        return false;
+        const msg = `HTTP ${res.status} ${res.statusText}`;
+        logger.warn(`[Ollama] Réponse non-OK depuis ${url} : ${msg}`);
+        return { available: false, host, error: msg, errorKind: "http" };
       }
       const text = await res.text();
-      const parsed = JSON.parse(text);
-      logger.debug(`[Ollama] Connection successful (${parsed.models?.length ?? 0} models)`);
-      return true;
+      let parsed: { models?: unknown[] };
+      try {
+        parsed = JSON.parse(text);
+      } catch (parseErr) {
+        const msg = `Réponse non-JSON depuis ${url} : ${(parseErr as Error).message}`;
+        logger.warn(`[Ollama] ${msg}`);
+        return { available: false, host, error: msg, errorKind: "parse" };
+      }
+      const count = Array.isArray(parsed.models) ? parsed.models.length : 0;
+      logger.info(`[Ollama] Connexion OK (${count} modèles)`);
+      return { available: true, host };
     } catch (e) {
-      logger.debug(`[Ollama] Connection FAILED: ${(e as Error).message}`, e as Error);
-      return false;
+      const err = e as Error & { code?: string };
+      const kind = classifyError(e);
+      const code = (err as { code?: string }).code;
+      const detail = code ? `${err.name}: ${err.message} (code=${code})` : `${err.name}: ${err.message}`;
+      logger.warn(`[Ollama] Échec de connexion à ${url} — [${kind}] ${detail}`);
+      return { available: false, host, error: detail, errorKind: kind };
     }
   }
 

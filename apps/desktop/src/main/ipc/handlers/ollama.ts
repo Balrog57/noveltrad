@@ -9,6 +9,20 @@ import { logger } from "../../utils/logger.js";
 const hostSchema = z.string().min(1).optional();
 const modelNameSchema = z.string().min(1, { message: "model name requis" });
 
+/**
+ * Valide la structure retournée par `ollama:is-available` (SDD §16.3).
+ * Permet de faire remonter la cause réelle d'un échec à l'UI (ex: ECONNREFUSED,
+ * AbortError, HTTP 500…) pour faciliter le diagnostic côté utilisateur.
+ */
+const availabilitySchema = z.object({
+  available: z.boolean(),
+  host: z.string(),
+  error: z.string().optional(),
+  errorKind: z
+    .enum(["network", "timeout", "http", "parse", "unknown"])
+    .optional(),
+});
+
 const settings = new SettingsManager();
 const ollamaManager = new OllamaManager(settings);
 
@@ -18,7 +32,8 @@ export function registerOllamaHandlers(): void {
   ipcMain.handle("ollama:is-available", async (_event, host?: unknown) => {
     logger.debug(`[IPC] ollama:is-available called, host=${host}`);
     hostSchema.parse(host);
-    return ollamaManager.isAvailable();
+    const result = await ollamaManager.isAvailable();
+    return availabilitySchema.parse(result);
   });
 
   ipcMain.handle("ollama:list-models", async (_event, host?: unknown) => {

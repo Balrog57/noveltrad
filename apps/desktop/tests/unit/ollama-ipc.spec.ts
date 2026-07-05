@@ -115,22 +115,38 @@ describe("IPC handlers — Ollama (Phase 0 validation)", () => {
       expect(handlers.has("ollama:is-available")).toBe(true);
     });
 
-    it("retourne true quand Ollama est disponible", async () => {
+    it("retourne available:true quand Ollama est disponible", async () => {
       mockNetFetch.mockResolvedValue(mockJsonResponse({ models: [] }));
-      const result = await handlers.get("ollama:is-available")!({}, undefined);
-      expect(result).toBe(true);
+      const result = await handlers.get("ollama:is-available")!({}, undefined) as {
+        available: boolean;
+        host: string;
+      };
+      expect(result.available).toBe(true);
+      expect(result.host).toBe("http://localhost:11434");
     });
 
-    it("retourne false quand Ollama est indisponible", async () => {
+    it("retourne available:false + errorKind quand Ollama est indisponible", async () => {
       mockNetFetch.mockRejectedValue(new Error("Connection refused"));
-      const result = await handlers.get("ollama:is-available")!({}, undefined);
-      expect(result).toBe(false);
+      const result = await handlers.get("ollama:is-available")!({}, undefined) as {
+        available: boolean;
+        error?: string;
+        errorKind?: string;
+      };
+      expect(result.available).toBe(false);
+      expect(result.error).toContain("Connection refused");
+      expect(result.errorKind).toBe("network");
     });
 
-    it("retourne false sur erreur HTTP 500", async () => {
+    it("retourne available:false + errorKind 'http' sur erreur HTTP 500", async () => {
       mockNetFetch.mockResolvedValue(mockErrorResponse(500));
-      const result = await handlers.get("ollama:is-available")!({}, undefined);
-      expect(result).toBe(false);
+      const result = await handlers.get("ollama:is-available")!({}, undefined) as {
+        available: boolean;
+        error?: string;
+        errorKind?: string;
+      };
+      expect(result.available).toBe(false);
+      expect(result.error).toContain("HTTP 500");
+      expect(result.errorKind).toBe("http");
     });
 
     it("ne lance pas d'exception non capturée", async () => {

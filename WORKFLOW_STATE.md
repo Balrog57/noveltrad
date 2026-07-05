@@ -810,6 +810,42 @@ The `pullModel()` and `streamChat()` source code uses a `lines.pop() + buffer` N
 
 ---
 
+## Fix Session (2026-07-05) — Diagnostic Ollama + mismatch version installeur
+
+### Contexte / décision utilisateur
+- **Choix Ollama** : "Diagnostic d'abord" — améliorer la visibilité de l'erreur réelle **sans** changer le host par défaut (`localhost`). Le fix complet `localhost` → `127.0.0.1` sera fait dans une étape suivante une fois la cause confirmée sur la machine de l'utilisateur.
+- **Choix version** : "Fix code + lockfile" — pas de garde-fou CI.
+
+### Hypothèse principale du bug Ollama
+Sur Windows, `localhost` peut résoudre en **IPv6 `::1`** alors qu'**Ollama bind `127.0.0.1`** par défaut → `ECONNREFUSED`. Avant ce fix, `isAvailable()` avalait l'erreur et ne retournait qu'un booléen `false`, rendant la cause invisible.
+
+### Fichiers modifiés
+- **`apps/desktop/src/main/managers/OllamaManager.ts`**
+  - `isAvailable()` retourne désormais `{ available, host, error?, errorKind? }` (interface `OllamaAvailability` exportée).
+  - `classifyError()` catégorise l'erreur : `network` (ECONNREFUSED/ECONNRESET/TypeError/fetch failed), `timeout` (AbortError), `http`, `parse`, `unknown`.
+  - Logs élevés `debug` → `info` (succès) / `warn` (échec) avec URL exacte + détail de l'erreur.
+- **`apps/desktop/src/main/ipc/handlers/ollama.ts`** — handler `ollama:is-available` parse la sortie via `availabilitySchema` Zod.
+- **`apps/desktop/src/renderer/src/stores/ollama.ts`** — ajout `error`, `errorKind`, `host` refs ; extraction depuis la structure enrichie.
+- **`apps/desktop/src/renderer/src/views/HomeView.vue`**
+  - Banner Ollama affiche désormais la cause réelle (`— TypeError: fetch failed...`).
+  - Version dynamique via IPC `app:get-version` (plus de littéral hardcodé `NovelTrad 2.1.1`).
+- **`apps/desktop/src/renderer/src/views/SettingsView.vue`** — fallback `appVersion` `"2.0.1"` → `"inconnue"`.
+- **`apps/desktop/tests/unit/ollama-manager.spec.ts`** — 6 tests `isAvailable()` ajustés pour valider `{ available, host, error, errorKind }`.
+- **`apps/desktop/tests/unit/ollama-ipc.spec.ts`** — 3 tests `is-available` ajustés au nouveau contrat.
+- **`package-lock.json`** — regénéré via `npm install` (lignes 3, 9, 30 : `2.1.0` → `2.1.1`, cohérent avec les 3 `package.json`).
+
+### Validation
+- ✅ **Type-check** : 0 erreur (`npm run type-check --workspace=apps/desktop`)
+- ✅ **Tests** : **782 passés, 0 échec** (47 suites) (`npm run test --workspace=apps/desktop`)
+- ✅ Aucune régression (782 = baseline précédente)
+
+### Prochaines étapes (à confirmer après diagnostic utilisateur)
+1. Lancer l'app buildée, observer le banner Ollama sur HomeView.
+2. Si l'erreur affichée confirme IPv6/ECONNREFUSED → fix complet : normaliser `localhost` → `127.0.0.1` dans les 6 emplacements (`OllamaManager.ts:91`, `OllamaProvider.ts:13`, `lexicon.ts:174`, `stores/settings.ts:8`, `SettingsView.vue:157`, `schemas/index.ts:41`).
+3. Optionnel : retry/polling automatique au démarrage (HomeView ne fait qu'un seul check au mount).
+
+---
+
 # PLAN — Phase 0 : Fix Bug Ollama + Plan de Stabilisation V2
 
 ## Phase 0 — Résolution du bug Ollama (CRITIQUE, immédiat)
