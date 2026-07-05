@@ -1,16 +1,21 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type {
   AgentInput,
   AgentOutput,
   Paragraph,
 } from "@shared/types/index.js";
+import { paragraphsOutputSchema } from "@shared/schemas/agent-io.js";
 
-export class SplitAgent implements Agent {
+export class SplitAgent extends Agent {
   readonly id = "split";
   readonly name = "Découpage";
   readonly stage = "split";
+  readonly outputSchema = paragraphsOutputSchema;
 
-  constructor(private config: AgentConfig) {}
+  constructor(private config: AgentConfig) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const text = input.text ?? "";

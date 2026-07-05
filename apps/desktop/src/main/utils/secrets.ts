@@ -2,38 +2,97 @@
  * SDD §21.4 — Stockage sécurisé des clés API
  *
  * Utilise AES-256-GCM pour chiffrer les clés API avant stockage en SQLite.
- * La clé maîtresse est dérivée du userData (SHA-256) car keytar n'est pas
- * disponible (pas dans les dépendances).
- *
- * En production, envisager de migrer vers :
- * - keytar (keyring OS : macOS Keychain, Windows Credential Manager, Linux secret-service)
- * - electron-store avec chiffrement
- * - safeStorage (Electron ≥ 28)
+ * La clé maîtresse est dérivée via electron.safeStorage quand disponible,
+ * sinon via scrypt avec sel aléatoire stocké sur disque.
  */
 
 import crypto from "node:crypto";
-import { app } from "electron";
+import fs from "node:fs";
+import path from "node:path";
+import { app, safeStorage } from "electron";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16; // 128 bits
 const AUTH_TAG_LENGTH = 16; // 128 bits
-const SALT = "NovelTrad-v1-key-derivation";
-
-/**
- * Dérive une clé AES-256 à partir du chemin userData de l'application.
- * L'utilisation de userData garantit que la clé est liée à l'installation
- * (portable : chaque machine/session a sa propre clé).
- */
-function deriveMasterKey(userData: string): Buffer {
-  return crypto.scryptSync(userData, SALT, 32);
-}
+const MASTER_KEY_FILENAME = ".noveltrad-master-key";
 
 export class SecretStore {
   private masterKey: Buffer;
 
   constructor(userData?: string) {
     const data = userData ?? app.getPath("userData");
-    this.masterKey = deriveMasterKey(data);
+    this.masterKey = this.loadOrCreateMasterKey(data);
+  }
+
+  /**
+   * Charge ou crée la clé maîtresse AES-256.
+   *
+   * Stratégie :
+   * 1. Si `safeStorage` est disponible (OS keyring), génère une clé aléatoire
+   *    et la stocke chiffrée via `safeStorage.encryptString()`.
+   * 2. Fallback (Linux sans keyring) : `scryptSync(userData, random salt, 32)`,
+   *    le sel est stocké à côté du blob chiffré.
+   */
+  private loadOrCreateMasterKey(userDataPath: string): Buffer {
+    const keyFilePath = path.join(userDataPath, MASTER_KEY_FILENAME);
+
+    const safeStorageAvailable = this.isSafeStorageAvailable();
+
+    // Load existing key file
+    if (fs.existsSync(keyFilePath)) {
+      const blob = fs.readFileSync(keyFilePath);
+      const version = blob[0];
+
+      if (version === 0x01 && safeStorageAvailable) {
+        // safeStorage-encrypted blob
+        try {
+          const encrypted = blob.subarray(1);
+          const decrypted = safeStorage.decryptString(encrypted);
+          return Buffer.from(decrypted, "base64");
+        } catch {
+          // Decryption failed — recreate below
+        }
+      } else if (version === 0x02) {
+        // scrypt-derived blob: [0x02, salt(32), key(32)]
+        const salt = blob.subarray(1, 33);
+        const storedKey = blob.subarray(33);
+        if (storedKey.length === 32) {
+          const derived = crypto.scryptSync(userDataPath, salt, 32);
+          if (derived.equals(storedKey)) {
+            return derived;
+          }
+        }
+      }
+    }
+
+    // Create new master key
+    fs.mkdirSync(userDataPath, { recursive: true });
+
+    if (safeStorageAvailable) {
+      const key = crypto.randomBytes(32);
+      const encrypted = safeStorage.encryptString(key.toString("base64"));
+      const blob = Buffer.concat([Buffer.from([0x01]), encrypted]);
+      fs.writeFileSync(keyFilePath, blob);
+      return key;
+    }
+
+    // Fallback: scrypt with random salt
+    const salt = crypto.randomBytes(32);
+    const derived = crypto.scryptSync(userDataPath, salt, 32);
+    const blob = Buffer.concat([Buffer.from([0x02]), salt, derived]);
+    fs.writeFileSync(keyFilePath, blob);
+    return derived;
+  }
+
+  /**
+   * Vérifie si safeStorage est disponible sans lever d'exception.
+   */
+  private isSafeStorageAvailable(): boolean {
+    try {
+      return safeStorage.isEncryptionAvailable();
+    } catch {
+      return false;
+    }
   }
 
   /**

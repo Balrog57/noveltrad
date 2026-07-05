@@ -238,6 +238,9 @@ interface TmRow {
   usage_count: number;
   last_used_at: string | null;
   created_at: string;
+  normalized_hash?: string;
+  segment_index?: number;
+  is_global?: number;
 }
 
 class MockTmDatabase {
@@ -250,6 +253,30 @@ class MockTmDatabase {
   } {
     return {
       get: (params: unknown[]): unknown => {
+        // SELECT target_text FROM translation_memory WHERE normalized_hash = ? AND project_id = ? AND is_global = 0
+        if (sql.includes("SELECT target_text") && sql.includes("normalized_hash")) {
+          const hash = params[0] as string;
+          // Project-level exact
+          if (sql.includes("is_global = 0")) {
+            const projectId = params[1] as string;
+            for (const row of this.rows.values()) {
+              if (row.normalized_hash === hash && row.project_id === projectId && !row.is_global) {
+                return { target_text: row.target_text };
+              }
+            }
+            return undefined;
+          }
+          // Global exact (is_global = 1)
+          if (sql.includes("is_global = 1")) {
+            for (const row of this.rows.values()) {
+              if (row.normalized_hash === hash && row.is_global === 1) {
+                return { target_text: row.target_text };
+              }
+            }
+            return undefined;
+          }
+          return undefined;
+        }
         // SELECT target_text FROM translation_memory WHERE project_id = ? AND source_text = ?
         if (sql.includes("SELECT target_text") && sql.includes("source_text = ?")) {
           const projectId = params[0] as string;
@@ -272,17 +299,40 @@ class MockTmDatabase {
           }
           return undefined;
         }
+        // SELECT id FROM translation_memory WHERE project_id = ? AND normalized_hash = ? AND segment_index = ?
+        if (sql.includes("SELECT id") && sql.includes("normalized_hash")) {
+          const projectId = params[0] as string;
+          const hash = params[1] as string;
+          const segIdx = params[2] as number;
+          for (const row of this.rows.values()) {
+            if (row.project_id === projectId && row.normalized_hash === hash && row.segment_index === segIdx) {
+              return { id: row.id };
+            }
+          }
+          return undefined;
+        }
+        // SELECT id FROM translation_memory WHERE normalized_hash = ? AND is_global = 1
+        if (sql.includes("SELECT id") && sql.includes("is_global")) {
+          const hash = params[0] as string;
+          for (const row of this.rows.values()) {
+            if (row.normalized_hash === hash && row.is_global === 1) {
+              return { id: row.id };
+            }
+          }
+          return undefined;
+        }
         return undefined;
       },
       all: (params: unknown[]): unknown[] => {
+        const result: Array<{
+          source_text: string;
+          target_text: string;
+          usage_count: number;
+        }> = [];
+
         // SELECT source_text, target_text, usage_count FROM translation_memory WHERE project_id = ?
-        if (sql.includes("usage_count")) {
+        if (sql.includes("usage_count") && sql.includes("project_id = ?") && !sql.includes("LIKE")) {
           const projectId = params[0] as string;
-          const result: Array<{
-            source_text: string;
-            target_text: string;
-            usage_count: number;
-          }> = [];
           for (const row of this.rows.values()) {
             if (row.project_id === projectId) {
               result.push({
@@ -294,10 +344,58 @@ class MockTmDatabase {
           }
           return result;
         }
+
+        // SELECT ... WHERE source_text LIKE ? AND project_id = ? LIMIT ?
+        if (sql.includes("LIKE") && sql.includes("project_id = ?")) {
+          const likePattern = params[0] as string;
+          const projectId = params[1] as string;
+          const term = likePattern.replace(/%/g, "").toLowerCase();
+          for (const row of this.rows.values()) {
+            if (row.project_id === projectId && row.source_text.toLowerCase().includes(term)) {
+              result.push({
+                source_text: row.source_text,
+                target_text: row.target_text,
+                usage_count: row.usage_count,
+              });
+            }
+          }
+          return result;
+        }
+
+        // SELECT ... WHERE source_text LIKE ? AND is_global = 1 LIMIT ?
+        if (sql.includes("LIKE") && sql.includes("is_global")) {
+          const likePattern = params[0] as string;
+          const term = likePattern.replace(/%/g, "").toLowerCase();
+          for (const row of this.rows.values()) {
+            if (row.is_global === 1 && row.source_text.toLowerCase().includes(term)) {
+              result.push({
+                source_text: row.source_text,
+                target_text: row.target_text,
+                usage_count: row.usage_count,
+              });
+            }
+          }
+          return result;
+        }
+
+        // SELECT ... FROM translation_memory WHERE is_global = 1 (fallback)
+        if (sql.includes("usage_count") && sql.includes("is_global = 1") && !sql.includes("LIKE")) {
+          for (const row of this.rows.values()) {
+            if (row.is_global === 1) {
+              result.push({
+                source_text: row.source_text,
+                target_text: row.target_text,
+                usage_count: row.usage_count,
+              });
+            }
+          }
+          return result;
+        }
+
         return [];
       },
       run: (params: unknown[]): void => {
-        // INSERT INTO translation_memory (...)
+        // INSERT INTO translation_memory (...) with all fields
         if (sql.includes("INSERT INTO translation_memory")) {
           const row: TmRow = {
             id: params[0] as string,
@@ -306,9 +404,12 @@ class MockTmDatabase {
             target_text: params[3] as string,
             source_language: params[4] as string,
             target_language: params[5] as string,
+            normalized_hash: (params[6] as string) ?? "",
+            segment_index: (params[7] as number) ?? 0,
+            is_global: (params[8] as number) ?? 0,
             usage_count: 1,
             last_used_at: null,
-            created_at: params[6] as string,
+            created_at: params[9] as string,
           };
           this.rows.set(row.id, row);
           return;
@@ -364,6 +465,7 @@ describe("TranslationMemoryEngine — exactMatch", () => {
         source_text: "Hello world", target_text: "Bonjour le monde",
         source_language: "en", target_language: "fr",
         usage_count: 1, last_used_at: null, created_at: "2026-01-01T00:00:00.000Z",
+        normalized_hash: "hello world",
       },
     ]);
 
@@ -378,6 +480,7 @@ describe("TranslationMemoryEngine — exactMatch", () => {
         source_text: "Hello world", target_text: "Bonjour le monde",
         source_language: "en", target_language: "fr",
         usage_count: 1, last_used_at: null, created_at: "2026-01-01T00:00:00.000Z",
+        normalized_hash: "hello world",
       },
     ]);
 

@@ -81,6 +81,10 @@ describe("TranslateAgent", () => {
     } as unknown as AiRouter;
     mockTmEngine = {
       fuzzyMatches: vi.fn().mockReturnValue([]),
+      exactMatch: vi.fn().mockReturnValue(null),
+      findBestMatch: vi.fn().mockReturnValue(null),
+      segmentSentences: vi.fn().mockReturnValue([]),
+      promoteToGlobal: vi.fn(),
     } as unknown as TranslationMemoryEngine;
   });
 
@@ -177,6 +181,32 @@ describe("TranslateAgent", () => {
         paragraphs: [makeParagraph()],
       }),
     ).rejects.toThrow("AI indisponible");
+  });
+
+  it("devrait utiliser TM exact match et sauter le LLM si trouvé (T11)", async () => {
+    (mockTmEngine.exactMatch as ReturnType<typeof vi.fn>).mockReturnValue(
+      "Traduction TM exacte",
+    );
+    const agent = new TranslateAgent(CONFIG, mockRouter, mockTmEngine);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [makeParagraph({ sourceText: "Exact match text" })],
+    });
+    // Le LLM ne doit PAS être appelé
+    expect(mockRouter.chat).not.toHaveBeenCalled();
+    expect(output.paragraphs![0].translatedText).toBe("Traduction TM exacte");
+    expect(output.paragraphs![0].status).toBe("translated");
+  });
+
+  it("devrait appeler le LLM si TM exact match est null (T11)", async () => {
+    // exactMatch retourne déjà null par défaut
+    const agent = new TranslateAgent(CONFIG, mockRouter, mockTmEngine);
+    await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [makeParagraph()],
+    });
+    // Le LLM doit être appelé
+    expect(mockRouter.chat).toHaveBeenCalled();
   });
 });
 

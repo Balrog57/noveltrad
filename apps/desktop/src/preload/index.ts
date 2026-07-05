@@ -99,9 +99,13 @@ export interface NovelTradAPI {
 const api: NovelTradAPI = {
   invoke: (channel, ...args) => {
     validateChannel(channel);
-    console.log(`[IPC invoke] ${channel}`, ...args);
+    if (import.meta.env.DEV) {
+      console.log(`[IPC invoke] ${channel}`, ...args);
+    }
     return ipcRenderer.invoke(channel, ...args).catch((err) => {
-      console.error(`[IPC invoke] ${channel} FAILED:`, err.message);
+      if (import.meta.env.DEV) {
+        console.error(`[IPC invoke] ${channel} FAILED:`, err.message);
+      }
       throw err;
     });
   },

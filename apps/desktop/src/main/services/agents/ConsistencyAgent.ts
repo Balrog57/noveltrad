@@ -1,4 +1,5 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type { AgentInput, AgentOutput } from "@shared/types/index.js";
 import type { ConsistencyChecker } from "../ConsistencyChecker.js";
 import type { AiRouter } from "../AiRouter.js";
@@ -7,18 +8,22 @@ import {
   CONSISTENCY_SYSTEM_PROMPT,
   buildConsistencyUserPrompt,
 } from "../prompts/consistency.system.js";
+import { consistencyOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
-export class ConsistencyAgent implements Agent {
+export class ConsistencyAgent extends Agent {
   readonly id = "consistency";
   readonly name = "Cohérence";
   readonly stage = "consistency";
+  readonly outputSchema = consistencyOutputSchema;
 
   constructor(
     private config: AgentConfig,
     private checker: ConsistencyChecker,
     private aiRouter: AiRouter,
-  ) {}
+  ) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const paragraphs = input.paragraphs ?? [];

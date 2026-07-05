@@ -498,6 +498,19 @@ class WorkflowRunner extends EventEmitter {
         output = await agent.execute(input);
       }
 
+      // SDD §8.13 : valider la sortie de l'agent si un outputSchema est défini
+      if (output && agent.outputSchema) {
+        try {
+          output = agent.validateOutput(output);
+        } catch (validationErr) {
+          logger.warn(
+            `[Workflow] Agent ${step.stage} output failed Zod validation, using raw output`,
+            { error: (validationErr as Error).message },
+          );
+          // Conserver la sortie brute comme fallback
+        }
+      }
+
       // SDD §7.1 : Branching QA — décision après exécution du QA agent
       if (step.stage === "qa" && output) {
         const qualityThreshold = this.settings.get("qualityThreshold") ?? 80;

@@ -1,21 +1,26 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type { AgentInput, AgentOutput } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
 import {
   STYLE_SYSTEM_PROMPT,
   buildStyleUserPrompt,
 } from "../prompts/style.system.js";
+import { textOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
-export class StyleAgent implements Agent {
+export class StyleAgent extends Agent {
   readonly id = "style";
   readonly name = "Style";
   readonly stage = "style";
+  readonly outputSchema = textOutputSchema;
 
   constructor(
     private config: AgentConfig,
     private aiRouter: AiRouter,
-  ) {}
+  ) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const text = input.text ?? "";

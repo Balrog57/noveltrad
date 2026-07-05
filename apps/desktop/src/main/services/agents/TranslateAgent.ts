@@ -1,4 +1,5 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type {
   AgentInput,
   AgentOutput,
@@ -11,12 +12,14 @@ import {
   TRANSLATE_SYSTEM_PROMPT,
   buildTranslateUserPrompt,
 } from "../prompts/translate.system.js";
+import { paragraphsOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
-export class TranslateAgent implements Agent {
+export class TranslateAgent extends Agent {
   readonly id = "translate";
   readonly name = "Traduction IA";
   readonly stage = "translate";
+  readonly outputSchema = paragraphsOutputSchema;
 
   private refusalDetected = false;
 
@@ -24,7 +27,9 @@ export class TranslateAgent implements Agent {
     private config: AgentConfig,
     private aiRouter: AiRouter,
     private tmEngine: TranslationMemoryEngine,
-  ) {}
+  ) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const paragraphs = input.paragraphs ?? [];
@@ -42,6 +47,22 @@ export class TranslateAgent implements Agent {
       Record<string, RagMatch[]> | undefined;
 
     for (const paragraph of paragraphs) {
+      // T11 : Vérifier d'abord la correspondance exacte TM
+      if (input.projectId) {
+        const tmExact = this.tmEngine.exactMatch(paragraph.sourceText, input.projectId);
+        if (tmExact) {
+          logger.info(
+            `[TranslateAgent] Correspondance TM exacte trouvée pour le paragraphe ${paragraph.id}`,
+          );
+          translated.push({
+            ...paragraph,
+            translatedText: tmExact,
+            status: "translated",
+          });
+          continue;
+        }
+      }
+
       const ragBlock = this.buildRagBlock(paragraph.id, ragContext);
 
       const userPrompt = buildTranslateUserPrompt({

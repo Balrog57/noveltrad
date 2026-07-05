@@ -6,6 +6,7 @@ export * from "./export.js";
 export * from "./history.js";
 export * from "./tmx.js";
 export * from "./plugin.js";
+export * from "./agent-io.js";
 
 export const projectSchema = z.object({
   id: z.string().uuid(),

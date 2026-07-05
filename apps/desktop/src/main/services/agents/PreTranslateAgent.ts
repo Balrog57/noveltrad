@@ -1,4 +1,5 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type {
   AgentInput,
   AgentOutput,
@@ -9,19 +10,23 @@ import {
   PRE_TRANSLATE_SYSTEM_PROMPT,
   buildPreTranslateUserPrompt,
 } from "../prompts/pre-translate.system.js";
+import { paragraphsOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
-export class PreTranslateAgent implements Agent {
+export class PreTranslateAgent extends Agent {
   readonly id = "pre_translate";
   readonly name = "Pré-traduction";
   readonly stage = "pre_translate";
+  readonly outputSchema = paragraphsOutputSchema;
 
   private refusalDetected = false;
 
   constructor(
     private config: AgentConfig,
     private aiRouter: AiRouter,
-  ) {}
+  ) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const paragraphs = input.paragraphs ?? [];

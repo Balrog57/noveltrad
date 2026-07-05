@@ -1,4 +1,5 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type { AgentInput, AgentOutput } from "@shared/types/index.js";
 import type { LexiconEngine } from "../LexiconEngine.js";
 import type { AiRouter } from "../AiRouter.js";
@@ -6,18 +7,22 @@ import {
   LEXICON_SYSTEM_PROMPT,
   buildLexiconUserPrompt,
 } from "../prompts/lexicon.system.js";
+import { lexiconOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
-export class LexiconAgent implements Agent {
+export class LexiconAgent extends Agent {
   readonly id = "lexicon";
   readonly name = "Lexique";
   readonly stage = "lexicon";
+  readonly outputSchema = lexiconOutputSchema;
 
   constructor(
     private config: AgentConfig,
     private lexiconEngine: LexiconEngine,
     private aiRouter: AiRouter,
-  ) {}
+  ) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     if (!input.projectId || !input.text) {return { text: input.text };}

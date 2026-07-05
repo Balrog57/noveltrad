@@ -1,21 +1,26 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type { AgentInput, AgentOutput } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
 import {
   POLISH_SYSTEM_PROMPT,
   buildPolishUserPrompt,
 } from "../prompts/polish.system.js";
+import { textOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
-export class PolishAgent implements Agent {
+export class PolishAgent extends Agent {
   readonly id = "polish";
   readonly name = "Polish";
   readonly stage = "polish";
+  readonly outputSchema = textOutputSchema;
 
   constructor(
     private config: AgentConfig,
     private aiRouter: AiRouter,
-  ) {}
+  ) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const text = input.text ?? "";

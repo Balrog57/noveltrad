@@ -1,21 +1,26 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type { AgentInput, AgentOutput } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
 import {
   GRAMMAR_SYSTEM_PROMPT,
   buildGrammarUserPrompt,
 } from "../prompts/grammar.system.js";
+import { textOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
-export class GrammarAgent implements Agent {
+export class GrammarAgent extends Agent {
   readonly id = "grammar";
   readonly name = "Grammaire";
   readonly stage = "grammar";
+  readonly outputSchema = textOutputSchema;
 
   constructor(
     private config: AgentConfig,
     private aiRouter: AiRouter,
-  ) {}
+  ) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const text = input.text ?? "";

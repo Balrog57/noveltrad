@@ -1577,8 +1577,10 @@ npm run lint --workspace=apps/desktop       → 0 errors, 15 warnings (1 T4-rela
 **ACCEPT** — The implementation is correct, well-tested, and conforms to the plan with one design improvement (LexiconAgent engine enforcement instead of LLM confidence filter). The `llmAvailable` dead code in QaAgent is cosmetic only. All 3 agents follow the same hybrid LLM+heuristic pattern with proper fallback. Zero regressions in the 815-test suite.
 
 ## Current Status
-- ✅ **T8 — HallucinationDetector câblé** : IMPLÉMENTÉ. 877 tests, 55 files, 0 failed. Type-check clean.
-- ✅ **T7 — ConsistencyChecker 7/7 metrics** : IMPLÉMENTÉ. 871 tests, 54 files, 0 failed. Type-check clean.
+- ✅ **T10 — EPUB/DOCX import spine + Heading 1** : IMPLÉMENTÉ. 891 tests, 58 files, 0 failed. Type-check clean.
+- ✅ **T9 — EPUB export epub-gen-memory** : IMPLÉMENTÉ. 883 tests, 56 files, 0 failed. Type-check clean.
+- ✅ **T8 — HallucinationDetector câblé** : REVIEWED — ACCEPT.
+- ✅ **T7 — ConsistencyChecker 7/7 metrics** : REVIEWED — ACCEPT.
 - ✅ **T6 — Agent I/O Zod schemas (SDD §8.13)** : IMPLÉMENTÉ. 858 tests, 54 files, 0 failed. Type-check clean.
 - ✅ **T5 — PromptLoader DB + fallback TS** : REVIEWED — ACCEPT.
 - ✅ **T4 — Câbler prompts LLM dans 3 agents** : IMPLÉMENTÉ + REVIEWED.
@@ -1586,10 +1588,94 @@ npm run lint --workspace=apps/desktop       → 0 errors, 15 warnings (1 T4-rela
 - ✅ **T2 — Migration runner unifié** : IMPLÉMENTÉ + REVIEWED.
 - ✅ **T1 — Sécurité critique** : IMPLÉMENTÉ + REVIEWED.
 - ✅ **Phase 0 — Fix Ollama via net.fetch** : COMPLET + VALIDÉ.
+
+## Review Findings — T7 (ConsistencyChecker 7/7 metrics)
+
+### Verification
+```
+npm run test --workspace=apps/desktop → 891 tests, 58 files, 0 failed ✅
+npm run type-check --workspace=apps/desktop → 0 errors ✅
+npm run lint --workspace=apps/desktop → 0 errors, 16 warnings (all pre-existing) ✅
+```
+
+### Checks
+| Check | Result |
+|-------|--------|
+| compareDialogues() — regex 「」""''—«», mismatch >20% warning | ✅ |
+| compareNumbers() — /\d+/g, frequency map, missing/extra warnings | ✅ |
+| compareMarkup() — Markdown `**_[]()` + HTML `<em><strong><a>` | ✅ |
+| 7 metrics in check() output with `score` field | ✅ |
+| Weighted score formula: Σ(metric.score × weight) / totalWeight | ✅ |
+| Caps: paragraphIssue→≤50, lockedNameMissing→≤70, missingNumber→≤80 | ✅ |
+| Tolerances corrected: zh-fr/ja-fr/ko-fr sentence 0.95-1.05 | ✅ |
+| zh-en/ja-en sentence 0.8-1.2 | ✅ |
+| Ponctuation CJK améliorée: `，` and `《》` | ✅ |
+| 13 new tests (3 dialogues, 3 numbers, 3 markup, 2 score, 2 tolerances) | ✅ |
+| All 877 pre-existing tests preserved | ✅ |
+
+### Issue: Unused variable `count` at ConsistencyChecker.ts:437
+- **Severity**: LOW — `count` destructured but never read in `for (const [num, count] of targetFreq)`
+- **Lint**: Already flagged as warning
+- **Fix**: Prefix with underscore `_count` (cosmetic, non-blocking)
+
+### Verdict: **ACCEPT** — Clean implementation, well-tested, all SDD §11.4-§11.5 requirements met.
+
+## Review Findings — T8 (HallucinationDetector wired)
+
+### Checks
+| Check | Result |
+|-------|--------|
+| QualityChecker imports HallucinationDetector + ConsistencyReport | ✅ |
+| Constructor accepts optional HallucinationDetector (instantiates default) | ✅ |
+| evaluate() accepts optional consistencyReport parameter | ✅ |
+| `hallucination: 95` hardcoded → HallucinationDetector.detect() with try/catch | ✅ |
+| `consistency: 90` hardcoded → consistencyReport?.globalScore | ✅ |
+| 6 new tests: invented entities → <90, clean → ≥80, consistency low → 45, perfect → 100, 8 dimensions, error fallback → 95 | ✅ |
+| All 877 pre-existing tests preserved | ✅ |
+
+### Verdict: **ACCEPT** — Correctly wires HallucinationDetector and ConsistencyReport into QualityChecker.
+
+## Review Findings — T9 (EPUB export epub-gen-memory)
+
+### Checks
+| Check | Result |
+|-------|--------|
+| `epub-gen-memory` installed (npm dependency) | ✅ |
+| `toEpub()` replaced: ~37 lines adm-zip → 28 lines epub-gen-memory | ✅ |
+| `toEpubMultiChapter()` replaced: ~108 lines adm-zip → 50 lines epub-gen-memory | ✅ |
+| AdmZip kept for validateEpub() (still used) | ✅ |
+| HTML generation (toHtml()) preserved, body content extracted for epub-gen-memory | ✅ |
+| Spine, nav, NCX, TOC, lang automatically handled by epub-gen-memory | ✅ |
+| CSS passed to epub-gen-memory via options | ✅ |
+| 6 new tests: single-chapter, multi-chapter, metadata, CSS, empty chapter, structure validation | ✅ |
+| All 877 pre-existing tests preserved, +6 = 883 | ✅ |
+
+### Verdict: **ACCEPT** — Clean refactoring, ~120 lines removed, proper epub-gen-memory integration.
+
+## Review Findings — T10 (EPUB/DOCX import spine + Heading 1)
+
+### Checks
+| Check | Result |
+|-------|--------|
+| EPUB: readEpubSpine() parses content.opf, resolves spine order | ✅ |
+| EPUB: Fallback to alphabetical when OPF absent or empty spine | ✅ |
+| EPUB: Extracts HTML files in spine order, fallback for remaining | ✅ |
+| DOCX: mammoth styleMap Heading 1 → h1:fresh | ✅ |
+| DOCX: Supports heading 1, Titre 1 variants | ✅ |
+| htmlToMarkdown already converts h1 → # Heading | ✅ |
+| splitIntoChapters uses Chapter/Chapitre/第N章 patterns | ✅ |
+| readEpubSpine() public for testability | ✅ |
+| 8 new tests (4 EPUB spine + 4 DOCX Heading 1) | ✅ |
+| All 883 pre-existing tests preserved, +8 = 891 | ✅ |
+
+### Verdict: **ACCEPT** — Minimal changes, well-tested, backward compatible.
+
+## Next Agent
+- `tester` — verify all tests pass, run complete regression check
 - ✅ **Gap Analysis 2.1.3 → SDD** : COMPLET.
 
 ## Next Agent
-- `reviewer` — review T7 and T8 commits.
+- `tester` — verify all tests pass, run complete regression check. Then pass to `implementor` for T11.
 
 ### Phase 0 Validation Results
 - **782 tests, 0 failures** (baseline: 737 → +45 new tests)

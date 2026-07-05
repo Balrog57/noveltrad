@@ -2,7 +2,8 @@ import type {
   WorkflowStage,
 } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import { SplitAgent } from "./SplitAgent.js";
 import { PreTranslateAgent } from "./PreTranslateAgent.js";
 import { TranslateAgent } from "./TranslateAgent.js";

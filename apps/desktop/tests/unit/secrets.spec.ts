@@ -2,15 +2,56 @@
  * Tests pour le stockage sécurisé des clés API (SDD §21.4)
  *
  * Vérifie que SecretStore encrypte/décrypte correctement avec AES-256-GCM.
+ * La clé maîtresse utilise safeStorage (si disponible) ou scrypt fallback.
  */
 
-import { describe, it, expect } from "vitest";
+import { vi, describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+
+// Controllable flag for safeStorage mock (captured by closure in vi.mock factory)
+let mockSafeStorageAvailable = false;
+
+vi.mock("electron", () => {
+  const secrets = new Map<string, string>();
+  let counter = 0;
+  return {
+    safeStorage: {
+      isEncryptionAvailable: () => mockSafeStorageAvailable,
+      encryptString: (str: string) => {
+        const id = String(counter++);
+        secrets.set(id, str);
+        return Buffer.from(id);
+      },
+      decryptString: (buf: Buffer) => secrets.get(buf.toString()) || "",
+    },
+    app: {
+      getPath: () => path.join(os.tmpdir(), "noveltrad-test-electron-app"),
+    },
+  };
+});
+
 import { SecretStore, migratePlaintextApiKeys } from "../../src/main/utils/secrets.js";
 
-// Clé de test (différente de la clé de production pour isolation)
-const TEST_USER_DATA = "/tmp/noveltrad-test-secrets";
+const TEST_USER_DATA = path.join(os.tmpdir(), "noveltrad-test-secrets");
+
+function cleanTestPath(dir: string): void {
+  try {
+    const keyFile = path.join(dir, ".noveltrad-master-key");
+    if (fs.existsSync(keyFile)) { fs.unlinkSync(keyFile); }
+    if (fs.existsSync(dir)) { fs.rmdirSync(dir); }
+  } catch {
+    // Ignore cleanup errors
+  }
+}
 
 describe("SecretStore (SDD §21.4)", () => {
+  // Clean slate before each test to avoid cross-test pollution
+  beforeEach(() => {
+    cleanTestPath(TEST_USER_DATA);
+  });
+
   const store = new SecretStore(TEST_USER_DATA);
 
   describe("encrypt / decrypt", () => {
@@ -59,8 +100,8 @@ describe("SecretStore (SDD §21.4)", () => {
 
   describe("mauvaise clé", () => {
     it("decrypt avec une clé différente ne retourne pas la valeur originale", () => {
-      const store1 = new SecretStore("/tmp/noveltrad-key1");
-      const store2 = new SecretStore("/tmp/noveltrad-key2");
+      const store1 = new SecretStore(path.join(os.tmpdir(), "noveltrad-key1"));
+      const store2 = new SecretStore(path.join(os.tmpdir(), "noveltrad-key2"));
 
       const original = "sk-secret";
       const encrypted = store1.encrypt(original);
@@ -71,7 +112,7 @@ describe("SecretStore (SDD §21.4)", () => {
 
   describe("withKey", () => {
     it("crée une instance avec une clé différente", () => {
-      const store2 = store.withKey("/tmp/noveltrad-other-key");
+      const store2 = store.withKey(path.join(os.tmpdir(), "noveltrad-other-key"));
       const encrypted = store2.encrypt("test");
       const decrypted = store2.decrypt(encrypted);
       expect(decrypted).toBe("test");
@@ -112,6 +153,57 @@ describe("SecretStore (SDD §21.4)", () => {
       // Vérifier que c'est chiffré (base64, plus long que l'original)
       expect(rows[0].api_key.length).toBeGreaterThan(20);
       expect(rows[0].api_key).not.toBe("sk-plaintext-key");
+    });
+  });
+
+  describe("safeStorage integration", () => {
+    it("utilise safeStorage quand disponible", () => {
+      mockSafeStorageAvailable = true;
+
+      const ssPath = path.join(os.tmpdir(), "noveltrad-test-safe-storage");
+      cleanTestPath(ssPath);
+
+      const ssStore = new SecretStore(ssPath);
+      const original = "sk-safe-stored-key";
+      const encrypted = ssStore.encrypt(original);
+      const decrypted = ssStore.decrypt(encrypted);
+      expect(decrypted).toBe(original);
+
+      // Vérifier que le fichier de clé existe (safeStorage blob)
+      const keyFile = path.join(ssPath, ".noveltrad-master-key");
+      expect(fs.existsSync(keyFile)).toBe(true);
+
+      // Vérifier que la clé est persistée entre instances
+      const ssStore2 = new SecretStore(ssPath);
+      const decrypted2 = ssStore2.decrypt(encrypted);
+      expect(decrypted2).toBe(original);
+
+      cleanTestPath(ssPath);
+      mockSafeStorageAvailable = false;
+    });
+
+    it("utilise scrypt fallback quand safeStorage indisponible", () => {
+      mockSafeStorageAvailable = false;
+
+      const scryptPath = path.join(os.tmpdir(), "noveltrad-test-scrypt");
+      cleanTestPath(scryptPath);
+
+      const scryptStore = new SecretStore(scryptPath);
+      const original = "sk-scrypt-fallback-key";
+      const encrypted = scryptStore.encrypt(original);
+      const decrypted = scryptStore.decrypt(encrypted);
+      expect(decrypted).toBe(original);
+
+      // Vérifier que le fichier de clé existe (scrypt blob)
+      const keyFile = path.join(scryptPath, ".noveltrad-master-key");
+      expect(fs.existsSync(keyFile)).toBe(true);
+
+      // Vérifier la persistance entre instances
+      const scryptStore2 = new SecretStore(scryptPath);
+      const decrypted2 = scryptStore2.decrypt(encrypted);
+      expect(decrypted2).toBe(original);
+
+      cleanTestPath(scryptPath);
     });
   });
 });

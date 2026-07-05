@@ -1,4 +1,5 @@
-import type { Agent, AgentConfig } from "./Agent.js";
+import { Agent } from "./Agent.js";
+import type { AgentConfig } from "./Agent.js";
 import type {
   AgentInput,
   AgentOutput,
@@ -11,6 +12,7 @@ import {
   QA_SYSTEM_PROMPT,
   buildQaUserPrompt,
 } from "../prompts/qa.system.js";
+import { qaOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
 /** Dimensions de qualité calibrables (exclut globalScore et comments) */
@@ -25,10 +27,11 @@ const CALIBRATABLE_DIMENSIONS = [
   "dialogue",
 ] as const;
 
-export class QaAgent implements Agent {
+export class QaAgent extends Agent {
   readonly id = "qa";
   readonly name = "QA";
   readonly stage = "qa";
+  readonly outputSchema = qaOutputSchema;
 
   constructor(
     private config: AgentConfig,
@@ -36,7 +39,9 @@ export class QaAgent implements Agent {
     private qualityChecker: QualityChecker,
     /** SDD §12.5 : service de calibration optionnel */
     private calibrationService?: CalibrationService,
-  ) {}
+  ) {
+    super();
+  }
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const paragraphs = input.paragraphs ?? [];
@@ -49,7 +54,6 @@ export class QaAgent implements Agent {
 
     // Phase 1 : LLM evaluation (primary)
     let report: QualityReport;
-    let llmAvailable = false;
 
     const fallbackEvaluate = (): Promise<QualityReport> =>
       this.qualityChecker.evaluate(
@@ -89,7 +93,6 @@ export class QaAgent implements Agent {
           globalScore: typeof obj.globalScore === "number" ? obj.globalScore : 50,
           comments: String(obj.comments ?? ""),
         };
-        llmAvailable = true;
       } else {
         // Phase 2 : Fallback to heuristic evaluation
         report = await fallbackEvaluate();

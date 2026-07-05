@@ -17,6 +17,9 @@ interface TmRow {
   usage_count: number;
   last_used_at: string | null;
   created_at: string;
+  normalized_hash?: string;
+  segment_index?: number;
+  is_global?: number;
 }
 
 /**
@@ -35,6 +38,18 @@ class MockDatabase {
   } {
     return {
       get: (params: unknown[]): unknown => {
+        // SELECT id FROM translation_memory WHERE project_id = ? AND normalized_hash = ? AND segment_index = ?
+        if (sql.includes("SELECT id") && sql.includes("normalized_hash")) {
+          const projectId = params[0] as string;
+          const hash = params[1] as string;
+          const segIdx = params[2] as number;
+          for (const row of this.rows.values()) {
+            if (row.project_id === projectId && row.normalized_hash === hash && row.segment_index === segIdx) {
+              return { id: row.id };
+            }
+          }
+          return undefined;
+        }
         // SELECT id FROM translation_memory WHERE project_id = ? AND source_text = ?
         if (sql.includes("SELECT id") && sql.includes("source_text = ?")) {
           const projectId = params[0] as string;
@@ -93,7 +108,7 @@ class MockDatabase {
         return [];
       },
       run: (params: unknown[]): void => {
-        // INSERT INTO translation_memory (id, project_id, source_text, target_text, source_language, target_language, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+        // INSERT INTO translation_memory (...) with all fields
         if (sql.includes("INSERT INTO translation_memory")) {
           const row: TmRow = {
             id: params[0] as string,
@@ -102,9 +117,12 @@ class MockDatabase {
             target_text: params[3] as string,
             source_language: params[4] as string,
             target_language: params[5] as string,
+            normalized_hash: (params[6] as string) ?? "",
+            segment_index: (params[7] as number) ?? 0,
+            is_global: (params[8] as number) ?? 0,
             usage_count: 1,
             last_used_at: null,
-            created_at: params[6] as string,
+            created_at: params[9] as string,
           };
           this.rows.set(row.id, row);
           this.counter++;
