@@ -299,7 +299,7 @@ Security review of the three T1 changes (CSP headers in production, preload IPC 
   - `apps/desktop/tests/unit/workflow-concurrency.spec.ts` — 3 tests (under limit → launch, at limit → queue, release → launch next, via PQueue). ✓
   - `apps/desktop/tests/unit/providers.spec.ts` — 3 tests adaptés (HTTP 500 tests renommés et timeout 15s pour le retry backoff). ✓
 - **État** : `npm run type-check` ✓, `npm run test` ✓ (806 tests, 52 files, 0 failed).
-- **Prochain agent** : `reviewer` — review du commit.
+- **Prochain agent** : `reviewer` — review du commit `56dec78 feat(workflow): adaptive pipeline — retry, branching QA, concurrency gate, auto-resume`.
 
 ---
 
