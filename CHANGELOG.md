@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.1.1 — Security + Performance + Accessibility (2026-07-05)
+
+### Security
+- **IPC channel validation in preload**: Added `IPC_CHANNELS` allowlist with `validateChannel()` — blocks unauthorized channels from renderer process, hardening `contextIsolation`
+- **Preload event cleanup**: Changed `removeAllListeners` → `removeListener` for targeted, safe event removal
+
+### Performance
+- **SQLite transactions**: Wrapped `ParagraphRepository.createMany/updateMany` and `LexiconRepository.syncAliases` in explicit `BEGIN/COMMIT` transactions — eliminates N+1 auto-commit bottleneck on bulk DB writes
+
+### Accessibility
+- **NtTable**: Added `tabindex`, `keydown.enter/space` on sortable headers and rows with `:focus-visible` outlines
+- **HomeView**: Added `role="button"`, `tabindex`, `keydown.enter/space` on project list items
+- **LexiconForm**: Added `aria-label` + `disabled` state on remove (✕) buttons with not-allowed cursor when minimum items reached
+
+### Tooling
+- **ESLint**: 0 errors, 0 warnings (config created with TypeScript parser + Vue 3 support)
+- **14 duplicate auto-PRs closed**, stale branches deleted
+- **HomeView version**: 2.0.4 → 2.1.1
+
 ## v2.1.0 — Stabilization Release (2026-07-05)
 
 ### Bug Fixes

@@ -202,7 +202,7 @@ async function confirmDelete(): Promise<void> {
     </section>
     <section v-else class="card update-check">
       <div class="update-row">
-        <span>NovelTrad 2.0.4</span>
+        <span>NovelTrad 2.1.1</span>
         <button class="btn-ghost" :disabled="updateChecking" @click="checkUpdate">
           {{ updateChecking ? "Vérification..." : "Vérifier mise à jour" }}
         </button>
