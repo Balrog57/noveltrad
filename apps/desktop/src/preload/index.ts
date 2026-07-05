@@ -1,5 +1,96 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+/**
+ * Allowlist of IPC channels callable from the renderer.
+ * MUST stay in sync with src/main/ipc/channels.ts (source of truth).
+ */
+const IPC_CHANNELS = [
+  "project:create",
+  "project:open",
+  "project:list-recent",
+  "project:path",
+  "project:delete",
+  "project:stats",
+  "project:refresh-source",
+  "project:detect-duplicate",
+  "project:open-dialog",
+  "ollama:list-models",
+  "ollama:pull-model",
+  "ollama:pull-progress",
+  "ollama:is-available",
+  "ollama:test-model",
+  "settings:get",
+  "settings:set",
+  "workflow:start",
+  "workflow:start-batch",
+  "workflow:pause",
+  "workflow:resume",
+  "workflow:cancel",
+  "workflow:retry-step",
+  "workflow:retry-from",
+  "workflow:list",
+  "workflow:progress",
+  "workflow:resume-batch",
+  "workflow:list-active",
+  "lexicon:list",
+  "lexicon:save",
+  "lexicon:delete",
+  "lexicon:import",
+  "lexicon:export",
+  "lexicon:extract-candidates",
+  "lexicon:find-conflicts",
+  "lexicon:suggest",
+  "chapter:list",
+  "chapter:import",
+  "chapter:get-paragraphs",
+  "chapter:save",
+  "source:import-files",
+  "export:run",
+  "export:batch",
+  "dialog:open-file",
+  "dialog:save-file",
+  "update:check",
+  "update:download",
+  "update:install",
+  "update:set-channel",
+  "update:checking",
+  "update:available",
+  "update:not-available",
+  "update:progress",
+  "update:downloaded",
+  "update:error",
+  "history:list",
+  "history:diff",
+  "history:rollback",
+  "history:create-snapshot",
+  "history:rollback-partial",
+  "history:get-paragraphs",
+  "audit:list",
+  "tm:import",
+  "tm:export",
+  "log",
+  "plugin:list",
+  "plugin:enable",
+  "plugin:disable",
+  "plugin:uninstall",
+  "plugin:install",
+  "plugin:get-config",
+  "plugin:set-config",
+  "plugin:request-permissions",
+  "plugin:confirm-permissions",
+  "ai:stream-chat",
+  "ai:stream-chunk",
+  "ai:stream-end",
+  "ai:stream-error",
+  "app:get-version",
+] as const;
+
+function validateChannel(channel: string): void {
+  if (!(IPC_CHANNELS as readonly string[]).includes(channel)) {
+    throw new Error(`[preload] IPC channel refusé : "${channel}"`);
+  }
+}
+
 export interface NovelTradAPI {
   invoke: <T = unknown>(channel: string, ...args: unknown[]) => Promise<T>;
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void;
@@ -7,6 +98,7 @@ export interface NovelTradAPI {
 
 const api: NovelTradAPI = {
   invoke: (channel, ...args) => {
+    validateChannel(channel);
     console.log(`[IPC invoke] ${channel}`, ...args);
     return ipcRenderer.invoke(channel, ...args).catch((err) => {
       console.error(`[IPC invoke] ${channel} FAILED:`, err.message);
@@ -14,9 +106,13 @@ const api: NovelTradAPI = {
     });
   },
   on: (channel, callback) => {
-    ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+    validateChannel(channel);
+    const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => {
+      callback(...args);
+    };
+    ipcRenderer.on(channel, listener);
     return () => {
-      ipcRenderer.removeAllListeners(channel);
+      ipcRenderer.removeListener(channel, listener);
     };
   },
 };

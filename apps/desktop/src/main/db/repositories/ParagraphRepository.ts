@@ -9,16 +9,23 @@ export class ParagraphRepository {
       INSERT INTO paragraphs (id, chapter_id, index_in_chapter, source_text, translated_text, status, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    for (const p of paragraphs) {
-      insert.run([
-        p.id,
-        chapterId,
-        p.indexInChapter,
-        p.sourceText,
-        p.translatedText ?? null,
-        p.status,
-        p.metadata ? JSON.stringify(p.metadata) : null,
-      ]);
+    this.db.exec("BEGIN TRANSACTION");
+    try {
+      for (const p of paragraphs) {
+        insert.run([
+          p.id,
+          chapterId,
+          p.indexInChapter,
+          p.sourceText,
+          p.translatedText ?? null,
+          p.status,
+          p.metadata ? JSON.stringify(p.metadata) : null,
+        ]);
+      }
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
     }
   }
 
@@ -48,13 +55,20 @@ export class ParagraphRepository {
     const update = this.db.prepare(
       "UPDATE paragraphs SET translated_text = ?, status = ?, metadata = ? WHERE id = ?",
     );
-    for (const p of paragraphs) {
-      update.run([
-        p.translatedText ?? null,
-        p.status,
-        p.metadata ? JSON.stringify(p.metadata) : null,
-        p.id,
-      ]);
+    this.db.exec("BEGIN TRANSACTION");
+    try {
+      for (const p of paragraphs) {
+        update.run([
+          p.translatedText ?? null,
+          p.status,
+          p.metadata ? JSON.stringify(p.metadata) : null,
+          p.id,
+        ]);
+      }
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
     }
   }
 

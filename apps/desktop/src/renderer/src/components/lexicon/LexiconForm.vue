@@ -234,7 +234,15 @@ function onCancel(): void {
             class="form-input"
             placeholder="Alias..."
           >
-          <button type="button" class="form-list-btn" @click="removeAlias(idx)">
+          <button
+            type="button"
+            class="form-list-btn"
+            :class="{ 'form-list-btn--disabled': form.aliases.length <= 1 }"
+            :disabled="form.aliases.length <= 1"
+            :aria-label="`Supprimer l'alias ${idx + 1}`"
+            :title="form.aliases.length <= 1 ? 'Impossible de supprimer le dernier alias' : `Supprimer cet alias`"
+            @click="removeAlias(idx)"
+          >
             ✕
           </button>
         </div>
@@ -312,6 +320,10 @@ function onCancel(): void {
           <button
             type="button"
             class="form-list-btn"
+            :class="{ 'form-list-btn--disabled': form.forbidden.length <= 1 }"
+            :disabled="form.forbidden.length <= 1"
+            :aria-label="`Supprimer l'interdiction ${idx + 1}`"
+            :title="form.forbidden.length <= 1 ? 'Impossible de supprimer la dernière interdiction' : `Supprimer cette interdiction`"
             @click="removeForbidden(idx)"
           >
             ✕
@@ -451,6 +463,18 @@ function onCancel(): void {
 .form-list-btn:hover {
   color: var(--error);
   background-color: var(--bg-tertiary);
+}
+
+.form-list-btn--disabled,
+.form-list-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-list-btn--disabled:hover,
+.form-list-btn:disabled:hover {
+  color: var(--text-secondary);
+  background: none;
 }
 
 .form-list-add {

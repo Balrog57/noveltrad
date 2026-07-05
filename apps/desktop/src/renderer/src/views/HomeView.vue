@@ -216,8 +216,12 @@ async function confirmDelete(): Promise<void> {
           v-for="p in projectStore.recentProjects"
           :key="p.id"
           class="project-item"
+          role="button"
+          tabindex="0"
           @click="open(p.path)"
           @contextmenu.prevent="openDeleteDialog(p.id, p.name)"
+          @keydown.enter.prevent="open(p.path)"
+          @keydown.space.prevent="open(p.path)"
         >
           <strong>{{ p.name }}</strong>
           <span class="meta">{{ p.sourceLanguage }} → {{ p.targetLanguage }}</span>
@@ -317,6 +321,12 @@ select {
 
 .project-item:hover {
   background-color: var(--bg-tertiary);
+}
+
+.project-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--border-radius);
 }
 
 .meta {
