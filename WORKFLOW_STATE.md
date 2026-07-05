@@ -846,6 +846,35 @@ Sur Windows, `localhost` peut résoudre en **IPv6 `::1`** alors qu'**Ollama bind
 
 ---
 
+## Fix Session (2026-07-05) — v2.1.3 : BUG CRITIQUE preload/sandbox
+
+### Cause racine RÉELLE du "Ollama jamais détecté"
+Le diagnostic v2.1.2 a révélé l'erreur exacte : `Cannot read properties of undefined (reading 'invoke')`.
+→ `window.novelTradAPI` était `undefined` en production car **le preload script ne s'exécutait jamais**.
+
+**Pourquoi** : `apps/desktop/package.json` a `"type": "module"` → electron-vite émet le preload en ESM (`out/preload/index.mjs`). Or `index.ts` a `sandbox: true` (changé pour SDD Vol 21), et **`sandbox: true` + preload ESM = incompatible** ([electron/electron#41460](https://github.com/electron/electron/issues/41460)). Le preload échouait silencieusement → `contextBridge.exposeInMainWorld()` jamais appelé → **TOUS les appels IPC cassés**, pas seulement Ollama.
+
+Doc electron-vite confirme : *"For Electron ESM, preload scripts must be non-sandboxed"*.
+
+### Fix appliqué (v2.1.3)
+- **`apps/desktop/electron.vite.config.ts`** : force le preload en CommonJS (`format: "cjs"`, `entryFileNames: "[name].cjs"`). Le main reste ESM, seul le preload passe en CJS pour rester compatible avec `sandbox: true`. Vérifié : `out/preload/index.cjs` commence par `"use strict"; const electron = require("electron");`.
+- **`apps/desktop/src/main/index.ts`** : preload path `index.mjs` → `index.cjs` + ajout handler `webContents.on("preload-error", …)` qui loggue via StructuredLogger pour qu'un futur échec preload ne soit plus jamais silencieux.
+
+### Validation
+- ✅ Build local : `out/preload/index.cjs` en CommonJS
+- ✅ Type-check : 0 erreur
+- ✅ Tests : 782 passés, 0 échec
+- ✅ CI Release v2.1.3 : workflow réussi, installeur publié
+
+### Note : l'amélioration de diagnostic de la v2.1.2 a SAUVÉ cette investigation
+Sans le fix v2.1.2 (faire remonter l'erreur réelle au lieu d'un booléen muet), on n'aurait jamais su que le preload était en cause — l'erreur aurait continué à être avalée silencieusement. Le diagnostic-first a été le bon choix.
+
+### Téléchargement
+- **Installeur v2.1.3** : https://github.com/Balrog57/noveltrad/releases/download/v2.1.3/NovelTrad-2.1.3-setup.exe
+- À tester : l'app devrait maintenant détecter Ollama (si l'IPv6 n'est pas un second problème). Si un autre message d'erreur apparaît maintenant que l'IPC fonctionne, on traitera en conséquence.
+
+---
+
 # PLAN — Phase 0 : Fix Bug Ollama + Plan de Stabilisation V2
 
 ## Phase 0 — Résolution du bug Ollama (CRITIQUE, immédiat)
