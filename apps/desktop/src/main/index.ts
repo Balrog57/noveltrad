@@ -8,6 +8,7 @@ import { UpdateManager } from "./managers/UpdateManager.js";
 import { logger } from "./utils/logger.js";
 import { PluginHost } from "./plugins/PluginHost.js";
 import { setPluginHost, setSettingsManager } from "./ipc/handlers/plugins.js";
+import { workflowEngine } from "./ipc/handlers/workflow.js";
 import { AiRouter } from "./services/AiRouter.js";
 import { LexiconEngine } from "./services/LexiconEngine.js";
 import { ExportEngine } from "./services/ExportEngine.js";
@@ -52,10 +53,7 @@ function setupErrorHandlers(): void {
 }
 
 function setupCspHeaders(): void {
-  // Désactivé en mode production pour éviter les conflits avec le protocole file://
-  if (!process.env.VITE_DEV_SERVER_URL) {return;}
-
-  // SDD §1.1 — Content Security Policy (dev mode only)
+  // SDD §1.1 — Content Security Policy (dev + production)
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
   const connectSrc = [
@@ -72,7 +70,7 @@ function setupCspHeaders(): void {
   }
 
   const csp = [
-    "default-src 'self'",
+    "default-src 'self' 'unsafe-inline' data:",
     `connect-src ${connectSrc.join(" ")}`,
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
@@ -267,6 +265,11 @@ app.whenReady().then(async () => {
       mainWindow?.webContents.send("plugin:request-permissions");
     });
   }
+
+  // SDD §7.11 : Reprendre les jobs actifs interrompus au démarrage
+  workflowEngine.resumeActiveJobs().catch((err) => {
+    logger.warn("Auto-resume des jobs actifs échoué", err);
+  });
 
   updateManager = new UpdateManager(
     settings.get("updateChannel"),

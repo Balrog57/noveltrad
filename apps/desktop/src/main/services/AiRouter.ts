@@ -1,3 +1,4 @@
+import pRetry, { AbortError } from "p-retry";
 import type {
   AiProvider,
   ChatMessage,
@@ -67,14 +68,42 @@ export class AiRouter {
         return cached;
       }
 
-      const response = await provider.chat(messages, options);
+      // SDD §7.10 : Retry réseau (5xx, ECONNREFUSED, timeout), pas de retry sur 4xx
+      const response = await pRetry(
+        () => provider.chat(messages, options),
+        {
+          retries: 3,
+          factor: 2,
+          minTimeout: 1000,
+          onFailedAttempt: (err) => {
+            logger.warn(
+              `[AiRouter] chat() tentative ${err.attemptNumber} échouée (${err.retriesLeft} restantes)`,
+              { error: err.error?.message },
+            );
+          },
+        },
+      );
 
       // Stocker la réponse dans le cache pour les appels futurs
       this.aiCache.set(cacheKey, response);
       return response;
     }
 
-    return provider.chat(messages, options);
+    // SDD §7.10 : Retry réseau (5xx, ECONNREFUSED, timeout), pas de retry sur 4xx
+    return pRetry(
+      () => provider.chat(messages, options),
+      {
+        retries: 3,
+        factor: 2,
+        minTimeout: 1000,
+        onFailedAttempt: (err) => {
+          logger.warn(
+            `[AiRouter] chat() tentative ${err.attemptNumber} échouée (${err.retriesLeft} restantes)`,
+            { error: err.error?.message },
+          );
+        },
+      },
+    );
   }
 
   async *streamChat(
@@ -82,7 +111,23 @@ export class AiRouter {
     messages: ChatMessage[],
     options?: ChatOptions,
   ): AsyncIterable<string> {
-    yield* this.get(providerId).streamChat(messages, options);
+    // SDD §7.10 : Retry réseau sur l'établissement de la connexion stream
+    const provider = this.get(providerId);
+    const stream = await pRetry(
+      () => provider.streamChat(messages, options),
+      {
+        retries: 3,
+        factor: 2,
+        minTimeout: 1000,
+        onFailedAttempt: (err) => {
+          logger.warn(
+            `[AiRouter] streamChat() tentative ${err.attemptNumber} échouée (${err.retriesLeft} restantes)`,
+            { error: err.error?.message },
+          );
+        },
+      },
+    );
+    yield* stream;
   }
 
   /**

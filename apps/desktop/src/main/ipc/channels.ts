@@ -24,6 +24,7 @@ export const IPC_CHANNELS = [
   "workflow:retry-from",
   "workflow:list",
   "workflow:progress",
+  "workflow:quality-failed",
   "workflow:resume-batch",
   "workflow:list-active",
   "lexicon:list",

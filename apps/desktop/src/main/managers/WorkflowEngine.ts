@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import path from "node:path";
+import PQueue from "p-queue";
 import type { BrowserWindow } from "electron";
 import type {
   AgentInput,
@@ -90,6 +91,7 @@ class WorkflowRunner extends EventEmitter {
     projectPath: string,
     private settings: SettingsManager,
     private emitProgress: (payload: WorkflowProgress) => void,
+    private emitQualityFailed?: (payload: { jobId: string; score: number; threshold: number }) => void,
     profiler?: PerformanceProfiler,
   ) {
     super();
@@ -353,6 +355,22 @@ class WorkflowRunner extends EventEmitter {
     await this.runFromIndex(startIndex);
   }
 
+  /** SDD §7.1 : Trouve le step complété avec le plus bas score et relance depuis ce point. */
+  private async retryWeakestStep(): Promise<void> {
+    const completed = this.steps.filter((s) => s.score !== undefined);
+    if (completed.length === 0) {
+      logger.warn("[Workflow] Aucun step complété, retry impossible");
+      return;
+    }
+    // Trier par score croissant → le plus faible en premier
+    completed.sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
+    const weakest = completed[0];
+    logger.info(
+      `[Workflow] Retry depuis le step le plus faible : ${weakest.stage} (score: ${weakest.score})`,
+    );
+    await this.retryFrom(weakest.stage);
+  }
+
   private agentName(stage: WorkflowStage): string {
     const names: Record<WorkflowStage, string> = {
       split: "Decoupage",
@@ -478,6 +496,49 @@ class WorkflowRunner extends EventEmitter {
         }
       } else {
         output = await agent.execute(input);
+      }
+
+      // SDD §7.1 : Branching QA — décision après exécution du QA agent
+      if (step.stage === "qa" && output) {
+        const qualityThreshold = this.settings.get("qualityThreshold") ?? 80;
+        const score = output.score ?? 0;
+
+        if (score >= qualityThreshold) {
+          // Qualité suffisante → continuer normalement
+          logger.info(`[Workflow] QA score ${score} ≥ seuil ${qualityThreshold}, poursuite`);
+        } else if (score >= qualityThreshold - 20) {
+          // Score intermédiaire → retry du step le plus faible
+          logger.warn(
+            `[Workflow] QA score ${score} < ${qualityThreshold} mais ≥ ${qualityThreshold - 20}, retry step le plus faible`,
+          );
+          // Marquer le step comme complété avant retry
+          step.status = "completed";
+          step.score = score;
+          step.outputSnapshot = output as unknown as Record<string, unknown>;
+          step.finishedAt = new Date().toISOString();
+          step.durationMs = Date.now() - startTime;
+          this.jobRepo.updateStep(step);
+          await this.retryWeakestStep();
+          return output;
+        } else {
+          // Score trop bas → pause + événement
+          logger.warn(
+            `[Workflow] QA score ${score} < ${qualityThreshold - 20}, pause du workflow`,
+          );
+          step.status = "completed";
+          step.score = score;
+          step.outputSnapshot = output as unknown as Record<string, unknown>;
+          step.finishedAt = new Date().toISOString();
+          step.durationMs = Date.now() - startTime;
+          this.jobRepo.updateStep(step);
+          this.pause();
+          this.emitQualityFailed?.({
+            jobId: this.job.id,
+            score,
+            threshold: qualityThreshold,
+          });
+          return output;
+        }
       }
 
       await this.applyAgentOutput(step.stage, output);
@@ -679,6 +740,8 @@ export class WorkflowEngine {
   private runners = new Map<string, WorkflowRunner>();
   /** SDD §7.9 : concurrence des jobs batch (défaut 1 pour Ollama local) */
   maxConcurrentJobs: number;
+  /** SDD §7.4 : File d'attente pour limiter la concurrence */
+  private queue: PQueue;
 
   /**
    * Profileur de performance partagé entre tous les runners.
@@ -693,12 +756,20 @@ export class WorkflowEngine {
   ) {
     this.maxConcurrentJobs = this.settings.get("maxConcurrentJobs");
     this.profiler = new PerformanceProfiler();
+    this.queue = new PQueue({ concurrency: this.maxConcurrentJobs });
   }
 
   private emitProgress(payload: WorkflowProgress): void {
     const win = this.getMainWindow?.();
     if (win && !win.isDestroyed()) {
       win.webContents.send("workflow:progress", payload);
+    }
+  }
+
+  private emitQualityFailed(payload: { jobId: string; score: number; threshold: number }): void {
+    const win = this.getMainWindow?.();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("workflow:quality-failed", payload);
     }
   }
 
@@ -716,28 +787,36 @@ export class WorkflowEngine {
     return this.profiler.exportCsv();
   }
 
+  /** SDD §7.4 : Concurrency gate — file d'attente si maxConcurrentJobs atteint. */
   async start(projectPath: string, chapterId?: string): Promise<Job> {
-    const runner = new WorkflowRunner(
-      projectPath,
-      this.settings,
-      (p) => this.emitProgress(p),
-      this.profiler,
-    );
-    const job = await runner.start(chapterId);
-    this.runners.set(job.id, runner);
-    return job;
+    return this.queue.add(async () => {
+      const runner = new WorkflowRunner(
+        projectPath,
+        this.settings,
+        (p) => this.emitProgress(p),
+        (p) => this.emitQualityFailed(p),
+        this.profiler,
+      );
+      const job = await runner.start(chapterId);
+      this.runners.set(job.id, runner);
+      return job;
+    });
   }
 
+  /** SDD §7.4 : Concurrency gate — file d'attente si maxConcurrentJobs atteint. */
   async startBatch(projectPath: string, chapterIds: string[]): Promise<Job> {
-    const runner = new WorkflowRunner(
-      projectPath,
-      this.settings,
-      (p) => this.emitProgress(p),
-      this.profiler,
-    );
-    const job = await runner.startBatch(chapterIds);
-    this.runners.set(job.id, runner);
-    return job;
+    return this.queue.add(async () => {
+      const runner = new WorkflowRunner(
+        projectPath,
+        this.settings,
+        (p) => this.emitProgress(p),
+        (p) => this.emitQualityFailed(p),
+        this.profiler,
+      );
+      const job = await runner.startBatch(chapterIds);
+      this.runners.set(job.id, runner);
+      return job;
+    });
   }
 
   /**
@@ -746,14 +825,59 @@ export class WorkflowEngine {
    * @param job Job à reprendre (doit être de type batch avec chapterIds)
    */
   async resumeBatch(projectPath: string, job: Job): Promise<void> {
-    const runner = new WorkflowRunner(
-      projectPath,
-      this.settings,
-      (p) => this.emitProgress(p),
-      this.profiler,
-    );
-    await runner.resumeBatch(job);
-    this.runners.set(job.id, runner);
+    return this.queue.add(async () => {
+      const runner = new WorkflowRunner(
+        projectPath,
+        this.settings,
+        (p) => this.emitProgress(p),
+        (p) => this.emitQualityFailed(p),
+        this.profiler,
+      );
+      await runner.resumeBatch(job);
+      this.runners.set(job.id, runner);
+    });
+  }
+
+  /**
+   * SDD §7.11 : Reprend tous les jobs actifs (running/paused) au démarrage de l'application.
+   * Parcourt les projets récents depuis les paramètres.
+   */
+  async resumeActiveJobs(): Promise<void> {
+    const projectPaths = this.settings.get("recentProjects") as string[] | undefined;
+    if (!projectPaths || projectPaths.length === 0) {
+      logger.info("[WorkflowEngine] Aucun projet récent, reprise automatique ignorée");
+      return;
+    }
+
+    let resumed = 0;
+    for (const projectPath of projectPaths) {
+      try {
+        const db = createProjectDatabase(projectPath);
+        runMigrations(db, path.join(__dirname, "../../db/migrations"));
+        const jobRepo = new JobRepository(db);
+        const activeJobs = jobRepo.listActive();
+        db.close();
+
+        for (const job of activeJobs) {
+          if (job.type === "batch" && job.chapterIds && job.chapterIds.length > 0) {
+            logger.info(
+              `[WorkflowEngine] Reprise du job ${job.id} (${job.status}) pour ${projectPath}`,
+            );
+            await this.resumeBatch(projectPath, job);
+            resumed++;
+          }
+        }
+      } catch (err) {
+        logger.warn(
+          `[WorkflowEngine] Impossible de vérifier les jobs actifs pour ${projectPath}`,
+          err,
+        );
+      }
+    }
+
+    if (resumed > 0) {
+      logger.info(`[WorkflowEngine] ${resumed} job(s) repris automatiquement`);
+    }
   }
 
   pause(jobId: string): void {

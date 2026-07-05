@@ -41,6 +41,15 @@ function mockStreamResponse(chunks: string[]) {
   };
 }
 
+vi.mock("../../src/main/utils/logger.js", () => ({
+  logger: {
+    warn: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 vi.mock("electron", () => ({
   net: { fetch: mockNetFetch },
 }));
@@ -223,7 +232,7 @@ describe("OllamaProvider", () => {
     await expect(provider.listModels()).rejects.toThrow("aborted");
   });
 
-  it("devrait gérer une erreur HTTP 500 sur chat", async () => {
+  it("devrait retry 3 fois sur erreur HTTP 500 (chat) puis abandonner", async () => {
     mockNetFetch.mockResolvedValue({
       ok: false,
       status: 500,
@@ -240,7 +249,9 @@ describe("OllamaProvider", () => {
     await expect(
       provider.chat([{ role: "user", content: "Hi" }]),
     ).rejects.toThrow("HTTP 500");
-  });
+    // 1 tentative + 3 retries = 4 appels
+    expect(mockNetFetch).toHaveBeenCalledTimes(4);
+  }, 15000);
 
   it("devrait gérer un message.content undefined dans chat", async () => {
     mockNetFetch.mockResolvedValue(
@@ -257,7 +268,7 @@ describe("OllamaProvider", () => {
     expect(result).toBeUndefined();
   });
 
-  it("devrait gérer une erreur HTTP 500 sur streamChat", async () => {
+  it("devrait retry 3 fois sur erreur HTTP 500 (streamChat) puis abandonner", async () => {
     mockNetFetch.mockResolvedValue({
       ok: false,
       status: 500,
@@ -273,7 +284,9 @@ describe("OllamaProvider", () => {
 
     const gen = provider.streamChat([{ role: "user", content: "Hi" }]);
     await expect(gen[Symbol.asyncIterator]().next()).rejects.toThrow("HTTP 500");
-  });
+    // 1 tentative + 3 retries = 4 appels
+    expect(mockNetFetch).toHaveBeenCalledTimes(4);
+  }, 15000);
 
   it("devrait gérer reader null sur streamChat", async () => {
     mockNetFetch.mockResolvedValue({
@@ -315,7 +328,7 @@ describe("OllamaProvider", () => {
     expect(result).toEqual(["Hello", " ", "World"]);
   });
 
-  it("devrait gérer une erreur HTTP 500 sur embeddings", async () => {
+  it("devrait retry 3 fois sur erreur HTTP 500 (embeddings) puis abandonner", async () => {
     mockNetFetch.mockResolvedValue({
       ok: false,
       status: 500,
@@ -330,7 +343,9 @@ describe("OllamaProvider", () => {
     const provider = new OllamaProvider("ollama", "Ollama", "nomic-embed-text");
 
     await expect(provider.embeddings(["test"])).rejects.toThrow("HTTP 500");
-  });
+    // 1 tentative + 3 retries = 4 appels
+    expect(mockNetFetch).toHaveBeenCalledTimes(4);
+  }, 15000);
 
   it("devrait gérer un tableau vide sur embeddings", async () => {
     const { OllamaProvider } = await import(

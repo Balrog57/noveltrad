@@ -71,6 +71,8 @@ function getMainWindow(): BrowserWindow | null {
 
 const workflowEngine = new WorkflowEngine(settings, getMainWindow);
 
+export { workflowEngine };
+
 export function registerWorkflowHandlers(): void {
   ipcMain.handle("workflow:start", async (_event, projectPath: unknown, chapterId?: unknown) => {
     const parsed = z
