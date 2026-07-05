@@ -303,7 +303,7 @@ Security review of the three T1 changes (CSP headers in production, preload IPC 
 
 ---
 
-### T4 — Câbler prompts LLM dans 3 agents (1.5j) — P1 réduit
+### T4 — Câbler prompts LLM dans 3 agents (1.5j) — P1 réduit ✅ IMPLÉMENTÉE
 
 > **Note** : GrammarAgent, StyleAgent, PolishAgent utilisent déjà leur prompt LLM. Seuls ConsistencyAgent, LexiconAgent, QaAgent sont encore heuristiques.
 
@@ -1412,6 +1412,9 @@ Type-check: 0 errors.
 ```
 
 ## Current Status
+- ✅ **T4 — Câbler prompts LLM dans 3 agents** : IMPLÉMENTÉ. ConsistencyAgent, LexiconAgent, QaAgent wired to LLM via `aiRouter.chat()` with `{jsonMode: true}`. Merge LLM + heuristic results. AgentFactory updated. +9 tests (815 total, 52 files, 0 failed). Type-check clean.
+  - Commit : `16c5f73 feat(agents): wire LLM prompts in ConsistencyAgent, LexiconAgent, QaAgent`
+  - Prochain agent : `reviewer`
 - ✅ **Phase 0 — Fix Ollama via net.fetch** : COMPLET + VALIDÉ AUTOMATIQUEMENT.
   - T1: OllamaManager.ts — `fetch()` replaced with `net.fetch()` from Electron
   - T2: OllamaProvider.ts — `fetch()` replaced with `net.fetch()` across all 5 methods
