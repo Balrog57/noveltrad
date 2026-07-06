@@ -74,8 +74,16 @@ export class TranslateAgent extends Agent {
         ragBlock,
       });
 
+      // T5 fix : résoudre le prompt via PromptLoader (override DB optionnel,
+      // SDD §25). Si aucune version active n'existe en DB, la constante TS est
+      // retournée (comportement inchangé).
+      const systemPrompt = await this.aiRouter.resolvePrompt(
+        "translate",
+        TRANSLATE_SYSTEM_PROMPT,
+      );
+
       const response = await this.aiRouter.chat(this.config.providerId, [
-        { role: "system", content: TRANSLATE_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ]);
 

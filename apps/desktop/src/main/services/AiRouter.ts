@@ -38,6 +38,32 @@ export class AiRouter {
     this.promptLoader = loader;
   }
 
+  /**
+   * T5 fix : résout un prompt avec override DB optionnel.
+   *
+   * Les agents appellent cette méthode avec leur identifiant de prompt et la
+   * constante TS par défaut. Si un PromptLoader est enregistré et qu'une
+   * version active existe en DB, elle remplace la constante. Sinon, la
+   * constante TS est retournée (comportement inchangé).
+   *
+   * Usage côté agent :
+   *   const prompt = await this.aiRouter.resolvePrompt("translate", TRANSLATE_SYSTEM_PROMPT);
+   *
+   * @param promptId Identifiant du prompt (ex "translate", "qa", "consistency")
+   * @param defaultContent Constante TS de fallback
+   */
+  async resolvePrompt(promptId: string, defaultContent: string): Promise<string> {
+    if (!this.promptLoader) {
+      return defaultContent;
+    }
+    try {
+      return await this.promptLoader.load(promptId);
+    } catch {
+      // Prompt inconnu du loader → fallback constant TS
+      return defaultContent;
+    }
+  }
+
   get(id: string): AiProvider {
     // SDD §15 : vérifier d'abord les providers built-in
     const provider = this.providers.get(id);

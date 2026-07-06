@@ -66,7 +66,7 @@ describe("runMigrations — file-based unified runner (T2)", () => {
   });
 
   // ── Test 1 : DB fraîche → toutes les migrations s'exécutent ──
-  it("fresh DB executes all migrations (v1–v10) and chapters.metadata exists", () => {
+  it("fresh DB executes all migrations (v1–v12) and chapters.metadata exists", () => {
     // Copier les fichiers de migration réels dans le dossier temporaire
     const realMigrationsDir = path.resolve(
       __dirname,
@@ -84,13 +84,15 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     runMigrations(db, tempDir);
 
     const rows = getMigrations(db);
-    expect(rows.length).toBe(11);
+    expect(rows.length).toBe(12);
     expect(rows[0].version).toBe(1);
-    expect(rows[10].version).toBe(11);
-    expect(rows[10].name).toBe("011_rag_vectors.sql");
+    expect(rows[11].version).toBe(12);
+    expect(rows[11].name).toBe("012_prompts_active.sql");
 
     // Vérifier que la colonne metadata a été ajoutée à chapters
     expect(columnExists(db, "chapters", "metadata")).toBe(true);
+    // T5 fix : la colonne active a été ajoutée à prompts
+    expect(columnExists(db, "prompts", "active")).toBe(true);
   });
 
   // ── Test 2 : DB existante v1-v8 → seules v9-v11 s'exécutent ──

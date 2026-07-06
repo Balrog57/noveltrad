@@ -78,6 +78,7 @@ describe("TranslateAgent", () => {
       chat: vi.fn().mockResolvedValue("Le dragon survola les montagnes."),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
     mockTmEngine = {
       fuzzyMatches: vi.fn().mockReturnValue([]),
@@ -222,6 +223,7 @@ describe("PreTranslateAgent", () => {
       chat: vi.fn().mockResolvedValue("Le dragon survola les montagnes."),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
   });
 
@@ -286,6 +288,7 @@ describe("GrammarAgent", () => {
       chat: vi.fn().mockResolvedValue("Le dragon survola les montagnes."),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
   });
 
@@ -349,6 +352,7 @@ describe("StyleAgent", () => {
       chat: vi.fn().mockResolvedValue("Le dragon majestueux survola les montagnes enneigées."),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
   });
 
@@ -408,6 +412,7 @@ describe("PolishAgent", () => {
       chat: vi.fn().mockResolvedValue("Le dragon survola les montagnes enneigées, ses ailes déployées."),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
   });
 
@@ -484,6 +489,7 @@ describe("ConsistencyAgent", () => {
         (raw: string) => JSON.parse(raw),
       ),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
   });
 
@@ -619,6 +625,7 @@ describe("LexiconAgent", () => {
         (raw: string) => JSON.parse(raw),
       ),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
   });
 
@@ -741,6 +748,7 @@ describe("QaAgent", () => {
         (raw: string) => JSON.parse(raw),
       ),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
     mockQuality = {
       evaluate: vi.fn().mockResolvedValue({
@@ -938,7 +946,7 @@ describe("ExportAgent", () => {
 // ---------------------------------------------------------------------------
 
 describe("Agent validateOutput — TranslateAgent", () => {
-  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false), resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)) } as unknown as AiRouter;
   const mockTm = { fuzzyMatches: vi.fn().mockReturnValue([]) } as unknown as TranslationMemoryEngine;
   const agent = new TranslateAgent(CONFIG, mockRouter, mockTm);
 
@@ -953,7 +961,7 @@ describe("Agent validateOutput — TranslateAgent", () => {
 });
 
 describe("Agent validateOutput — PreTranslateAgent", () => {
-  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const mockRouter = { chat: vi.fn(), tryParseJson: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false), resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)) } as unknown as AiRouter;
   const agent = new PreTranslateAgent(CONFIG, mockRouter);
 
   it("devrait valider une sortie correcte", () => {
@@ -1023,7 +1031,7 @@ describe("Agent validateOutput — LexiconAgent", () => {
 });
 
 describe("Agent validateOutput — GrammarAgent", () => {
-  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false), resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)) } as unknown as AiRouter;
   const agent = new GrammarAgent(CONFIG, mockRouter);
 
   it("devrait valider une sortie texte correcte", () => {
@@ -1036,7 +1044,7 @@ describe("Agent validateOutput — GrammarAgent", () => {
 });
 
 describe("Agent validateOutput — StyleAgent", () => {
-  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false), resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)) } as unknown as AiRouter;
   const agent = new StyleAgent(CONFIG, mockRouter);
 
   it("devrait valider une sortie texte correcte", () => {
@@ -1049,7 +1057,7 @@ describe("Agent validateOutput — StyleAgent", () => {
 });
 
 describe("Agent validateOutput — PolishAgent", () => {
-  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false) } as unknown as AiRouter;
+  const mockRouter = { chat: vi.fn(), isEthicalRefusal: vi.fn().mockReturnValue(false), resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)) } as unknown as AiRouter;
   const agent = new PolishAgent(CONFIG, mockRouter);
 
   it("devrait valider une sortie texte correcte", () => {
@@ -1130,6 +1138,7 @@ describe("AgentFactory", () => {
       chat: vi.fn().mockResolvedValue("test"),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
     } as unknown as AiRouter;
 
     mockServices = {

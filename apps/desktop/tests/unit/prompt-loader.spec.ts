@@ -185,3 +185,49 @@ describe("PromptLoader", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// T5 fix : AiRouter.resolvePrompt — câblage du PromptLoader
+// ---------------------------------------------------------------------------
+
+describe("AiRouter.resolvePrompt — câblage PromptLoader (T5 fix)", () => {
+  it("1. sans PromptLoader → retourne la constante TS par défaut", async () => {
+    const { AiRouter } = await import("../../src/main/services/AiRouter");
+    const router = new AiRouter();
+    const result = await router.resolvePrompt("translate", TRANSLATE_SYSTEM_PROMPT);
+    expect(result).toBe(TRANSLATE_SYSTEM_PROMPT);
+  });
+
+  it("2. avec override DB actif → retourne le contenu DB", async () => {
+    const { AiRouter } = await import("../../src/main/services/AiRouter");
+    const db = new MockPromptDb();
+    db.seed([
+      { id: "translate", content: "DB custom prompt", version: 1, active: 1 },
+    ]);
+    const loader = new PromptLoader(
+      db as unknown as import("node-sqlite3-wasm").Database,
+    );
+    const router = new AiRouter();
+    router.setPromptLoader(loader);
+
+    const result = await router.resolvePrompt("translate", TRANSLATE_SYSTEM_PROMPT);
+    expect(result).toBe("DB custom prompt");
+    expect(result).not.toBe(TRANSLATE_SYSTEM_PROMPT);
+  });
+
+  it("3. avec override DB inactif (active=0) → fallback constante TS", async () => {
+    const { AiRouter } = await import("../../src/main/services/AiRouter");
+    const db = new MockPromptDb();
+    db.seed([
+      { id: "translate", content: "Disabled", version: 1, active: 0 },
+    ]);
+    const loader = new PromptLoader(
+      db as unknown as import("node-sqlite3-wasm").Database,
+    );
+    const router = new AiRouter();
+    router.setPromptLoader(loader);
+
+    const result = await router.resolvePrompt("translate", TRANSLATE_SYSTEM_PROMPT);
+    expect(result).toBe(TRANSLATE_SYSTEM_PROMPT);
+  });
+});

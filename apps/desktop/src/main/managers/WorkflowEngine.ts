@@ -26,6 +26,7 @@ import { LexiconRepository } from "../db/repositories/LexiconRepository.js";
 import { JobRepository } from "../db/repositories/JobRepository.js";
 import { AgentFactory } from "../services/agents/AgentFactory.js";
 import { AiRouter } from "../services/AiRouter.js";
+import { PromptLoader } from "../services/prompts/PromptLoader.js";
 import { LexiconEngine } from "../services/LexiconEngine.js";
 import { TranslationMemoryEngine } from "../services/TranslationMemoryEngine.js";
 import { ConsistencyChecker } from "../services/ConsistencyChecker.js";
@@ -127,6 +128,12 @@ class WorkflowRunner extends EventEmitter {
     // SDD §22.1 : activer le cache des réponses IA
     const aiCache = new AiCache(this.db);
     aiRouter.setCache(aiCache);
+
+    // T5 fix : câbler le PromptLoader pour permettre les overrides de prompts
+    // en DB (SDD §25). Les agents continuent d'importer leurs constantes TS ;
+    // le PromptLoader est additif — AiRouter.chat() le consulte si défini.
+    const promptLoader = new PromptLoader(this.db);
+    aiRouter.setPromptLoader(promptLoader);
 
     const lexiconEngine = new LexiconEngine();
     const tmEngine = new TranslationMemoryEngine();
