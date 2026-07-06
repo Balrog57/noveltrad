@@ -3170,3 +3170,32 @@ fix(db): unified migration runner — source unique .sql, remove inline array
 
 @reviewer — les 3 commits sont prêts pour review. T11: TM engine enrichi (segmentation, normalisation, 5-tiers, global TM) + TranslateAgent câblé. T12: fuzzy two-pass (MiniSearch + Levenshtein). T13: RAG fallback (préfiltre + seuil + batch) suite à l'échec POC sqlite-vec.
 
+
+---
+
+## Handoff Note (2026-07-06) — Fin du cycle correctif post-T1-T15
+
+### Contexte
+Suite à la revue indépendante sceptique des 15 tâches T1-T15 (qui avait révélé 6 conformes, 6 partielles avec bugs, 1 bug critique, 1 non-faite), un cycle correctif en 12 commits atomiques a été mené sur la branche `fix/post-t1-t15-gaps`.
+
+### Livrables
+- **Gap Analysis mise à jour** : `docs/audit/GAP_ANALYSIS_2.1.3_to_SDD.md` (section revue post-T1-T15 + feuille de route résiduelle toute cochée ✅)
+- **CHANGELOG.md** : entrée v2.1.4 détaillant les 12 fixes
+- **12 commits atomiques** sur `fix/post-t1-t15-gaps` (prêts à merger/rebase)
+
+### Bilan final
+- **940 tests** (62 suites), 0 failed, 0 type-check error (vs 914 avant cycle, +26 tests)
+- **Tous les écarts identifiés comblés** sauf T15 (signature code, reportée sine die — décision utilisateur)
+- 3 bugs runtime critiques fixés (double-retry 16→4, EPUB lang, worker path)
+- 3 wirings dead code (PromptLoader override DB fonctionnel, findBestMatch 5 tiers actif, RAG batch/reindex/cache)
+- 2 dégradations corrigées (hallucination fallback honnète, CJK tokenization)
+- 2 cleanups (jobs single abandonnés, transactions migrations robustes)
+- Dépendance fantôme `sqlite-vec` supprimée
+
+### Décisions notables
+- **RAG** : sqlite-vec abandonné (POC KO sur node-sqlite3-wasm). SDD §9.3 ne requiert aucune lib vectorielle native — l'approche MiniSearch + cosinus JS est 100% conforme jusqu'à ~10k paragraphes.
+- **T15 signature** : reportée sine die (pas de certificat). Config electron-builder reste commentée pour future activation.
+- **PromptLoader** : override DB fonctionnel via `AiRouter.resolvePrompt()`. TranslateAgent câblé en exemple ; pattern reproductible pour les autres agents.
+
+### Prochain agent
+→ **reviewer** : valider la branche `fix/post-t1-t15-gaps` pour merge dans `main`. Tous les commits sont atomiques, type-check + tests verts après chacun. Le `WORKFLOW_STATE.md` et la Gap Analysis sont à jour.

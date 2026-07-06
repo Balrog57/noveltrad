@@ -35,11 +35,14 @@ Suite à l'audit initial, 15 tâches correctives (T1-T15) ont été implémenté
 Le SDD §9.3 (`docs/volumes/09-Translation-Memory.md:87-138`) **ne requiert aucune lib vectorielle** — brute-force + cosinus JS est 100% conforme (seuil `> 0.75`, critères d'acceptation qualitatifs uniquement). Le POC `sqlite-vec` a échoué sur `node-sqlite3-wasm` (pas de `loadExtension`). **Décision** : abandonner `sqlite-vec`, garder MiniSearch préfiltre + cosinus JS, optimiser (batch, cache, reindex réel). La dépendance `sqlite-vec@^0.1.9` sera supprimée.
 
 ### Feuille de route résiduelle (cycles correctifs suivant)
-- **Phase 1** — 3 bugs runtime : T3 double-retry, T9 EPUB lang, T14 worker path
-- **Phase 2** — Wiring dead code : T5 PromptLoader, T11 findBestMatch, T13 RAG batch/reindex + rm sqlite-vec
-- **Phase 3** — Dégradations : T8 hallucination/consistency, T12 CJK tokenization
-- **Phase 4** — Cleanup : T3 single-job resume, T2 robustesse transactions, doc finale
-- **Exclu** : T15 signature (reportée sine die)
+- ✅ **Phase 1 (COMBLÉE 2026-07-06)** — 3 bugs runtime : T3 double-retry (commit 68b3b19), T9 EPUB lang (38174ab), T14 worker path (a2bd1fa)
+- ✅ **Phase 2 (COMBLÉE 2026-07-06)** — Wiring dead code : T5 PromptLoader câblé (dedf82b), T11 findBestMatch actif (7fb56ee), T13 RAG batch/reindex/cache + rm sqlite-vec (cb841a5)
+- ✅ **Phase 3 (COMBLÉE 2026-07-06)** — Dégradations : T8 hallucination fallback 0 + consistencyReport transmis (3ab178b), T12 tokenization Unicode CJK (84a9809)
+- ✅ **Phase 4 (COMBLÉE 2026-07-06)** — Cleanup : T3 single-job marqués failed (7eedf07), T2 robustesse transactions migrations (a263779)
+- ⏸️ **Exclu** : T15 signature code (reportée sine die — décision utilisateur, pas de certificat)
+- ✅ **Bonus** : T4A jobs single abandonnés marqués failed au redémarrage, T4B transactions imbriquées supportées
+
+**Bilan final** : **940 tests** (62 suites), 0 failed, 0 type-check error. 12 commits atomiques sur branche `fix/post-t1-t15-gaps`. Tous les écarts identifiés par la revue indépendante sont comblés sauf T15 (signature, différée).
 
 ---
 

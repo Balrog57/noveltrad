@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.1.4 — Post-T1-T15 gap fixes (2026-07-06)
+
+Cycle correctif suite à la revue indépendante des 15 tâches T1-T15. 12 commits atomiques sur branche `fix/post-t1-t15-gaps`. 940 tests (62 suites), 0 failed, 0 type-check error.
+
+### Bug Fixes (runtime critiques)
+- **T3 — Double p-retry éliminé** : `AiRouter.chat()` ET `OllamaProvider.chat()` wrappaient chacun dans `pRetry(retries:3)` → jusqu'à 16 tentatives sur erreur 5xx. Retry centralisé au niveau AiRouter uniquement (4 tentatives max). (`68b3b19`)
+- **T9 — EPUB multi-chapitre lang** : `toEpubMultiChapter()` hardcodait `lang:"fr"`, ignorant la targetLanguage du projet. Désormais propagée via `options.targetLanguage` depuis la DB projet. (`38174ab`)
+- **T14 — Worker threads path** : `agent-worker.ts` importait `../agents/${agentId}.js` avec stage lowercase, mais les fichiers sont PascalCase → tous les imports worker échouaient (fallback silencieux systématique). Registre explicite `AGENT_MODULES` (10 entrées PascalCase). Workers désormais fonctionnels. (`a2bd1fa`)
+
+### Features (wiring dead code)
+- **T5 — PromptLoader câblé** : la classe existait mais n'était jamais instanciée, et queryait une colonne `active` inexistante. Migration `012_prompts_active.sql` + `AiRouter.resolvePrompt()` + `TranslateAgent` l'utilise. Override DB des prompts fonctionnel. (`dedf82b`)
+- **T11 — findBestMatch 5 tiers actif** : la cascade SDD §9.4 (project-exact → project-fuzzy → global-exact → global-fuzzy) était implémentée mais jamais appelée. `TranslateAgent.buildMemoryBlock()` l'utilise désormais. (`7fb56ee`)
+- **T13 — RAG optimisé** : batch embeddings par chapitre (O(N)→O(1) appels Ollama), `reindex()` async recalcule réellement (avant: DELETE seulement), cache MiniSearch par projet (avant: reconstruit à chaque requête). Dépendance `sqlite-vec` supprimée (POC KO, SDD §9.3 ne la requiert pas). (`cb841a5`)
+
+### Bug Fixes (dégradations)
+- **T8 — Quality scoring honnête** : hallucination fallback `95` trompeur → `0` quand le détecteur échoue. `QaAgent` fallback transmet désormais le `ConsistencyReport` du stage précédent (avant: dimension consistency toujours `90`). (`3ab178b`)
+- **T12 — TM fuzzy CJK** : le préfiltre `/\b\w{3,}\b/` ne matchait pas le CJK (zh/ja/ko) → dégradation vers fallback. Remplacé par `/[\p{L}]{2,}/gu` (Unicode). (`84a9809`)
+
+### Bug Fixes (cleanup)
+- **T4A — Jobs single abandonnés** : `resumeActiveJobs()` ne reprenait que les batch ; les single restaient bloqués en `running`. Désormais marqués `failed` proprement. (`7eedf07`)
+- **T4B — Transactions migrations** : le runner wrappait systématiquement dans `BEGIN/COMMIT` → cassait si la migration contenait sa propre transaction. Détection `hasOwnTransaction` + wrapper conditionnel. (`a263779`)
+
+### Excluded
+- **T15 — Signature code** : reportée sine die (pas de certificat, décision utilisateur)
+
 ## v2.1.1 — Security + Performance + Accessibility (2026-07-05)
 
 ### Security
