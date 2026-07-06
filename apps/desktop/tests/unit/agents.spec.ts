@@ -209,6 +209,75 @@ describe("TranslateAgent", () => {
     // Le LLM doit être appelé
     expect(mockRouter.chat).toHaveBeenCalled();
   });
+
+  // ── T11 fix : TranslateAgent utilise la cascade findBestMatch 5 tiers ──
+
+  it("T11: TranslateAgent appelle findBestMatch (cascade 5 tiers) pour le bloc TM", async () => {
+    const router = {
+      chat: vi.fn().mockResolvedValue("Traduction LLM"),
+      tryParseJson: vi.fn(),
+      isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
+    } as unknown as AiRouter;
+    const tmEngine = {
+      fuzzyMatches: vi.fn().mockReturnValue([]),
+      exactMatch: vi.fn().mockReturnValue(null),
+      findBestMatch: vi.fn().mockReturnValue(null),
+      segmentSentences: vi.fn().mockReturnValue([]),
+      promoteToGlobal: vi.fn(),
+    } as unknown as TranslationMemoryEngine;
+
+    const agent = new TranslateAgent(
+      { providerId: "ollama", model: "qwen3.5:9b" },
+      router,
+      tmEngine,
+    );
+    await agent.execute({
+      projectId: "proj-1",
+      chapterId: "ch-1",
+      paragraphs: [makeParagraph()],
+    });
+
+    // findBestMatch doit être appelé (cascade 5 tiers activée)
+    expect(tmEngine.findBestMatch).toHaveBeenCalled();
+  });
+
+  it("T11: un match exact via findBestMatch éclipse un fuzzy (priorité respectée)", async () => {
+    const router = {
+      chat: vi.fn().mockResolvedValue("Traduction LLM"),
+      tryParseJson: vi.fn(),
+      isEthicalRefusal: vi.fn().mockReturnValue(false),
+      resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
+    } as unknown as AiRouter;
+    // findBestMatch retourne un match "exact" (similarity 1.0)
+    const exactMatch = { sourceText: "src", targetText: "exact trad", similarity: 1.0, usageCount: 1 };
+    const tmEngine = {
+      fuzzyMatches: vi.fn().mockReturnValue([
+        { sourceText: "src fuzzy", targetText: "fuzzy trad", similarity: 0.6, usageCount: 0 },
+      ]),
+      exactMatch: vi.fn().mockReturnValue(null),
+      findBestMatch: vi.fn().mockReturnValue(exactMatch),
+      segmentSentences: vi.fn().mockReturnValue([]),
+      promoteToGlobal: vi.fn(),
+    } as unknown as TranslationMemoryEngine;
+
+    const agent = new TranslateAgent(
+      { providerId: "ollama", model: "qwen3.5:9b" },
+      router,
+      tmEngine,
+    );
+    await agent.execute({
+      projectId: "proj-1",
+      chapterId: "ch-1",
+      paragraphs: [makeParagraph()],
+    });
+
+    // Le prompt envoyé au LLM doit contenir "exact trad" (priorité tier 1)
+    const chatCall = (router.chat as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+    const messages = chatCall[1] as Array<{ content: string }>;
+    const systemPromptContent = messages.map((m) => m.content).join("\n");
+    expect(systemPromptContent).toContain("exact trad");
+  });
 });
 
 // ---------------------------------------------------------------------------

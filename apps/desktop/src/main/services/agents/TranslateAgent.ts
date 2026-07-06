@@ -124,11 +124,31 @@ export class TranslateAgent extends Agent {
 
   private buildMemoryBlock(input: AgentInput): string {
     if (!input.chapterId || !input.projectId) {return "";}
-    const matches = this.tmEngine.fuzzyMatches(
-      input.paragraphs?.[0]?.sourceText ?? "",
-      input.projectId,
-      3,
-    );
+    const sourceText = input.paragraphs?.[0]?.sourceText ?? "";
+
+    // T11 fix : utiliser la cascade findBestMatch 5 tiers (SDD §9.4) plutôt
+    // que fuzzyMatches seul. La cascade tente dans l'ordre : project-exact,
+    // project-fuzzy, global-exact, global-fuzzy. On complète ensuite avec des
+    // matches fuzzy project pour atteindre jusqu'à 3 entrées de contexte.
+    const matches: Array<{ sourceText: string; targetText: string; similarity: number }> = [];
+    const seen = new Set<string>();
+
+    const best = this.tmEngine.findBestMatch(sourceText, input.projectId);
+    if (best) {
+      matches.push({ sourceText: best.sourceText, targetText: best.targetText, similarity: best.similarity });
+      seen.add(best.sourceText);
+    }
+
+    // Compléter avec fuzzy project (jusqu'à 3 entrées au total)
+    const fuzzy = this.tmEngine.fuzzyMatches(sourceText, input.projectId, 3);
+    for (const m of fuzzy) {
+      if (matches.length >= 3) {break;}
+      if (!seen.has(m.sourceText)) {
+        matches.push({ sourceText: m.sourceText, targetText: m.targetText, similarity: m.similarity });
+        seen.add(m.sourceText);
+      }
+    }
+
     if (!matches.length) {return "";}
     const lines = matches.map((m) => `- "${m.sourceText}" → "${m.targetText}"`);
     return `--- TRANSLATION MEMORY ---\n${lines.join("\n")}\n--- END TM ---\n\n`;
