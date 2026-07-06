@@ -7,6 +7,42 @@
 
 ---
 
+## 🔁 Revue post-implémentation T1-T15 (2026-07-06)
+
+Suite à l'audit initial, 15 tâches correctives (T1-T15) ont été implémentées. Une **revue indépendante sceptique** (lecture du code réel, pas des commits/messages) a été conduite. Verdict factuel :
+
+| # | Tâche | Verdict | Preuve file:line |
+|---|-------|---------|------------------|
+| **T1** | Sécurité (CSP/safeStorage/preload) | ✅ **Conforme** | CSP prod active `index.ts:55-89` + `session.defaultSession.webRequest.onHeadersReceived:81-88` ; `safeStorage` `secrets.ts:36-85`, SALT hardcodé supprimé ; preload log gardé par `import.meta.env.DEV` `preload/index.ts:102-103` |
+| **T2** | Migration runner unifié | ✅ **Conforme** | Runner file-based `connection.ts:67-94`, `009_chapter_metadata.sql` existe, inline array supprimé. ⚠️ transaction raw `BEGIN` fragile (`connection.ts:81-82`) → Phase 4B |
+| **T3** | Workflow (retry/branching/queue/resume) | ⚠️ **Partiel** 🐛 | Retry+branching QA `WorkflowEngine.ts:514-555` + p-queue `:772` + auto-resume `index.ts:270-272` présents. **MAIS** 🐛 double p-retry (AiRouter × Provider = jusqu'à 16 tentatives `AiRouter.ts:83` + `OllamaProvider.ts:26`) ; 🐛 auto-resume ignore jobs `single` (`WorkflowEngine.ts:874`) |
+| **T4** | Câbler 3 agents LLM | ✅ **Conforme** | Consistency/Lexicon/Qa appellent `aiRouter.chat()` avec leurs prompts importés + fallback heuristique (`ConsistencyAgent.ts:57-64`, `LexiconAgent.ts:47-54`, `QaAgent.ts:72-79`) |
+| **T5** | PromptLoader DB | ⚠️ **Partiel** 🐛 | **Dead code** : class correcte mais jamais instanciée, `setPromptLoader` jamais appelée, queries colonne `active` inexistante (table `prompts` migration 005 n'a pas cette colonne) → override DB non fonctionnel |
+| **T6** | Agent I/O Zod | ✅ **Conforme** | `inputSchema`/`outputSchema` `Agent.ts:24,27`, `validateOutput()` appelé `WorkflowEngine.ts:501-512`, 10 agents équipés, 73 tests |
+| **T7** | ConsistencyChecker 7/7 | ✅ **Conforme** | 7 métriques `ConsistencyChecker.ts:145-293`, pondération SDD §11.5 exacte `:82-90`, caps `:305-314`, tolérances zh-fr = SDD `:17-24` |
+| **T8** | HallucinationDetector | ⚠️ **Partiel** 🐛 | Détecteur appelé **MAIS** hallucination = hardcoded `95` en fallback (`QualityChecker.ts:43-45`) ; QaAgent fallback ne passe pas `consistencyReport` (`QaAgent.ts:58-63`) → dimension = 90 |
+| **T9** | EPUB epub-gen-memory | ⚠️ **Partiel** 🐛 | Dep `epub-gen-memory@^1.1.2` + import `ExportEngine.ts:14` + utilisé single `:565` et multi `:284`. **MAIS** 🐛 multi-chapitre hardcode `lang:"fr"` (`ExportEngine.ts:279`) ignore targetLanguage |
+| **T10** | EPUB/DOCX import | ✅ **Conforme** | `readEpubSpine()` `ProjectManager.ts:858-899` lit le spine OPF ; DOCX mammoth styleMap Heading 1 `:752-766` |
+| **T11** | TM 5 tiers | ⚠️ **Partiel** 🐛 | Segmentation + exact + global réels **MAIS** `findBestMatch()` 5-tier cascade a **0 caller production** (TranslateAgent n'appelle que `fuzzyMatches`) ; tier 5 = null pas embeddings |
+| **T12** | TM MiniSearch | ✅ **Conforme** ⚠️ | Two-pass implémenté. 🐛 préfiltre SQL `\w{3,}` Latin-only → CJK fuzzy dégrade vers fallback |
+| **T13** | RAG batch/seuil/reindex | ⚠️ **Partiel** 🐛 | Seuil ✅ (0.7). **MAIS** `computeEmbeddings`/`storeEmbeddings` batch + `reindex()` = **dead code jamais appelé** ; sqlite-vec declared unused (POC KO) |
+| **T14** | Worker threads | 🐛 **Bug critique** | Fix named-export correct **MAIS** path `../services/agents/${agentId}.js` avec stage lowercase (`"translate"`) alors que fichiers sont PascalCase (`TranslateAgent.ts`) → **chaque import worker échoue → fallback silencieux systématique** (workers jamais fonctionnés) |
+| **T15** | Signature code | ❌ **Non faite** | `forceCodeSigning`/`signAndEditExecutable`/`verifyUpdateCodeSignature` tous à `false` ; CSC/Apple vars en commentaires uniquement ; pas de build signé. **Reportée sine die** (décision utilisateur) |
+
+**Bilan revue** : 6 conformes · 6 partielles (bugs) · 1 bug critique · 1 non-faite. **Plusieurs features = dead code non câblé.**
+
+### Note RAG (décision utilisateur 2026-07-06)
+Le SDD §9.3 (`docs/volumes/09-Translation-Memory.md:87-138`) **ne requiert aucune lib vectorielle** — brute-force + cosinus JS est 100% conforme (seuil `> 0.75`, critères d'acceptation qualitatifs uniquement). Le POC `sqlite-vec` a échoué sur `node-sqlite3-wasm` (pas de `loadExtension`). **Décision** : abandonner `sqlite-vec`, garder MiniSearch préfiltre + cosinus JS, optimiser (batch, cache, reindex réel). La dépendance `sqlite-vec@^0.1.9` sera supprimée.
+
+### Feuille de route résiduelle (cycles correctifs suivant)
+- **Phase 1** — 3 bugs runtime : T3 double-retry, T9 EPUB lang, T14 worker path
+- **Phase 2** — Wiring dead code : T5 PromptLoader, T11 findBestMatch, T13 RAG batch/reindex + rm sqlite-vec
+- **Phase 3** — Dégradations : T8 hallucination/consistency, T12 CJK tokenization
+- **Phase 4** — Cleanup : T3 single-job resume, T2 robustesse transactions, doc finale
+- **Exclu** : T15 signature (reportée sine die)
+
+---
+
 ## TL;DR — verdict par bloc critique
 
 | Bloc | Maturité réelle vs SDD | Verdict |
