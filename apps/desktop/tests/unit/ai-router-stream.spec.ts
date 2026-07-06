@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { AbortError } from "p-retry";
 
 // Mock electron-log pour les tests qui importent des modules utilisant le logger
 vi.mock("electron-log", () => ({
@@ -138,5 +139,56 @@ describe("AiRouter.streamChat", () => {
       collected.push(chunk);
     }
     expect(collected).toEqual(["chunk from plugin"]);
+  });
+
+  // ── Tests T3 fix : retry centralisé au niveau AiRouter ────────────────
+
+  it("devrait retry 3 fois sur erreur 5xx via chat() (4 appels total max)", async () => {
+    // T3 fix : le retry réseau est centralisé dans AiRouter, pas dans le provider.
+    // On vérifie qu'un provider qui throw sur 5xx est appelé 4 fois (1 + 3 retries),
+    // et non 16 fois (ce qui serait le cas avec un double-retry provider × router).
+    const router = new AiRouter();
+    const chatMock = vi.fn().mockRejectedValue(new Error("HTTP 500"));
+    router.register({
+      id: "flaky-provider",
+      name: "Flaky",
+      model: "flaky-model",
+      chat: chatMock,
+      streamChat: vi.fn(),
+      listModels: vi.fn(),
+      embeddings: vi.fn(),
+      isAvailable: vi.fn(),
+      host: "http://localhost:11434",
+    });
+
+    await expect(
+      router.chat("flaky-provider", [{ role: "user", content: "Hi" }]),
+    ).rejects.toThrow("HTTP 500");
+    // 1 tentative + 3 retries = 4 appels (pas 16)
+    expect(chatMock).toHaveBeenCalledTimes(4);
+  }, 15000);
+
+  it("ne devrait pas retry sur erreur 4xx (AbortError) via chat()", async () => {
+    // T3 fix : les erreurs 4xx doivent être propagées immédiatement (AbortError).
+    // p-retry v8 vérifie instanceof AbortError — on instancie la vraie classe.
+    const router = new AiRouter();
+    const chatMock = vi.fn().mockRejectedValue(new AbortError("HTTP 404"));
+    router.register({
+      id: "not-found-provider",
+      name: "NotFound",
+      model: "nf-model",
+      chat: chatMock,
+      streamChat: vi.fn(),
+      listModels: vi.fn(),
+      embeddings: vi.fn(),
+      isAvailable: vi.fn(),
+      host: "http://localhost:11434",
+    });
+
+    await expect(
+      router.chat("not-found-provider", [{ role: "user", content: "Hi" }]),
+    ).rejects.toThrow("HTTP 404");
+    // 1 seul appel — pas de retry sur 4xx
+    expect(chatMock).toHaveBeenCalledTimes(1);
   });
 });

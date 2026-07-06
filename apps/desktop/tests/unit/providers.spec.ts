@@ -232,7 +232,9 @@ describe("OllamaProvider", () => {
     await expect(provider.listModels()).rejects.toThrow("aborted");
   });
 
-  it("devrait retry 3 fois sur erreur HTTP 500 (chat) puis abandonner", async () => {
+  it("devrait propager l'erreur HTTP 500 sans retry (retry géré par AiRouter)", async () => {
+    // T3 fix : le retry réseau est centralisé au niveau AiRouter, pas dans
+    // le provider. OllamaProvider.chat() ne fait qu'un seul appel fetch.
     mockNetFetch.mockResolvedValue({
       ok: false,
       status: 500,
@@ -249,9 +251,30 @@ describe("OllamaProvider", () => {
     await expect(
       provider.chat([{ role: "user", content: "Hi" }]),
     ).rejects.toThrow("HTTP 500");
-    // 1 tentative + 3 retries = 4 appels
-    expect(mockNetFetch).toHaveBeenCalledTimes(4);
-  }, 15000);
+    // 1 seul appel — le retry est délégué à AiRouter (couche orchestration)
+    expect(mockNetFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("devrait propager l'erreur HTTP 404 (4xx) sans retry", async () => {
+    // 4xx = AbortError côté AiRouter, mais le provider propage juste l'erreur
+    mockNetFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: () => Promise.resolve("Not Found"),
+      json: () => Promise.reject(new Error("Not JSON")),
+      body: null,
+    });
+
+    const { OllamaProvider } = await import(
+      "../../src/main/services/providers/OllamaProvider"
+    );
+    const provider = new OllamaProvider("ollama", "Ollama", "qwen3.5:9b");
+
+    await expect(
+      provider.chat([{ role: "user", content: "Hi" }]),
+    ).rejects.toThrow("HTTP 404");
+    expect(mockNetFetch).toHaveBeenCalledTimes(1);
+  });
 
   it("devrait gérer un message.content undefined dans chat", async () => {
     mockNetFetch.mockResolvedValue(
@@ -268,7 +291,8 @@ describe("OllamaProvider", () => {
     expect(result).toBeUndefined();
   });
 
-  it("devrait retry 3 fois sur erreur HTTP 500 (streamChat) puis abandonner", async () => {
+  it("devrait propager l'erreur HTTP 500 sur streamChat sans retry (géré par AiRouter)", async () => {
+    // T3 fix : retry centralisé au niveau AiRouter.
     mockNetFetch.mockResolvedValue({
       ok: false,
       status: 500,
@@ -284,9 +308,9 @@ describe("OllamaProvider", () => {
 
     const gen = provider.streamChat([{ role: "user", content: "Hi" }]);
     await expect(gen[Symbol.asyncIterator]().next()).rejects.toThrow("HTTP 500");
-    // 1 tentative + 3 retries = 4 appels
-    expect(mockNetFetch).toHaveBeenCalledTimes(4);
-  }, 15000);
+    // 1 seul appel — retry délégué à AiRouter
+    expect(mockNetFetch).toHaveBeenCalledTimes(1);
+  });
 
   it("devrait gérer reader null sur streamChat", async () => {
     mockNetFetch.mockResolvedValue({
