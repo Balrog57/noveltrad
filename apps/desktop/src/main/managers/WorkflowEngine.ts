@@ -735,22 +735,51 @@ class WorkflowRunner extends EventEmitter {
   /**
    * Calcule et stocke les embeddings pour tous les paragraphes
    * traduits du chapitre courant.
+   *
+   * T13 fix : utilise le batch computeEmbeddings/storeEmbeddings (1 appel
+   * Ollama /api/embed pour tout le chapitre) au lieu de N appels paragraphe
+   * par paragraphe. Passe de O(N) appels réseau à O(1) par chapitre.
    */
   private async storeEmbeddingsForChapter(): Promise<void> {
     if (!this.chapter || !this.ragEngine) {return;}
 
-    for (const paragraph of this.paragraphs) {
-      if (!paragraph.translatedText) {continue;}
-      try {
-        const embedding = await this.ragEngine.computeEmbedding(
-          paragraph.sourceText,
-        );
-        this.ragEngine.storeEmbedding(this.chapter.id, paragraph.id, embedding);
-      } catch (err) {
-        logger.warn(
-          `RAG: impossible de stocker l'embedding pour le paragraphe ${paragraph.id}`,
-          err,
-        );
+    // Collecter les paragraphes traduits (sourceText pour l'embedding)
+    const toEmbed = this.paragraphs
+      .filter((p) => p.translatedText)
+      .map((p) => ({ paragraph: p, sourceText: p.sourceText }));
+
+    if (toEmbed.length === 0) {return;}
+
+    try {
+      // T13 fix : un seul appel batch Ollama pour tout le chapitre
+      const embeddings = await this.ragEngine.computeEmbeddings(
+        toEmbed.map((e) => e.sourceText),
+      );
+
+      const entries = toEmbed.map((e, i) => ({
+        chapterId: this.chapter!.id,
+        paragraphId: e.paragraph.id,
+        embedding: embeddings[i],
+      }));
+      this.ragEngine.storeEmbeddings(entries);
+    } catch (err) {
+      logger.warn(
+        `RAG: échec du batch d'embeddings pour le chapitre ${this.chapter.id}, fallback per-paragraph`,
+        err,
+      );
+      // Fallback : calculer un par un (ancien comportement)
+      for (const { paragraph } of toEmbed) {
+        try {
+          const embedding = await this.ragEngine.computeEmbedding(
+            paragraph.sourceText,
+          );
+          this.ragEngine.storeEmbedding(this.chapter.id, paragraph.id, embedding);
+        } catch (e) {
+          logger.warn(
+            `RAG: impossible de stocker l'embedding pour le paragraphe ${paragraph.id}`,
+            e,
+          );
+        }
       }
     }
   }

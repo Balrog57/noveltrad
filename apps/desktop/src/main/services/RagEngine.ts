@@ -11,11 +11,18 @@ import MiniSearch from "minisearch";
  * enrichir le contexte des agents de traduction avec des paragraphes
  * précédemment traduits similaires.
  *
- * Utilise un fallback brute-force + MiniSearch préfiltre + seuil de
- * similarité (sqlite-vec non disponible avec node-sqlite3-wasm).
+ * Utilise un préfiltre MiniSearch + cosinus JS (cache par projet) + seuil de
+ * similarité. SDD §9.3 ne requiert aucune lib vectorielle native — cette
+ * approche est 100% conforme et suffisante jusqu'à ~10k paragraphes.
  */
 export class RagEngine {
   private readonly embeddingModel: string;
+  /**
+   * T13 fix : cache de l'index MiniSearch par projectId.
+   * Évite de reconstruire l'index à chaque findSimilar() (coût O(n) par requête).
+   * Invalidé quand des embeddings sont stockés (storeEmbedding/storeEmbeddings).
+   */
+  private miniSearchCache: Map<string, { index: MiniSearch; rows: Array<{ id: number; paragraphId: string; embeddingJson: string; sourceText: string; translatedText: string }> }> = new Map();
 
   constructor(
     private db: ProjectDatabase,
@@ -109,6 +116,9 @@ export class RagEngine {
         JSON.stringify(embedding),
         new Date().toISOString(),
       ]);
+
+    // T13 fix : invalider le cache MiniSearch (nouvel embedding disponible)
+    this.invalidateMiniSearchCache();
   }
 
   /**
@@ -122,8 +132,31 @@ export class RagEngine {
       embedding: number[];
     }>,
   ): void {
+    let added = false;
     for (const entry of entries) {
-      this.storeEmbedding(entry.chapterId, entry.paragraphId, entry.embedding);
+      const existing = this.db
+        .prepare("SELECT id FROM embeddings WHERE paragraph_id = ?")
+        .get([entry.paragraphId]);
+      if (existing) {continue;}
+
+      this.db
+        .prepare(
+          `INSERT INTO embeddings (id, chapter_id, paragraph_id, embedding_json, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run([
+          crypto.randomUUID(),
+          entry.chapterId,
+          entry.paragraphId,
+          JSON.stringify(entry.embedding),
+          new Date().toISOString(),
+        ]);
+      added = true;
+    }
+
+    // T13 fix : invalider le cache si au moins un embedding a été ajouté
+    if (added) {
+      this.invalidateMiniSearchCache();
     }
   }
 
@@ -143,7 +176,67 @@ export class RagEngine {
     // 1. Calculer l'embedding du texte source
     const sourceEmbedding = await this.computeEmbedding(sourceText);
 
-    // 2. Charger tous les embeddings du projet
+    // 2. Récupérer (ou construire) l'index MiniSearch mis en cache pour le projet
+    //    T13 fix : l'index était reconstruit à chaque findSimilar — désormais caché.
+    const cached = this.getOrBuildMiniSearchIndex(projectId);
+    if (!cached || cached.rows.length === 0) {return [];}
+
+    // 3. Chercher les candidats avec MiniSearch (index en cache)
+    const msResults = cached.index.search(sourceText, {
+      fuzzy: 0.2,
+      prefix: true,
+    });
+    const candidateIds = new Set(msResults.slice(0, 50).map((r) => parseInt(r.id, 10)));
+
+    // 4. Calculer la similarité cosinus uniquement pour les candidats
+    //    (ou tous si MiniSearch ne trouve rien)
+    const scored: RagMatch[] = [];
+    const candidates =
+      candidateIds.size > 0
+        ? cached.rows.filter((r) => candidateIds.has(r.id))
+        : cached.rows;
+
+    for (const row of candidates) {
+      const storedEmbedding = JSON.parse(row.embeddingJson) as number[];
+      const cosim = this.cosineSimilarity(sourceEmbedding, storedEmbedding);
+
+      // Seuil de similarité (correspond à distance < 0.3 en espace L2 pour des vecteurs normalisés)
+      const SIMILARITY_THRESHOLD = 0.7;
+      if (cosim < SIMILARITY_THRESHOLD) {continue;}
+
+      scored.push({
+        paragraphId: row.paragraphId,
+        sourceText: row.sourceText,
+        translatedText: row.translatedText,
+        similarity: cosim,
+      });
+    }
+
+    // 5. Trier par similarité décroissante et retourner les top K
+    scored.sort((a, b) => b.similarity - a.similarity);
+    return scored.slice(0, topK);
+  }
+
+  /**
+   * T13 fix : récupère ou construit l'index MiniSearch pour un projet.
+   * L'index est mis en cache et réutilisé entre les appels findSimilar().
+   * Invalide le cache si de nouveaux embeddings ont été stockés.
+   */
+  private getOrBuildMiniSearchIndex(projectId: string): {
+    index: MiniSearch;
+    rows: Array<{
+      id: number;
+      paragraphId: string;
+      embeddingJson: string;
+      sourceText: string;
+      translatedText: string;
+    }>;
+  } | null {
+    // Vérifier le cache
+    const cached = this.miniSearchCache.get(projectId);
+    if (cached) {return cached;}
+
+    // Charger tous les embeddings du projet
     const rows = this.db
       .prepare(
         `SELECT e.paragraph_id, e.embedding_json, p.source_text, p.translated_text
@@ -159,63 +252,58 @@ export class RagEngine {
       translated_text: string | null;
     }>;
 
-    if (rows.length === 0) {return [];}
+    if (rows.length === 0) {return null;}
 
-    // 3. Construire un index MiniSearch pour le préfiltre
+    const normalizedRows = rows.map((r, i) => ({
+      id: i,
+      paragraphId: r.paragraph_id,
+      embeddingJson: r.embedding_json,
+      sourceText: r.source_text,
+      translatedText: r.translated_text ?? "",
+    }));
+
     const miniSearch = new MiniSearch({
       fields: ["source_text"],
       storeFields: ["source_text"],
       searchOptions: { fuzzy: 0.2, prefix: true },
     });
     miniSearch.addAll(
-      rows.map((r, i) => ({
-        id: String(i),
-        source_text: r.source_text,
+      normalizedRows.map((r) => ({
+        id: String(r.id),
+        source_text: r.sourceText,
       })),
     );
 
-    // 4. Chercher les candidats avec MiniSearch
-    const msResults = miniSearch.search(sourceText, {
-      fuzzy: 0.2,
-      prefix: true,
-    });
-    const candidateIds = new Set(msResults.slice(0, 50).map((r) => parseInt(r.id, 10)));
-
-    // 5. Calculer la similarité cosinus uniquement pour les candidats
-    //    (ou tous si MiniSearch ne trouve rien)
-    const scored: RagMatch[] = [];
-    const candidates =
-      candidateIds.size > 0
-        ? rows.filter((_, i) => candidateIds.has(i))
-        : rows;
-
-    for (const row of candidates) {
-      const storedEmbedding = JSON.parse(row.embedding_json) as number[];
-      const cosim = this.cosineSimilarity(sourceEmbedding, storedEmbedding);
-
-      // Seuil de similarité (correspond à distance < 0.3 en espace L2 pour des vecteurs normalisés)
-      const SIMILARITY_THRESHOLD = 0.7;
-      if (cosim < SIMILARITY_THRESHOLD) {continue;}
-
-      scored.push({
-        paragraphId: row.paragraph_id,
-        sourceText: row.source_text,
-        translatedText: row.translated_text ?? "",
-        similarity: cosim,
-      });
-    }
-
-    // 6. Trier par similarité décroissante et retourner les top K
-    scored.sort((a, b) => b.similarity - a.similarity);
-    return scored.slice(0, topK);
+    const entry = { index: miniSearch, rows: normalizedRows };
+    this.miniSearchCache.set(projectId, entry);
+    return entry;
   }
 
   /**
-   * Supprime et recrée tous les embeddings d'un projet.
-   * Utile après un changement de modèle d'embedding.
+   * T13 fix : invalide le cache MiniSearch pour un projet.
+   * Appelé après storeEmbedding/storeEmbeddings/reindex.
    */
-  reindex(projectId: string): void {
-    // Supprimer les anciens embeddings via la jointure avec chapters
+  private invalidateMiniSearchCache(projectId?: string): void {
+    if (projectId) {
+      this.miniSearchCache.delete(projectId);
+    } else {
+      this.miniSearchCache.clear();
+    }
+  }
+
+  /**
+   * Supprime et recalcule tous les embeddings d'un projet.
+   * Utile après un changement de modèle d'embedding.
+   *
+   * T13 fix : auparavant, reindex() ne faisait que DELETE les embeddings
+   * sans les recalculer — laissant le projet sans index vectoriel. Maintenant,
+   * après le DELETE, tous les paragraphes traduits du projet sont ré-embeddés
+   * en batch (1 appel Ollama /api/embed par chunk de 100 paragraphes).
+   *
+   * @returns Nombre d'embeddings recalculés
+   */
+  async reindex(projectId: string): Promise<number> {
+    // 1. Supprimer les anciens embeddings du projet
     this.db
       .prepare(
         `DELETE FROM embeddings WHERE chapter_id IN (
@@ -223,9 +311,55 @@ export class RagEngine {
        )`,
       )
       .run([projectId]);
+
+    // 2. Charger tous les paragraphes traduits du projet
+    const paragraphs = this.db
+      .prepare(
+        `SELECT p.id, p.chapter_id, p.source_text
+       FROM paragraphs p
+       JOIN chapters c ON p.chapter_id = c.id
+       WHERE c.project_id = ? AND p.translated_text IS NOT NULL`,
+      )
+      .all([projectId]) as Array<{
+        id: string;
+        chapter_id: string;
+        source_text: string;
+      }>;
+
+    if (paragraphs.length === 0) {
+      logger.info(
+        `[RagEngine] reindex: aucun paragraphe traduit pour ${projectId}`,
+      );
+      return 0;
+    }
+
+    // 3. Recalculer les embeddings en batch (chunks de 100 pour éviter les timeouts)
+    const BATCH_SIZE = 100;
+    let count = 0;
+    for (let i = 0; i < paragraphs.length; i += BATCH_SIZE) {
+      const batch = paragraphs.slice(i, i + BATCH_SIZE);
+      const texts = batch.map((p) => p.source_text);
+      try {
+        const embeddings = await this.computeEmbeddings(texts);
+        const entries = batch.map((p, j) => ({
+          chapterId: p.chapter_id,
+          paragraphId: p.id,
+          embedding: embeddings[j],
+        }));
+        this.storeEmbeddings(entries);
+        count += batch.length;
+      } catch (err) {
+        logger.warn(
+          `[RagEngine] reindex: échec du batch ${i}-${i + batch.length}`,
+          err,
+        );
+      }
+    }
+
     logger.info(
-      `[RagEngine] Embeddings réindexés pour le projet ${projectId}`,
+      `[RagEngine] reindex: ${count}/${paragraphs.length} embeddings recalculés pour ${projectId}`,
     );
+    return count;
   }
 
   /**
