@@ -245,4 +245,48 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     expect(tables.length).toBe(1);
     expect(tables[0].name).toBe("valid_table");
   });
+
+  // ── Test 6 (T4B) : Migration avec transaction imbriquée → pas de wrapper ──
+  it("T4B: migration with own BEGIN/COMMIT is not double-wrapped", () => {
+    // Une migration qui contient sa propre transaction ne doit pas être
+    // wrappée par un BEGIN/COMMIT externe (sinon "cannot start a transaction
+    // within a transaction").
+    writeMigration(
+      tempDir,
+      "001_simple.sql",
+      "CREATE TABLE t1 (id TEXT PRIMARY KEY)",
+    );
+    writeMigration(
+      tempDir,
+      "002_with_txn.sql",
+      "BEGIN; CREATE TABLE t2 (id TEXT PRIMARY KEY); COMMIT;",
+    );
+
+    // Ne doit pas throw
+    expect(() => runMigrations(db, tempDir)).not.toThrow();
+
+    const rows = getMigrations(db);
+    expect(rows.length).toBe(2);
+    expect(rows[1].name).toBe("002_with_txn.sql");
+
+    // t2 doit exister (la transaction interne a été exécutée)
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='t2'")
+      .all() as { name: string }[];
+    expect(tables.length).toBe(1);
+  });
+
+  // ── Test 7 (T4B) : Rollback propre sur erreur, même sans transaction interne ──
+  it("T4B: rollback is safe even if no transaction is active", () => {
+    writeMigration(tempDir, "001_ok.sql", "CREATE TABLE ok_table (id TEXT PRIMARY KEY)");
+    // Migration invalide (syntaxe SQL cassée)
+    writeMigration(tempDir, "002_broken.sql", "THIS IS NOT VALID SQL !!!");
+
+    expect(() => runMigrations(db, tempDir)).toThrow();
+
+    // v1 appliquée, v2 non
+    const rows = getMigrations(db);
+    expect(rows.length).toBe(1);
+    expect(rows[0].version).toBe(1);
+  });
 });

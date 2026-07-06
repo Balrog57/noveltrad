@@ -77,17 +77,30 @@ export function runMigrations(db: Database, migrationsDir?: string): void {
       if (applied.has(version)) continue;
 
       const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
+      // T4B fix : robustesse transactionnelle. Si le SQL de migration contient
+      // déjà sa propre transaction (BEGIN/COMMIT/START TRANSACTION), on ne
+      // wrapper pas — SQLite ne supporte pas les transactions imbriquées via
+      // exec() brut et lèverait "cannot start a transaction within a transaction".
+      const hasOwnTransaction = /\b(BEGIN|START\s+TRANSACTION|COMMIT)\b/i.test(sql);
+
       try {
-        db.exec("BEGIN");
+        if (!hasOwnTransaction) {
+          db.exec("BEGIN");
+        }
         db.exec(sql);
         const now = new Date().toISOString();
         db.prepare(
           "INSERT INTO __migrations (version, name, applied_at) VALUES (?, ?, ?)",
         ).run([version, file, now]);
-        db.exec("COMMIT");
+        if (!hasOwnTransaction) {
+          db.exec("COMMIT");
+        }
         applied.add(version);
       } catch (e) {
-        db.exec("ROLLBACK");
+        // Ne tenter un ROLLBACK que si on a ouvert une transaction
+        if (!hasOwnTransaction) {
+          try { db.exec("ROLLBACK"); } catch { /* déjà rollback ou pas de txn ouverte */ }
+        }
         throw e;
       }
     }
