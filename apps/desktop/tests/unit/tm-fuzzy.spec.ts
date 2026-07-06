@@ -163,4 +163,41 @@ describe("TranslationMemoryEngine — fuzzy two-pass (MiniSearch + Levenshtein)"
     const matches = engineNoDb.fuzzyMatches("Hello", PROJECT_ID);
     expect(matches).toEqual([]);
   });
+
+  // ── T12 fix : tokenization Unicode pour CJK (zh/ja/ko) ─────────────────
+
+  it("T12: fuzzy CJK — extrait un terme chinois et trouve des matchs", () => {
+    // T12 fix : avant, la regex /\b\w{3,}\b/ ne matchait pas le CJK → le
+    // préfiltre LIKE échouait → fuzzy dégradait vers le fallback. Désormais
+    // \p{L} matche le CJK et le préfiltre fonctionne.
+    db.seed({
+      id: "cjk-1",
+      project_id: PROJECT_ID,
+      source_text: "剑客独行走江湖",
+      target_text: "Le swordsmen marchait seul dans le monde",
+      source_language: "zh",
+      target_language: "fr",
+      usage_count: 2,
+    });
+
+    const matches = engine.fuzzyMatches("剑客独行走江湖", PROJECT_ID);
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(matches[0].sourceText).toBe("剑客独行走江湖");
+  });
+
+  it("T12: fuzzy CJK japonais — terme extrait via \\p{L}", () => {
+    db.seed({
+      id: "cjk-ja",
+      project_id: PROJECT_ID,
+      source_text: "剣士は孤独に歩いた",
+      target_text: "Le swordsman marchait seul",
+      source_language: "ja",
+      target_language: "fr",
+      usage_count: 1,
+    });
+
+    const matches = engine.fuzzyMatches("剣士は孤独に歩いた", PROJECT_ID);
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(matches[0].sourceText).toBe("剣士は孤独に歩いた");
+  });
 });

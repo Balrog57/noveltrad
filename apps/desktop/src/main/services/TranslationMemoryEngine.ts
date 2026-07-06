@@ -171,8 +171,14 @@ export class TranslationMemoryEngine {
   ): TranslationMemoryMatch[] {
     if (!this.db) {return [];}
 
-    // Extraire le terme le plus long (>= 3 caractères) pour le préfiltre LIKE
-    const terms = text.match(/\b\w{3,}\b/g);
+    // T12 fix : extraire le terme le plus long pour le préfiltre LIKE.
+    // Avant, la regex /\b\w{3,}\b/g ne matchait que [A-Za-z0-9_] → le CJK
+    // (zh/ja/ko) n'avait jamais de terme extrait → fuzzy dégradait vers le
+    // fallback (texte brut 20 chars), incapable de préfiltrer efficacement.
+    // Désormais \p{L} (Unicode property escape, flag 'u') matche toutes les
+    // lettres y compris CJK. Pour les langues sans espaces (zh/ja), on prend
+    // aussi des groupes de 2+ caractères CJK consécutifs.
+    const terms = text.match(/[\p{L}]{2,}/gu);
     const searchTerm = terms
       ? terms.sort((a, b) => b.length - a.length)[0]
       : text.substring(0, 20);
