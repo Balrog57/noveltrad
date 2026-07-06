@@ -919,23 +919,39 @@ export class WorkflowEngine {
     }
 
     let resumed = 0;
+    let cleaned = 0;
     for (const projectPath of projectPaths) {
       try {
         const db = createProjectDatabase(projectPath);
         runMigrations(db, path.join(__dirname, "../../db/migrations"));
         const jobRepo = new JobRepository(db);
         const activeJobs = jobRepo.listActive();
-        db.close();
 
         for (const job of activeJobs) {
           if (job.type === "batch" && job.chapterIds && job.chapterIds.length > 0) {
+            // Les jobs batch peuvent être repris via batchChapterIndex
             logger.info(
-              `[WorkflowEngine] Reprise du job ${job.id} (${job.status}) pour ${projectPath}`,
+              `[WorkflowEngine] Reprise du job batch ${job.id} (${job.status}) pour ${projectPath}`,
             );
             await this.resumeBatch(projectPath, job);
             resumed++;
+          } else {
+            // T4A fix : les jobs single abandonnés ne peuvent pas être repris
+            // (pas assez d'état persisté). On les marque failed proprement
+            // pour éviter qu'ils restent bloqués en "running" éternellement.
+            logger.warn(
+              `[WorkflowEngine] Job single ${job.id} (${job.status}) interrompu — marqué comme failed`,
+            );
+            jobRepo.updateJob({
+              ...job,
+              status: "failed",
+              errorMessage: "Interrompu (redémarrage de l'application)",
+              finishedAt: new Date().toISOString(),
+            });
+            cleaned++;
           }
         }
+        db.close();
       } catch (err) {
         logger.warn(
           `[WorkflowEngine] Impossible de vérifier les jobs actifs pour ${projectPath}`,
@@ -946,6 +962,11 @@ export class WorkflowEngine {
 
     if (resumed > 0) {
       logger.info(`[WorkflowEngine] ${resumed} job(s) repris automatiquement`);
+    }
+    if (cleaned > 0) {
+      logger.info(
+        `[WorkflowEngine] ${cleaned} job(s) single abandonné(s) marqué(s) failed`,
+      );
     }
   }
 
