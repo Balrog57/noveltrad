@@ -4,10 +4,6 @@ icon: build/icon.png
 copyright: Copyright © 2026 Balrog57
 asar: true
 electronVersion: 31.1.0
-# ═══ Code Signing (SDD §21.8) ═══
-# forceCodeSigning: true → enable once a valid certificate is available.
-# See docs/SIGNING.md for instructions on obtaining and configuring certs.
-forceCodeSigning: false
 directories:
   output: dist
   buildResources: build
@@ -21,28 +17,14 @@ publish:
     owner: Balrog57
     repo: noveltrad
     releaseType: release
+# Code signing : non activé (décision produit). Les builds sont non signés ;
+# Windows SmartScreen affichera un avertissement au premier lancement.
 win:
   target:
     - nsis
-  # verifyUpdateCodeSignature: true requires forceCodeSigning: true
-  verifyUpdateCodeSignature: false
-  signAndEditExecutable: false
-  # ── Authenticode (Windows) ──
-  # When a certificate is available, set via CI env vars:
-  #   CSC_LINK         → base64-encoded .pfx or path to .p12
-  #   CSC_KEY_PASSWORD → password for the certificate
-  # certificateFile and certificatePassword are resolved automatically
-  # by electron-builder from those env vars.
 mac:
   target:
     - dmg
-  # ── Apple notarization (macOS) ──
-  # Requires Apple Developer ID. Set via CI env vars:
-  #   APPLE_ID                    → Apple ID email
-  #   APPLE_APP_SPECIFIC_PASSWORD → app-specific password
-  #   APPLE_TEAM_ID               → 10-character team ID
-  # hardenRuntime: true and notarize: true are recommended for distribution.
-  # See docs/SIGNING.md for full macOS signing instructions.
 linux:
   target:
     - AppImage

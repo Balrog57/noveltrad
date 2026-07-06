@@ -106,16 +106,6 @@ jobs:
       - name: Publish to GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ── Code signing (SDD §21.8) ──
-          # These are read automatically by electron-builder.
-          # Set them in GitHub repo Settings → Secrets and variables → Actions.
-          # See docs/SIGNING.md for certificate setup instructions.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # ── Apple notarization (macOS only) ──
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npx electron-builder --publish always
         working-directory: apps/desktop
 

@@ -22,8 +22,8 @@ Cycle correctif suite à la revue indépendante des 15 tâches T1-T15. 12 commit
 - **T4A — Jobs single abandonnés** : `resumeActiveJobs()` ne reprenait que les batch ; les single restaient bloqués en `running`. Désormais marqués `failed` proprement. (`7eedf07`)
 - **T4B — Transactions migrations** : le runner wrappait systématiquement dans `BEGIN/COMMIT` → cassait si la migration contenait sa propre transaction. Détection `hasOwnTransaction` + wrapper conditionnel. (`a263779`)
 
-### Excluded
-- **T15 — Signature code** : reportée sine die (pas de certificat, décision utilisateur)
+### Excluded (décision produit définitive)
+- **T15 — Signature code** : 🚫 WONTFIX. La signature de code ne sera jamais activée. Config CSC/Apple retirée de `electron-builder.yml` et `release.yml` ; `docs/SIGNING.md` supprimé. Les builds sont délibérément non signés (Windows SmartScreen avertira au premier lancement — c'est un choix assumé, pas un manque).
 
 ## v2.1.1 — Security + Performance + Accessibility (2026-07-05)
 

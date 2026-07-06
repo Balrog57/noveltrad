@@ -27,7 +27,7 @@ Suite à l'audit initial, 15 tâches correctives (T1-T15) ont été implémenté
 | **T12** | TM MiniSearch | ✅ **Conforme** ⚠️ | Two-pass implémenté. 🐛 préfiltre SQL `\w{3,}` Latin-only → CJK fuzzy dégrade vers fallback |
 | **T13** | RAG batch/seuil/reindex | ⚠️ **Partiel** 🐛 | Seuil ✅ (0.7). **MAIS** `computeEmbeddings`/`storeEmbeddings` batch + `reindex()` = **dead code jamais appelé** ; sqlite-vec declared unused (POC KO) |
 | **T14** | Worker threads | 🐛 **Bug critique** | Fix named-export correct **MAIS** path `../services/agents/${agentId}.js` avec stage lowercase (`"translate"`) alors que fichiers sont PascalCase (`TranslateAgent.ts`) → **chaque import worker échoue → fallback silencieux systématique** (workers jamais fonctionnés) |
-| **T15** | Signature code | ❌ **Non faite** | `forceCodeSigning`/`signAndEditExecutable`/`verifyUpdateCodeSignature` tous à `false` ; CSC/Apple vars en commentaires uniquement ; pas de build signé. **Reportée sine die** (décision utilisateur) |
+| **T15** | Signature code | 🚫 **WONTFIX** | Signature définitivement exclue (décision produit). Config CSC/Apple retirée de `electron-builder.yml` et `release.yml`. Builds non signés → Windows SmartScreen avertira au premier lancement. |
 
 **Bilan revue** : 6 conformes · 6 partielles (bugs) · 1 bug critique · 1 non-faite. **Plusieurs features = dead code non câblé.**
 
@@ -39,10 +39,10 @@ Le SDD §9.3 (`docs/volumes/09-Translation-Memory.md:87-138`) **ne requiert aucu
 - ✅ **Phase 2 (COMBLÉE 2026-07-06)** — Wiring dead code : T5 PromptLoader câblé (dedf82b), T11 findBestMatch actif (7fb56ee), T13 RAG batch/reindex/cache + rm sqlite-vec (cb841a5)
 - ✅ **Phase 3 (COMBLÉE 2026-07-06)** — Dégradations : T8 hallucination fallback 0 + consistencyReport transmis (3ab178b), T12 tokenization Unicode CJK (84a9809)
 - ✅ **Phase 4 (COMBLÉE 2026-07-06)** — Cleanup : T3 single-job marqués failed (7eedf07), T2 robustesse transactions migrations (a263779)
-- ⏸️ **Exclu** : T15 signature code (reportée sine die — décision utilisateur, pas de certificat)
+- 🚫 **WONTFIX** : T15 signature code (décision produit définitive — la signature ne sera jamais activée)
 - ✅ **Bonus** : T4A jobs single abandonnés marqués failed au redémarrage, T4B transactions imbriquées supportées
 
-**Bilan final** : **940 tests** (62 suites), 0 failed, 0 type-check error. 12 commits atomiques sur branche `fix/post-t1-t15-gaps`. Tous les écarts identifiés par la revue indépendante sont comblés sauf T15 (signature, différée).
+**Bilan final** : **940 tests** (62 suites), 0 failed, 0 type-check error. 13 commits atomiques. **Tous les écarts identifiés par la revue indépendante sont comblés**, à l'exception de T15 (signature) qui est un WONTFIX produit assumé — les builds sont délibérément non signés.
 
 ---
 
@@ -257,7 +257,7 @@ Le SDD §9.3 (`docs/volumes/09-Translation-Memory.md:87-138`) **ne requiert aucu
 
 **Recommandation**
 - **CSP** : implémenter `session.defaultSession.webRequest.onHeadersReceived` setant `Content-Security-Policy: default-src 'self'; script-src 'self'; ...` **en production aussi** (adapter pour `file://` : `default-src 'self' 'unsafe-inline' data:` minima).
-- **Signature** : configurer certificat Windows (EV/OV) dans `electron-builder.yml` + `CSC_LINK`/`CSC_KEY_PASSWORD` en CI. Apple notarization via `notarize` API.
+- **Signature** : 🚫 WONTFIX (décision produit définitive). La signature de code ne sera jamais activée. Config CSC/Apple retirée de `electron-builder.yml` et `release.yml`.
 - **KDF** : remplacer le sel constant par `safeStorage` (Electron natif, OS-backed) pour la clé maître + enveler le sel. Si `safeStorage` indisponible, sel par-machine (`machine-id`).
 - **OS keyring** : `electron.safeStorage.encryptString()` (déjà dans Electron 31, pas de dépendance). Remplace keytar.
 - **Preload log** : retirer/guarder derrière `process.env.NODE_ENV === "development"`.
