@@ -106,35 +106,42 @@ export class TranslationMemoryEngine {
     const tuArray = Array.isArray(tus) ? tus : [tus];
     let imported = 0;
 
-    for (const tu of tuArray) {
-      const tuvs = tu?.tuv;
-      if (!tuvs) {continue;}
+    this.db.exec("BEGIN TRANSACTION");
+    try {
+      for (const tu of tuArray) {
+        const tuvs = tu?.tuv;
+        if (!tuvs) {continue;}
 
-      const tuvArray = Array.isArray(tuvs) ? tuvs : [tuvs];
-      let sourceText = "";
-      let targetText = "";
-      let sourceLang = "";
-      let targetLang = "";
+        const tuvArray = Array.isArray(tuvs) ? tuvs : [tuvs];
+        let sourceText = "";
+        let targetText = "";
+        let sourceLang = "";
+        let targetLang = "";
 
-      for (const tuv of tuvArray) {
-        const lang = (tuv["@_xml:lang"] ?? tuv["@_lang"]) as string | undefined;
-        const seg = tuv?.seg;
-        const text = typeof seg === "string" ? seg : "";
-        if (lang) {
-          if (!sourceText) {
-            sourceText = text;
-            sourceLang = lang;
-          } else {
-            targetText = text;
-            targetLang = lang;
+        for (const tuv of tuvArray) {
+          const lang = (tuv["@_xml:lang"] ?? tuv["@_lang"]) as string | undefined;
+          const seg = tuv?.seg;
+          const text = typeof seg === "string" ? seg : "";
+          if (lang) {
+            if (!sourceText) {
+              sourceText = text;
+              sourceLang = lang;
+            } else {
+              targetText = text;
+              targetLang = lang;
+            }
           }
         }
-      }
 
-      if (sourceText && targetText) {
-        this.store(sourceText, targetText, projectId, sourceLang, targetLang);
-        imported++;
+        if (sourceText && targetText) {
+          this.store(sourceText, targetText, projectId, sourceLang, targetLang);
+          imported++;
+        }
       }
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
     }
 
     return imported;
