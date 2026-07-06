@@ -373,7 +373,7 @@ async function addSelectedCandidates(): Promise<void> {
     <div v-if="showConflictsPanel" class="conflicts-panel">
       <div class="conflicts-header">
         <h3>⚠️ Conflits détectés ({{ lexiconStore.conflicts.length }})</h3>
-        <button class="btn-icon" title="Fermer" @click="closeConflicts">&times;</button>
+        <button class="btn-icon" aria-label="Fermer les conflits" title="Fermer" @click="closeConflicts">&times;</button>
       </div>
       <div v-if="lexiconStore.loading" class="loading-msg">Analyse en cours…</div>
       <div v-else class="conflicts-list">
@@ -820,6 +820,12 @@ async function addSelectedCandidates(): Promise<void> {
 
 .btn-icon:hover {
   color: var(--text-primary);
+}
+
+.btn-icon:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .conflicts-list {
