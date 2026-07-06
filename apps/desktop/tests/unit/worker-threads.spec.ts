@@ -6,8 +6,35 @@
  * dans WorkflowRunner.runStep().
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
+
+// Mocker electron-log avant tout import de modules qui utilisent le logger
+vi.mock("electron-log", () => ({
+  default: {
+    initialize: vi.fn(),
+    transports: { file: { level: false }, console: { level: false } },
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+  initialize: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+
+vi.mock("../../src/main/utils/logger.js", () => ({
+  logger: {
+    warn: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import { resolveAgentClass } from "../../src/main/workers/agent-worker.js";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +143,58 @@ describe("Worker threads (SDD §22.2)", () => {
       };
       const found = resolveAgentClass(mod);
       expect(found).toBeUndefined();
+    });
+  });
+
+  // ── T14 fix : registre PascalCase — les workers fonctionnent enfin ─────
+
+  describe("STAGE_REGISTRY — résolution PascalCase des 10 stages (T14 fix)", () => {
+    it("couvre les 10 stages SDD", async () => {
+      const { STAGE_REGISTRY } = await import(
+        "../../src/main/workers/agent-worker.js"
+      );
+      const expectedStages = [
+        "split",
+        "pre_translate",
+        "translate",
+        "consistency",
+        "lexicon",
+        "grammar",
+        "style",
+        "polish",
+        "qa",
+        "export",
+      ];
+      for (const stage of expectedStages) {
+        expect(STAGE_REGISTRY[stage], `stage "${stage}" manquant`).toBeDefined();
+        expect(typeof STAGE_REGISTRY[stage]).toBe("function");
+      }
+      expect(Object.keys(STAGE_REGISTRY)).toHaveLength(10);
+    });
+
+    it("chaque loader importe un module avec une classe exécutable (execute())", async () => {
+      const { STAGE_REGISTRY } = await import(
+        "../../src/main/workers/agent-worker.js"
+      );
+      for (const [stage, loader] of Object.entries(STAGE_REGISTRY)) {
+        const mod = await (loader as () => Promise<Record<string, unknown>>)();
+        const AgentClass = resolveAgentClass(mod);
+        expect(
+          AgentClass,
+          `stage "${stage}" : aucune classe avec execute() trouvée`,
+        ).toBeDefined();
+        expect(typeof AgentClass?.prototype.execute).toBe("function");
+      }
+    });
+
+    it("un stage inconnu est absent du registre (pas d'import lowercase accidentel)", async () => {
+      const { STAGE_REGISTRY } = await import(
+        "../../src/main/workers/agent-worker.js"
+      );
+      // Avant le fix, l'interpolation `../agents/${agentId}.js` aurait tenté
+      // un import lowercase inexistant pour n'importe quel agentId. Maintenant
+      // un stage absent du registre est immédiatement détecté.
+      expect(STAGE_REGISTRY["unknown_stage"]).toBeUndefined();
     });
   });
 });

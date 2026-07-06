@@ -21,6 +21,38 @@ interface WorkerInput {
 }
 
 /**
+ * T14 fix : registre explicite stage (lowercase) → chemin de module PascalCase.
+ *
+ * Avant, le worker construisait le chemin par interpolation :
+ *   `../services/agents/${agentId}.js`
+ * avec agentId = stage lowercase (ex "translate"), mais les fichiers
+ * sont PascalCase (TranslateAgent.ts → TranslateAgent.js). Résultat :
+ * CHAQUE import worker échouait → fallback silencieux systématique.
+ * Les worker threads n'ont jamais réellement fonctionné.
+ *
+ * Ce registre mappe explicitement chaque stage au bon module. Les imports
+ * dynamiques sont gardés paresseux (le worker ne charge que l'agent requis).
+ */
+const AGENT_MODULES: Record<string, () => Promise<Record<string, unknown>>> = {
+  split: () => import("../services/agents/SplitAgent.js"),
+  pre_translate: () => import("../services/agents/PreTranslateAgent.js"),
+  translate: () => import("../services/agents/TranslateAgent.js"),
+  consistency: () => import("../services/agents/ConsistencyAgent.js"),
+  lexicon: () => import("../services/agents/LexiconAgent.js"),
+  grammar: () => import("../services/agents/GrammarAgent.js"),
+  style: () => import("../services/agents/StyleAgent.js"),
+  polish: () => import("../services/agents/PolishAgent.js"),
+  qa: () => import("../services/agents/QaAgent.js"),
+  export: () => import("../services/agents/ExportAgent.js"),
+};
+
+/**
+ * Exporté pour tests unitaires : permet de vérifier que les 10 stages
+ * sont mappés à un module d'agent valide.
+ */
+export const STAGE_REGISTRY = AGENT_MODULES;
+
+/**
  * Résout la classe d'agent à partir des exports d'un module ESM.
  * Cherche un export nommé qui est une classe avec prototype.execute.
  * Les agents sont exportés en nom (ex: `export class TranslateAgent`),
@@ -47,16 +79,19 @@ export function resolveAgentClass(
 async function executeAgent(data: WorkerInput): Promise<void> {
   const { agentId, input, config } = data;
 
-  // Construire le chemin de l'agent
-  const agentPath = `../services/agents/${agentId}.js`;
+  // T14 fix : résoudre le module via le registre explicite (PascalCase).
+  const loader = AGENT_MODULES[agentId];
 
   let agentModule: Record<string, unknown>;
   try {
-    agentModule = await import(agentPath);
-  } catch {
+    if (!loader) {
+      throw new Error(`Stage "${agentId}" absent du registre AGENT_MODULES`);
+    }
+    agentModule = await loader();
+  } catch (err) {
     parentPort?.postMessage({
       success: false,
-      error: `Agent "${agentId}" introuvable (${agentPath})`,
+      error: `Agent "${agentId}" introuvable (${err instanceof Error ? err.message : String(err)})`,
     });
     return;
   }
@@ -97,7 +132,7 @@ if (workerData) {
 }
 
 // ── Fallback : écouter les messages post-initiation ──────────────────
-// Permettra未来 des cas d'usage où le Worker reçoit des tâches supplémentaires.
+// Permet des cas d'usage où le Worker reçoit des tâches supplémentaires.
 if (parentPort) {
   parentPort.on("message", async (message: WorkerInput) => {
     try {
