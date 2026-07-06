@@ -226,4 +226,93 @@ describe("ExportEngine — EPUB (epub-gen-memory)", () => {
     // Nettoyage
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
   });
+
+  // ── T9 fix : EPUB multi-chapitre utilise targetLanguage, pas "fr" hardcodé ──
+
+  it("7. EPUB multi-chapitres : lang dérive de targetLanguage (en), pas 'fr'", async () => {
+    const dir = tmpDir();
+    const engine = new ExportEngine();
+
+    const chapters = [
+      {
+        chapterId: "00000000-0000-0000-0000-000000000010",
+        title: "Chapter One",
+        paragraphs: [
+          {
+            id: "00000000-0000-0000-0000-000000000011",
+            chapterId: "00000000-0000-0000-0000-000000000010",
+            indexInChapter: 0,
+            sourceText: "The swordmaster walked alone.",
+            translatedText: "Le maître d'armes marchait seul.",
+            status: "translated" as const,
+          },
+        ],
+      },
+    ];
+
+    // T9 fix : targetLanguage="en" doit se propager à l'OPF (pas "fr" hardcodé)
+    const result = await engine.exportBatch(
+      "00000000-0000-0000-0000-000000000001",
+      "Test Book (zh→en)",
+      "Auteur Test",
+      chapters,
+      "epub",
+      dir,
+      { targetLanguage: "en" },
+    );
+
+    expect(result.paths).toHaveLength(1);
+    const zip = new AdmZip(result.paths[0]);
+    const opfEntry = zip.getEntries().find((e) => e.entryName.endsWith(".opf"));
+    expect(opfEntry).toBeDefined();
+    const opfContent = opfEntry!.getData().toString();
+
+    // T9 fix : <dc:language> doit refléter targetLanguage="en", PAS "fr"
+    expect(opfContent).toMatch(/<dc:language>en<\/dc:language>/);
+    expect(opfContent).not.toMatch(/<dc:language>fr<\/dc:language>/);
+
+    // Nettoyage
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  it("8. EPUB multi-chapitres sans targetLanguage : fallback 'fr'", async () => {
+    const dir = tmpDir();
+    const engine = new ExportEngine();
+
+    const chapters = [
+      {
+        chapterId: "00000000-0000-0000-0000-000000000020",
+        title: "Chapitre Un",
+        paragraphs: [
+          {
+            id: "00000000-0000-0000-0000-000000000021",
+            chapterId: "00000000-0000-0000-0000-000000000020",
+            indexInChapter: 0,
+            sourceText: "Le maître marchait.",
+            translatedText: "Le maître marchait.",
+            status: "translated" as const,
+          },
+        ],
+      },
+    ];
+
+    // Sans targetLanguage → fallback "fr" (comportement attendu, cohérent avec single)
+    const result = await engine.exportBatch(
+      "00000000-0000-0000-0000-000000000001",
+      "Test Book (fallback)",
+      undefined,
+      chapters,
+      "epub",
+      dir,
+    );
+
+    const zip = new AdmZip(result.paths[0]);
+    const opfEntry = zip.getEntries().find((e) => e.entryName.endsWith(".opf"));
+    expect(opfEntry).toBeDefined();
+    const opfContent = opfEntry!.getData().toString();
+    expect(opfContent).toMatch(/<dc:language>fr<\/dc:language>/);
+
+    // Nettoyage
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
 });

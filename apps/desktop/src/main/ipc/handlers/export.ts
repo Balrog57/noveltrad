@@ -156,6 +156,12 @@ export function registerExportHandlers(): void {
         const chapterRepo = new ChapterRepository(db);
         const paragraphRepo = new ParagraphRepository(db);
 
+        // T9 fix : lire la targetLanguage du projet pour l'export EPUB multi-chapitre
+        // (sinon epub-gen-memory déclare lang="fr" en dur, SDD §13.3).
+        const projectRepo = new ProjectRepository(db);
+        const project = projectRepo.getById(input.projectId);
+        const targetLanguage = project?.targetLanguage;
+
         const chapters = [];
         for (const chapterId of input.chapterIds) {
           const chapter = chapterRepo.getById(chapterId);
@@ -178,6 +184,12 @@ export function registerExportHandlers(): void {
         }
         db.close();
 
+        // Propager la targetLanguage dans les options pour toEpubMultiChapter
+        const optionsWithLang = {
+          ...input.options,
+          ...(targetLanguage ? { targetLanguage } : {}),
+        };
+
         const result = await exportEngine.exportBatch(
           input.projectId,
           input.projectTitle,
@@ -185,7 +197,7 @@ export function registerExportHandlers(): void {
           chapters,
           input.format,
           input.outputDir,
-          input.options,
+          optionsWithLang,
         );
 
         return {

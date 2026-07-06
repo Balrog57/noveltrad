@@ -140,6 +140,7 @@ export class ExportEngine {
       includeTitle?: boolean;
       includeParagraphNumbers?: boolean;
       bilingual?: boolean;
+      targetLanguage?: string;
     },
   ): Promise<BatchExportResult> {
     if (chapters.length === 0) {
@@ -246,6 +247,7 @@ export class ExportEngine {
       includeTitle?: boolean;
       includeParagraphNumbers?: boolean;
       bilingual?: boolean;
+      targetLanguage?: string;
     },
   ): Promise<Buffer> {
     const css = `body { font-family: Georgia, serif; line-height: 1.6; max-width: 700px; margin: 2em auto; }
@@ -273,10 +275,12 @@ p { margin: 1em 0; text-align: justify; }
       };
     });
 
+    // T9 fix : la langue de l'EPUB provient de la targetLanguage du projet
+    // (propagée via options), avec fallback "fr" — cohérent avec toEpub() single.
     const epubOptions = {
       title,
       author: author || "NovelTrad",
-      lang: "fr",
+      lang: options?.targetLanguage ?? "fr",
       css,
       version: 3 as const,
     };
