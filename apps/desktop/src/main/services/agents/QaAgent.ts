@@ -4,6 +4,7 @@ import type {
   AgentInput,
   AgentOutput,
   QualityReport,
+  ConsistencyReport,
 } from "@shared/types/index.js";
 import type { AiRouter } from "../AiRouter.js";
 import type { QualityChecker } from "../QualityChecker.js";
@@ -52,6 +53,13 @@ export class QaAgent extends Agent {
     const targetLanguage =
       (input.options?.targetLanguage as string) ?? "French";
 
+    // T8 fix : récupérer le ConsistencyReport du stage précédent (injecté par
+    // WorkflowEngine via options). Permet à QualityChecker d'utiliser le vrai
+    // score de cohérence au lieu d'un fallback 90 en mode heuristique.
+    const consistencyReport = input.options?.consistencyReport as
+      | ConsistencyReport
+      | undefined;
+
     // Phase 1 : LLM evaluation (primary)
     let report: QualityReport;
 
@@ -60,6 +68,7 @@ export class QaAgent extends Agent {
         sourceText,
         translatedText,
         input.lexicon ?? [],
+        consistencyReport,
       );
 
     try {

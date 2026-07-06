@@ -606,3 +606,67 @@ describe("ConsistencyChecker — tolérances configurables", () => {
     });
   });
 });
+
+// ── Tests T8 fix : QualityChecker hallucination/consistency fallbacks ──────
+
+describe("QualityChecker — T8 fix (hallucination fallback + consistencyReport)", () => {
+  it("hallucination=0 (pas 95) quand le détecteur throw", async () => {
+    // T8 fix : un détecteur en erreur doit donner 0, pas un trompeur 95.
+    const { QualityChecker } = await import(
+      "../../src/main/services/QualityChecker"
+    );
+    const throwingDetector = {
+      detect(): never {
+        throw new Error("detecteur cassé");
+      },
+    } as unknown as HallucinationDetector;
+    const checker = new QualityChecker(throwingDetector);
+
+    const report = await checker.evaluate(
+      "source text",
+      "target text",
+      [],
+    );
+    // hallucination doit être 0 (pas 95)
+    expect(report.hallucination).toBe(0);
+  });
+
+  it("consistency dimension = ConsistencyReport.globalScore quand transmis", async () => {
+    // T8 fix : quand un ConsistencyReport est transmis, la dimension consistency
+    // doit refléter son globalScore (pas un fallback 90).
+    const { QualityChecker } = await import(
+      "../../src/main/services/QualityChecker"
+    );
+    const checker = new QualityChecker();
+    const consistencyReport = {
+      globalScore: 42,
+      metrics: [],
+      warnings: [],
+    };
+
+    const report = await checker.evaluate(
+      "source text here",
+      "target text here",
+      [],
+      consistencyReport as never,
+    );
+    // consistency doit être 42 (le globalScore du report), pas 90
+    expect(report.consistency).toBe(42);
+    expect(report.consistency).not.toBe(90);
+  });
+
+  it("consistency dimension = 90 (fallback) quand aucun ConsistencyReport", async () => {
+    // Sans consistencyReport, le fallback 90 s'applique (comportement attendu).
+    const { QualityChecker } = await import(
+      "../../src/main/services/QualityChecker"
+    );
+    const checker = new QualityChecker();
+
+    const report = await checker.evaluate(
+      "source text here",
+      "target text here",
+      [],
+    );
+    expect(report.consistency).toBe(90);
+  });
+});

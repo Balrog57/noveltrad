@@ -12,7 +12,7 @@ import type { ConsistencyReport } from "@shared/types/index.js";
  * 3. ConsistencyReport faible → dimension consistency basse
  * 4. ConsistencyReport parfait → consistency = 100
  * 5. evaluate() complet → 8 dimensions toutes calculées
- * 6. HallucinationDetector erreur → fallback 95
+ * 6. HallucinationDetector erreur → fallback 0 (T8 fix: pas un faux 95)
  */
 
 describe("QualityChecker — HallucinationDetector wired", () => {
@@ -109,8 +109,9 @@ describe("QualityChecker — HallucinationDetector wired", () => {
     expect(typeof report.globalScore).toBe("number");
   });
 
-  it("devrait fallback a 95 si HallucinationDetector plante", async () => {
-    // Injecter un detecteur qui plante
+  it("devrait fallback a 0 si HallucinationDetector plante (T8 fix)", async () => {
+    // T8 fix : un détecteur en erreur donne 0 (pas un trompeur 95).
+    // Un échec de détection ne doit pas signaler une qualité d'hallucination excellente.
     const brokenDetector = {
       detect: () => {
         throw new Error("Broken");
@@ -123,6 +124,6 @@ describe("QualityChecker — HallucinationDetector wired", () => {
       "Bonjour le monde.",
       [],
     );
-    expect(report.hallucination).toBe(95);
+    expect(report.hallucination).toBe(0);
   });
 });

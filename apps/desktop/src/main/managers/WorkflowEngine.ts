@@ -697,6 +697,26 @@ class WorkflowRunner extends EventEmitter {
             outputPath: path.join(this.project.path, "exports"),
           },
         };
+      case "qa": {
+        // T8 fix : injecter le ConsistencyReport du stage précédent pour que
+        // QualityChecker utilise le vrai score de cohérence (pas un fallback 90).
+        const consistencyStep = this.steps.find(
+          (s) => s.stage === "consistency",
+        );
+        const consistencyReport = consistencyStep?.outputSnapshot?.report as
+          | import("@shared/types/index.js").ConsistencyReport
+          | undefined;
+        if (consistencyReport) {
+          return {
+            ...base,
+            options: {
+              ...base.options,
+              consistencyReport,
+            },
+          };
+        }
+        return base;
+      }
       default:
         return base;
     }

@@ -31,7 +31,12 @@ export class QualityChecker {
     const grammarScore = this.checkGrammar(target);
     const styleScore = this.checkStyle(target);
 
-    // SDD §12.6 : score d'hallucination via HallucinationDetector
+    // SDD §12.6 : score d'hallucination via HallucinationDetector.
+    // T8 fix : auparavant, un détecteur sans score ou en erreur retombait
+    // sur un hardcoded 95 trompeur (indiquant une qualité d'hallucination
+    // excellente alors que la détection a échoué). Désormais, un échec de
+    // détection donne 0 (et un warning) — signalant honnêtement que la
+    // dimension n'a pas pu être évaluée.
     let hallucinationScore: number;
     try {
       const hReport = this.hallucinationDetector.detect(
@@ -40,9 +45,10 @@ export class QualityChecker {
         "source",
         "target",
       );
-      hallucinationScore = hReport.score ?? 95;
+      hallucinationScore = hReport.score ?? 0;
     } catch {
-      hallucinationScore = 95;
+      // Détection en échec → score 0 (pas un faux 95)
+      hallucinationScore = 0;
     }
 
     // SDD §12.5 : cohérence via ConsistencyReport
