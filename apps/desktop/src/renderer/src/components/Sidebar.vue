@@ -115,6 +115,15 @@ function isActive(name: string) {
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .nav-item:hover {
