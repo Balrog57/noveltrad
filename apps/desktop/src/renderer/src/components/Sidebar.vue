@@ -47,10 +47,10 @@ function isActive(name: string) {
         :key="link.name"
         class="nav-item"
         :class="{ active: isActive(link.name) }"
-        :aria-label="link.label"
+        :aria-current="isActive(link.name) ? 'page' : undefined"
         @click="router.push({ name: link.name })"
       >
-        <component :is="link.icon" class="icon" :size="18" />
+        <component :is="link.icon" class="icon" :size="18" aria-hidden="true" />
         <span>{{ link.label }}</span>
       </button>
 
@@ -62,7 +62,7 @@ function isActive(name: string) {
           :key="link.name"
           class="nav-item"
           :class="{ active: isActive(link.name) }"
-          :aria-label="link.label"
+          :aria-current="isActive(link.name) ? 'page' : undefined"
           @click="
             router.push({
               name: link.name,
@@ -70,7 +70,7 @@ function isActive(name: string) {
             })
           "
         >
-          <component :is="link.icon" class="icon" :size="18" />
+          <component :is="link.icon" class="icon" :size="18" aria-hidden="true" />
           <span>{{ link.label }}</span>
         </button>
       </template>
@@ -112,9 +112,20 @@ function isActive(name: string) {
   padding: 10px 12px;
   border-radius: var(--border-radius);
   border: none;
+  border-left: 3px solid transparent;
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .nav-item:hover {
