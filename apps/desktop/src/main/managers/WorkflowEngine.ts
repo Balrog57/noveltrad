@@ -5,6 +5,7 @@ import type { BrowserWindow } from "electron";
 import type {
   AgentInput,
   AgentOutput,
+  AiProvider,
   Chapter,
   Job,
   Paragraph,
@@ -34,7 +35,9 @@ import { QualityChecker } from "../services/QualityChecker.js";
 import { ExportEngine } from "../services/ExportEngine.js";
 import { CalibrationService } from "../services/CalibrationService.js";
 import { HistoryRepository } from "../db/repositories/HistoryRepository.js";
+import { SummaryRepository } from "../db/repositories/SummaryRepository.js";
 import { RagEngine } from "../services/RagEngine.js";
+import { SummarizerAgent } from "../services/agents/SummarizerAgent.js";
 import { AiCache } from "../services/AiCache.js";
 import { OllamaProvider } from "../services/providers/OllamaProvider.js";
 import {
@@ -43,6 +46,7 @@ import {
 } from "../services/PerformanceProfiler.js";
 import { logger } from "../utils/logger.js";
 import { runAgentInWorker } from "../workers/agent-worker.js";
+import type { PluginHost } from "../plugins/PluginHost.js";
 
 const STAGES: WorkflowStage[] = [
   "split",
@@ -53,6 +57,8 @@ const STAGES: WorkflowStage[] = [
   "grammar",
   "style",
   "polish",
+  "review",  // v1.4 : boucle de révision pro (rapport de corrections ciblées)
+  "revise",  // v1.4 : applique les corrections du ReviewReport
   "qa",
   "export",
 ];
@@ -79,10 +85,12 @@ class WorkflowRunner extends EventEmitter {
   private paused = false;
   private cancelled = false;
   private factory: AgentFactory;
+  private aiRouter: AiRouter;
   private jobRepo: JobRepository;
   private paragraphRepo: ParagraphRepository;
   private chapterRepo: ChapterRepository;
   private lexiconRepo: LexiconRepository;
+  private summaryRepo: SummaryRepository;
   private ragEngine?: RagEngine;
   private sourceLanguage: string;
   private targetLanguage: string;
@@ -94,6 +102,7 @@ class WorkflowRunner extends EventEmitter {
     private emitProgress: (payload: WorkflowProgress) => void,
     private emitQualityFailed?: (payload: { jobId: string; score: number; threshold: number }) => void,
     profiler?: PerformanceProfiler,
+    private pluginHost?: PluginHost,
   ) {
     super();
     this.profiler = profiler ?? new PerformanceProfiler();
@@ -112,6 +121,7 @@ class WorkflowRunner extends EventEmitter {
     this.paragraphRepo = new ParagraphRepository(this.db);
     this.chapterRepo = new ChapterRepository(this.db);
     this.lexiconRepo = new LexiconRepository(this.db);
+    this.summaryRepo = new SummaryRepository(this.db);
 
     const aiRouter = new AiRouter();
     const defaultModel = this.settings.get("defaultModel");
@@ -125,9 +135,19 @@ class WorkflowRunner extends EventEmitter {
       ),
     );
 
+    // SDD §15 : câbler les plugins de providers (si PluginHost disponible)
+    if (this.pluginHost) {
+      aiRouter.setPluginProviderResolver((id: string) =>
+        this.pluginHost!.getProvider(id) as unknown as AiProvider | undefined,
+      );
+    }
+
     // SDD §22.1 : activer le cache des réponses IA
     const aiCache = new AiCache(this.db);
     aiRouter.setCache(aiCache);
+
+    // SDD §3.8 : configurer les coûts par modèle (depuis les settings)
+    aiRouter.setModelCosts(this.settings.get("modelCosts"));
 
     // T5 fix : câbler le PromptLoader pour permettre les overrides de prompts
     // en DB (SDD §25). Les agents continuent d'importer leurs constantes TS ;
@@ -159,7 +179,21 @@ class WorkflowRunner extends EventEmitter {
       qualityChecker: new QualityChecker(),
       exportEngine,
       calibrationService,
+      // SDD §15 : permettre aux plugins de remplacer un agent built-in
+      getPluginAgent: this.pluginHost
+        ? (stage, config) => {
+            const factoryFn = this.pluginHost!.getAgent(stage);
+            // getAgent() retourne la factory enregistrée par le plugin via
+            // context.registerAgent(stage, factory). On l'appelle avec le config.
+            if (typeof factoryFn === "function") {
+              const agent = (factoryFn as (cfg: unknown) => unknown)(config);
+              return agent as import("../services/agents/Agent.js").Agent;
+            }
+            return undefined;
+          }
+        : undefined,
     });
+    this.aiRouter = aiRouter;
   }
 
   async start(chapterId?: string): Promise<Job> {
@@ -235,7 +269,7 @@ class WorkflowRunner extends EventEmitter {
     };
     this.jobRepo.createJob(this.job);
 
-    this.steps = STAGES.map((stage, index) => ({
+    this.steps = this.getActiveStages().map((stage, index) => ({
       id: crypto.randomUUID(),
       jobId: this.job.id,
       agentId: stage,
@@ -290,7 +324,7 @@ class WorkflowRunner extends EventEmitter {
       }
 
       this.paragraphs = this.paragraphRepo.listByChapter(this.chapter.id);
-      this.steps = STAGES.map((stage, index) => ({
+      this.steps = this.getActiveStages().map((stage, index) => ({
         id: crypto.randomUUID(),
         jobId: this.job.id,
         agentId: stage,
@@ -346,7 +380,7 @@ class WorkflowRunner extends EventEmitter {
   }
 
   async retryFrom(stage: WorkflowStage): Promise<void> {
-    const startIndex = STAGES.indexOf(stage);
+    const startIndex = this.getActiveStages().indexOf(stage);
     if (startIndex === -1) {throw new Error(`Stage inconnu : ${stage}`);}
     for (let i = startIndex; i < this.steps.length; i++) {
       const step = this.steps[i];
@@ -388,10 +422,23 @@ class WorkflowRunner extends EventEmitter {
       grammar: "Grammaire",
       style: "Style",
       polish: "Polish",
+      review: "Revisor",
+      revise: "Correcteur",
       qa: "QA",
       export: "Export",
     };
     return names[stage];
+  }
+
+  /**
+   * v1.4 — Retourne la liste des stages actifs selon les settings.
+   * Permet de désactiver la boucle de révision pro (review/revise) si
+   * `reviewLoopEnabled` est false (mode rapide).
+   */
+  private getActiveStages(): WorkflowStage[] {
+    const reviewLoopEnabled = this.settings.get("reviewLoopEnabled") !== false;
+    if (reviewLoopEnabled) {return STAGES;}
+    return STAGES.filter((s) => s !== "review" && s !== "revise");
   }
 
   private async runSequential(): Promise<void> {
@@ -482,16 +529,33 @@ class WorkflowRunner extends EventEmitter {
 
       // SDD §22.2 : exécution dans un Worker thread si activé
       const useWorker = this.settings.get("useWorkerThreads");
+      // SDD §7.10 : timeout par étape (stepTimeoutMs). Si l'agent ne répond
+      // pas dans le délai, on l'abandonne et on lève une erreur → catch ci-dessous
+      // → step marqué failed, retry selon la politique existante.
+      const timeoutMs = step.stepTimeoutMs ?? this.settings.get("stepTimeoutMs");
+      const executeWithTimeout = async <T>(fn: () => Promise<T>): Promise<T> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Step ${step.stage} timed out after ${timeoutMs}ms`)),
+            timeoutMs,
+          );
+        });
+        try {
+          return await Promise.race([fn(), timeoutPromise]);
+        } finally {
+          if (timer) {clearTimeout(timer);}
+        }
+      };
+
       if (useWorker) {
         const agentConfig = {
           providerId: "ollama-default",
           model: this.settings.get("defaultModel"),
           temperature: 0.7,
         };
-        const workerResult = await runAgentInWorker(
-          step.stage,
-          input,
-          agentConfig,
+        const workerResult = await executeWithTimeout(() =>
+          runAgentInWorker(step.stage, input, agentConfig),
         );
         if (workerResult.success) {
           output = workerResult.output as AgentOutput;
@@ -499,10 +563,10 @@ class WorkflowRunner extends EventEmitter {
           logger.warn(
             `[Workflow] Worker failed for ${step.stage}, fallback to direct execution: ${workerResult.error}`,
           );
-          output = await agent.execute(input);
+          output = await executeWithTimeout(() => agent.execute(input));
         }
       } else {
-        output = await agent.execute(input);
+        output = await executeWithTimeout(() => agent.execute(input));
       }
 
       // SDD §8.13 : valider la sortie de l'agent si un outputSchema est défini
@@ -575,6 +639,13 @@ class WorkflowRunner extends EventEmitter {
       ) {
         await this.storeEmbeddingsForChapter();
       }
+
+      // v1.4 SDD §7.13 : Summarizer transverse après l'export du chapitre.
+      // Maintient un NovelSummary injecté dans translate/style/polish des
+      // chapitres suivants → cohérence cross-chapitre.
+      if (step.stage === "export" && this.settings.get("summarizerEnabled") !== false) {
+        await this.summarizeChapter();
+      }
     } catch (err) {
       logger.error(`Step ${step.stage} failed`, err);
       step.status = "failed";
@@ -608,6 +679,20 @@ class WorkflowRunner extends EventEmitter {
       : undefined;
     this.jobRepo.updateStep(step);
 
+    // SDD §3.8 : accumuler le coût estimé (providers cloud uniquement)
+    if (step.tokensIn || step.tokensOut) {
+      const model = this.settings.get("defaultModel");
+      const stepCost = this.aiRouter.estimateCost(
+        model,
+        step.tokensIn ?? 0,
+        step.tokensOut ?? 0,
+      );
+      if (stepCost > 0) {
+        this.job.costUsd = (this.job.costUsd ?? 0) + stepCost;
+        this.jobRepo.updateJob(this.job);
+      }
+    }
+
     // SDD §22.6 : collecter les métriques de performance
     this.profiler.collect(this.job.id, step.stage, {
       durationMs: step.durationMs,
@@ -628,6 +713,9 @@ class WorkflowRunner extends EventEmitter {
 
   private async buildAgentInput(stage: WorkflowStage): Promise<AgentInput> {
     const lexicon = this.lexiconRepo.listByProject(this.project.id);
+    // v1.4 SDD §7.13 : injecter le NovelSummary pour la cohérence cross-chapitre
+    const novelSummaryRow = this.summaryRepo.getNovelSummary(this.project.id);
+    const novelSummary = novelSummaryRow?.summary;
     const base: AgentInput = {
       projectId: this.project.id,
       chapterId: this.chapter?.id,
@@ -637,6 +725,7 @@ class WorkflowRunner extends EventEmitter {
         sourceLanguage: this.sourceLanguage,
         targetLanguage: this.targetLanguage,
         title: this.chapter?.title ?? "Export",
+        novelSummary,
       },
     };
 
@@ -683,11 +772,28 @@ class WorkflowRunner extends EventEmitter {
       case "grammar":
       case "style":
       case "polish":
+      case "review":
+        return {
+          ...base,
+          text: this.paragraphs.map((p) => p.translatedText ?? "").join("\n\n"),
+          paragraphs: this.paragraphs, // review a besoin des paragraphes source+cible
+        };
+      case "revise": {
+        // v1.4 : injecter le ReviewReport du stage précédent (review)
+        const reviewStep = this.steps.find((s) => s.stage === "review");
+        const reviewReport = reviewStep?.outputSnapshot?.report as
+          | import("@shared/types/index.js").ReviewReport
+          | undefined;
         return {
           ...base,
           text: this.paragraphs.map((p) => p.translatedText ?? "").join("\n\n"),
           paragraphs: undefined,
+          options: {
+            ...base.options,
+            reviewReport,
+          },
         };
+      }
       case "export":
         return {
           ...base,
@@ -739,7 +845,7 @@ class WorkflowRunner extends EventEmitter {
 
     if (
       output.text &&
-      ["lexicon", "grammar", "style", "polish"].includes(stage)
+      ["lexicon", "grammar", "style", "polish", "revise"].includes(stage)
     ) {
       const parts = output.text.split(/\n\n+/);
       this.paragraphs = this.paragraphs.map((p, i) => ({
@@ -803,6 +909,66 @@ class WorkflowRunner extends EventEmitter {
       }
     }
   }
+
+  /**
+   * v1.4 SDD §7.13 — Produit un résumé du chapitre courant et met à jour le
+   * résumé incrémental du roman (NovelSummary). Le NovelSummary est injecté
+   * dans le contexte des stages translate/style/polish/review des chapitres
+   * suivants → cohérence cross-chapitre (noms, intrigue, ton).
+   *
+   * Agent transverse : appelé après l'export réussi d'un chapitre.
+   */
+  private async summarizeChapter(): Promise<void> {
+    if (!this.chapter) {return;}
+
+    try {
+      // Charger le résumé précédent du roman (si chapters antérieurs traités)
+      const existing = this.summaryRepo.getNovelSummary(this.project.id);
+      const previousSummary = existing?.summary;
+
+      const agent = new SummarizerAgent(
+        {
+          providerId: "ollama-default",
+          model: this.settings.get("defaultModel"),
+        },
+        this.aiRouter,
+      );
+
+      const output = await agent.execute({
+        projectId: this.project.id,
+        chapterId: this.chapter.id,
+        paragraphs: this.paragraphs,
+        options: { novelSummary: previousSummary },
+      });
+
+      const chapterSummary = output.metadata?.chapterSummary as string | undefined;
+      const updatedNovelSummary = output.metadata?.novelSummary as string | undefined;
+
+      // Persister le résumé du chapitre
+      if (chapterSummary && chapterSummary.trim().length > 0) {
+        this.summaryRepo.upsertChapterSummary({
+          chapterId: this.chapter.id,
+          projectId: this.project.id,
+          summary: chapterSummary,
+          tokenCount: undefined,
+        });
+      }
+
+      // Persister le résumé mis à jour du roman
+      if (updatedNovelSummary && updatedNovelSummary.trim().length > 0) {
+        this.summaryRepo.upsertNovelSummary(this.project.id, updatedNovelSummary);
+        logger.info(
+          `[Summarizer] Résumé du roman mis à jour pour le projet ${this.project.id}`,
+        );
+      }
+    } catch (err) {
+      // Non-bloquant : la cohérence cross-chapitre est un plus, pas une exigence
+      logger.warn(
+        `[Summarizer] Échec de la synthèse pour le chapitre ${this.chapter.id}`,
+        err,
+      );
+    }
+  }
 }
 
 export class WorkflowEngine {
@@ -819,6 +985,12 @@ export class WorkflowEngine {
    */
   readonly profiler: PerformanceProfiler;
 
+  /**
+   * SDD §15 : PluginHost partagé, injecté dans chaque WorkflowRunner.
+   * Défini après construction (le PluginHost est créé plus tard dans index.ts).
+   */
+  private pluginHost?: PluginHost;
+
   constructor(
     private settings: SettingsManager,
     private getMainWindow?: () => BrowserWindow | null,
@@ -826,6 +998,16 @@ export class WorkflowEngine {
     this.maxConcurrentJobs = this.settings.get("maxConcurrentJobs");
     this.profiler = new PerformanceProfiler();
     this.queue = new PQueue({ concurrency: this.maxConcurrentJobs });
+  }
+
+  /**
+   * SDD §15 : Connecte le PluginHost au WorkflowEngine.
+   * À appeler après l'initialisation du PluginHost (index.ts) pour activer
+   * l'extensibilité d'agents/providers par plugin.
+   */
+  setPluginHost(pluginHost: PluginHost): void {
+    this.pluginHost = pluginHost;
+    logger.info("[WorkflowEngine] PluginHost connecté — extensibilité agents/providers active");
   }
 
   private emitProgress(payload: WorkflowProgress): void {
@@ -865,6 +1047,7 @@ export class WorkflowEngine {
         (p) => this.emitProgress(p),
         (p) => this.emitQualityFailed(p),
         this.profiler,
+        this.pluginHost,
       );
       const job = await runner.start(chapterId);
       this.runners.set(job.id, runner);
@@ -881,6 +1064,7 @@ export class WorkflowEngine {
         (p) => this.emitProgress(p),
         (p) => this.emitQualityFailed(p),
         this.profiler,
+        this.pluginHost,
       );
       const job = await runner.startBatch(chapterIds);
       this.runners.set(job.id, runner);
@@ -901,6 +1085,7 @@ export class WorkflowEngine {
         (p) => this.emitProgress(p),
         (p) => this.emitQualityFailed(p),
         this.profiler,
+        this.pluginHost,
       );
       await runner.resumeBatch(job);
       this.runners.set(job.id, runner);
@@ -993,36 +1178,17 @@ export class WorkflowEngine {
 
 // === Worker threads — SDD §22.2 ===
 //
-// Préparation pour l'exécution d'agents CPU-bound dans des Worker threads.
-// Actuellement, tous les agents s'exécutent de manière séquentielle dans le
-// thread principal. Pour les agents coûteux (SplitAgent, ConsistencyChecker,
-// ExportEngine), on pourra déléguer le travail à des Workers :
+// Implémentation active : les agents s'exécutent dans un Worker thread lorsque
+// `useWorkerThreads` est activé (défaut: true, cf. schemas/index.ts). Le worker
+// (`src/main/workers/agent-worker.ts`) reçoit { stage, config, input } via
+// postMessage, instancie l'agent via AgentFactory et renvoie l'output.
 //
-// 1. Créer un fichier worker wrapper : `src/main/workers/agent-worker.ts`
-//    qui importe l'agent, reçoit les instructions via `parentPort.on('message')`,
-//    exécute et renvoie le résultat.
+// En cas d'échec du worker (erreur de sérialisation, chemin de module, etc.),
+// le runner bascule en silencieux vers une exécution directe dans le thread
+// principal (cf. runStep, fallback sur executeWithTimeout(() => agent.execute)).
 //
-// 2. Dans `WorkflowRunner`, remplacer l'appel direct à `agent.execute(input)`
-//    par :
-//    ```
-//    const worker = new Worker('./workers/agent-worker.js');
-//    worker.postMessage({ agentId: step.stage, input });
-//    output = await new Promise((resolve, reject) => {
-//      worker.on('message', resolve);
-//      worker.on('error', reject);
-//    });
-//    ```
-//
-// 3. Gérer le pool de Workers via `maxConcurrentJobs` (SDD §7.9) :
-//    limiter le nombre de Workers simultanés pour éviter la saturation CPU.
-//
-// 4. Attention : les Workers partagent la mémoire via `transferList` pour les
-//    gros payloads (paragraphs). Utiliser `MessagePort` ou `SharedArrayBuffer`
-//    si nécessaire.
-//
-// Non implémenté dans le MVP car :
-// - Electron Worker threads nécessitent une configuration supplémentaire
-//   (copie du bundle V8, gestion des chemins dans le contexte sandbox)
-// - Le surcoût de sérialisation/deserialisation peut dépasser le gain pour
-//   des payloads < 100 paragraphes
-// - La priorité MVP est la fiabilité du pipeline séquentiel
+// Historique : le bug T14 (imports PascalCase mal résolus depuis le worker)
+// a été corrigé — les chemins d'import respectent maintenant la casse exacte
+// des fichiers. Le présent commentaire remplace une note obsolète qui décrivait
+// les Worker threads comme "non implémentés dans le MVP" alors qu'ils sont
+// effectifs et activés par défaut.

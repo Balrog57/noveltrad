@@ -126,3 +126,47 @@ export const exportOutputSchema = z.object({
     })
     .passthrough(),
 });
+
+// ---------------------------------------------------------------------------
+// v1.4 — Schémas des nouveaux agents (review / revise / summarizer)
+// ---------------------------------------------------------------------------
+
+/** Sortie de l'agent Review (ReviewAgent) — rapport de corrections ciblées */
+export const reviewOutputSchema = z.object({
+  report: z.object({
+    issues: z.array(
+      z.object({
+        paragraphIndex: z.number().int().min(0),
+        severity: z.enum(["high", "medium", "low"]),
+        category: z.enum([
+          "fidelity",
+          "fluency",
+          "terminology",
+          "style",
+          "consistency",
+        ]),
+        original: z.string(),
+        suggestion: z.string(),
+        reason: z.string(),
+      }),
+    ),
+    summary: z.string(),
+  }),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+/** Sortie de l'agent Revise (ReviseAgent) — texte révisé */
+export const reviseOutputSchema = z.object({
+  text: z.string(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+/** Sortie de l'agent Summarizer (SummarizerAgent) — résumés chapitre + roman */
+export const summarizerOutputSchema = z.object({
+  metadata: z
+    .object({
+      chapterSummary: z.string(),
+      novelSummary: z.string(),
+    })
+    .passthrough(),
+});

@@ -17,14 +17,33 @@ flowchart TD
     F --> G["Correction grammaire"]
     G --> H["Réécriture style"]
     H --> I["Polish éditorial"]
-    I --> J["QA + score qualité"]
+    I --> R["Review — rapport de corrections ciblées"]
+    R --> RV["Revise — applique les corrections"]
+    RV --> J["QA + score qualité"]
     J -->|score ≥ 90| K["Export EPUB / MD / TXT / DOCX / HTML"]
     J -->|score 70-89| L["Relance étape la plus faible"]
     J -->|score < 70| P
     P --> D
     L --> D
-    K --> M["Chapitre publiable"]
+    K --> S["Summarizer — résumé incrémental cross-chapitre"]
+    S --> M["Chapitre publiable"]
+    N["Résumé du roman (contexte long-terme)"] -.injecté.-> D
+    N -.injecté.-> H
+    N -.injecté.-> I
 ```
+
+> **Nouveaux stages v1.4 (boucle de révision pro)** : `review` produit un
+> `ReviewReport` (corrections paragraphe-par-paragraphe), `revise` applique ces
+> corrections ciblées. Inspiré de **honya** (boucle Reviewer→Translator) et
+> **LaTeXTrans** (Validator). C'est ce qui transforme une "traduction retry-boucle"
+> en "traduction révisée comme par un humain" : les corrections sont *ciblées*
+> (paragraphe + raison + suggestion) plutôt qu'un simple re-run global.
+>
+> **Summarizer transverse** : agent hors-pipeline, exécuté après export d'un
+> chapitre réussi. Maintient un `NovelSummary` incrémental injecté dans le
+> contexte de `translate`/`style`/`polish` des chapitres suivants → cohérence
+> des noms et de l'intrigue sur l'ensemble du roman (inspiré de **LaTeXTrans**
+> Summarizer et **TransAgents**).
 
 Chaque étape produit un `outputSnapshot` qui sert d’`inputSnapshot` à l’étape suivante. Cette immutabilité permet le retry, le rollback et l’audit.
 
@@ -57,6 +76,7 @@ interface WorkflowOptions {
   useTranslationMemory?: boolean
   qualityThreshold?: number
   maxRetries?: number
+  stepTimeoutMs?: number // défaut 120 000 ms (2 min), par étape
 }
 ```
 
@@ -79,6 +99,7 @@ interface Step {
   tokensIn?: number
   tokensOut?: number
   durationMs?: number
+  timeoutMs?: number // hérité de WorkflowOptions.stepTimeoutMs
   startedAt?: string
   finishedAt?: string
   errorMessage?: string
@@ -97,6 +118,8 @@ type WorkflowStage =
   | 'grammar'
   | 'style'
   | 'polish'
+  | 'review'    // v1.4 : rapport de corrections ciblées par paragraphe
+  | 'revise'    // v1.4 : applique les corrections du ReviewReport
   | 'qa'
   | 'export'
 
@@ -135,6 +158,10 @@ class WorkflowEngine extends EventEmitter {
 ```typescript
 class AgentFactory {
   create(stage: WorkflowStage, overrides?: Partial<AgentConfig>): Agent {
+    // SDD §15 : un plugin peut remplacer n'importe quel agent built-in
+    const pluginAgent = this.pluginHost?.getAgent(stage)
+    if (pluginAgent) return pluginAgent(config)
+
     const baseConfig = this.getBaseConfig(stage)
     const config = { ...baseConfig, ...overrides }
 
@@ -147,16 +174,22 @@ class AgentFactory {
       case 'grammar': return new GrammarAgent(config, this.aiRouter)
       case 'style': return new StyleAgent(config, this.aiRouter)
       case 'polish': return new PolishAgent(config, this.aiRouter)
+      case 'review': return new ReviewAgent(config, this.aiRouter)        // v1.4
+      case 'revise': return new ReviseAgent(config, this.aiRouter)        // v1.4
       case 'qa': return new QaAgent(config, this.qualityChecker)
       case 'export': return new ExportAgent(config, this.exportEngine)
       default:
-        const pluginAgent = this.pluginHost.getAgent(stage)
-        if (pluginAgent) return pluginAgent
         throw new Error(`Unknown workflow stage: ${stage}`)
     }
   }
 }
 ```
+
+> **Câblage plugin** : le `WorkflowEngine` injecte le `PluginHost` partagé dans
+> l'`AgentFactory` via `getPluginAgent` (et l'`AiRouter` via
+> `setPluginProviderResolver`). C'est ce câblage qui rend l'extensibilité
+> d'agents/providers fonctionnelle — sans lui, un plugin peut enregistrer un
+> agent mais le workflow l'ignore. (v1.4 : câblage effectif, cf. §7.12.)
 
 ## 7.6 Observable events
 
@@ -222,7 +255,7 @@ async function runJob(engine: WorkflowEngine, job: Job): Promise<void> {
   - le texte d’entrée de l’étape.
 - `retryStep(jobId, stepId)` relance uniquement cette étape à partir de son `inputSnapshot`.
 - `retryFrom(jobId, stage)` relance à partir d’une étape donnée.
-- La limite de retries par étape est configurable (`maxRetries`, défaut 2).
+- La limite de retries par étape est configurable (`maxRetries`, défaut 2). Cette limite est **distincte** des retries réseau automatiques (§7.10 : ×3 avec backoff), qui sont gérés par le wrapper provider et ne consomment pas le compteur `maxRetries`.
 
 ## 7.9 Traitement par lots
 
@@ -237,6 +270,7 @@ async function runJob(engine: WorkflowEngine, job: Job): Promise<void> {
 | Erreur | Comportement |
 |--------|--------------|
 | Erreur réseau Ollama | Retry ×3, puis pause + fallback si configuré |
+| Timeout dépassé (`stepTimeoutMs`) | Abandon de l'étape, traité comme erreur réseau (retry ×3, puis pause) |
 | Sortie mal formée | Retry avec prompt de correction |
 | Échec de validation | Pause, notification utilisateur |
 | Disque plein | Pause, message explicite |
@@ -248,12 +282,49 @@ async function runJob(engine: WorkflowEngine, job: Job): Promise<void> {
 - Au démarrage de l’application, les jobs en cours (`running` ou `paused`) sont automatiquement rechargés.
 - L’utilisateur est invité à reprendre ou annuler.
 
+## 7.12 Boucle de révision pro (v1.4) — review / revise
+
+Le pipeline v1.4 ajoute deux stages de révision ciblée entre `polish` et `qa` :
+
+1. **`review`** : le `ReviewAgent` analyse le texte traduit paragraphe-par-paragraphe
+   et produit un `ReviewReport` (`issues[]` : `paragraphIndex`, `severity`
+   `high|medium|low`, `original`, `suggestion`, `reason`). Le rapport est persisté
+   dans la table `review_reports` (migration 014) et exposé dans l'UI pour
+   édition/acceptation humaine.
+2. **`revise`** : le `ReviseAgent` applique les corrections du `ReviewReport` via
+   LLM (réécriture ciblée). En cas de refus éthique, conserve le texte d'entrée.
+
+> Différence clé vs `retryWeakestStep()` (§7.8) : le retry relance *toute* une
+> étape (coûteux, non ciblé) ; la boucle review/revise produit des corrections
+> *ciblées* réinjectées précisément. Le branching QA (§7.1) peut, en cas de score
+> intermédiaire, reboucler sur `revise` avec le `ReviewReport` + `QualityReport`
+> en contexte plutôt que sur `retryWeakestStep`.
+
+Les deux stages sont **désactivables** via `WorkflowOptions.enableReviewLoop`
+(défaut `true` en mode pro, `false` en mode rapide).
+
+## 7.13 Summarizer transverse (v1.4)
+
+Le `SummarizerAgent` **n'est pas dans la séquence `WorkflowStage`** : c'est un
+agent transverse appelé par le `WorkflowEngine` après l'export réussi d'un
+chapitre (même mécanisme que le stockage des embeddings RAG, §7.7).
+
+- Produit un `ChapterSummary` (résumé du chapitre courant) puis fusionne dans un
+  `NovelSummary` incrémental (persistance : tables `chapter_summaries` +
+  `novel_summaries`, migration 015).
+- Le `NovelSummary` est **injecté** dans l'`AgentInput.context` des stages
+  `translate`, `style`, `polish` des chapitres *suivants* → cohérence long-terme
+  des noms, intrigue, ton du roman (inspiré de LaTeXTrans Summarizer + TransAgents).
+- Désactivable via `WorkflowOptions.enableSummarizer` (défaut `true`).
+
 ## ✅ Critères d’acceptation du workflow
 
-- [ ] Un test d’intégration exécute les 10 étapes `split → pre_translate → translate → consistency → lexicon → grammar → style → polish → qa → export` dans l’ordre sur un chapitre de test.
+- [ ] Un test d’intégration exécute les 12 étapes `split → pre_translate → translate → consistency → lexicon → grammar → style → polish → review → revise → qa → export` dans l’ordre sur un chapitre de test.
 - [ ] Chaque étape est persistée dans `job_steps` avec `status`, `score`, `input_snapshot`, `output_snapshot`, `tokens_in`, `tokens_out`, `duration_ms`.
 - [ ] Un événement `workflow:step-*` est émis au renderer à chaque changement d’étape ; le store Pinia est mis à jour.
 - [ ] `retryStep(jobId, stepId)` relance une étape individuelle à partir de son `input_snapshot` sans recommencer le workflow.
 - [ ] Un job batch interrompu (crash / fermeture app) reprend au dernier chapitre non terminé après redémarrage.
 - [ ] Une erreur réseau Ollama déclenche 3 retries avec backoff exponentiel, puis fallback provider ou pause + notification.
+- [ ] Une étape dépassant `stepTimeoutMs` (défaut 120 s) est abandonnée et retryée selon la politique réseau.
 - [ ] Les jobs `running` ou `paused` sont rechargés au démarrage et l’utilisateur peut reprendre ou annuler.
+- [ ] **v1.4** : le `ReviewAgent` produit un `ReviewReport` persisté, le `ReviseAgent` l'applique, et le `SummarizerAgent` maintient un `NovelSummary` injecté dans les chapitres suivants.

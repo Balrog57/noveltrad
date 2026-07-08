@@ -14,6 +14,8 @@ export class AiRouter {
   private promptLoader?: PromptLoader;
   /** SDD §15 : callback pour obtenir un provider depuis un plugin */
   private getPluginProviderFn?: (id: string) => AiProvider | undefined;
+  /** SDD §3.8 : coûts par modèle (clé = model id). Vide = pas de suivi. */
+  private modelCosts: Record<string, { costPerInputToken: number; costPerOutputToken: number }> = {};
 
   register(provider: AiProvider): void {
     this.providers.set(provider.id, provider);
@@ -27,6 +29,24 @@ export class AiRouter {
   /** Active le cache des réponses IA (SDD §22.1) */
   setCache(cache: AiCache): void {
     this.aiCache = cache;
+  }
+
+  /** SDD §3.8 : configure les coûts par modèle (lus depuis les settings) */
+  setModelCosts(costs: Record<string, { costPerInputToken: number; costPerOutputToken: number }>): void {
+    this.modelCosts = costs ?? {};
+  }
+
+  /**
+   * SDD §3.8 : estime le coût USD d'un appel.
+   * @returns 0 si le modèle n'est pas configuré (local/gratuit) ou si pas de tokens.
+   */
+  estimateCost(modelId: string, inputTokens: number, outputTokens: number): number {
+    const cost = this.modelCosts[modelId];
+    if (!cost) {return 0;}
+    return (
+      (inputTokens / 1000) * cost.costPerInputToken +
+      (outputTokens / 1000) * cost.costPerOutputToken
+    );
   }
 
   /**

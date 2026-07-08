@@ -5,6 +5,7 @@ import { useOllamaStore } from "../stores/ollama";
 import { useUpdateStore } from "../stores/update";
 import { useRouter } from "vue-router";
 import type { ConsistencyTolerance } from "@shared/types/index.js";
+import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@shared/constants/languages.js";
 
 const settings = useSettingsStore();
 const ollama = useOllamaStore();
@@ -14,6 +15,24 @@ const router = useRouter();
 const themeValue = ref<string>(settings.data.theme ?? "system");
 const saved = ref(false);
 const appVersion = ref("");
+
+/** Options pour le select des modèles Ollama (depuis ollama.models détectés). */
+const modelOptions = computed(() =>
+  ollama.models.map((m) => ({
+    value: m.name,
+    label: m.parameterSize ? `${m.name} (${m.parameterSize})` : m.name,
+  })),
+);
+
+/** Le modèle actuellement saisi n'est pas dans la liste détectée → l'ajouter. */
+const defaultModelInList = computed(
+  () => !settings.data.defaultModel || ollama.models.some((m) => m.name === settings.data.defaultModel),
+);
+const preTranslateModelInList = computed(
+  () =>
+    !settings.data.defaultPreTranslateModel ||
+    ollama.models.some((m) => m.name === settings.data.defaultPreTranslateModel),
+);
 
 // SDD §11.4 : paires de langues prédéfinies pour les tolérances
 const LANGUAGE_PAIRS = [
@@ -86,6 +105,8 @@ async function saveSettings(): Promise<void> {
     "updateChannel",
     "ragEnabled",
     "qualityThreshold",
+    "reviewLoopEnabled",
+    "summarizerEnabled",
   ] as const;
   for (const key of keys) {
     const value = settings.data[key];
@@ -244,28 +265,52 @@ onUnmounted(() => {
           {{ m.name }}
         </li>
       </ul>
+      <p v-if="!ollama.models.length" class="hint">
+        Cliquez sur « Tester » pour détecter les modèles disponibles.
+      </p>
       <label class="label-mt">
-        Modele par defaut
-        <input v-model="settings.data.defaultModel" placeholder="qwen3.5:9b">
+        Modèle par défaut
+        <select v-if="ollama.models.length" v-model="settings.data.defaultModel">
+          <option v-if="!defaultModelInList" :value="settings.data.defaultModel">
+            {{ settings.data.defaultModel }} (non détecté)
+          </option>
+          <option v-for="opt in modelOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+        <input v-else v-model="settings.data.defaultModel" placeholder="qwen3.5:9b">
       </label>
       <label class="label-mt">
-        Modele de pre-traduction
-        <input
-          v-model="settings.data.defaultPreTranslateModel"
-          placeholder="qwen3.5:4b"
-        >
+        Modèle de pré-traduction
+        <select v-if="ollama.models.length" v-model="settings.data.defaultPreTranslateModel">
+          <option v-if="!preTranslateModelInList" :value="settings.data.defaultPreTranslateModel">
+            {{ settings.data.defaultPreTranslateModel }} (non détecté)
+          </option>
+          <option v-for="opt in modelOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+        <input v-else v-model="settings.data.defaultPreTranslateModel" placeholder="qwen3.5:4b">
       </label>
     </section>
 
     <section class="card">
-      <h2>Langues par defaut</h2>
+      <h2>Langues par défaut</h2>
       <label>
         Source
-        <input v-model="settings.data.sourceLanguage">
+        <select v-model="settings.data.sourceLanguage">
+          <option v-for="lang in SOURCE_LANGUAGES" :key="lang.code" :value="lang.code">
+            {{ lang.label }}
+          </option>
+        </select>
       </label>
       <label>
         Cible
-        <input v-model="settings.data.targetLanguage">
+        <select v-model="settings.data.targetLanguage">
+          <option v-for="lang in TARGET_LANGUAGES" :key="lang.code" :value="lang.code">
+            {{ lang.label }}
+          </option>
+        </select>
       </label>
     </section>
 
@@ -303,6 +348,27 @@ onUnmounted(() => {
       <p class="hint">
         Le workflow met en pause si le score de qualite est inferieur a ce
         seuil.
+      </p>
+
+      <label class="form-checkbox">
+        <input v-model="settings.data.reviewLoopEnabled" type="checkbox">
+        <span>Boucle de révision pro (Review + Revise)</span>
+      </label>
+      <p class="hint">
+        v1.4 — Ajoute deux passes de révision ciblée avant le QA : un agent
+        Reviewer produit un rapport de corrections paragraphe-par-paragraphe,
+        un agent Revise les applique. Rapproche d'une traduction révisée par
+        un humain (inspiré de honya / LaTeXTrans).
+      </p>
+
+      <label class="form-checkbox">
+        <input v-model="settings.data.summarizerEnabled" type="checkbox">
+        <span>Summarizer (cohérence cross-chapitre)</span>
+      </label>
+      <p class="hint">
+        v1.4 — Maintient un résumé incrémental du roman injecté dans le
+        contexte des chapitres suivants. Garantit la cohérence des noms et de
+        l'intrigue sur 500+ chapitres (inspiré de LaTeXTrans / TransAgents).
       </p>
 
       <h3 class="subsection">Tolerances de coherence par paire de langues</h3>

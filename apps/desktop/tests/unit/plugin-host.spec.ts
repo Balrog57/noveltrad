@@ -106,6 +106,30 @@ function createPluginWithoutActivate(pluginsDir: string, id: string): string {
   return pluginDir;
 }
 
+/** Crée un plugin avec un apiVersion personnalisé (SDD §15.7, G8). */
+function createPluginWithApiVersion(
+  pluginsDir: string,
+  id: string,
+  apiVersion: string,
+): string {
+  const pluginDir = path.join(pluginsDir, id);
+  fs.mkdirSync(pluginDir, { recursive: true });
+  const manifest = {
+    id,
+    name: `Test ${id}`,
+    version: "1.0.0",
+    type: "export",
+    entry: "index.mjs",
+    permissions: [],
+  };
+  fs.writeFileSync(path.join(pluginDir, "manifest.json"), JSON.stringify(manifest, null, 2));
+  fs.writeFileSync(
+    path.join(pluginDir, "index.mjs"),
+    `export default { manifest: ${JSON.stringify(manifest)}, apiVersion: ${JSON.stringify(apiVersion)}, activate: async () => {}, deactivate: async () => {} };`,
+  );
+  return pluginDir;
+}
+
 // ── Mocks ─────────────────────────────────────────────────────────────
 
 const mockServices: PluginServices = {
@@ -211,6 +235,23 @@ describe("PluginHost", () => {
         entry: "../../escape.mjs",
       });
       await expect(host.load(pluginDir)).rejects.toThrow("Path traversal detected");
+    });
+
+    it("SDD §15.7 (G8) : charge un plugin avec apiVersion compatible (1.0)", async () => {
+      const pluginDir = createPluginWithApiVersion(pluginsDir, "com.test.api1", "1.0");
+      const loaded = await host.load(pluginDir);
+      expect(loaded.manifest.id).toBe("com.test.api1");
+    });
+
+    it("SDD §15.7 (G8) : charge un plugin avec apiVersion mineure compatible (1.5)", async () => {
+      const pluginDir = createPluginWithApiVersion(pluginsDir, "com.test.api15", "1.5");
+      const loaded = await host.load(pluginDir);
+      expect(loaded.manifest.id).toBe("com.test.api15");
+    });
+
+    it("SDD §15.7 (G8) : rejette un plugin avec apiVersion majeure incompatible (2.0)", async () => {
+      const pluginDir = createPluginWithApiVersion(pluginsDir, "com.test.api2", "2.0");
+      await expect(host.load(pluginDir)).rejects.toThrow(/apiVersion 2.0.*host supports 1\.0/);
     });
   });
 

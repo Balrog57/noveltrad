@@ -129,6 +129,22 @@ function statusLabel(status: string): string {
   }
 }
 
+/** v1.4 : issues du ReviewReport du step sélectionné (stage 'review') */
+const reviewIssues = computed(() => {
+  const report = selectedStep.value?.outputSnapshot?.report as
+    | { issues?: Array<{ paragraphIndex: number; severity: string; category: string; original: string; suggestion: string; reason: string }> }
+    | undefined;
+  return report?.issues ?? [];
+});
+
+/** v1.4 : synthèse globale du ReviewReport */
+const reviewSummary = computed(() => {
+  const report = selectedStep.value?.outputSnapshot?.report as
+    | { summary?: string }
+    | undefined;
+  return report?.summary ?? "";
+});
+
 /** Label du stage en français */
 function stageLabel(stage: WorkflowStage): string {
   const labels: Record<WorkflowStage, string> = {
@@ -140,6 +156,8 @@ function stageLabel(stage: WorkflowStage): string {
     grammar: "Grammaire",
     style: "Style",
     polish: "Polish",
+    review: "R\u00E9viseur",
+    revise: "Correcteur",
     qa: "QA",
     export: "Export",
   };
@@ -489,6 +507,34 @@ onUnmounted(() => {
                 formatSnapshot(selectedStep.outputSnapshot)
               }}</pre>
             </div>
+
+            <!-- v1.4 : Rapport de révision (ReviewReport) -->
+            <div
+              v-if="selectedStep.stage === 'review' && selectedStep.outputSnapshot?.report"
+              class="review-report-section"
+            >
+              <h4 class="snapshot-title">Rapport de r\u00E9vision ({{ reviewIssues.length }} corrections)</h4>
+              <p v-if="reviewSummary" class="review-summary">
+                {{ reviewSummary }}
+              </p>
+              <ul v-if="reviewIssues.length > 0" class="review-issues">
+                <li
+                  v-for="(issue, idx) in reviewIssues"
+                  :key="idx"
+                  :class="`review-issue review-issue--${issue.severity}`"
+                >
+                  <span class="review-issue-meta">
+                    \u00B6{{ issue.paragraphIndex }} \u00B7
+                    <strong>{{ issue.severity }}</strong> \u00B7 {{ issue.category }}
+                  </span>
+                  <span class="review-issue-original">"{{ issue.original }}"</span>
+                  <span class="review-issue-arrow">\u2192</span>
+                  <span class="review-issue-suggestion">"{{ issue.suggestion }}"</span>
+                  <span class="review-issue-reason">{{ issue.reason }}</span>
+                </li>
+              </ul>
+              <p v-else class="hint">Aucune correction \u00E0 signaler.</p>
+            </div>
           </div>
         </template>
 
@@ -834,6 +880,83 @@ onUnmounted(() => {
   word-break: break-all;
   max-height: 300px;
   overflow-y: auto;
+}
+
+/* v1.4 : Rapport de révision */
+.review-report-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.review-summary {
+  margin: 8px 0;
+  font-style: italic;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.review-issues {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.review-issue {
+  padding: 10px 12px;
+  background-color: var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  border-left: 3px solid var(--border-color);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.review-issue--high {
+  border-left-color: var(--danger, #e53935);
+}
+
+.review-issue--medium {
+  border-left-color: var(--warning, #fb8c00);
+}
+
+.review-issue--low {
+  border-left-color: var(--info, #1e88e5);
+}
+
+.review-issue-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.review-issue-meta strong {
+  text-transform: uppercase;
+}
+
+.review-issue-original {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.review-issue-arrow {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.review-issue-suggestion {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.review-issue-reason {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 /* Logs */

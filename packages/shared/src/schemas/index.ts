@@ -37,6 +37,12 @@ const consistencyToleranceSchema = z.object({
   ignorePunctuationMismatch: z.boolean().default(false),
 });
 
+/** SDD §3.8 : coût estimé par modèle (providers cloud, null = local/gratuit) */
+const modelCostSchema = z.object({
+  costPerInputToken: z.number().min(0).default(0),
+  costPerOutputToken: z.number().min(0).default(0),
+});
+
 export const appSettingsSchema = z.object({
   firstRunCompleted: z.boolean().default(false),
   ollamaHost: z.string().default("http://localhost:11434"),
@@ -53,10 +59,14 @@ export const appSettingsSchema = z.object({
   maxConcurrentJobs: z.number().int().min(1).max(8).default(1),
   // SDD §12.5 : seuil de qualité minimum (le workflow met en pause si le score est inférieur)
   qualityThreshold: z.number().int().min(0).max(100).default(70),
+  // SDD §7.10 : timeout par étape en ms (défaut 120s). Une étape qui dépasse est abandonnée et retryée.
+  stepTimeoutMs: z.number().int().positive().default(120000),
   // SDD §11.4 : tolérances de cohérence configurables par paire de langues
   consistencyTolerances: z
     .record(z.string(), consistencyToleranceSchema)
     .default({}),
+  // SDD §3.8 : coût par modèle (clé = model id). Vide = pas de suivi de coût (défaut, Ollama local gratuit).
+  modelCosts: z.record(z.string(), modelCostSchema).default({}),
   // SDD §15 : plugins activés (liste des IDs)
   enabledPlugins: z.array(z.string()).default([]),
 
@@ -84,6 +94,12 @@ export const appSettingsSchema = z.object({
 
   // SDD §22.2 : utiliser les Worker threads pour les agents CPU-bound
   useWorkerThreads: z.boolean().default(true),
+
+  // v1.4 SDD §7.12 : activer la boucle de révision pro (review/revise)
+  reviewLoopEnabled: z.boolean().default(true),
+
+  // v1.4 SDD §7.13 : activer le Summarizer transverse (cohérence cross-chapitre)
+  summarizerEnabled: z.boolean().default(true),
 
   // SDD §17.9 : vérification automatique des mises à jour
   autoUpdateCheck: z.boolean().default(true),

@@ -197,6 +197,7 @@ Permettre à l’utilisateur de reprendre rapidement un projet récent ou d’en
   - Nombre de chapitres.
   - Nombre de paragraphes traduits / total.
   - Nombre de mots source / cible.
+  - Coût estimé total (si provider cloud configuré, cf. Vol 03 §3.8).
   - Temps de traduction total.
   - Score qualité moyen.
 - **Dernier workflow** : statut, date, qualité.
@@ -211,6 +212,12 @@ Permettre à l’utilisateur de reprendre rapidement un projet récent ou d’en
 - `NtStatCard` : carte statistique avec icône, valeur, label.
 - `NtRecentJobList` : liste des derniers jobs avec statut coloré.
 - `NtQuickActions` : grille de boutons d’action.
+
+### États
+
+- **Chargement** : squelettes (skeleton) pour les `NtStatCard` pendant le chargement des statistiques.
+- **Chapitres vides** : `NtEmptyState` « Aucun chapitre importé. » + CTA « Importer un chapitre ».
+- **Erreur** : toast « Impossible de charger les statistiques du projet. » + bouton Réessayer.
 
 ---
 
@@ -332,17 +339,61 @@ Visualiser l’état d’avancement du workflow et permettre les interventions u
 
 ## 4.10 Écran Historique
 
-### Layout
+### Objectif
 
-- Liste des versions à gauche (numéro, date, score qualité).
-- Diff côte à côte à droite.
-- Bouton “Restaurer cette version”.
+Permettre à l'utilisateur de naviguer dans les versions de traduction d'un chapitre, comparer les différences et restaurer une version antérieure.
+
+### Wireframe
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  Historique — Chapitre 3 : Le Réveil du Cultivateur       │
+├───────────────┬─────────────────────────────────────────────┤
+│ Versions      │  Diff : v2 → v3                             │
+│ ─────────     │  ──────────────────────────────────────     │
+│ ● v3 (actif) │  Source  │  v2 (ancien)  │  v3 (actuel)    │
+│   2026-07-07  │  ─────── │  ─────────── │  ───────────    │
+│   Score: 92   │  P1 ...  │  Texte anc.  │  Texte nouv.   │
+│               │  P2 ...  │  Texte anc.  │  Texte nouv.   │
+│ ○ v2          │  P3 ...  │  Texte anc.  │  Texte nouv.   │
+│   2026-07-05  │          │               │                 │
+│   Score: 78   │          │  [- Retour]   │  [+]  [-]       │
+│               │          │               │                 │
+│ ○ v1          │          │                                       │
+│   2026-07-01  │  [ Restaurer ]  [ Comparer ]  [ Exporter ]   │
+│   Score: 65   │                                               │
+│               │                                               │
+└───────────────┴─────────────────────────────────────────────┘
+```
+
+### Composants
+
+- `NtHistoryList` : liste scrollable des versions (numéro, date, score qualité, badge actif).
+- `NtDiffViewer` : affiche ajouts en vert, suppressions en rouge, modifications en jaune (réutilisé depuis §4.13).
+
+### Actions
+
+- **Restaurer** : remplace la traduction courante par le snapshot sélectionné. Confirmation via `NtModal`.
+- **Comparer** : sélectionner deux versions → diff côte à côte (paragraphe ou ligne).
+- **Exporter diff** : génère un fichier texte du diff (pour partage externe).
+- **Supprimer snapshot** : supprime une version intermédiaire (pas la version active). Confirmation requise.
 
 ### Diff viewer
 
 - `NtDiffViewer` : affiche ajouts en vert, suppressions en rouge, modifications en jaune.
 - Niveau paragraphe par défaut.
 - Option “afficher au niveau ligne”.
+
+### États
+
+- **Chargement** : spinner pendant le chargement des snapshots depuis la DB.
+- **Vide** : `NtEmptyState` « Aucune version enregistrée — Traduisez le chapitre pour créer la première version. » (cf. §4.17).
+- **Erreur chargement** : toast « Impossible de charger l'historique. » + bouton Réessayer.
+- **Erreur diff** : toast « Le snapshot est corrompu. » + fallback vers la dernière version valide.
+
+### Raccourcis
+
+- `Ctrl/Cmd + Z` : restaurer la version précédente (si diff viewer ouvert).
 
 ---
 
@@ -623,6 +674,14 @@ Continuer le workflow
 - [ ] Les états vides ont une action principale claire.
 - [ ] Chaque composant réutilisable a une story/tests unitaires.
 - [ ] Les stores Pinia sont testés avec des mocks IPC.
+- [ ] L’écran Projet affiche un état de chargement (squelettes), un état vide (CTA import) et un état d’erreur (toast + retry).
+- [ ] L’écran Historique affiche un wireframe diff côte à côte, les actions Restaurer/Comparer/Exporter, et gère les états chargement/vide/erreur.
+
+---
+
+### Note : monitoring système
+
+Le monitoring système (CPU/RAM/throughput, health dashboard) n’est pas en scope v1.0. L’écran Workflow (§4.9) couvre le monitoring des jobs (étapes, scores, logs temps réel).
 
 ---
 

@@ -175,7 +175,73 @@ interface AgentOutput {
 - Ouvertures et cliffhangers.
 - Suppression des tics de langage artificiels.
 
-## 8.10 Agent 8 — QA
+## 8.10 Agent 8a — Review (v1.4)
+
+**Mission.** Agir comme un réviseur humain : lire le texte traduit
+paragraphe-par-paragraphe et produire un **rapport de corrections ciblées**.
+
+**Inspiration.** honya (Reviewer), LaTeXTrans (Validator). C'est la passe qui
+distingue "traduction retry-boucle" de "traduction révisée comme par un humain".
+
+**Entrées.** `paragraphs` source + traduits + `novelSummary` (contexte long-terme, si disponible).
+
+**Sorties.** `report` de type `ReviewReport` :
+```typescript
+interface ReviewReport {
+  issues: Array<{
+    paragraphIndex: number
+    severity: 'high' | 'medium' | 'low'
+    category: 'fidelity' | 'fluency' | 'terminology' | 'style' | 'consistency'
+    original: string   // extrait du texte à corriger
+    suggestion: string // correction proposée
+    reason: string     // justification
+  }>
+  summary: string // synthèse globale du réviseur
+}
+```
+
+**Focus.**
+- Fidélité au sens source (contresens, omissions, ajouts).
+- Terminologie (cohérence avec le lexique + résumé du roman).
+- Style (littéralisme, lourdeurs, tics).
+- Cohérence interne (répliques, pronoms, temps).
+
+**Modèle.** `qwen3.5:9b` (jsonMode). Désactivable (`enableReviewLoop: false`).
+
+## 8.11 Agent 8b — Revise (v1.4)
+
+**Mission.** Appliquer les corrections du `ReviewReport` via réécriture LLM ciblée.
+
+**Entrées.** `text` + `reviewReport` (issues[]).
+
+**Sorties.** `text` révisé.
+
+**Comportement.** Réécriture ciblée intégrant les suggestions ; en cas de refus
+éthique, conserve le texte d'entrée (`metadata.ethicalRefusal = true`).
+
+**Modèle.** `qwen3.5:9b`.
+
+## 8.12 Agent 10 — Summarizer (v1.4, transverse)
+
+**Mission.** Maintenir un **résumé incrémental du roman** pour la cohérence
+long-terme (noms, intrigue, ton) à travers les chapitres.
+
+**Inspiration.** LaTeXTrans (Summarizer), TransAgents.
+
+**Position.** **Hors séquence `WorkflowStage`** : appelé par le `WorkflowEngine`
+après l'export réussi d'un chapitre (cf. §7.13).
+
+**Entrées.** `paragraphs` source + traduits du chapitre courant + `novelSummary` précédent.
+
+**Sorties.** `metadata.chapterSummary` + `metadata.novelSummary` (mis à jour,
+persistés en DB via `SummaryRepository`).
+
+**Injection.** Le `NovelSummary` est ajouté à l'`AgentInput.context` des stages
+`translate`, `style`, `polish` des chapitres *suivants*.
+
+**Modèle.** `qwen3.5:9b`. Désactivable (`enableSummarizer: false`).
+
+## 8.13 Agent 9 — QA
 
 **Mission.** Attribuer un score qualité global et par dimension.
 
@@ -195,7 +261,7 @@ interface AgentOutput {
 
 **Format de sortie.** JSON strict avec `json_schema` ou `response_format`.
 
-## 8.11 Agent 9 — Export
+## 8.14 Agent 11 — Export
 
 **Mission.** Réécrire le fichier final dans le format demandé.
 
@@ -208,7 +274,7 @@ interface AgentOutput {
 - Sa taille est non nulle.
 - Pour EPUB : validation via `epubcheck` si disponible.
 
-## 8.12 Registre des agents
+## 8.15 Registre des agents
 
 Les agents natifs sont enregistrés dans la table `agents` au premier lancement.
 
@@ -222,11 +288,14 @@ INSERT INTO agents (id, name, stage, enabled, config_schema) VALUES
 ('grammar', 'Grammaire', 'grammar', 1, '{"language": {"type": "string"}}'),
 ('style', 'Style', 'style', 1, '{"tone": {"type": "string"}}'),
 ('polish', 'Polish', 'polish', 1, '{}'),
+('review', 'Réviseur', 'review', 1, '{}'),
+('revise', 'Correcteur', 'revise', 1, '{}'),
 ('qa', 'QA', 'qa', 1, '{}'),
-('export', 'Export', 'export', 1, '{"format": {"type": "string"}}');
+('export', 'Export', 'export', 1, '{"format": {"type": "string"}}'),
+('summarizer', 'Résumé', 'summarizer', 1, '{}');
 ```
 
-## 8.13 Tests d’un agent
+## 8.16 Tests d’un agent
 
 Chaque agent doit avoir au minimum :
 

@@ -88,9 +88,11 @@ export const useProjectStore = defineStore("project", () => {
         "project:stats",
         projectId,
       );
+      error.value = null;
     } catch (err) {
       console.error("[project store] loadStats error:", err);
       stats.value = null;
+      error.value = err instanceof Error ? err.message : "Failed to load stats";
     }
   }
 

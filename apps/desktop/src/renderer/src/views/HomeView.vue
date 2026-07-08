@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useProjectStore } from "../stores/project";
 import { useOllamaStore } from "../stores/ollama";
+import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@shared/constants/languages.js";
 
 const router = useRouter();
 const projectStore = useProjectStore();
@@ -153,17 +154,17 @@ async function confirmDelete(): Promise<void> {
       <label>
         Langue source
         <select v-model="newProject.sourceLanguage">
-          <option value="zh">Chinois</option>
-          <option value="ja">Japonais</option>
-          <option value="ko">Coreen</option>
-          <option value="en">Anglais</option>
+          <option v-for="lang in SOURCE_LANGUAGES" :key="lang.code" :value="lang.code">
+            {{ lang.label }}
+          </option>
         </select>
       </label>
       <label>
         Langue cible
         <select v-model="newProject.targetLanguage">
-          <option value="fr">Francais</option>
-          <option value="en">Anglais</option>
+          <option v-for="lang in TARGET_LANGUAGES" :key="lang.code" :value="lang.code">
+            {{ lang.label }}
+          </option>
         </select>
       </label>
       <button

@@ -203,6 +203,72 @@ Chaque modèle a une fenêtre contextuelle (nombre de tokens disponibles pour le
 | LM Studio | ✅ `/models` | ❌ | ✅ | ✅ | ✅ |
 | Custom OpenAI | ✅ `/models` | ❌ | ✅ | selon endpoint | ✅ |
 
+## 3.7 Limitation de débit (rate limiting)
+
+Les providers cloud (OpenAI, Anthropic, Gemini, OpenRouter) imposent des limites de requêtes et de tokens par minute. Ollama (local) est exempté.
+
+### Configuration par provider
+
+```typescript
+interface RateLimitConfig {
+  requestsPerMinute?: number  // défaut : illimité
+  tokensPerMinute?: number    // défaut : illimité
+}
+```
+
+Chaque entrée `models` (Vol 06) peut stocker un `rate_limit_config TEXT` (JSON) contenant ces deux champs. La valeur `null` ou absente signifie « pas de limite » (par défaut pour Ollama).
+
+### Comportement dans l’AiRouter
+
+- Avant chaque dispatch vers un provider cloud, l’AiRouter vérifie le token bucket.
+- Si la limite est atteinte, la requête est mise en file d’attente jusqu’à la fenêtre de temps suivante.
+- En cas de réponse HTTP **429 Too Many Requests** : respecter l’en-tête `Retry-After`, backoff exponentiel (1 s → 2 s → 4 s), puis fallback vers le provider secondaire (§3.5).
+- Le throttling est **invisible pour l’utilisateur** — seule une notification dans les logs (niveau `warn`) est émise.
+
+### Priorité
+
+Ollama n’est jamais throttlé. Pour les providers cloud, si `RateLimitConfig` n’est pas configuré, l’AiRouter n’applique aucune limitation proactive — il réagit uniquement aux 429 reçus.
+
+## 3.8 Estimation des coûts
+
+Pour les providers cloud facturant au token, NovelTrad estime le coût des traductions et l’affiche à l’utilisateur.
+
+### Métadonnées coût par modèle
+
+```typescript
+interface ModelCostMetadata {
+  costPerInputToken?: number   // USD par 1K tokens (ex. 0.00003 pour GPT-4)
+  costPerOutputToken?: number  // USD par 1K tokens
+  currency?: string             // défaut “USD”
+}
+```
+
+Ces champs sont `null` pour les modèles locaux (Ollama, LM Studio). Ils sont stockés dans le JSON `metadata` de la table `models` (Vol 06).
+
+### Calcul
+
+L’AiRouter expose une méthode :
+
+```typescript
+class AiRouter {
+  estimateCost(
+    modelId: string,
+    inputTokens: number,
+    outputTokens: number
+  ): number | null // null = modèle local ou coût non configuré
+}
+```
+
+Le comptage des tokens utilise le mécanisme existant (§3.6b, tiktoken ou approximation ~4 caractères/token). Chaque étape de job accumule les tokens via `Step.tokensIn` / `Step.tokensOut` (Vol 07 §7.3).
+
+### Accumulation par job
+
+La table `jobs` (Vol 06) expose un champ optionnel `cost_usd REAL` (migration `012_index_coverage.sql`, voir Vol 06 §6.4). À la fin de chaque étape, le WorkflowEngine accumule : `job.cost_usd += estimateCost(...)`.
+
+### Affichage
+
+L’écran Workflow (Vol 04 §4.9) affiche le coût estimé cumulé en temps réel dans le détail du job actif. L’écran Projet (Vol 04 §4.6) affiche le coût total du projet dans les statistiques.
+
 ## ✅ Critères d’acceptation de la gestion des modèles
 
 - [ ] Tous les providers listés (Ollama, OpenAI, Anthropic, Gemini, OpenRouter, LM Studio, Custom) sont configurables via l’UI avec validation Zod.
@@ -212,3 +278,5 @@ Chaque modèle a une fenêtre contextuelle (nombre de tokens disponibles pour le
 - [ ] Les modèles configurés sont persistés dans SQLite (`Models` table) avec flags `is_default` / `is_fallback`.
 - [ ] Le chunking automatique s’active quand le prompt dépasse 50 % de la fenêtre contextuelle du modèle.
 - [ ] Le tableau de compatibilité provider / modèle est respecté (`listModels`, streaming, embeddings, fallback).
+- [ ] Le rate limiting respecte les limites configurées et honore les réponses 429 (Retry-After).
+- [ ] Le coût estimé est affiché dans l’écran Workflow et accumulé par job.

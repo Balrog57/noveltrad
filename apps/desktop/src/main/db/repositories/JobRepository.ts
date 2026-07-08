@@ -8,8 +8,8 @@ export class JobRepository {
     this.db
       .prepare(
         `
-      INSERT INTO jobs (id, project_id, chapter_id, type, status, started_at, finished_at, error_message, created_at, chapter_ids, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO jobs (id, project_id, chapter_id, type, status, started_at, finished_at, error_message, created_at, chapter_ids, metadata, cost_usd)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run([
@@ -24,6 +24,7 @@ export class JobRepository {
         job.createdAt,
         job.chapterIds ? JSON.stringify(job.chapterIds) : null,
         job.metadata ? JSON.stringify(job.metadata) : null,
+        job.costUsd ?? null,
       ]);
   }
 
@@ -56,7 +57,7 @@ export class JobRepository {
   updateJob(job: Job): void {
     this.db
       .prepare(
-        `UPDATE jobs SET status = ?, started_at = ?, finished_at = ?, error_message = ?, chapter_ids = ?, metadata = ? WHERE id = ?`,
+        `UPDATE jobs SET status = ?, started_at = ?, finished_at = ?, error_message = ?, chapter_ids = ?, metadata = ?, cost_usd = ? WHERE id = ?`,
       )
       .run([
         job.status,
@@ -65,6 +66,7 @@ export class JobRepository {
         job.errorMessage ?? null,
         job.chapterIds ? JSON.stringify(job.chapterIds) : null,
         job.metadata ? JSON.stringify(job.metadata) : null,
+        job.costUsd ?? null,
         job.id,
       ]);
   }
@@ -152,6 +154,7 @@ export class JobRepository {
       metadata: row.metadata
         ? (JSON.parse(String(row.metadata)) as Record<string, unknown>)
         : undefined,
+      costUsd: row.cost_usd != null ? Number(row.cost_usd) : undefined,
       createdAt: String(row.created_at),
     };
   }

@@ -2,7 +2,12 @@
 
 ## 6.1 Technologie
 
-- **SQLite** via `better-sqlite3`.
+- **SQLite** via `node-sqlite3-wasm` (binding WASM synchrone).
+  > **Décision de conception** : `better-sqlite3` était initialement prévu, mais le
+  > rebuild natif pose problème lors du packaging Electron (gestion
+  > `app.asar.unpacked`, recompilation par plateforme). `node-sqlite3-wasm` est
+  > purement JavaScript (WASM), ce qui élimine cette friction. La migration vers
+  > `better-sqlite3` est **WONTFIX** (cf. `docs/audit/GAP_ANALYSIS_2.1.3_to_SDD.md` §2.1).
 - Schéma versionné, migrations en SQL pur.
 - Repositories pour isoler la logique SQL.
 - WAL mode activé pour meilleures performances en écriture.
@@ -20,7 +25,11 @@
 | `models` | Providers et modèles configurés |
 | `jobs` | Workflow jobs en cours/passés |
 | `job_steps` | Étapes d’un job |
-| `history` | Versions de traduction |
+| `history_snapshots` | Versions de traduction (snapshots JSON enrichis) |
+  > **Décision de conception** : le SDD initial nommait cette table `history`. Le
+  > code crée `history_snapshots` avec un schéma JSON plus riche (snapshots
+  > incrémental/complet + métadonnées). Le nom `history_snapshots` est entériné
+  > comme canonique (cf. Open Questions WORKFLOW_STATE.md).
 | `exports` | Fichiers exportés |
 | `prompts` | Prompt templates versionnés |
 | `agents` | Définitions d’agents installés |
@@ -133,13 +142,16 @@ CREATE TABLE job_steps (
   error_message TEXT
 );
 
-CREATE TABLE history (
+CREATE TABLE history_snapshots (
   id TEXT PRIMARY KEY,
-  chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  chapter_id TEXT REFERENCES chapters(id) ON DELETE CASCADE,
   version INTEGER NOT NULL,
-  source_snapshot TEXT,
-  translated_snapshot TEXT,
+  snapshot_type TEXT NOT NULL, -- 'full' | 'incremental'
+  source_snapshot TEXT, -- JSON
+  translated_snapshot TEXT, -- JSON
   quality_score REAL,
+  metadata TEXT, -- JSON (score détaillé, étapes, coût, etc.)
   created_at TEXT NOT NULL
 );
 
@@ -188,15 +200,38 @@ CREATE TABLE statistics (
 );
 
 CREATE INDEX idx_paragraphs_chapter ON paragraphs(chapter_id);
+CREATE INDEX idx_paragraphs_status ON paragraphs(status);
 CREATE INDEX idx_lexicon_project ON lexicon(project_id);
-CREATE INDEX idx_history_chapter ON history(chapter_id);
+CREATE INDEX idx_history_snapshots_chapter ON history_snapshots(chapter_id);
+CREATE INDEX idx_history_snapshots_project ON history_snapshots(project_id);
 CREATE INDEX idx_jobs_project ON jobs(project_id);
+CREATE INDEX idx_jobs_status ON jobs(status);
+CREATE INDEX idx_job_steps_job ON job_steps(job_id);
+CREATE INDEX idx_prompts_agent ON prompts(agent_id);
 CREATE INDEX idx_tm_project_text ON translation_memory(project_id, source_text);
 ```
 
 ## 6.4 Migrations
 
 Les migrations sont stockées dans `src/main/db/migrations/`.
+
+### Index de couverture (v1.3)
+
+La migration `013_index_cost.sql` ajoute les index manquants sur les colonnes de statut et de jointure fréquemment filtrées, ainsi que la colonne `cost_usd` sur `jobs` (SDD §3.8) :
+
+| Index / Colonne | Usage (requêtes fréquentes) |
+|-------|------------------------------|
+| `idx_paragraphs_status` | Filtre des paragraphes par statut dans l'éditeur chapitres |
+| `idx_prompts_agent` | Recherche des prompts par agent dans PromptLoader |
+| `jobs.cost_usd` | Accumulation du coût estimé par job (providers cloud) |
+
+> Note : `idx_jobs_status` et `idx_job_steps_job` existent déjà (migrations 006 et 002).
+
+### Modèle de données (notes de conception)
+
+- **Pas de table `books`** : la hiérarchie `project → chapter` est intentionnelle pour v1.0 (projets mono-ouvrage). Un tier intermédiaire `books` est prévu pour v2.0 (support des séries web-novel).
+- **Pas de table `queue` dédiée** : la table `jobs` fait office de file d'attente via sa colonne `status`. Une table séparée n'est pas nécessaire en v1.0 (concurrence gérée en mémoire par PQueue, cf. Vol 07 §7.9).
+- **Pas de table `providers` séparée** : les providers sont représentés par la colonne `models.provider` (texte). Un provider peut avoir plusieurs entrées `models`. Suffisant pour v1.0.
 
 ```typescript
 interface Migration {
@@ -229,5 +264,6 @@ class ParagraphRepository {
 - [ ] Le schéma SQL crée toutes les tables sans erreur.
 - [ ] Les migrations montent et descendent correctement.
 - [ ] Les repositories couvrent CRUD pour chaque entité métier.
-- [ ] Les index accélèrent les requêtes de lexique et de mémoire de traduction.
+- [ ] Les index accélèrent les requêtes de lexique, de mémoire de traduction et les filtres par statut.
 - [ ] Suppression d’un projet en cascade efface les données associées.
+- [ ] La migration `013_index_cost.sql` s’applique sans erreur sur une DB existante (v1.0 → v1.3).

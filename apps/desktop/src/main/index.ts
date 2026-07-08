@@ -255,6 +255,10 @@ app.whenReady().then(async () => {
   setPluginHost(pluginHost);
   setSettingsManager(settings);
 
+  // SDD §15 : Connecter le PluginHost au WorkflowEngine pour activer
+  // l'extensibilité d'agents/providers par plugin (getPluginAgent + resolver)
+  workflowEngine.setPluginHost(pluginHost);
+
   // Découvrir et charger les plugins activés (flux permissions différé)
   const enabledPluginIds = settings.get("enabledPlugins");
   const sensitivePlugins = await pluginHost.init(enabledPluginIds);

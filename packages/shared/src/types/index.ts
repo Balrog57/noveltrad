@@ -72,6 +72,8 @@ export type WorkflowStage =
   | "grammar"
   | "style"
   | "polish"
+  | "review" // v1.4 : boucle de révision pro
+  | "revise" // v1.4 : applique les corrections du ReviewReport
   | "qa"
   | "export";
 
@@ -80,6 +82,7 @@ export interface WorkflowOptions {
   targetLanguage?: string;
   qualityThreshold?: number;
   parallelAgents?: number;
+  stepTimeoutMs?: number;
   [key: string]: unknown;
 }
 
@@ -96,6 +99,7 @@ export interface Job {
   errorMessage?: string;
   options?: WorkflowOptions;
   metadata?: Record<string, unknown>;
+  costUsd?: number;
   createdAt: string;
 }
 
@@ -113,6 +117,7 @@ export interface Step {
   tokensIn?: number;
   tokensOut?: number;
   durationMs?: number;
+  stepTimeoutMs?: number;
   startedAt?: string;
   finishedAt?: string;
   errorMessage?: string;
@@ -157,6 +162,73 @@ export interface QualityReport {
   dialogue: number;
   globalScore: number;
   comments: string;
+}
+
+// ── v1.4 : Boucle de révision pro (review / revise) ───────────────────────
+
+/**
+ * Catégorie de problème identifié par l'agent Review.
+ * SDD §8.10 (v1.4)
+ */
+export type ReviewCategory =
+  | "fidelity"
+  | "fluency"
+  | "terminology"
+  | "style"
+  | "consistency";
+
+/**
+ * Une correction ciblée produite par le ReviewAgent.
+ * SDD §8.10 (v1.4) — inspiration honya (Reviewer), LaTeXTrans (Validator).
+ */
+export interface ReviewIssue {
+  /** Index (0-based) du paragraphe concerné dans la séquence traduite */
+  paragraphIndex: number;
+  severity: "high" | "medium" | "low";
+  category: ReviewCategory;
+  /** Extrait du texte à corriger */
+  original: string;
+  /** Correction proposée */
+  suggestion: string;
+  /** Justification courte */
+  reason: string;
+}
+
+/**
+ * Rapport produit par le ReviewAgent, consommé par le ReviseAgent.
+ * Persisté dans la table `review_reports` (migration 014).
+ */
+export interface ReviewReport {
+  issues: ReviewIssue[];
+  /** Synthèse globale du réviseur */
+  summary: string;
+}
+
+// ── v1.4 : Summarizer transverse (cohérence cross-chapitre) ──────────────
+
+/**
+ * Résumé d'un chapitre, produit par le SummarizerAgent.
+ * SDD §8.12 (v1.4) — inspiration LaTeXTrans (Summarizer), TransAgents.
+ */
+export interface ChapterSummary {
+  id: string;
+  chapterId: string;
+  projectId: string;
+  summary: string;
+  tokenCount?: number;
+  createdAt: string;
+}
+
+/**
+ * Résumé incrémental du roman entier, maintenu au fil des chapitres
+ * et injecté dans le contexte des stages translate/style/polish.
+ */
+export interface NovelSummary {
+  id: string;
+  projectId: string;
+  summary: string;
+  version: number;
+  updatedAt: string;
 }
 
 export type ExportFormat = "markdown" | "txt" | "html" | "docx" | "epub";
@@ -224,8 +296,12 @@ export interface AppSettings {
   maxConcurrentJobs: number;
   /** SDD §12.5 : seuil de qualité minimum (défaut 70) */
   qualityThreshold: number;
+  /** SDD §7.10 : timeout par étape en ms (défaut 120000 = 2 min) */
+  stepTimeoutMs: number;
   /** SDD §11.4 : tolérances de cohérence par paire de langues */
   consistencyTolerances: Record<string, ConsistencyTolerance>;
+  /** SDD §3.8 : coût par modèle (clé = model id). Vide = pas de suivi (Ollama local). */
+  modelCosts: Record<string, { costPerInputToken: number; costPerOutputToken: number }>;
   /** SDD §15 : plugins activés (liste des IDs) */
   enabledPlugins: string[];
   /** SDD §4.11.1 : provider IA actif */
@@ -242,6 +318,10 @@ export interface AppSettings {
   logLevel: "debug" | "info" | "warn" | "error";
   /** SDD §22.2 : utiliser les Worker threads pour les agents CPU-bound */
   useWorkerThreads: boolean;
+  /** v1.4 SDD §7.12 : activer la boucle de révision pro (review/revise) */
+  reviewLoopEnabled: boolean;
+  /** v1.4 SDD §7.13 : activer le Summarizer transverse (cohérence cross-chapitre) */
+  summarizerEnabled: boolean;
   /** SDD §17.9 : vérification automatique des mises à jour */
   autoUpdateCheck: boolean;
 }

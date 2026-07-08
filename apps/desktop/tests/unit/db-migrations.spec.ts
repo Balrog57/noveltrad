@@ -66,7 +66,7 @@ describe("runMigrations — file-based unified runner (T2)", () => {
   });
 
   // ── Test 1 : DB fraîche → toutes les migrations s'exécutent ──
-  it("fresh DB executes all migrations (v1–v12) and chapters.metadata exists", () => {
+  it("fresh DB executes all migrations (v1–v13) and chapters.metadata exists", () => {
     // Copier les fichiers de migration réels dans le dossier temporaire
     const realMigrationsDir = path.resolve(
       __dirname,
@@ -84,15 +84,26 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     runMigrations(db, tempDir);
 
     const rows = getMigrations(db);
-    expect(rows.length).toBe(12);
+    expect(rows.length).toBe(15);
     expect(rows[0].version).toBe(1);
-    expect(rows[11].version).toBe(12);
-    expect(rows[11].name).toBe("012_prompts_active.sql");
+    expect(rows[12].version).toBe(13);
+    expect(rows[12].name).toBe("013_index_cost.sql");
+    // v1.4 : migrations review_reports (014) + summaries (015)
+    expect(rows[13].version).toBe(14);
+    expect(rows[13].name).toBe("014_review_stage.sql");
+    expect(rows[14].version).toBe(15);
+    expect(rows[14].name).toBe("015_summaries.sql");
 
     // Vérifier que la colonne metadata a été ajoutée à chapters
     expect(columnExists(db, "chapters", "metadata")).toBe(true);
     // T5 fix : la colonne active a été ajoutée à prompts
     expect(columnExists(db, "prompts", "active")).toBe(true);
+    // 013 : colonne cost_usd sur jobs + indexes de couverture
+    expect(columnExists(db, "jobs", "cost_usd")).toBe(true);
+    const indexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_paragraphs_status', 'idx_prompts_agent')")
+      .all() as { name: string }[];
+    expect(indexes.length).toBe(2);
   });
 
   // ── Test 2 : DB existante v1-v8 → seules v9-v11 s'exécutent ──

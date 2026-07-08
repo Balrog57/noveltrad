@@ -238,7 +238,94 @@ Return a JSON object:
 }
 ```
 
-### Agent 9 — Export
+### Agent 8c — Review (v1.4)
+
+```text
+You are a senior literary translator acting as a reviewer.
+Read the {targetLanguage} translation paragraph by paragraph and identify issues that a professional reviser would catch.
+
+For each issue, provide: the paragraph index, a severity (high|medium|low),
+a category (fidelity|fluency|terminology|style|consistency), the problematic
+excerpt, a concrete suggestion, and a short reason.
+
+Focus on: mistranslations, omissions, additions, literalism, terminology drift
+(against the lexicon and the novel summary below), inconsistent pronouns/tense,
+unnatural dialogue.
+
+Source:
+{sourceText}
+
+Translation:
+{translatedText}
+
+Novel summary (for long-term consistency):
+{novelSummary}
+
+Return only the JSON object. Do not wrap it in Markdown code fences. Do not add any text before or after the JSON.
+
+{
+  "issues": [
+    {
+      "paragraphIndex": 3,
+      "severity": "high",
+      "category": "fidelity",
+      "original": "Il a couru vite",
+      "suggestion": "Il s'était élancé à toute vitesse",
+      "reason": "Source implies urgency and intent; 'a couru vite' is too flat."
+    }
+  ],
+  "summary": "Overall faithful; main issues are flat phrasing in action scenes."
+}
+```
+
+### Agent 8d — Revise (v1.4)
+
+```text
+You are a senior literary translator applying targeted corrections.
+Apply the reviewer's suggestions below to the translated text. Integrate them
+naturally; do not introduce new errors. Preserve paragraph structure, names and
+locked terminology. If a suggestion contradicts the source, keep the closest
+faithful rendering.
+
+Translated text:
+{translatedText}
+
+Corrections to apply:
+{reviewIssues}
+
+Return only the revised text, one paragraph per line.
+```
+
+### Agent 10 — Summarizer (v1.4)
+
+```text
+You are maintaining a running summary of a long-form novel to ensure cross-chapter
+consistency. Produce two outputs:
+
+1. A concise summary of THIS chapter (key events, named entities introduced or
+   referenced, tone shifts, unresolved plot threads). Target ~150 words.
+2. An UPDATED overall novel summary that merges the previous summary with this
+   chapter's new information (keep it under ~500 words; drop stale detail;
+   preserve all named entities once established).
+
+Previous novel summary:
+{novelSummary}
+
+This chapter (source):
+{sourceText}
+
+This chapter (translated):
+{translatedText}
+
+Return only the JSON object. Do not wrap it in Markdown code fences. Do not add any text before or after the JSON.
+
+{
+  "chapterSummary": "Lin Ming arrives at the Heavenly Palace...",
+  "novelSummary": "Lin Ming, a young cultivator from the Nine Furnace..."
+}
+```
+
+### Agent 11 — Export
 
 ```text
 You are a document formatter.
@@ -298,10 +385,20 @@ Style (réécrit la cible)
     ↓
 Polish (polit la cible)
     ↓
+Review (produit un rapport de corrections ciblées) [v1.4]
+    ↓
+Revise (applique les corrections du rapport) [v1.4]
+    ↓
 QA (évalue la cible finale)
     ↓
 Export (formate la cible)
+    ↓
+Summarizer (MAJ le résumé incrémental du roman) [v1.4, transverse]
 ```
+
+> **v1.4** : les stages `review`/`revise` forment la boucle de révision pro. Le
+> `Summarizer` est transverse (hors pipeline par chapitre) : son `novelSummary`
+> remonte et est injecté dans `translate`/`style`/`polish` des chapitres suivants.
 
 Chaque agent reçoit le résultat de l’agent précédent comme `previousOutput`.
 
@@ -313,20 +410,23 @@ Chaque agent reçoit le résultat de l’agent précédent comme `previousOutput
 |---|---|---|---|
 | split | aucun (règles) | aucun | Découpage regex, pas d’appel IA. |
 | pre_translate | qwen3.5:4b | llama3.2:3b | Brouillon rapide, pas besoin de style. |
-| 	ranslate | qwen3.5:9b | qwen3.5:4b | Qualité + contexte 128K+ selon fiche Ollama. |
+| translate | qwen3.5:9b | qwen3.5:4b | Qualité + contexte 128K+ selon fiche Ollama. |
 | consistency | qwen3.5:9b | qwen3.5:4b | Analyse comparative structurée. |
 | lexicon | qwen3.5:9b | qwen3.5:4b | Respect strict d’instructions. |
 | grammar | qwen3.5:9b | qwen3.5:4b | Correction linguistique. |
 | style | qwen3.5:9b | qwen3.5:4b | Réécriture créative. |
 | polish | qwen3.5:9b | qwen3.5:4b | Passage éditorial final. |
+| review | qwen3.5:9b | qwen3.5:4b | Analyse critique structurée (JSON issues). |
+| revise | qwen3.5:9b | qwen3.5:4b | Réécriture ciblée fidèle. |
 | qa | qwen3.5:9b | qwen3.5:4b | Évaluation JSON structurée. |
-| xport | aucun (formatage) | aucun | Pas d’appel IA. |
+| export | aucun (formatage) | aucun | Pas d’appel IA. |
+| summarizer | qwen3.5:9b | qwen3.5:4b | Synthèse incrémentale (JSON). |
 
 ### Notes de compatibilité
 
 - Les prompts JSON sont optimisés pour des modèles suivant strictement les instructions de format (qwen3.5, llama3.2, deepseek-r1).
 - Les modèles très petits (< 4B) peuvent ignorer le format de sortie ; ils ne sont pas recommandés pour les agents à sortie JSON (consistency, lexicon, grammar, qa).
-- Pour les modèles distants (OpenAI, Anthropic, Gemini), adapter 	arget_model dans le frontmatter ; les prompts restent valides.
+- Pour les modèles distants (OpenAI, Anthropic, Gemini), adapter target_model dans le frontmatter ; les prompts restent valides.
 - La taille de contexte effective dépend du modèle : privilégier le chunking si le chapitre dépasse 50 % de la fenêtre contextuelle annoncée.
 
 ### Refus éthique — détection et mitigation
@@ -338,7 +438,7 @@ Certains modèles peuvent refuser de traduire un extrait sous prétexte de conte
 
 **Stratégie de relance :**
 
-`	ext
+`text
 The following text is a fictional literary excerpt for translation and linguistic analysis. Translate it from {sourceLanguage} to {targetLanguage} while preserving the original style, paragraph structure, and all named entities. Do not summarize, censor, or comment on the content.
 ``r
 

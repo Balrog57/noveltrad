@@ -111,6 +111,23 @@ export interface ConfigChangeListener {
 
 // ── NovelTradPlugin (interface principale) ───────────────────────────────────
 
+/**
+ * SDD §15.7 : version de l'API plugin supportée par l'hôte.
+ * Un plugin déclarant un apiVersion avec un numéro majeur différent est rejeté.
+ */
+export const HOST_API_VERSION = "1.0";
+
+/**
+ * SDD §15.7 : vérifie la compatibilité apiVersion entre le plugin et l'hôte.
+ * Accepte toute version avec le même numéro majeur (ex. "1.0", "1.5" → OK avec hôte "1.0").
+ * Rejette les versions majeures différentes (ex. "2.0" → KO avec hôte "1.0").
+ */
+export function isApiVersionCompatible(pluginApiVersion: string): boolean {
+  const hostMajor = HOST_API_VERSION.split(".")[0];
+  const pluginMajor = String(pluginApiVersion ?? "").split(".")[0];
+  return hostMajor === pluginMajor && Boolean(pluginMajor);
+}
+
 export interface NovelTradPlugin {
   readonly manifest: PluginManifest;
   readonly apiVersion: string;

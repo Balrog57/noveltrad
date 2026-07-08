@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.1.5 — Boucle de révision pro + Summarizer + câblage plugin (2026-07-08)
+
+### Features (v1.4 — traduction pro révisée)
+- **Boucle Review→Revise** : 2 nouveaux stages (`review`, `revise`) insérés avant QA. Le `ReviewAgent` produit un rapport de corrections ciblées paragraphe-par-paragraphe (`ReviewReport`), le `ReviseAgent` les applique via réécriture LLM. C'est ce qui transforme une "traduction retry-boucle" en "traduction révisée comme par un humain". Pipeline désormais 12 passes. Inspiration : honya (Reviewer), LaTeXTrans (Validator).
+- **Summarizer transverse** : agent hors-pipeline appelé après l'export d'un chapitre. Maintient un `NovelSummary` incrémental injecté dans le contexte de `translate`/`style`/`polish`/`review` des chapitres suivants → cohérence des noms et de l'intrigue sur 500+ chapitres. Inspiration : LaTeXTrans (Summarizer), TransAgents.
+- **Câblage PluginHost → WorkflowEngine** : `getPluginAgent` et `setPluginProviderResolver` désormais réellement alimentés. Un plugin peut remplacer n'importe quel agent built-in ou fournir un provider IA. (Avant : le hook existait mais n'était jamais câblé → plugins d'agents inertes.)
+- **Toggles mode pro** : `reviewLoopEnabled` et `summarizerEnabled` dans les Settings (défaut `true`). Mode rapide = pipeline 10 passes original.
+- **UI ReviewReport** : affichage des corrections (sévérité, catégorie, suggestion, raison) dans le panneau de détail du workflow.
+
+### Bug Fixes (doc SDD)
+- **Coquilles caractères ESC** : `25-Prompt-Book.md` §25.6 avait des caractères ESC (0x1b) qui mangeaient la première lettre de `export`, `translate`, `target_model`, `text`, `failed`. Corrigé.
+- **`06-Database.md`** : entériné `node-sqlite3-wasm` (WONTFIX migration better-sqlite3) + table `history_snapshots` (au lieu de `history`).
+- **Commentaire worker threads** : note obsolète "Non implémenté MVP" corrigée (workers activés par défaut `true`, bug T14 résolu).
+
+### Infrastructure
+- Migrations `014_review_stage.sql` (table `review_reports` + registre agents), `015_summaries.sql` (`chapter_summaries`, `novel_summaries`).
+- Types `ReviewReport`/`ReviewIssue`/`ChapterSummary`/`NovelSummary` + schémas Zod (`reviewOutputSchema`, `reviseOutputSchema`, `summarizerOutputSchema`).
+- 981 tests (71 suites), 0 failed, 0 type-check error, 0 lint error.
+
 ## v2.1.4 — Post-T1-T15 gap fixes (2026-07-06)
 
 Cycle correctif suite à la revue indépendante des 15 tâches T1-T15. 12 commits atomiques sur branche `fix/post-t1-t15-gaps`. 940 tests (62 suites), 0 failed, 0 type-check error.

@@ -12,6 +12,8 @@ import { LexiconAgent } from "./LexiconAgent.js";
 import { GrammarAgent } from "./GrammarAgent.js";
 import { StyleAgent } from "./StyleAgent.js";
 import { PolishAgent } from "./PolishAgent.js";
+import { ReviewAgent } from "./ReviewAgent.js";
+import { ReviseAgent } from "./ReviseAgent.js";
 import { QaAgent } from "./QaAgent.js";
 import { ExportAgent } from "./ExportAgent.js";
 import type { LexiconEngine } from "../LexiconEngine.js";
@@ -69,6 +71,10 @@ export class AgentFactory {
         return new StyleAgent(config, this.services.aiRouter);
       case "polish":
         return new PolishAgent(config, this.services.aiRouter);
+      case "review":
+        return new ReviewAgent(config, this.services.aiRouter);
+      case "revise":
+        return new ReviseAgent(config, this.services.aiRouter);
       case "qa":
         return new QaAgent(
           config,

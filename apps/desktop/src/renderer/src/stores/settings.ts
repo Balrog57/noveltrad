@@ -17,7 +17,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   ragEnabled: true,
   maxConcurrentJobs: 1,
   qualityThreshold: 70,
+  stepTimeoutMs: 120000,
   consistencyTolerances: {},
+  modelCosts: {},
   enabledPlugins: [],
   activeProvider: "ollama",
   fallbackProvider: "",
@@ -26,6 +28,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   editorFontSize: 14,
   logLevel: "info",
   useWorkerThreads: true,
+  reviewLoopEnabled: true,
+  summarizerEnabled: true,
   autoUpdateCheck: true,
 };
 

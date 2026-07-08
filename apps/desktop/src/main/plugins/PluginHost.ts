@@ -24,7 +24,7 @@ import type {
   NovelTradPlugin,
   PluginPermission,
 } from "@shared/types/index.js";
-import { SENSITIVE_PERMISSIONS } from "@shared/types/index.js";
+import { SENSITIVE_PERMISSIONS, isApiVersionCompatible, HOST_API_VERSION } from "@shared/types/index.js";
 import type { ExportEngine } from "../services/ExportEngine.js";
 import { logger } from "../utils/logger.js";
 import { assertWithinProject } from "../utils/paths.js";
@@ -162,6 +162,13 @@ export class PluginHost {
     }
 
     const instance: NovelTradPlugin = defaultExport;
+
+    // SDD §15.7 : vérifier la compatibilité apiVersion (même numéro majeur)
+    if (!isApiVersionCompatible(instance.apiVersion)) {
+      throw new Error(
+        `Plugin "${manifest.id}" requires apiVersion ${instance.apiVersion}, host supports ${HOST_API_VERSION}.x`,
+      );
+    }
 
     const loaded: LoadedPlugin = {
       manifest,

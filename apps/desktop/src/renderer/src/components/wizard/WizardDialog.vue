@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { useSettingsStore } from "../../stores/settings";
 import { useOllamaStore } from "../../stores/ollama";
+import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@shared/constants/languages.js";
 import NtProgressBar from "../ui/NtProgressBar.vue";
 
 const emit = defineEmits<{
@@ -342,19 +343,18 @@ onBeforeUnmount(() => {
             <label>
               Langue source
               <select v-model="sourceLanguage">
-                <option value="zh">Chinois (中文)</option>
-                <option value="ja">Japonais (日本語)</option>
-                <option value="ko">Coréen (한국어)</option>
-                <option value="en">Anglais</option>
-                <option value="fr">Français</option>
+                <option v-for="lang in SOURCE_LANGUAGES" :key="lang.code" :value="lang.code">
+                  {{ lang.label }}
+                </option>
               </select>
             </label>
 
             <label>
               Langue cible
               <select v-model="targetLanguage">
-                <option value="fr">Français</option>
-                <option value="en">Anglais</option>
+                <option v-for="lang in TARGET_LANGUAGES" :key="lang.code" :value="lang.code">
+                  {{ lang.label }}
+                </option>
               </select>
             </label>
 

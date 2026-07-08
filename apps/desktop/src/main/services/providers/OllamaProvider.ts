@@ -7,6 +7,30 @@ import type {
 } from "@shared/types/index.js";
 import { logger } from "../../utils/logger.js";
 
+/**
+ * SDD §3.7 : Gestion réactive du HTTP 429 (Too Many Requests).
+ *
+ * En cas de 429, on respecte l'en-tête `Retry-After` (en secondes), on attend,
+ * puis on lève une Error simple (PAS AbortError) pour que le pRetry de
+ * l'AiRouter retraite la requête. Sans Retry-After, on lève quand même une
+ * Error retryable (backoff par défaut du pRetry).
+ *
+ * Ollama (local) ne retourne normalement pas de 429, mais cette logique
+ * s'applique aussi au OpenAiCompatibleProvider via le même pattern.
+ */
+async function handle429(res: Response): Promise<never> {
+  const retryAfter = res.headers.get("Retry-After");
+  if (retryAfter) {
+    const seconds = Number.parseInt(retryAfter, 10);
+    if (Number.isFinite(seconds) && seconds > 0 && seconds < 300) {
+      logger.warn(`[Provider] HTTP 429, attente Retry-After: ${seconds}s`);
+      await new Promise((r) => setTimeout(r, seconds * 1000));
+    }
+  }
+  // Error retryable (pas AbortError) → pRetry va retry
+  throw new Error(`HTTP 429 Too Many Requests`);
+}
+
 export class OllamaProvider implements AiProvider {
   constructor(
     public readonly id: string,
@@ -44,6 +68,10 @@ export class OllamaProvider implements AiProvider {
       signal: AbortSignal.timeout(300_000),
     });
     if (!res.ok) {
+      if (res.status === 429) {
+        // SDD §3.7 : 429 retryable (Retry-After honoré)
+        await handle429(res);
+      }
       if (res.status >= 400 && res.status < 500) {
         // 4xx : erreur client, ne pas retry (propagé comme AbortError via AiRouter)
         throw new AbortError(`HTTP ${res.status}`);
@@ -75,6 +103,10 @@ export class OllamaProvider implements AiProvider {
       signal: AbortSignal.timeout(300_000),
     });
     if (!res.ok) {
+      if (res.status === 429) {
+        // SDD §3.7 : 429 retryable (Retry-After honoré)
+        await handle429(res);
+      }
       if (res.status >= 400 && res.status < 500) {
         throw new AbortError(`HTTP ${res.status}`);
       }
@@ -134,6 +166,10 @@ export class OllamaProvider implements AiProvider {
             signal: AbortSignal.timeout(60_000),
           });
           if (!res.ok) {
+            if (res.status === 429) {
+              // SDD §3.7 : 429 retryable (Retry-After honoré)
+              await handle429(res);
+            }
             if (res.status >= 400 && res.status < 500) {
               throw new AbortError(`HTTP ${res.status}`);
             }

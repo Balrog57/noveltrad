@@ -5,6 +5,7 @@ import { useWorkflowStore } from "../stores/workflow";
 import { onMounted, ref, computed } from "vue";
 import ExportDialog from "../components/export/ExportDialog.vue";
 import NtStatCard from "../components/ui/NtStatCard.vue";
+import NtEmptyState from "../components/ui/NtEmptyState.vue";
 
 interface OpenDialogResult {
   canceled: boolean;
@@ -61,6 +62,10 @@ onMounted(async () => {
   await projectStore.loadStats(projectId);
 });
 
+async function retryLoadStats() {
+  await projectStore.loadStats(projectId);
+}
+
 async function importFile() {
   const result = await window.novelTradAPI.invoke<OpenDialogResult>(
     "dialog:open-file",
@@ -95,6 +100,7 @@ function openLexique() {
 </script>
 
 <template>
+  <!-- SDD §4.6 : états chargement/vide/erreur/normal -->
   <div v-if="project" class="project">
     <!-- En-tete du projet -->
     <header class="project-header">
@@ -151,6 +157,25 @@ function openLexique() {
       </div>
     </section>
 
+    <!-- Erreur chargement stats (SDD §4.6) -->
+    <section v-else-if="projectStore.error" class="project-error">
+      <NtEmptyState
+        icon="⚠️"
+        title="Statistiques indisponibles"
+        description="Impossible de charger les statistiques du projet."
+        action-label="Réessayer"
+        @action="retryLoadStats"
+      />
+    </section>
+
+    <!-- Stats en chargement (squelettes) -->
+    <section v-else class="project-stats">
+      <h2 class="section-title">Statistiques</h2>
+      <div class="stats-grid">
+        <div v-for="i in 6" :key="i" class="skeleton-card" />
+      </div>
+    </section>
+
     <!-- Actions rapides -->
     <section class="project-actions">
       <h2 class="section-title">Actions</h2>
@@ -188,7 +213,17 @@ function openLexique() {
       </button>
     </section>
   </div>
-  <p v-else class="empty">Chargement du projet...</p>
+
+  <!-- Projet introuvable (SDD §4.6 : état erreur) -->
+  <div v-else class="empty">
+    <NtEmptyState
+      icon="📁"
+      title="Projet introuvable"
+      description="Ce projet n'existe pas ou n'est pas accessible."
+      action-label="Retour à l'accueil"
+      @action="router.push('/')"
+    />
+  </div>
 
   <!-- Dialogue d'export -->
   <ExportDialog
@@ -242,6 +277,30 @@ function openLexique() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 12px;
+}
+
+/* Squelettes de chargement (SDD §4.6) */
+.skeleton-card {
+  height: 80px;
+  border-radius: var(--border-radius);
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 50%,
+    var(--bg-secondary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Erreur stats */
+.project-error {
+  margin-bottom: 32px;
 }
 
 /* Actions rapides */

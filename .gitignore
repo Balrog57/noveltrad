@@ -12,3 +12,4 @@ playwright-report/
 .vscode/
 *.swp
 *.swo
+.zcode/

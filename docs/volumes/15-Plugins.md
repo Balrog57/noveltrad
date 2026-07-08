@@ -231,6 +231,13 @@ Déchargement
 - Les écritures fichier sont limitées au dossier projet (sauf permission explicite).
 - Les clés API ne sont pas transmises aux plugins sauf via `AiRouter`.
 
+### Politique de compatibilité apiVersion
+
+- L'hôte accepte les plugins déclarant `apiVersion` `"1.x"` (toute version mineure 1.0–1.9).
+- Un plugin déclarant un `apiVersion` incompatible (ex. `"2.0"`) est rejeté au chargement avec une erreur explicite : *« Plugin {name} requires apiVersion 2.0, host supports 1.x »*.
+- En cas de montée de version de l'API hôte (ex. 1.x → 2.0), une période de grâce d'une version mineure est accordée (les plugins 1.x continuent de fonctionner en mode déprécié avec un log `warn`).
+- `apiVersion` est indépendant de `version` (version du plugin) et de `type` (type de contribution).
+
 ### Validation du manifest
 
 ```typescript

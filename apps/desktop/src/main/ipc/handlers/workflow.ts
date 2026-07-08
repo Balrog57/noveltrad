@@ -26,6 +26,8 @@ const workflowStageSchema = z.enum([
   "grammar",
   "style",
   "polish",
+  "review",
+  "revise",
   "qa",
   "export",
 ]);
