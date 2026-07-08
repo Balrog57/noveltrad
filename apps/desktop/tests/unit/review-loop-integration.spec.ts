@@ -29,7 +29,9 @@ const SOURCE_TEXT = fs.readFileSync(FIXTURE_PATH, "utf-8");
 
 /** Construit les paragraphes depuis le markdown (chaque § séparé par ligne vide) */
 function buildParagraphs(source: string): Paragraph[] {
-  const blocks = source.split(/\n\n+/).filter((b) => b.trim().length > 0);
+  // Normaliser les CRLF (Windows) avant le split
+  const normalized = source.replace(/\r\n/g, "\n");
+  const blocks = normalized.split(/\n\n+/).filter((b) => b.trim().length > 0);
   return blocks.map((block, i) => ({
     id: `p${i}`,
     chapterId: "ch1",
