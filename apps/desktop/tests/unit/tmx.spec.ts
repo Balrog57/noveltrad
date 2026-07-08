@@ -31,6 +31,8 @@ class MockDatabase {
   private rows: Map<string, TmRow> = new Map();
   private counter = 0;
 
+  exec(sql: string): void {}
+
   prepare(sql: string): {
     get: (params: unknown[]) => unknown;
     all: (params: unknown[]) => unknown[];
