@@ -376,41 +376,45 @@ export class HistoryRepository {
     }
 
     const baseParagraphs = baseSnapshot.paragraphs;
-    const result = [...baseParagraphs];
+
+    // Optimisation: Utilisation d'une Map pour passer de O(N^2) à O(N)
+    // lors de la reconstruction des snapshots avec beaucoup de paragraphes.
+    const resultMap = new Map<number, Paragraph>();
+    for (const p of baseParagraphs) {
+      resultMap.set(p.indexInChapter, p);
+    }
 
     for (const change of payload.changes) {
-      const existingIdx = result.findIndex(
-        (p) => p.indexInChapter === change.index,
-      );
-
       if (change.sourceText === "") {
         // Suppression
-        if (existingIdx >= 0) {
-          result.splice(existingIdx, 1);
-        }
-      } else if (existingIdx >= 0) {
-        // Mise à jour
-        result[existingIdx] = {
-          ...result[existingIdx],
-          sourceText: change.sourceText,
-          translatedText: change.translatedText,
-          status: change.status,
-        };
+        resultMap.delete(change.index);
       } else {
-        // Ajout
-        const baseId = `reconstructed-${payload.baseSnapshotId}-${change.index}`;
-        result.push({
-          id: baseId,
-          chapterId: baseSnapshot.chapterId ?? "",
-          indexInChapter: change.index,
-          sourceText: change.sourceText,
-          translatedText: change.translatedText,
-          status: change.status,
-        });
+        const existing = resultMap.get(change.index);
+        if (existing) {
+          // Mise à jour
+          resultMap.set(change.index, {
+            ...existing,
+            sourceText: change.sourceText,
+            translatedText: change.translatedText,
+            status: change.status,
+          });
+        } else {
+          // Ajout
+          const baseId = `reconstructed-${payload.baseSnapshotId}-${change.index}`;
+          resultMap.set(change.index, {
+            id: baseId,
+            chapterId: baseSnapshot.chapterId ?? "",
+            indexInChapter: change.index,
+            sourceText: change.sourceText,
+            translatedText: change.translatedText,
+            status: change.status,
+          });
+        }
       }
     }
 
-    // Trier par indexInChapter
+    // Reconvertir en tableau et trier par indexInChapter
+    const result = Array.from(resultMap.values());
     result.sort((a, b) => a.indexInChapter - b.indexInChapter);
     return result;
   }
