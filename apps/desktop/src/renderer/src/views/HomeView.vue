@@ -3,11 +3,13 @@ import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useProjectStore } from "../stores/project";
 import { useOllamaStore } from "../stores/ollama";
+import { useUpdateStore } from "../stores/update";
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@shared/constants/languages.js";
 
 const router = useRouter();
 const projectStore = useProjectStore();
 const ollamaStore = useOllamaStore();
+const update = useUpdateStore();
 
 const showCreate = ref(false);
 const creationError = ref<string | null>(null);
@@ -32,26 +34,17 @@ const newProject = ref({
   parentPath: "~/NovelTrad Projects",
 });
 
-// Mise à jour
-const updateAvailable = ref(false);
-const updateVersion = ref("");
-const updateChecking = ref(false);
-const updateDownloading = ref(false);
-const updateDownloaded = ref(false);
-
+// Mise à jour — déléguée au store update (écoute centralisée des events IPC)
 function checkUpdate(): void {
-  updateChecking.value = true;
-  window.novelTradAPI.invoke("update:check").catch(() => {});
-  setTimeout(() => { updateChecking.value = false; }, 3000);
+  update.check();
 }
 
 function downloadUpdate(): void {
-  updateDownloading.value = true;
-  window.novelTradAPI.invoke("update:download").catch(() => {});
+  update.download();
 }
 
 function installUpdate(): void {
-  window.novelTradAPI.invoke("update:install").catch(() => {});
+  update.install();
 }
 
 // Écoute les événements de mise à jour du main process
@@ -64,19 +57,6 @@ onMounted(async () => {
   } catch {
     appVersion.value = "inconnue";
   }
-
-  window.novelTradAPI.on("update:available", (info: any) => {
-    updateAvailable.value = true;
-    updateVersion.value = info?.version ?? "";
-  });
-  window.novelTradAPI.on("update:downloaded", () => {
-    updateDownloading.value = false;
-    updateDownloaded.value = true;
-  });
-  window.novelTradAPI.on("update:error", () => {
-    updateChecking.value = false;
-    updateDownloading.value = false;
-  });
 });
 
 async function create() {
@@ -209,14 +189,14 @@ async function confirmDelete(): Promise<void> {
     </div>
 
     <!-- Bannière de mise à jour -->
-    <section v-if="updateAvailable" class="card update-banner">
+    <section v-if="update.available" class="card update-banner">
       <h2>🔄 Mise à jour disponible</h2>
-      <p>Version <strong>{{ updateVersion }}</strong> est disponible.</p>
+      <p>Version <strong>{{ update.info?.version ?? "" }}</strong> est disponible.</p>
       <div class="update-actions">
-        <button v-if="!updateDownloaded" class="btn-primary" :disabled="updateDownloading" @click="downloadUpdate">
-          {{ updateDownloading ? "Téléchargement..." : "Télécharger" }}
+        <button v-if="!update.downloaded" class="btn-primary" :disabled="update.progress != null" @click="downloadUpdate">
+          {{ update.progress ? `Téléchargement ${Math.round(update.progress.percent)}%` : "Télécharger" }}
         </button>
-        <button v-if="updateDownloaded" class="btn-primary" @click="installUpdate">
+        <button v-if="update.downloaded" class="btn-primary" @click="installUpdate">
           Installer et redémarrer
         </button>
       </div>
@@ -224,10 +204,16 @@ async function confirmDelete(): Promise<void> {
     <section v-else class="card update-check">
       <div class="update-row">
         <span>NovelTrad {{ appVersion }}</span>
-        <button class="btn-ghost" :disabled="updateChecking" @click="checkUpdate">
-          {{ updateChecking ? "Vérification..." : "Vérifier mise à jour" }}
+        <button class="btn-ghost" :disabled="update.checking" @click="checkUpdate">
+          {{ update.checking ? "Vérification..." : "Vérifier mise à jour" }}
         </button>
       </div>
+      <p v-if="update.notAvailable" class="update-feedback update-feedback--ok">
+        ✅ NovelTrad est à jour.
+      </p>
+      <p v-if="update.error" class="update-feedback update-feedback--err">
+        ⚠️ {{ update.error }}
+      </p>
     </section>
 
     <section class="card">
@@ -484,6 +470,19 @@ select {
   align-items: center;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.update-feedback {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.update-feedback--ok {
+  color: var(--success, #4caf50);
+}
+
+.update-feedback--err {
+  color: var(--danger, #e53935);
 }
 
 .btn-ghost {

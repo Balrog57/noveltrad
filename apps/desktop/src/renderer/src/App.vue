@@ -2,12 +2,18 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useSettingsStore } from "./stores/settings";
+import { useUpdateStore } from "./stores/update";
 import Sidebar from "./components/Sidebar.vue";
 import WizardDialog from "./components/wizard/WizardDialog.vue";
 
 const settings = useSettingsStore();
 const router = useRouter();
 const showWizard = ref(false);
+
+// Instancier le store update le plus tôt possible pour ne pas manquer
+// l'événement update:available du check automatique au démarrage (main → 5s).
+// useUpdateStore() enregistre les listeners IPC dans son setup.
+const _updateStore = useUpdateStore();
 
 onMounted(async () => {
   await settings.load();

@@ -9,6 +9,7 @@ import { logger } from "./utils/logger.js";
 import { PluginHost } from "./plugins/PluginHost.js";
 import { setPluginHost, setSettingsManager } from "./ipc/handlers/plugins.js";
 import { workflowEngine } from "./ipc/handlers/workflow.js";
+import { setUpdateManager } from "./ipc/handlers/update.js";
 import { AiRouter } from "./services/AiRouter.js";
 import { LexiconEngine } from "./services/LexiconEngine.js";
 import { ExportEngine } from "./services/ExportEngine.js";
@@ -279,6 +280,9 @@ app.whenReady().then(async () => {
     settings.get("updateChannel"),
     getMainWindow,
   );
+  // Partager l'instance unique avec les handlers IPC (évite la double émission
+  // d'events qui ouvrait des dialogues en double)
+  setUpdateManager(updateManager);
   // Vérification immédiate au démarrage + notification toast
   setTimeout(() => {
     updateManager?.check().catch((err) => {

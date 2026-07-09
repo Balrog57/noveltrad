@@ -607,28 +607,34 @@ onUnmounted(() => {
         Derniere version connue : {{ update.info.version }}
       </p>
 
-      <button class="btn-primary" @click="update.check">
-        Verifier maintenant
+      <button class="btn-primary" :disabled="update.checking" @click="update.check">
+        {{ update.checking ? "Vérification..." : "Vérifier maintenant" }}
       </button>
+      <p v-if="update.checking" class="hint">
+        Recherche de mises à jour en cours…
+      </p>
+      <p v-if="update.notAvailable" class="ok">
+        ✅ NovelTrad est à jour (version {{ appVersion }}).
+      </p>
       <p v-if="update.available" class="ok">
-        Nouvelle version disponible :
-        {{ update.info?.version }}
+        🔄 Nouvelle version disponible : {{ update.info?.version }}
       </p>
       <button
         v-if="update.available && !update.downloaded"
         class="btn-primary"
+        :disabled="update.progress != null"
         @click="update.download"
       >
-        Telecharger
+        {{ update.progress ? `Téléchargement ${Math.round(update.progress.percent)}%` : "Télécharger" }}
       </button>
       <button
         v-if="update.downloaded"
         class="btn-primary"
         @click="update.install"
       >
-        Installer et redemarrer
+        Installer et redémarrer
       </button>
-      <p v-if="update.error" class="error">Erreur : {{ update.error }}</p>
+      <p v-if="update.error" class="error">⚠️ Erreur : {{ update.error }}</p>
     </section>
   </div>
 </template>

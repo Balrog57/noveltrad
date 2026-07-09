@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.2.0 — Corrections mise à jour auto + release 2.2.0 (2026-07-09)
+
+### Bug Fixes (auto-update)
+- **Double instance UpdateManager éliminée** : le main créait une instance pour le check auto au démarrage, et les handlers IPC en créaient une seconde → chaque event autoUpdater (update-available, update-downloaded) était émis en double et ouvrait des dialogues natifs en double. Désormais une instance unique partagée via `setUpdateManager()`.
+- **HomeView "Vérifier mise à jour" donne enfin un retour** : le `setTimeout(3s)` qui arrêtait le spinner prématurément est supprimé ; le store écoute désormais `update:not-available` et `update:checking` → l'utilisateur voit clairement "NovelTrad est à jour" ou "Vérification…" ou le détail d'une erreur.
+- **SettingsView "Vérifier maintenant" fonctionnel** : bouton désactivé pendant le check, message "Recherche en cours…", puis retour "à jour" / "nouvelle version" / "erreur".
+- **Store update enregistré au démarrage** : `App.vue` instancie `useUpdateStore()` au mount (pas seulement à la navigation vers Settings) → l'événement `update:available` du check auto (5s après démarrage) n'est plus manqué.
+
+### Version
+- Bump 2.1.3 → **2.2.0** (les entrées CHANGELOG 2.1.4 et 2.1.5 n'avaient pas été accompagnées d'un bump de version ; cette release les englobe).
+
 ## v2.1.5 — Boucle de révision pro + Summarizer + câblage plugin (2026-07-08)
 
 ### Features (v1.4 — traduction pro révisée)
