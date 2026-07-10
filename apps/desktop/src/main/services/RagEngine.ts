@@ -141,25 +141,36 @@ export class RagEngine {
     }>,
   ): void {
     let added = false;
-    for (const entry of entries) {
-      const existing = this.db
-        .prepare("SELECT id FROM embeddings WHERE paragraph_id = ?")
-        .get([entry.paragraphId]);
-      if (existing) {continue;}
 
-      this.db
-        .prepare(
-          `INSERT INTO embeddings (id, chapter_id, paragraph_id, embedding_json, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run([
-          crypto.randomUUID(),
-          entry.chapterId,
-          entry.paragraphId,
-          JSON.stringify(entry.embedding),
-          new Date().toISOString(),
-        ]);
-      added = true;
+    // ⚡ Bolt: Bulk inserts in node-sqlite3-wasm cause massive N+1 overhead.
+    // Wrapping the loop in an explicit transaction forces SQLite to flush to disk only once.
+    // Impact: Orders of magnitude faster for storing hundreds of embeddings.
+    this.db.exec("BEGIN TRANSACTION");
+    try {
+      for (const entry of entries) {
+        const existing = this.db
+          .prepare("SELECT id FROM embeddings WHERE paragraph_id = ?")
+          .get([entry.paragraphId]);
+        if (existing) {continue;}
+
+        this.db
+          .prepare(
+            `INSERT INTO embeddings (id, chapter_id, paragraph_id, embedding_json, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+          )
+          .run([
+            crypto.randomUUID(),
+            entry.chapterId,
+            entry.paragraphId,
+            JSON.stringify(entry.embedding),
+            new Date().toISOString(),
+          ]);
+        added = true;
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
     }
 
     // T13 fix : invalider le cache si au moins un embedding a été ajouté
