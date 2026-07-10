@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { Job, Step, WorkflowStage } from "@shared/types/index.js";
+import { toPlain } from "../utils/toPlain";
 
 export interface WorkflowProgressPayload {
   jobId: string;
@@ -83,7 +84,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
 
   /** SDD §7.11 : reprend un job batch interrompu */
   async function resumeBatch(projectPath: string, job: Job): Promise<void> {
-    await window.novelTradAPI.invoke("workflow:resume-batch", projectPath, job);
+    await window.novelTradAPI.invoke("workflow:resume-batch", projectPath, toPlain(job));
   }
 
   async function retryStep(jobId: string, stepId: string): Promise<void> {

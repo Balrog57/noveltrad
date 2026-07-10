@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { HistorySnapshot, DiffResult } from "@shared/types/index.js";
+import { toPlain } from "../utils/toPlain";
 
 /**
  * Store de l'historique des versions.
@@ -201,7 +202,7 @@ export const useHistoryStore = defineStore("history", () => {
         projectId,
         chapterId,
         stage: "manual",
-        paragraphs,
+        paragraphs: toPlain(paragraphs),
         triggeredBy: "manual",
       });
       await loadHistory(projectId, chapterId);

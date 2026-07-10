@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
+import { toPlain } from "../utils/toPlain";
 
 export interface PluginInfo {
   id: string;
@@ -84,7 +85,7 @@ export const usePluginsStore = defineStore("plugins", () => {
   async function setConfig(pluginId: string, config: Record<string, unknown>) {
     return window.novelTradAPI.invoke<{ success: boolean; error?: string }>("plugin:set-config", {
       pluginId,
-      config,
+      config: toPlain(config),
     });
   }
 

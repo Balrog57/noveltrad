@@ -4,6 +4,7 @@ import { useSettingsStore } from "../stores/settings";
 import { useOllamaStore } from "../stores/ollama";
 import { useUpdateStore } from "../stores/update";
 import { useRouter } from "vue-router";
+import { toPlain } from "../utils/toPlain";
 import type { ConsistencyTolerance } from "@shared/types/index.js";
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@shared/constants/languages.js";
 
@@ -114,8 +115,8 @@ async function saveSettings(): Promise<void> {
       await settings.set(key, value as never);
     }
   }
-  // Sauvegarder les tolérances
-  await settings.set("consistencyTolerances", tolerances.value as never);
+  // Sauvegarder les tolérances (tolerances.value est réactif → toPlain)
+  await settings.set("consistencyTolerances", toPlain(tolerances.value) as never);
   saved.value = true;
   setTimeout(() => {
     saved.value = false;

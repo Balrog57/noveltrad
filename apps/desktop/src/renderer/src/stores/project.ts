@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { Project, Chapter } from "@shared/types/index.js";
+import { toPlain } from "../utils/toPlain";
 
 /** Statistiques d'un projet (SDD §4.6) */
 export interface ProjectStats {
@@ -44,10 +45,10 @@ export const useProjectStore = defineStore("project", () => {
     loading.value = true;
     error.value = null;
     try {
-      const project = await window.novelTradAPI.invoke<Project>(
-        "project:create",
-        payload,
-      );
+    const project = await window.novelTradAPI.invoke<Project>(
+      "project:create",
+      toPlain(payload),
+    );
       currentProject.value = project;
       await loadRecent();
       return project;

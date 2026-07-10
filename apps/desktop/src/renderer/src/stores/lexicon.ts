@@ -6,6 +6,7 @@ import type {
   LexiconConflict,
   LexiconSuggestion,
 } from "@shared/types/index.js";
+import { toPlain } from "../utils/toPlain";
 
 /**
  * Store lexique — gère les entrées lexicales, les filtres,
@@ -184,7 +185,7 @@ export const useLexiconStore = defineStore("lexicon", () => {
     try {
       conflicts.value = await window.novelTradAPI.invoke<LexiconConflict[]>(
         "lexicon:find-conflicts",
-        { entries: entries.value },
+        { entries: toPlain(entries.value) },
       );
     } catch (err) {
       error.value =

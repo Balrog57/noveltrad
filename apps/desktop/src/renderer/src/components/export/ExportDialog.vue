@@ -5,6 +5,7 @@ import { useEditorStore } from "../../stores/editor";
 import NtModal from "../ui/NtModal.vue";
 import NtToast from "../ui/NtToast.vue";
 import NtProgressBar from "../ui/NtProgressBar.vue";
+import { toPlain } from "../../utils/toPlain";
 import type { ExportFormat, Paragraph } from "@shared/types/index.js";
 import type { ExportRunResult } from "@shared/schemas/export.js";
 
@@ -169,7 +170,7 @@ async function doExport(): Promise<void> {
         editorStore.chapterId === props.chapterId &&
         editorStore.paragraphs.length > 0
       ) {
-        paragraphs = editorStore.paragraphs;
+        paragraphs = toPlain(editorStore.paragraphs);
       } else {
         paragraphs = await loadParagraphsForChapter(props.chapterId);
       }

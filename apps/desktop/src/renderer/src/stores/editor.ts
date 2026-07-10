@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { Paragraph } from "@shared/types/index.js";
+import { toPlain } from "../utils/toPlain";
 
 /**
  * Store éditeur — gère les paragraphes en cours d'édition,
@@ -64,7 +65,7 @@ export const useEditorStore = defineStore("editor", () => {
     try {
       await window.novelTradAPI.invoke("chapter:save", {
         chapterId: chapterId.value,
-        paragraphs: dirtyList,
+        paragraphs: toPlain(dirtyList),
       });
       dirtyParagraphs.value = new Set();
     } catch (err) {

@@ -13,6 +13,7 @@ const update = useUpdateStore();
 
 const showCreate = ref(false);
 const creationError = ref<string | null>(null);
+const openError = ref<string | null>(null);
 
 /**
  * Version applicative résolue dynamiquement via l'IPC `app:get-version`
@@ -62,7 +63,10 @@ onMounted(async () => {
 async function create() {
   creationError.value = null;
   try {
+    // projectStore.create() applique toPlain() avant l'IPC — pas de double
+    // sérialisation ici.
     const project = await projectStore.create(newProject.value);
+    showCreate.value = false;
     router.push({ name: "project", params: { projectId: project.id } });
   } catch (err) {
     creationError.value = err instanceof Error ? err.message : "Erreur inconnue";
@@ -70,8 +74,13 @@ async function create() {
 }
 
 async function open(path: string) {
-  const project = await projectStore.open(path);
-  router.push({ name: "project", params: { projectId: project.id } });
+  openError.value = null;
+  try {
+    const project = await projectStore.open(path);
+    router.push({ name: "project", params: { projectId: project.id } });
+  } catch (err) {
+    openError.value = err instanceof Error ? err.message : "Erreur lors de l'ouverture du projet";
+  }
 }
 
 /** Ouvre le dialogue de confirmation de suppression (SDD §5.11) */
@@ -235,6 +244,7 @@ async function confirmDelete(): Promise<void> {
         </li>
       </ul>
       <p v-else class="empty">Aucun projet recent.</p>
+      <p v-if="openError" class="error-msg">{{ openError }}</p>
     </section>
   </div>
 </template>
