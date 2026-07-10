@@ -1,5 +1,28 @@
 # Changelog
 
+## v2.2.1 — Audit complet + 20 bugs corrigés (2026-07-10)
+
+### Bug Fixes
+- **"An object could not be cloned" à la création de projet** : `newProject` (Vue `ref`) passé tel quel à `ipcRenderer.invoke()` → structured clone algorithm rejette les Proxy Vue. Fix : helper `toPlain()` centralisé (`utils/toPlain.ts`) appliqué sur tous les appels IPC concernés (editor `chapter:save`, history `create-snapshot`, lexicon `find-conflicts`, plugins `set-config`, workflow `resume-batch`, export `run`, settings tolerances). HomeView `open()` a désormais un try/catch + `openError` affiché.
+- **ProjectManager.create() partial-state** : si la migration ou l'insert DB échoue après création des dossiers, le dossier partiel restait sur disque et bloquait les futures créations du même nom. Fix : `try/catch` avec `fs.rmSync(projectDir)` + `db.close()` en finally.
+- **export:run / export:batch DB leak** : chaque export fuyait 1-2 connexions SQLite (DB de traçage stockée sur le singleton `ExportEngine` jamais fermée) + race sur `this.db` du singleton. Fix : une seule DB, fermée en `finally` + `setDatabase(null)`.
+- **WorkflowRunner DB leak** : `this.db` n'était fermé qu'en completion de `runBatch` — constructeur qui throw, early-returns (cancel/failed), et `.catch` async fuyaient. Fix : `db.close()` dans tous les chemins de sortie.
+- **history:rollback incomplet** : `ParagraphRepository.updateMany` n'updatait pas `source_text` → rollback restaurait translated/status mais gardait silencieusement le source modifié. Fix : `source_text = ?` ajouté à l'UPDATE.
+- **history:rollback-partial cassé sur snapshots incrémentaux** : les paragraphes reconstruits ont un ID synthétique `reconstructed-*` qui ne matche aucun UUID réel → partial rollback silencieusement vide. Fix : résolution via lookup `(chapterId, indexInChapter)`.
+- **importSource orphan .md** : `fs.writeFileSync` du `.md` avant la transaction DB ; sur rollback DB, les fichiers orphelins restaient dans `source/`. Fix : suivi des fichiers écrits + suppression dans le catch.
+- **refreshSource file/DB mismatch** : nouveau contenu écrit avant la transaction DB → sur rollback, fichier et DB divergeaient (hash stale). Fix : sauvegarde de l'ancien contenu + restauration dans le catch (branches merge et replace).
+- **WorkflowEngine race runner** : `runners.set` après le retour de `startBatch` → fenêtre où pause/cancel/retry échouaient silencieusement. Fix : `set` immédiat après création. `resumeBatch` supprime l'ancien runner (delete + cancel best-effort) avant d'en créer un nouveau (évite double runner + fuite DB).
+- **history:diff "Snapshot introuvable" erroné** : un snapshot existant peut légitimement avoir 0 paragraphes (chapitre vide au moment du snapshot). Fix : `getById()` séparé pour vérifier l'existence.
+- **resolveProjectPath DB leak** : `getById` dans `.find()` sans try/finally → fuite si la DB est corrompue. Fix : try/finally.
+- **lexicon:import JSON.parse** : `SyntaxError` brute propagée au renderer. Fix : try/catch avec message lisible.
+- **HMR double-register IPC handlers** : `ipcMain.handle` lance si appelé deux fois (HMR dev). Fix : monkey-patch dans `router.ts` qui fait `removeHandler` avant chaque registration → idempotent.
+- **promoteToGlobal NOT NULL violation** : code dormant insérait `project_id = NULL` mais le schéma déclarait NOT NULL. Fix : migration 016 qui recrée `translation_memory` avec `project_id` nullable + FK `ON DELETE SET NULL`.
+- **OllamaProvider 429 structure** : commentaire documentant que `handle429: Promise<never>` (le 429 ne doit jamais tomber dans la branche 4xx).
+- **RagEngine embeddings fragility** : warning loggé sur mismatch de longueur avant fallback per-text (diagnostic Ollama tronqué).
+
+### Version
+- Bump 2.2.0 → **2.2.1** (audit complet du main process + renderer IPC, 20 bugs identifiés et corrigés, aucun breaking change).
+
 ## v2.2.0 — Corrections mise à jour auto + release 2.2.0 (2026-07-09)
 
 ### Bug Fixes (auto-update)
