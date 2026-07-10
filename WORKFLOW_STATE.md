@@ -1,5 +1,11 @@
 ﻿# Workflow State
 
+## Request — Fix 2 derniers bugs audit (2026-07-10)
+- **Bug 7 (HIGH latent)** `db/migrations/016_tm_global_nullable.sql` (nouveau) — recrée `translation_memory` avec `project_id` nullable + FK `ON DELETE SET NULL` (pattern SQLite standard : CREATE new + INSERT OR IGNORE + DROP + RENAME). `promoteToGlobal()` peut maintenant insérer `is_global=1, project_id=NULL` sans violer NOT NULL. Test `db-migrations.spec.ts` mis à jour (15 → 16 migrations attendues).
+- **Bug 13 (MEDIUM dev-only)** `ipc/router.ts` — monkey-patch de `ipcMain.handle` au chargement du module : `removeHandler(channel)` avant chaque registration → idempotent. Aucun changement requis dans les 12 fichiers handlers (alternative au wrapper `safeHandle` qui aurait nécessité de migrer 12 fichiers).
+- **Fichiers modifiés** : `db/migrations/016_tm_global_nullable.sql` (nouveau), `ipc/router.ts`, `tests/unit/db-migrations.spec.ts`.
+- **Vérification** : `type-check` 0 erreurs, `test` 981/981 passés (71 files), `lint` 0 erreurs (19 warnings préexistants).
+
 ## Request — Fix bugs restants audit (2026-07-10)
 - **6 bugs supplémentaires corrigés** (sur 12 restants après le commit précédent) :
   - **Bug 9+20 (HIGH)** `WorkflowEngine.start/startBatch/resumeBatch` — race d'enregistrement du runner dans `this.runners` (pause/cancel échouaient silencieusement dans une fenêtre) + double runner sur resume (deuxième DB ouverte sans fermer la première). Fix : `runners.set` immédiatement après création ; `resumeBatch` supprime l'ancien runner + `cancel()` best-effort avant d'en créer un nouveau.

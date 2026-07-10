@@ -2,6 +2,20 @@ import { ipcMain } from "electron";
 import { IPC_CHANNELS } from "./channels.js";
 import { logger } from "../utils/logger.js";
 
+// Bug fix : ipcMain.handle() lance "Attempted to register a second handler"
+// si le même canal est enregistré deux fois (HMR dev, double-init). On
+// monkey-patch handle() une seule fois pour qu'il supprime le handler
+// existant avant chaque registration → idempotent. Aucun changement requis
+// dans les 12 fichiers handlers.
+const originalHandle = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = ((
+  channel: string,
+  listener: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown,
+) => {
+  try {ipcMain.removeHandler(channel);} catch {/* pas encore enregistré */}
+  return originalHandle(channel, listener);
+}) as typeof ipcMain.handle;
+
 /** Charge chaque handler independamment. Si un handler echoue, les autres survivent. */
 export async function registerIpcRouter(): Promise<void> {
   logger.debug("[ROUTER] registerIpcRouter called");

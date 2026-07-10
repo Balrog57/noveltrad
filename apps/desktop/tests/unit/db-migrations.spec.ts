@@ -84,7 +84,7 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     runMigrations(db, tempDir);
 
     const rows = getMigrations(db);
-    expect(rows.length).toBe(15);
+    expect(rows.length).toBe(16);
     expect(rows[0].version).toBe(1);
     expect(rows[12].version).toBe(13);
     expect(rows[12].name).toBe("013_index_cost.sql");
@@ -93,6 +93,10 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     expect(rows[13].name).toBe("014_review_stage.sql");
     expect(rows[14].version).toBe(15);
     expect(rows[14].name).toBe("015_summaries.sql");
+    // v2.2.0 : translation_memory.project_id rendu nullable pour les entrées
+    // globales (promoteToGlobal)
+    expect(rows[15].version).toBe(16);
+    expect(rows[15].name).toBe("016_tm_global_nullable.sql");
 
     // Vérifier que la colonne metadata a été ajoutée à chapters
     expect(columnExists(db, "chapters", "metadata")).toBe(true);
