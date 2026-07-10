@@ -1,5 +1,44 @@
 ﻿# Workflow State
 
+## Request — Audit + fix bugs main process (2026-07-10)
+- **Audit** : exploration exhaustive du main process (managers, IPC handlers, repositories, services). 20 bugs identifiés.
+- **Bugs corrigés (8)** :
+  - **Bug 1 (HIGH)** `ProjectManager.ts:43-100` — `create()` laissait un dossier partiel + DB fuyante si migration/insert échouait → lockout permanent au prochain essai. Fix : try/catch avec `fs.rmSync(projectDir)` + `db.close()` en finally.
+  - **Bug 3+18 (HIGH)** `ipc/handlers/export.ts` — `export:run` et `export:batch` fuyaient une connexion DB par appel (db set sur le singleton ExportEngine jamais fermée) + `export:batch` ouvrait 2 DB (1 fuyait). Fix : une seule DB, fermée dans `finally` + `setDatabase(null)` pour libérer le singleton.
+  - **Bug 2+8 (HIGH)** `managers/WorkflowEngine.ts` — `WorkflowRunner` laissait fuir `this.db` sur : constructeur qui throw, `.catch` de startBatch/runSingle, early-returns de `runBatch` (cancel/failed). Fix : `db.close()` dans le catch constructeur, dans les `.catch` async, et avant chaque early-return de runBatch.
+  - **Bug 12 (MEDIUM)** `db/repositories/ParagraphRepository.ts:54` — `updateMany` n'updatait pas `source_text` → `history:rollback` restaurait translated_text/status mais gardait silencieusement le source modifié. Fix : ajout `source_text = ?` au UPDATE.
+  - **Bug 15 (MEDIUM)** `ProjectManager.ts:584-688` — `importSource` écrivait les `.md` source AVANT l'INSERT DB ; sur rollback DB, les fichiers orphelins restaient dans `source/`. Fix : suivi des fichiers écrits dans `writtenSourceFiles[]`, supprimés dans le catch.
+  - **Bug 14 (MEDIUM)** `ipc/handlers/export.ts:26-32` — `resolveProjectPath` ouvrait une DB dans `.find()` sans try/finally → fuite si `getById` lance. Fix : try/finally.
+  - **Bug 6 (MEDIUM)** `ipc/handlers/lexicon.ts:194` — `JSON.parse(data)` non gardé → SyntaxError brute propagée au renderer. Fix : try/catch avec Error lisible.
+- **Bugs non corrigés (documentés, latent/low-risk)** : Bug 7 (`promoteToGlobal` insère NULL dans NOT NULL — code dormant, jamais appelé), Bug 9/20 (race enregistrement runner), Bug 10/11 (history diff/rollback partial IDs synthétiques), Bug 13 (HMR dev), Bug 16 (refreshSource fichier/DB), Bug 17 (429 latent), Bug 19 (RAG embeddings latent). Nécessitent migration DB ou refonte plus large — différés.
+- **Fichiers modifiés** : `ProjectManager.ts`, `ipc/handlers/export.ts`, `managers/WorkflowEngine.ts`, `db/repositories/ParagraphRepository.ts`, `ipc/handlers/lexicon.ts`.
+- **Vérification** : `type-check` 0 erreurs, `test` 981/981 passés (71 files), `lint` 0 erreurs (19 warnings préexistants).
+
+## Request — Fix `DataCloneError` systémique (toPlain centralisé) (2026-07-10)
+- **Contexte** : suite au fix `project:create` (2026-07-10), audit du reste du renderer — le pattern Proxy Vue → `ipcRenderer.invoke()` affecte d'autres canaux IPC. `ipcRenderer.invoke()` utilise le structured clone algorithm qui rejette les Proxy Vue (`__v_isRef`/`__v_skip`/`__v_raw`) → `DataCloneError: An object could not be cloned.`.
+- **Helper centralisé** : création de `apps/desktop/src/renderer/src/utils/toPlain.ts` (`toPlain<T>(value)` = `JSON.parse(JSON.stringify(toRaw(value)))`). `project.ts` refactoré pour importer ce helper (suppression de la définition locale dupliquée).
+- **Fichiers corrigés (application `toPlain` sur chaque appel IPC concerné)** :
+  - `stores/editor.ts` — `chapter:save` : `paragraphs: toPlain(dirtyList)` (dirtyList = `paragraphs.value.filter(...)`, éléments Proxy). Bug HAUTE priorité (auto-save éditeur).
+  - `stores/history.ts` — `history:create-snapshot` : `paragraphs: toPlain(paragraphs)`. `HistoryView.vue` envoie `editorStore.paragraphs` (Proxy) → couvert par la sanitisation interne au store.
+  - `stores/lexicon.ts` — `lexicon:find-conflicts` : `{ entries: toPlain(entries.value) }`.
+  - `stores/plugins.ts` — `plugin:set-config` : `config: toPlain(config)` (le shallow spread `{...configValues.value}` laissait les objets imbriqués réactifs).
+  - `stores/workflow.ts` — `workflow:resume-batch` : `toPlain(job)` (latent, défensif).
+  - `components/export/ExportDialog.vue` — `export:run` (branche chapitre) : `paragraphs = toPlain(editorStore.paragraphs)`.
+  - `views/SettingsView.vue` — `consistencyTolerances` : `toPlain(tolerances.value)`.
+  - `views/HomeView.vue` — `create()` simplifié (dé-légué au store `toPlain`, supprime la double sérialisation inline + `toRaw` inutile) ; `showCreate` fermé après succès ; `open()` a désormais un try/catch + `openError` affiché dans la section projets récents.
+- **Non corrigé (sûr)** : `lexicon.saveEntry` reçoit un objet littéral plat du formulaire ; `project:open`/`project:stats`/`project:list-recent` passent des strings/primitives.
+- **Note preload** : non modifié (pas de sanitisation centralisée au preload pour éviter tout effet de bord sur payloads contenant `undefined`/Map/Set). La défense par `toPlain` aux points d'appel suffit.
+- **Vérification** : `type-check` 0 erreurs, `test` 981/981 passés (71 files), `lint` 0 erreurs (19 warnings préexistants).
+
+## Request — Fix "An object could not be cloned" à la création de projet (2026-07-10)
+- **Symptôme** : clic sur "Créer" du formulaire "Nouveau projet" → message d'erreur rouge "An object could not be cloned." dans `HomeView.vue:157`. Aucun projet n'est créé.
+- **Cause racine** : `newProject` est un `ref({...})` Vue dans `apps/desktop/src/renderer/src/views/HomeView.vue:30-35`. À la ligne 65, `newProject.value` est passé à `projectStore.create()`. Comme `ref()` enveloppe l'objet dans un Proxy réactif, l'accès à `.value` retourne un Proxy — pas un objet plat. `ipcRenderer.invoke()` d'Electron sérialise ses arguments via l'**algorithme de clonage structuré**, qui **rejette les Proxy** (ainsi que les Symbols `__v_isRef`/`__v_skip`/`__v_raw` que Vue injecte). D'où `DataCloneError: An object could not be cloned.` côté renderer, **avant même** d'atteindre le handler main `project:create`.
+- **Fichiers modifiés** :
+  - `apps/desktop/src/renderer/src/stores/project.ts` — import de `toRaw` + helper `toPlain()` qui unwrap les Proxy Vue. Appliqué dans `create()` à la frontière IPC (defense in depth).
+  - `apps/desktop/src/renderer/src/views/HomeView.vue` — import de `toRaw` + `toPlain(newProject.value)` avant `projectStore.create()` (fix au plus près de la source).
+- **Vérification** : `npm run type-check` 0 erreurs, `npm run test` 961/961 passés (67 files), `lint` 0 erreurs.
+- **Note** : aucun autre appel `invoke()` côté renderer ne passe d'objet réactif non-plat. Les autres canaux passent des strings ou des littéraux d'objet. Le risque est circonscrit à `project:create`.
+
 ## Request — UX: détection modèles Ollama + menus déroulants langues (2026-07-07)
 - **Amélioration UX** : (1) modèles Ollama détectés automatiquement et sélectionnables via menu déroulant, (2) langues source/cible en menus déroulants avec libellés lisibles.
 - **Découverte clé** : le backend existait déjà (canal IPC `ollama:list-models`, `OllamaManager.listModels()`, `useOllamaStore.models`). Seul le câblage UI manquait.

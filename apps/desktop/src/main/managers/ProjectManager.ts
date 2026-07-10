@@ -78,9 +78,6 @@ export class ProjectManager {
       "utf-8",
     );
 
-    const db = createProjectDatabase(projectDir);
-    runMigrations(db, migrationsDir);
-
     const project: Project = {
       id: crypto.randomUUID(),
       name: payload.name,
@@ -92,8 +89,21 @@ export class ProjectManager {
       updatedAt: new Date().toISOString(),
     };
 
-    new ProjectRepository(db).create(project);
-    db.close();
+    // Bug fix : si la DB/migration/insert échoue, on nettoie le dossier
+    // partiellement créé pour éviter le lockout permanent ("Le projet existe
+    // deja") au prochain essai avec le même nom. On ferme aussi la connexion
+    // DB dans tous les cas (try/finally) pour éviter les fuites WAL.
+    let db;
+    try {
+      db = createProjectDatabase(projectDir);
+      runMigrations(db, migrationsDir);
+      new ProjectRepository(db).create(project);
+    } catch (err) {
+      fs.rmSync(projectDir, { recursive: true, force: true });
+      throw err;
+    } finally {
+      if (db) {db.close();}
+    }
 
     await this.addToRecent(project);
     return project;
@@ -579,6 +589,11 @@ export class ProjectManager {
       .update(fs.readFileSync(filePath))
       .digest("hex");
 
+    // Bug fix : suivre les fichiers .md écrits pendant la transaction pour
+    // pouvoir les supprimer en cas d'échec DB (sinon chaque import raté laisse
+    // des fichiers orphelins dans source/ avec des UUID jamais référencés).
+    const writtenSourceFiles: string[] = [];
+
     db.exec("BEGIN TRANSACTION");
     try {
       for (const chapterText of chapterTexts) {
@@ -589,11 +604,9 @@ export class ProjectManager {
           : `${fileName} — Chapitre ${createdChapters.length + 1}`;
 
       // Stocker la source nettoyée en .md
-      fs.writeFileSync(
-        path.join(projectPath, "source", `${chapterId}.md`),
-        chapterText,
-        "utf-8",
-      );
+      const sourceFilePath = path.join(projectPath, "source", `${chapterId}.md`);
+      fs.writeFileSync(sourceFilePath, chapterText, "utf-8");
+      writtenSourceFiles.push(sourceFilePath);
 
       // Métadonnées du chapitre : langue détectée + hash du fichier original (SDD §5.8, §5.10)
       const sourceHash = crypto
@@ -676,6 +689,12 @@ export class ProjectManager {
     } catch (err) {
       db.exec("ROLLBACK");
       db.close();
+      // Bug fix : nettoyer les fichiers .md déjà écrits pour ne pas laisser
+      // d'orphelins dans source/ (le ROLLBACK DB annule les rows, mais les
+      // écritures disque ne sont pas transactionnelles).
+      for (const f of writtenSourceFiles) {
+        try {fs.rmSync(f, { force: true });} catch {/* best-effort */}
+      }
       throw err;
     }
 

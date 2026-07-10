@@ -107,12 +107,19 @@ class WorkflowRunner extends EventEmitter {
     super();
     this.profiler = profiler ?? new PerformanceProfiler();
     this.db = createProjectDatabase(projectPath);
-    runMigrations(this.db, path.join(__dirname, "../../db/migrations"));
+    try {
+      runMigrations(this.db, path.join(__dirname, "../../db/migrations"));
 
-    const projectRepo = new ProjectRepository(this.db);
-    const found = projectRepo.getByPath(projectPath);
-    if (!found) {throw new Error(`Projet non trouve : ${projectPath}`);}
-    this.project = found;
+      const projectRepo = new ProjectRepository(this.db);
+      const found = projectRepo.getByPath(projectPath);
+      if (!found) {throw new Error(`Projet non trouve : ${projectPath}`);}
+      this.project = found;
+    } catch (err) {
+      // Bug fix : si la migration ou la lookup projet échoue, on ferme la DB
+      // ouverte ci-dessus pour éviter une fuite de connexion WAL.
+      this.db.close();
+      throw err;
+    }
 
     this.sourceLanguage = this.project.sourceLanguage;
     this.targetLanguage = this.project.targetLanguage;
@@ -221,6 +228,8 @@ class WorkflowRunner extends EventEmitter {
       this.job.errorMessage = err instanceof Error ? err.message : String(err);
       this.job.finishedAt = new Date().toISOString();
       this.jobRepo.updateJob(this.job);
+      // Bug fix : fermer la DB sur échec (le runBatch normal ne l'atteint pas).
+      this.db.close();
     });
 
     return this.job;
@@ -248,6 +257,8 @@ class WorkflowRunner extends EventEmitter {
       this.job.errorMessage = err instanceof Error ? err.message : String(err);
       this.job.finishedAt = new Date().toISOString();
       this.jobRepo.updateJob(this.job);
+      // Bug fix : fermer la DB sur échec.
+      this.db.close();
     });
   }
 
@@ -289,6 +300,8 @@ class WorkflowRunner extends EventEmitter {
       this.job.errorMessage = err instanceof Error ? err.message : String(err);
       this.job.finishedAt = new Date().toISOString();
       this.jobRepo.updateJob(this.job);
+      // Bug fix : fermer la DB sur échec (le runSingle normal ne l'atteint pas).
+      this.db.close();
     });
 
     return this.job;
@@ -303,6 +316,8 @@ class WorkflowRunner extends EventEmitter {
       if (this.cancelled) {
         this.job.status = "cancelled";
         this.jobRepo.updateJob(this.job);
+        // Bug fix : fermer la DB sur early-return (cancel).
+        this.db.close();
         return;
       }
 
@@ -350,6 +365,8 @@ class WorkflowRunner extends EventEmitter {
       await this.runFromIndex(0);
 
       if (this.job.status === "failed") {
+        // Bug fix : fermer la DB sur early-return (échec chapitre).
+        this.db.close();
         return;
       }
     }

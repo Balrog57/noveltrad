@@ -52,13 +52,19 @@ export class ParagraphRepository {
   }
 
   updateMany(paragraphs: Paragraph[]): void {
+    // Bug fix : inclure source_text dans la mise à jour. history:rollback et
+    // history:rollback-partial appellent updateMany avec des paragraphes de
+    // snapshot qui contiennent le sourceText d'origine ; sans ce champ, le
+    // rollback restaurait translated_text/status mais gardait silencieusement
+    // le source modifié — état incohérent disque/DB.
     const update = this.db.prepare(
-      "UPDATE paragraphs SET translated_text = ?, status = ?, metadata = ? WHERE id = ?",
+      "UPDATE paragraphs SET source_text = ?, translated_text = ?, status = ?, metadata = ? WHERE id = ?",
     );
     this.db.exec("BEGIN TRANSACTION");
     try {
       for (const p of paragraphs) {
         update.run([
+          p.sourceText,
           p.translatedText ?? null,
           p.status,
           p.metadata ? JSON.stringify(p.metadata) : null,

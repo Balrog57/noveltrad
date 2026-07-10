@@ -192,7 +192,17 @@ function parseImportData(
 ): LexiconEntry[] {
   switch (format) {
     case "json": {
-      const parsed = JSON.parse(data);
+      // Bug fix : JSON.parse lance SyntaxError sur JSON malformé. Sans ce
+      // try/catch, l'erreur se propage hors du handler IPC et le renderer
+      // reçoit un message générique. On lance une Error lisible à la place.
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch (e) {
+        throw new Error(
+          `JSON invalide : ${e instanceof Error ? e.message : "erreur de parsing"}`,
+        );
+      }
       const arr = Array.isArray(parsed) ? parsed : [parsed];
       return arr.map((item: Record<string, unknown>) => ({
         id: crypto.randomUUID(),

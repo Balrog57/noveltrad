@@ -10,6 +10,7 @@ import type {
 } from "@shared/schemas/export.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import { createProjectDatabase } from "../../db/connection.js";
+import type { ProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { ChapterRepository } from "../../db/repositories/ChapterRepository.js";
 import { ParagraphRepository } from "../../db/repositories/ParagraphRepository.js";
@@ -25,10 +26,15 @@ function resolveProjectPath(projectId: string): string {
   const recent = (settings.get("recentProjects") as string[] | undefined) ?? [];
   const projectPath = recent.find((p) => {
     if (!fs.existsSync(path.join(p, "project.db"))) {return false;}
+    // Bug fix : try/finally pour garantir la fermeture de la DB même si
+    // getById lance une exception (DB corrompue / WAL verrouillé).
     const db = createProjectDatabase(p);
-    const found = new ProjectRepository(db).getById(projectId);
-    db.close();
-    return found !== undefined;
+    try {
+      const found = new ProjectRepository(db).getById(projectId);
+      return found !== undefined;
+    } finally {
+      db.close();
+    }
   });
   if (!projectPath) {
     throw new Error(`Projet non trouvé : ${projectId}`);
@@ -40,17 +46,21 @@ export function registerExportHandlers(): void {
   ipcMain.handle(
     "export:run",
     async (_event, payload): Promise<ExportRunResult> => {
+      let traceDb: ProjectDatabase | null = null;
       try {
         const input = exportRunSchema.parse(payload);
 
-        // SDD §6.2 : configurer le traçage des exports
+        // SDD §6.2 : configurer le traçage des exports. On ouvre une DB dédiée
+        // au traçage et on s'assure de la fermer dans tous les cas (le fix
+        // précédent laissait fuir la connexion sur chaque export).
         try {
           const projectPath = resolveProjectPath(input.projectId);
-          const db = createProjectDatabase(projectPath);
-          exportEngine.setDatabase(db);
+          traceDb = createProjectDatabase(projectPath);
+          exportEngine.setDatabase(traceDb);
         } catch {
           // Si la DB projet est introuvable, on poursuit quand même l'export
           // mais sans traçage dans la table `exports`
+          exportEngine.setDatabase(null as never);
         }
 
         // SDD §21.3 — Protection contre le path traversal sur le dossier de sortie
@@ -117,6 +127,11 @@ export function registerExportHandlers(): void {
           success: false,
           error: { code: "EXPORT_FAILED", message },
         };
+      } finally {
+        // Bug fix : fermer la DB de traçage pour éviter la fuite de connexion
+        // à chaque export (WAL/handles).
+        if (traceDb) {traceDb.close();}
+        exportEngine.setDatabase(null as never);
       }
     },
   );
@@ -125,6 +140,7 @@ export function registerExportHandlers(): void {
   ipcMain.handle(
     "export:batch",
     async (_event, payload): Promise<ExportBatchResult> => {
+      let db: ProjectDatabase | null = null;
       try {
         const input = exportBatchSchema.parse(payload);
 
@@ -141,18 +157,12 @@ export function registerExportHandlers(): void {
           };
         }
 
-        // Configurer le traçage des exports (SDD §6.2)
-        try {
-          const projectPath = resolveProjectPath(input.projectId);
-          const db = createProjectDatabase(projectPath);
-          exportEngine.setDatabase(db);
-        } catch {
-          // Si la DB projet est introuvable, on poursuit sans traçage
-        }
-
-        // Charger les paragraphes de chaque chapitre depuis la DB projet
+        // Bug fix : une seule connexion DB partagée entre le traçage (via
+        // setDatabase) et la lecture des chapitres/paragraphes. L'ancien code
+        // ouvrait 2 connexions dont une fuyait à chaque appel.
         const projectPath = resolveProjectPath(input.projectId);
-        const db = createProjectDatabase(projectPath);
+        db = createProjectDatabase(projectPath);
+        exportEngine.setDatabase(db);
         const chapterRepo = new ChapterRepository(db);
         const paragraphRepo = new ParagraphRepository(db);
 
@@ -166,7 +176,6 @@ export function registerExportHandlers(): void {
         for (const chapterId of input.chapterIds) {
           const chapter = chapterRepo.getById(chapterId);
           if (!chapter) {
-            db.close();
             return {
               success: false,
               error: {
@@ -182,7 +191,6 @@ export function registerExportHandlers(): void {
             paragraphs,
           });
         }
-        db.close();
 
         // Propager la targetLanguage dans les options pour toEpubMultiChapter
         const optionsWithLang = {
@@ -224,6 +232,11 @@ export function registerExportHandlers(): void {
           success: false,
           error: { code: "EXPORT_FAILED", message },
         };
+      } finally {
+        // Bug fix : fermer l'unique DB et libérer le singleton pour éviter la
+        // fuite de connexion et la race sur this.db.
+        if (db) {db.close();}
+        exportEngine.setDatabase(null as never);
       }
     },
   );
