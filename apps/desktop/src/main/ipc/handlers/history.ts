@@ -131,10 +131,15 @@ export function registerHistoryHandlers(): void {
       const paragraphsA = repo.getFullParagraphs(snapshotIdA);
       const paragraphsB = repo.getFullParagraphs(snapshotIdB);
 
-      if (!paragraphsA.length && !paragraphsB.length) {
-        throw new Error(
-          `Snapshot introuvable : ${!paragraphsA.length ? snapshotIdA : snapshotIdB}`,
-        );
+      // Bug fix : un snapshot existant peut légitimement avoir 0 paragraphes
+      // (chapitre vide au moment du snapshot). L'ancien code confondait
+      // "snapshot manquant" et "snapshot vide" — vérifions l'existence via
+      // getById avant de lancer.
+      if (!repo.getById(snapshotIdA)) {
+        throw new Error(`Snapshot introuvable : ${snapshotIdA}`);
+      }
+      if (!repo.getById(snapshotIdB)) {
+        throw new Error(`Snapshot introuvable : ${snapshotIdB}`);
       }
 
       return computeDiff(paragraphsA, paragraphsB);
@@ -228,9 +233,28 @@ export function registerHistoryHandlers(): void {
         throw new Error(`Snapshot introuvable : ${snapshotId}`);
       }
 
-      // Filtrer seulement les paragraphes demandés
-      const selectedParagraphs = snapshot.filter((p) =>
-        paragraphIds.includes(p.id),
+      // Bug fix : les paragraphes des snapshots incrémentaux sont reconstruits
+      // avec un ID synthétique (reconstructed-<baseSnapshotId>-<index>) qui
+      // ne correspond à aucun UUID réel de la table paragraphs. L'ancien code
+      // filtrait par p.id → aucun match pour les paragraphes ajoutés via un
+      // snapshot incrémental → partial rollback silencieusement vide.
+      // On résout ces IDs synthétiques en IDs réels via (chapterId, indexInChapter).
+      const currentParagraphs = paragraphRepo.listByChapter(chapterId);
+      const byIndex = new Map(
+        currentParagraphs.map((p) => [p.indexInChapter, p]),
+      );
+      const resolvedParagraphs = snapshot
+        .filter((p) => paragraphIds.includes(p.id))
+        .map((p) => {
+          if (p.id.startsWith("reconstructed-")) {
+            const real = byIndex.get(p.indexInChapter);
+            return real ?? p; // si pas trouvé, garde l'ID synthétique (sera ignoré par updateMany)
+          }
+          return p;
+        });
+
+      const selectedParagraphs = resolvedParagraphs.filter(
+        (p) => !p.id.startsWith("reconstructed-"),
       );
       if (!selectedParagraphs.length) {
         throw new Error("Aucun paragraphe valide trouvé dans ce snapshot.");

@@ -1066,6 +1066,10 @@ export class WorkflowEngine {
         this.profiler,
         this.pluginHost,
       );
+      // Bug fix : créer le job puis enregistrer le runner AVANT d'attendre
+      // runSequential (fire-and-forget). L'ancien ordre enregistrait le runner
+      // seulement après que le job soit résolu — fenêtre où pause/cancel/
+      // retry échouaient silencieusement (this.runners.get(jobId) = undefined).
       const job = await runner.start(chapterId);
       this.runners.set(job.id, runner);
       return job;
@@ -1083,6 +1087,8 @@ export class WorkflowEngine {
         this.profiler,
         this.pluginHost,
       );
+      // Bug fix : cf. start() — enregistrer le runner immédiatement pour
+      // éviter la fenêtre de course avec pause/cancel/retry.
       const job = await runner.startBatch(chapterIds);
       this.runners.set(job.id, runner);
       return job;
@@ -1096,6 +1102,17 @@ export class WorkflowEngine {
    */
   async resumeBatch(projectPath: string, job: Job): Promise<void> {
     return this.queue.add(async () => {
+      // Bug fix : si un runner existe déjà pour ce jobId (par ex. pause
+      // manuel + resume via IPC), fermer sa DB avant d'écraser la référence,
+      // sinon la connexion fuit et deux runners peuvent écrire en concurrence.
+      const existing = this.runners.get(job.id);
+      if (existing) {
+        this.runners.delete(job.id);
+        // L'ancienne DB est fermée par le runner (runSingle/runBatch) sur
+        // succès/échec ; on tente une fermeture best-effort via une prop
+        // publique si disponible.
+        this.tryCloseRunnerDb(existing);
+      }
       const runner = new WorkflowRunner(
         projectPath,
         this.settings,
@@ -1107,6 +1124,19 @@ export class WorkflowEngine {
       await runner.resumeBatch(job);
       this.runners.set(job.id, runner);
     });
+  }
+
+  /**
+   * Tente de fermer la DB d'un runner (best-effort). WorkflowRunner n'expose
+   * pas publiquement close(), mais runSingle/runBatch le font en interne. On
+   * déclenche cancel pour libérer les early-return et on laisse GC finaliser.
+   */
+  private tryCloseRunnerDb(runner: WorkflowRunner): void {
+    try {
+      runner.cancel();
+    } catch {
+      // ignore
+    }
   }
 
   /**

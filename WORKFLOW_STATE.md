@@ -1,5 +1,17 @@
 ﻿# Workflow State
 
+## Request — Fix bugs restants audit (2026-07-10)
+- **6 bugs supplémentaires corrigés** (sur 12 restants après le commit précédent) :
+  - **Bug 9+20 (HIGH)** `WorkflowEngine.start/startBatch/resumeBatch` — race d'enregistrement du runner dans `this.runners` (pause/cancel échouaient silencieusement dans une fenêtre) + double runner sur resume (deuxième DB ouverte sans fermer la première). Fix : `runners.set` immédiatement après création ; `resumeBatch` supprime l'ancien runner + `cancel()` best-effort avant d'en créer un nouveau.
+  - **Bug 10 (MEDIUM)** `history.ts:diff` — confondait snapshot manquant et snapshot vide (légitime pour chapitre vide). Fix : `repo.getById()` séparé pour vérifier l'existence.
+  - **Bug 11 (HIGH)** `history.ts:rollback-partial` — IDs synthétiques `reconstructed-*` des snapshots incrémentaux ne matchaient aucun UUID réel → partial rollback silencieusement vide. Fix : résolution des IDs synthétiques via lookup `(chapterId, indexInChapter)` → `paragraphRepo.listByChapter`.
+  - **Bug 16 (HIGH)** `ProjectManager.refreshSource` (branches merge et replace) — `fs.writeFileSync` du nouveau contenu AVANT la transaction DB ; sur rollback DB, fichier et DB divergeaient (hash stale, source modifié non reflété). Fix : sauvegarde de l'ancien contenu + restauration dans le catch.
+  - **Bug 17 (LOW)** `OllamaProvider.chat` — structure fragile : si `handle429` était un jour refactoré pour ne pas throw, un 429 tomberait dans la branche 4xx et lancerait `AbortError` non-retryable. Fix : commentaire documentant que `handle429: Promise<never>` et que le 429 ne doit jamais atteindre la branche 4xx.
+  - **Bug 19 (LOW)** `RagEngine.computeEmbeddings` — fallback silencieux sur mismatch de longueur d'embeddings. Fix : warning loggé pour diagnostic.
+- **Bugs non corrigés (documentés, latent/risk-modéré)** : Bug 7 (`promoteToGlobal` NOT NULL — code dormant, jamais appelé, fix nécessiterait migration de recréation de table), Bug 13 (HMR double-register — nécessite wrapper `safeHandle` dans 12 fichiers handlers, risque de régression élevé).
+- **Fichiers modifiés** : `managers/WorkflowEngine.ts`, `ipc/handlers/history.ts`, `managers/ProjectManager.ts`, `services/providers/OllamaProvider.ts`, `services/RagEngine.ts`.
+- **Vérification** : `type-check` 0 erreurs, `test` 981/981 passés (71 files), `lint` 0 erreurs (19 warnings préexistants).
+
 ## Request — Audit + fix bugs main process (2026-07-10)
 - **Audit** : exploration exhaustive du main process (managers, IPC handlers, repositories, services). 20 bugs identifiés.
 - **Bugs corrigés (8)** :

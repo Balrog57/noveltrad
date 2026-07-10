@@ -69,7 +69,13 @@ export class OllamaProvider implements AiProvider {
     });
     if (!res.ok) {
       if (res.status === 429) {
-        // SDD §3.7 : 429 retryable (Retry-After honoré)
+        // SDD §3.7 : 429 retryable (Retry-After honoré). handle429 throw
+        // systématiquement (Error) pour signaler le retry à pRetry. La
+        // structure 4xx ci-dessous n'est jamais atteinte pour un 429 — si
+        // handle429 est un jour refactoré pour ne pas throw, le 429
+        // tomberait dans la branche 4xx et lancerait AbortError
+        // (non-retryable), cassant le retry. handle429 est documenté comme
+        // retournant never (toujours throw).
         await handle429(res);
       }
       if (res.status >= 400 && res.status < 500) {

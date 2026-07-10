@@ -335,6 +335,10 @@ export class ProjectManager {
         }
 
         const mergedContent = merged.join("\n\n");
+
+        // Bug fix : sauvegarder l'ancien contenu pour le restaurer en cas
+        // d'échec DB (sinon le fichier sur disque et la DB divergent).
+        const previousContent = fs.readFileSync(sourceFilePath, "utf-8");
         fs.writeFileSync(sourceFilePath, mergedContent, "utf-8");
 
         // Mettre à jour les paragraphes dans la DB
@@ -377,6 +381,9 @@ export class ProjectManager {
         } catch (err) {
           db2.exec("ROLLBACK");
           db2.close();
+          // Bug fix : restaurer le fichier source pour rester cohérent avec
+          // le rollback DB.
+          try {fs.writeFileSync(sourceFilePath, previousContent, "utf-8");} catch {/* best-effort */}
           throw err;
         }
         db2.close();
@@ -387,6 +394,9 @@ export class ProjectManager {
       }
       default: {
         // "replace" — écraser le contenu
+        // Bug fix : sauvegarder l'ancien contenu pour le restaurer en cas
+        // d'échec DB (cf. branche "merge").
+        const previousContent = fs.readFileSync(sourceFilePath, "utf-8");
         fs.writeFileSync(sourceFilePath, newChapterContent, "utf-8");
 
         // Mettre à jour les paragraphes dans la DB
@@ -434,6 +444,9 @@ export class ProjectManager {
         } catch (err) {
           db2.exec("ROLLBACK");
           db2.close();
+          // Bug fix : restaurer le fichier source pour rester cohérent avec
+          // le rollback DB.
+          try {fs.writeFileSync(sourceFilePath, previousContent, "utf-8");} catch {/* best-effort */}
           throw err;
         }
         db2.close();

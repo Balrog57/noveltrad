@@ -77,6 +77,14 @@ export class RagEngine {
         if (data.embeddings?.length === texts.length) {
           return data.embeddings;
         }
+        // Bug fix : si l'API retourne ok mais avec un nombre d'embeddings
+        // différent du nombre de textes (Ollama tronqué, bug), on logue un
+        // warning et on bascule sur le fallback per-text — sans cette garde,
+        // le caller ferait embeddings[i] sur le mauvais paragraphe (assignation
+        // silencieusement décalée dans storeEmbeddingsForChapter).
+        logger.warn(
+          `[RagEngine] Batch embeddings mismatch: attendu ${texts.length}, reçu ${data.embeddings?.length ?? 0}. Fallback per-text.`,
+        );
       }
     } catch {
       // Fallback per-text
