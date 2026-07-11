@@ -376,30 +376,31 @@ export class HistoryRepository {
     }
 
     const baseParagraphs = baseSnapshot.paragraphs;
-    const result = [...baseParagraphs];
+
+    // Performance optimization: Pre-index base paragraphs into a Map for O(1) lookups
+    // This reduces the complexity of applying changes from O(N^2) to O(N)
+    const paragraphMap = new Map<number, Paragraph>();
+    for (const p of baseParagraphs) {
+      paragraphMap.set(p.indexInChapter, p);
+    }
 
     for (const change of payload.changes) {
-      const existingIdx = result.findIndex(
-        (p) => p.indexInChapter === change.index,
-      );
-
       if (change.sourceText === "") {
         // Suppression
-        if (existingIdx >= 0) {
-          result.splice(existingIdx, 1);
-        }
-      } else if (existingIdx >= 0) {
+        paragraphMap.delete(change.index);
+      } else if (paragraphMap.has(change.index)) {
         // Mise à jour
-        result[existingIdx] = {
-          ...result[existingIdx],
+        const existing = paragraphMap.get(change.index)!;
+        paragraphMap.set(change.index, {
+          ...existing,
           sourceText: change.sourceText,
           translatedText: change.translatedText,
           status: change.status,
-        };
+        });
       } else {
         // Ajout
         const baseId = `reconstructed-${payload.baseSnapshotId}-${change.index}`;
-        result.push({
+        paragraphMap.set(change.index, {
           id: baseId,
           chapterId: baseSnapshot.chapterId ?? "",
           indexInChapter: change.index,
@@ -410,7 +411,8 @@ export class HistoryRepository {
       }
     }
 
-    // Trier par indexInChapter
+    // Convert map back to array and sort par indexInChapter
+    const result = Array.from(paragraphMap.values());
     result.sort((a, b) => a.indexInChapter - b.indexInChapter);
     return result;
   }
