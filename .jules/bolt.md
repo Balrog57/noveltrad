@@ -1,3 +1,3 @@
-## 2024-07-08 - SQLite Mass Inserts Missing Transactions
-**Learning:** In node-sqlite3-wasm, executing multiple inserts or updates in a loop without explicit transaction blocks `BEGIN TRANSACTION` / `COMMIT` causes SQLite to wrap every single execution in its own transaction, severely impacting performance for bulk operations. This pattern is missing in `importTmx` function of `TranslationMemoryEngine.ts` where we can insert thousands of translation units in a single operation.
-**Action:** When performing bulk writes in a loop, always manually wrap the operations with `db.exec('BEGIN TRANSACTION')` and `db.exec('COMMIT')` along with a try/catch `ROLLBACK` for error handling.
+## 2024-05-24 - Array Updates Optimization in applyIncrementalChanges
+**Learning:** Applying array changes using `findIndex` inside a loop of updates causes O(N^2) complexity, significantly degrading performance when reconciling large snapshot histories in `HistoryRepository`.
+**Action:** Always pre-index base arrays into a `Map` to perform O(1) lookups, changing the complexity to O(N) while maintaining correctness.
