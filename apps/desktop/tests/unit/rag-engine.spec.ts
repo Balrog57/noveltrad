@@ -61,6 +61,10 @@ class MockRagDatabase {
     this.translatedParagraphs = paragraphs;
   }
 
+  exec(sql: string): void {
+    // Stub pour `BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK`
+  }
+
   prepare(sql: string): {
     get: (params: unknown[]) => unknown;
     run: (params: unknown[]) => void;
