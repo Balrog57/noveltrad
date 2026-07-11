@@ -134,7 +134,7 @@ async function confirmDelete(): Promise<void> {
       </button>
     </section>
 
-    <section v-if="showCreate" class="card">
+    <form v-if="showCreate" class="card" @submit.prevent="create">
       <h2>Nouveau projet</h2>
       <label>
         Nom
@@ -157,14 +157,14 @@ async function confirmDelete(): Promise<void> {
         </select>
       </label>
       <button
+        type="submit"
         class="btn-primary"
         :disabled="!newProject.name || projectStore.loading"
-        @click="create"
       >
         Creer
       </button>
       <p v-if="creationError" class="error-msg">{{ creationError }}</p>
-    </section>
+    </form>
 
     <!-- Dialogue de confirmation de suppression (SDD §5.11) -->
     <div v-if="showDeleteDialog" class="modal-overlay" @click.self="showDeleteDialog = false">
