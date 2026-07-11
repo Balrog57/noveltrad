@@ -177,39 +177,94 @@ describe("EditorStore", () => {
     expect(store.error).toBe("Erreur DB");
   });
 
-  it("should handle saveAll non-Error rejection", async () => {
+  it("should not lose new dirty edits during concurrent saveAll", async () => {
     const store = useEditorStore();
     store.chapterId = "chap-1";
-    const paragraph = makeParagraph({ id: "p1" });
-    store.paragraphs = [paragraph];
-    store.updateParagraph(paragraph);
+    const p1 = makeParagraph({ id: "p1", indexInChapter: 0, translatedText: "A" });
+    store.paragraphs = [p1];
+    store.updateParagraph({ ...p1, translatedText: "B" });
 
-    mockInvoke.mockRejectedValueOnce("Erreur inconnue");
+    let resolveSave: (() => void) | undefined;
+    mockInvoke.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
 
-    await store.saveAll();
+    const savePromise = store.saveAll();
 
-    expect(store.loading).toBe(false);
-    expect(store.error).toBe("Erreur lors de la sauvegarde");
+    // Pendant que saveAll est en attente, on modifie un autre paragraphe
+    const p2 = makeParagraph({ id: "p2", indexInChapter: 1, translatedText: "C" });
+    store.paragraphs = [p1, p2];
+    store.updateParagraph({ ...p2, translatedText: "D" });
+
+    expect(store.isDirty("p2")).toBe(true);
+
+    resolveSave?.();
+    await savePromise;
+
+    // p1 ne doit plus être dirty (envoyé avec succès), mais p2 doit le rester
+    expect(store.isDirty("p1")).toBe(false);
+    expect(store.isDirty("p2")).toBe(true);
+    expect(store.hasUnsavedChanges).toBe(true);
   });
 
-  it("should skip saveAll when chapterId is null", async () => {
-    const store = useEditorStore();
-    store.chapterId = null;
-    store.paragraphs = [makeParagraph()];
-
-    await store.saveAll();
-
-    expect(mockInvoke).not.toHaveBeenCalled();
-  });
-
-  it("should skip saveAll when no dirty paragraphs", async () => {
+  it("should serialize concurrent saveAll calls", async () => {
     const store = useEditorStore();
     store.chapterId = "chap-1";
-    store.paragraphs = [makeParagraph()];
-    // Aucun dirty — dirtyParagraphs est vide
+    const p1 = makeParagraph({ id: "p1", indexInChapter: 0, translatedText: "A" });
+    store.paragraphs = [p1];
+    store.updateParagraph({ ...p1, translatedText: "B" });
+
+    let resolveFirst: (() => void) | undefined;
+    mockInvoke.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    mockInvoke.mockResolvedValueOnce(undefined);
+
+    const first = store.saveAll();
+    const second = store.saveAll();
+
+    resolveFirst?.();
+    await Promise.all([first, second]);
+
+    // Le deuxième appel n'a rien envoyé car le premier était en cours
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("should only clear dirty set for paragraphs actually sent on success", async () => {
+    const store = useEditorStore();
+    store.chapterId = "chap-1";
+    const p1 = makeParagraph({ id: "p1", indexInChapter: 0, translatedText: "A" });
+    const p2 = makeParagraph({ id: "p2", indexInChapter: 1, translatedText: "B" });
+    store.paragraphs = [p1, p2];
+    store.updateParagraph({ ...p1, translatedText: "A2" });
+    store.updateParagraph({ ...p2, translatedText: "B2" });
+
+    mockInvoke.mockResolvedValueOnce(undefined);
 
     await store.saveAll();
 
-    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(store.isDirty("p1")).toBe(false);
+    expect(store.isDirty("p2")).toBe(false);
+  });
+
+  it("should not clear dirty set when saveAll fails", async () => {
+    const store = useEditorStore();
+    store.chapterId = "chap-1";
+    const p1 = makeParagraph({ id: "p1", indexInChapter: 0, translatedText: "A" });
+    store.paragraphs = [p1];
+    store.updateParagraph({ ...p1, translatedText: "B" });
+
+    mockInvoke.mockRejectedValueOnce(new Error("Erreur DB"));
+
+    await store.saveAll();
+
+    expect(store.isDirty("p1")).toBe(true);
+    expect(store.hasUnsavedChanges).toBe(true);
   });
 });

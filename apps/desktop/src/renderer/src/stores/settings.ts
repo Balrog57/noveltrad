@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { AppSettings } from "@shared/types/index.js";
+import { toPlain } from "../utils/toPlain";
 
 /** Valeurs par défaut utilisées si le handler settings échoue à charger */
 const DEFAULT_SETTINGS: AppSettings = {
@@ -36,6 +37,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 export const useSettingsStore = defineStore("settings", () => {
   const data = ref<Partial<AppSettings>>({});
   const loading = ref(false);
+  const error = ref<string | null>(null);
 
   async function load() {
     loading.value = true;
@@ -55,8 +57,12 @@ export const useSettingsStore = defineStore("settings", () => {
     key: K,
     value: AppSettings[K],
   ) {
-    data.value = await window.novelTradAPI.invoke("settings:set", key, value);
+    try {
+      data.value = await window.novelTradAPI.invoke("settings:set", key, toPlain(value));
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : `Erreur lors de la sauvegarde de ${key}`;
+    }
   }
 
-  return { data, loading, load, set };
+  return { data, loading, error, load, set };
 });

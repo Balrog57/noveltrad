@@ -114,93 +114,94 @@ class WorkflowRunner extends EventEmitter {
       const found = projectRepo.getByPath(projectPath);
       if (!found) {throw new Error(`Projet non trouve : ${projectPath}`);}
       this.project = found;
+
+      this.sourceLanguage = this.project.sourceLanguage;
+      this.targetLanguage = this.project.targetLanguage;
+
+      this.jobRepo = new JobRepository(this.db);
+      this.paragraphRepo = new ParagraphRepository(this.db);
+      this.chapterRepo = new ChapterRepository(this.db);
+      this.lexiconRepo = new LexiconRepository(this.db);
+      this.summaryRepo = new SummaryRepository(this.db);
+
+      const aiRouter = new AiRouter();
+      const defaultModel = this.settings.get("defaultModel");
+      const ollamaHost = this.settings.get("ollamaHost");
+      aiRouter.register(
+        new OllamaProvider(
+          "ollama-default",
+          "Ollama local",
+          defaultModel,
+          ollamaHost,
+        ),
+      );
+
+      // SDD §15 : câbler les plugins de providers (si PluginHost disponible)
+      if (this.pluginHost) {
+        aiRouter.setPluginProviderResolver((id: string) =>
+          this.pluginHost!.getProvider(id) as unknown as AiProvider | undefined,
+        );
+      }
+
+      // SDD §22.1 : activer le cache des réponses IA
+      const aiCache = new AiCache(this.db);
+      aiRouter.setCache(aiCache);
+
+      // SDD §3.8 : configurer les coûts par modèle (depuis les settings)
+      aiRouter.setModelCosts(this.settings.get("modelCosts"));
+
+      // T5 fix : câbler le PromptLoader pour permettre les overrides de prompts
+      // en DB (SDD §25). Les agents continuent d'importer leurs constantes TS ;
+      // le PromptLoader est additif — AiRouter.chat() le consulte si défini.
+      const promptLoader = new PromptLoader(this.db);
+      aiRouter.setPromptLoader(promptLoader);
+
+      const lexiconEngine = new LexiconEngine();
+      const tmEngine = new TranslationMemoryEngine();
+      tmEngine.setDatabase(this.db);
+
+      // Initialiser le moteur RAG si activé dans les paramètres
+      const ragEnabled = this.settings.get("ragEnabled");
+      if (ragEnabled) {
+        this.ragEngine = new RagEngine(this.db, ollamaHost);
+      }
+
+      const exportEngine = new ExportEngine();
+      exportEngine.setDatabase(this.db);
+
+      // SDD §12.5 : service de calibration des scores de qualité
+      const calibrationService = new CalibrationService(this.db);
+
+      this.factory = new AgentFactory({
+        aiRouter,
+        lexiconEngine,
+        tmEngine,
+        consistencyChecker: new ConsistencyChecker(),
+        qualityChecker: new QualityChecker(),
+        exportEngine,
+        calibrationService,
+        // SDD §15 : permettre aux plugins de remplacer un agent built-in
+        getPluginAgent: this.pluginHost
+          ? (stage, config) => {
+              const factoryFn = this.pluginHost!.getAgent(stage);
+              // getAgent() retourne la factory enregistrée par le plugin via
+              // context.registerAgent(stage, factory). On l'appelle avec le config.
+              if (typeof factoryFn === "function") {
+                const agent = (factoryFn as (cfg: unknown) => unknown)(config);
+                return agent as import("../services/agents/Agent.js").Agent;
+              }
+              return undefined;
+            }
+          : undefined,
+      });
+      this.aiRouter = aiRouter;
     } catch (err) {
-      // Bug fix : si la migration ou la lookup projet échoue, on ferme la DB
-      // ouverte ci-dessus pour éviter une fuite de connexion WAL.
+      // Bug fix : fermer la DB si n'importe quelle étape du constructeur
+      // échoue (migration, lookup projet, AiRouter, AiCache, PromptLoader,
+      // RagEngine, AgentFactory, etc.) pour éviter une fuite de connexion WAL.
       this.db.close();
       throw err;
     }
-
-    this.sourceLanguage = this.project.sourceLanguage;
-    this.targetLanguage = this.project.targetLanguage;
-
-    this.jobRepo = new JobRepository(this.db);
-    this.paragraphRepo = new ParagraphRepository(this.db);
-    this.chapterRepo = new ChapterRepository(this.db);
-    this.lexiconRepo = new LexiconRepository(this.db);
-    this.summaryRepo = new SummaryRepository(this.db);
-
-    const aiRouter = new AiRouter();
-    const defaultModel = this.settings.get("defaultModel");
-    const ollamaHost = this.settings.get("ollamaHost");
-    aiRouter.register(
-      new OllamaProvider(
-        "ollama-default",
-        "Ollama local",
-        defaultModel,
-        ollamaHost,
-      ),
-    );
-
-    // SDD §15 : câbler les plugins de providers (si PluginHost disponible)
-    if (this.pluginHost) {
-      aiRouter.setPluginProviderResolver((id: string) =>
-        this.pluginHost!.getProvider(id) as unknown as AiProvider | undefined,
-      );
-    }
-
-    // SDD §22.1 : activer le cache des réponses IA
-    const aiCache = new AiCache(this.db);
-    aiRouter.setCache(aiCache);
-
-    // SDD §3.8 : configurer les coûts par modèle (depuis les settings)
-    aiRouter.setModelCosts(this.settings.get("modelCosts"));
-
-    // T5 fix : câbler le PromptLoader pour permettre les overrides de prompts
-    // en DB (SDD §25). Les agents continuent d'importer leurs constantes TS ;
-    // le PromptLoader est additif — AiRouter.chat() le consulte si défini.
-    const promptLoader = new PromptLoader(this.db);
-    aiRouter.setPromptLoader(promptLoader);
-
-    const lexiconEngine = new LexiconEngine();
-    const tmEngine = new TranslationMemoryEngine();
-    tmEngine.setDatabase(this.db);
-
-    // Initialiser le moteur RAG si activé dans les paramètres
-    const ragEnabled = this.settings.get("ragEnabled");
-    if (ragEnabled) {
-      this.ragEngine = new RagEngine(this.db, ollamaHost);
-    }
-
-    const exportEngine = new ExportEngine();
-    exportEngine.setDatabase(this.db);
-
-    // SDD §12.5 : service de calibration des scores de qualité
-    const calibrationService = new CalibrationService(this.db);
-
-    this.factory = new AgentFactory({
-      aiRouter,
-      lexiconEngine,
-      tmEngine,
-      consistencyChecker: new ConsistencyChecker(),
-      qualityChecker: new QualityChecker(),
-      exportEngine,
-      calibrationService,
-      // SDD §15 : permettre aux plugins de remplacer un agent built-in
-      getPluginAgent: this.pluginHost
-        ? (stage, config) => {
-            const factoryFn = this.pluginHost!.getAgent(stage);
-            // getAgent() retourne la factory enregistrée par le plugin via
-            // context.registerAgent(stage, factory). On l'appelle avec le config.
-            if (typeof factoryFn === "function") {
-              const agent = (factoryFn as (cfg: unknown) => unknown)(config);
-              return agent as import("../services/agents/Agent.js").Agent;
-            }
-            return undefined;
-          }
-        : undefined,
-    });
-    this.aiRouter = aiRouter;
   }
 
   async start(chapterId?: string): Promise<Job> {
@@ -467,6 +468,7 @@ class WorkflowRunner extends EventEmitter {
       if (this.cancelled) {
         this.job.status = "cancelled";
         this.jobRepo.updateJob(this.job);
+        this.db.close();
         return;
       }
 

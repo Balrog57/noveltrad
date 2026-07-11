@@ -1,5 +1,23 @@
 ﻿# Workflow State
 
+## Request — Fix 12 bugs audit restants (2026-07-11)
+- **12 bugs corrigés** (sur les 12 bugs listés dans l'audit) :
+  1. **HIGH** `editorStore.saveAll()` race condition — snapshot atomique du dirty set, verrou `isSaving` pour sérialiser les appels concurrents, nettoyage sélectif des IDs envoyés, pas de vidage sur échec.
+  2. **HIGH** `ProjectManager.create()` cleanup order — `db.close()` dans le catch avant `fs.rmSync()` pour éviter EBUSY sur Windows.
+  3. **HIGH** `ProjectManager.open()` DB leak — wrap du corps dans `try/finally` avec `db.close()`.
+  4. **HIGH** `ProjectManager.delete()/listChapters()/resolveProjectPath()` DB leaks dans callbacks `.find()` — `try/finally` avec `db.close()`.
+  5. **HIGH** `WorkflowRunner` constructor DB leak — tout le corps constructeur après `createProjectDatabase` wrappé dans un unique `try/catch` avec `db.close()`.
+  6. **HIGH** `WorkflowEngine.runFromIndex()` cancel DB leak — `db.close()` dans le retour anticipé sur cancel.
+  7. **MEDIUM** `SettingsView` media-query listener leak — référence `mediaQueryHandler` conservée et utilisée dans `removeEventListener`.
+  8. **MEDIUM** `ProjectView` stale project ref — remplacement de `ref(projectStore.currentProject)` par `computed(() => projectStore.currentProject)`.
+  9. **MEDIUM** `WorkflowStore` error handling — ajout du ref `error`, try/catch sur toutes les actions (pause/resume/cancel/list/listActive/resumeBatch/retryStep/retryFrom).
+  10. **MEDIUM** `SettingsStore.set()` error handling — try/catch + `toPlain(value)` avant invoke pour éviter DataCloneError.
+  11. **MEDIUM** `SettingsView` theme applied before persistence — persistance d'abord, application ensuite, revert sur échec.
+  12. **MEDIUM** `ProjectStore.loadStats()` stale stats — `stats.value = null` en début de chargement.
+- **Fichiers modifiés** : `stores/editor.ts`, `managers/ProjectManager.ts`, `managers/WorkflowEngine.ts`, `views/SettingsView.vue`, `views/ProjectView.vue`, `stores/workflow.ts`, `stores/settings.ts`, `stores/project.ts`.
+- **Vérification** : `type-check` 0 erreurs, `test` **982/982 passés** (71 files, +1 test vs 981), `lint` 0 erreurs (20 warnings préexistants).
+- **Prochain agent** : `reviewer` — review des changements ci-dessus.
+
 ## Request — Fix 2 derniers bugs audit (2026-07-10)
 - **Bug 7 (HIGH latent)** `db/migrations/016_tm_global_nullable.sql` (nouveau) — recrée `translation_memory` avec `project_id` nullable + FK `ON DELETE SET NULL` (pattern SQLite standard : CREATE new + INSERT OR IGNORE + DROP + RENAME). `promoteToGlobal()` peut maintenant insérer `is_global=1, project_id=NULL` sans violer NOT NULL. Test `db-migrations.spec.ts` mis à jour (15 → 16 migrations attendues).
 - **Bug 13 (MEDIUM dev-only)** `ipc/router.ts` — monkey-patch de `ipcMain.handle` au chargement du module : `removeHandler(channel)` avant chaque registration → idempotent. Aucun changement requis dans les 12 fichiers handlers (alternative au wrapper `safeHandle` qui aurait nécessité de migrer 12 fichiers).

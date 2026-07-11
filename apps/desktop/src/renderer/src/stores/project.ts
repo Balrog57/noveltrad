@@ -84,6 +84,7 @@ export const useProjectStore = defineStore("project", () => {
    * SDD §4.6 — Tableau de bord projet.
    */
   async function loadStats(projectId: string): Promise<void> {
+    stats.value = null; // Nettoyer les stats périmées avant de charger
     try {
       stats.value = await window.novelTradAPI.invoke<ProjectStats>(
         "project:stats",
@@ -92,7 +93,6 @@ export const useProjectStore = defineStore("project", () => {
       error.value = null;
     } catch (err) {
       console.error("[project store] loadStats error:", err);
-      stats.value = null;
       error.value = err instanceof Error ? err.message : "Failed to load stats";
     }
   }

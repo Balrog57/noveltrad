@@ -16,7 +16,7 @@ const route = useRoute();
 const router = useRouter();
 const projectStore = useProjectStore();
 const workflowStore = useWorkflowStore();
-const project = ref(projectStore.currentProject);
+const project = computed(() => projectStore.currentProject);
 const starting = ref(false);
 const showExport = ref(false);
 
@@ -55,8 +55,11 @@ const createdAtFormatted = computed(() => {
 onMounted(async () => {
   if (!projectStore.currentProject) {
     await projectStore.loadRecent();
-    project.value =
+    const found =
       projectStore.recentProjects.find((p) => p.id === projectId) || null;
+    if (found) {
+      projectStore.currentProject = found;
+    }
   }
   // Charger les statistiques du projet
   await projectStore.loadStats(projectId);

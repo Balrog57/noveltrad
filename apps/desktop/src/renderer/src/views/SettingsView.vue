@@ -145,22 +145,29 @@ function applyTheme(theme: "dark" | "light" | "system"): void {
 
 // Media query listener pour le mode système
 let mediaQuery: MediaQueryList | null = null;
+let mediaQueryHandler: ((this: MediaQueryList, ev: MediaQueryListEvent) => unknown) | null = null;
 
 function setupSystemThemeListener(): void {
   mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-  const handler = () => {
+  mediaQueryHandler = () => {
     if ((settings.data.theme ?? themeValue.value) === "system") {
       applyTheme("system");
     }
   };
-  mediaQuery.addEventListener("change", handler);
+  mediaQuery.addEventListener("change", mediaQueryHandler);
 }
 
 async function onThemeChange(value: string): Promise<void> {
-  const theme = value as "dark" | "light" | "system";
-  themeValue.value = theme;
-  applyTheme(theme);
-  await settings.set("theme", theme);
+  const newTheme = value as "dark" | "light" | "system";
+  const previousTheme = themeValue.value;
+  try {
+    await settings.set("theme", newTheme);
+    themeValue.value = newTheme;
+    applyTheme(newTheme);
+  } catch {
+    themeValue.value = previousTheme;
+    applyTheme(previousTheme as "dark" | "light" | "system");
+  }
 }
 
 watch(
@@ -168,7 +175,7 @@ watch(
   (newTheme) => {
     if (newTheme) {
       themeValue.value = newTheme;
-      applyTheme(newTheme);
+      applyTheme(newTheme as "dark" | "light" | "system");
     }
   },
 );
@@ -216,8 +223,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (mediaQuery) {
-    mediaQuery.removeEventListener("change", () => {});
+  if (mediaQuery && mediaQueryHandler) {
+    mediaQuery.removeEventListener("change", mediaQueryHandler);
   }
 });
 </script>

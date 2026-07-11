@@ -17,6 +17,9 @@ export const useEditorStore = defineStore("editor", () => {
   /** Indique si des paragraphes modifiés n'ont pas encore été sauvegardés */
   const hasUnsavedChanges = computed(() => dirtyParagraphs.value.size > 0);
 
+  /** Verrou pour sérialiser les appels concurrents à saveAll() */
+  const isSaving = ref(false);
+
   /** Indique si un paragraphe donné a été modifié mais pas sauvegardé */
   function isDirty(paragraphId: string): boolean {
     return dirtyParagraphs.value.has(paragraphId);
@@ -55,11 +58,21 @@ export const useEditorStore = defineStore("editor", () => {
   /** Sauvegarde uniquement les paragraphes modifiés via IPC */
   async function saveAll(): Promise<void> {
     if (!chapterId.value || paragraphs.value.length === 0) {return;}
-    // Fix 5 : Ne sauvegarder que les paragraphes modifiés (dirty)
+    // Snapshoter atomiquement les IDs dirty avant l'IPC pour ne pas perdre
+    // les nouveaux edits concurrents
+    const toSend = [...dirtyParagraphs.value];
+    if (toSend.length === 0) {return;}
+    // Sérialiser les appels concurrents
+    if (isSaving.value) {return;}
+    isSaving.value = true;
+
     const dirtyList = paragraphs.value.filter((p) =>
-      dirtyParagraphs.value.has(p.id),
+      toSend.includes(p.id),
     );
-    if (dirtyList.length === 0) {return;}
+    if (dirtyList.length === 0) {
+      isSaving.value = false;
+      return;
+    }
     loading.value = true;
     error.value = null;
     try {
@@ -67,12 +80,19 @@ export const useEditorStore = defineStore("editor", () => {
         chapterId: chapterId.value,
         paragraphs: toPlain(dirtyList),
       });
-      dirtyParagraphs.value = new Set();
+      // Ne retirer que les IDs qui ont effectivement été envoyés
+      const nextDirty = new Set(dirtyParagraphs.value);
+      for (const id of toSend) {
+        nextDirty.delete(id);
+      }
+      dirtyParagraphs.value = nextDirty;
     } catch (err) {
       error.value =
         err instanceof Error ? err.message : "Erreur lors de la sauvegarde";
+      // Ne PAS vider dirtyParagraphs en cas d'échec
     } finally {
       loading.value = false;
+      isSaving.value = false;
     }
   }
 
@@ -91,6 +111,7 @@ export const useEditorStore = defineStore("editor", () => {
     dirtyParagraphs,
     loading,
     error,
+    isSaving,
     hasUnsavedChanges,
     isDirty,
     loadChapter,

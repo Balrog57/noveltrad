@@ -17,6 +17,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
   const activeJobs = ref<Job[]>([]);
   const progress = ref<WorkflowProgressPayload | null>(null);
   const loading = ref(false);
+  const error = ref<string | null>(null);
   /** SDD §7.9 : IDs des chapitres sélectionnés pour le batch */
   const selectedChapterIds = ref<string[]>([]);
 
@@ -59,40 +60,74 @@ export const useWorkflowStore = defineStore("workflow", () => {
   }
 
   async function pause(jobId: string): Promise<void> {
-    await window.novelTradAPI.invoke("workflow:pause", jobId);
+    try {
+      await window.novelTradAPI.invoke("workflow:pause", jobId);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors de la pause";
+    }
   }
 
   async function resume(jobId: string): Promise<void> {
-    await window.novelTradAPI.invoke("workflow:resume", jobId);
+    try {
+      await window.novelTradAPI.invoke("workflow:resume", jobId);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors de la reprise";
+    }
   }
 
   async function cancel(jobId: string): Promise<void> {
-    await window.novelTradAPI.invoke("workflow:cancel", jobId);
+    try {
+      await window.novelTradAPI.invoke("workflow:cancel", jobId);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors de l'annulation";
+    }
   }
 
   async function list(projectPath: string): Promise<Job[]> {
-    return window.novelTradAPI.invoke<Job[]>("workflow:list", projectPath);
+    try {
+      return await window.novelTradAPI.invoke<Job[]>("workflow:list", projectPath);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors du listage";
+      return [];
+    }
   }
 
   /** SDD §7.11 : liste les jobs en cours (running/paused) pour la reprise */
   async function listActive(projectPath: string): Promise<Job[]> {
-    return window.novelTradAPI.invoke<Job[]>(
-      "workflow:list-active",
-      projectPath,
-    );
+    try {
+      return await window.novelTradAPI.invoke<Job[]>(
+        "workflow:list-active",
+        projectPath,
+      );
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors du listage actif";
+      return [];
+    }
   }
 
   /** SDD §7.11 : reprend un job batch interrompu */
   async function resumeBatch(projectPath: string, job: Job): Promise<void> {
-    await window.novelTradAPI.invoke("workflow:resume-batch", projectPath, toPlain(job));
+    try {
+      await window.novelTradAPI.invoke("workflow:resume-batch", projectPath, toPlain(job));
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors de la reprise du batch";
+    }
   }
 
   async function retryStep(jobId: string, stepId: string): Promise<void> {
-    await window.novelTradAPI.invoke("workflow:retry-step", jobId, stepId);
+    try {
+      await window.novelTradAPI.invoke("workflow:retry-step", jobId, stepId);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors du retry";
+    }
   }
 
   async function retryFrom(jobId: string, stage: WorkflowStage): Promise<void> {
-    await window.novelTradAPI.invoke("workflow:retry-from", jobId, stage);
+    try {
+      await window.novelTradAPI.invoke("workflow:retry-from", jobId, stage);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors du retryFrom";
+    }
   }
 
   // --- SDD §7.9 : gestion de la sélection multiple de chapitres ---
@@ -126,6 +161,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     activeJobs,
     progress,
     loading,
+    error,
     selectedChapterIds,
     start,
     startBatch,

@@ -94,15 +94,20 @@ export class ProjectManager {
     // deja") au prochain essai avec le même nom. On ferme aussi la connexion
     // DB dans tous les cas (try/finally) pour éviter les fuites WAL.
     let db;
+    let dbClosed = false;
     try {
       db = createProjectDatabase(projectDir);
       runMigrations(db, migrationsDir);
       new ProjectRepository(db).create(project);
     } catch (err) {
+      if (db) {
+        db.close();
+        dbClosed = true;
+      }
       fs.rmSync(projectDir, { recursive: true, force: true });
       throw err;
     } finally {
-      if (db) {db.close();}
+      if (db && !dbClosed) {db.close();}
     }
 
     await this.addToRecent(project);
@@ -111,25 +116,31 @@ export class ProjectManager {
 
   async open(projectPath: string): Promise<Project> {
     const db = createProjectDatabase(projectPath);
-    runMigrations(db, migrationsDir);
-    const repo = new ProjectRepository(db);
-    let project = repo.getByPath(projectPath);
+    let project: Project;
+    try {
+      runMigrations(db, migrationsDir);
+      const repo = new ProjectRepository(db);
+      const found = repo.getByPath(projectPath);
 
-    if (!project) {
-      const projectName = path.basename(projectPath);
-      project = {
-        id: crypto.randomUUID(),
-        name: projectName,
-        sourceLanguage: "zh",
-        targetLanguage: "fr",
-        path: projectPath,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      repo.create(project);
+      if (found) {
+        project = found;
+      } else {
+        const projectName = path.basename(projectPath);
+        project = {
+          id: crypto.randomUUID(),
+          name: projectName,
+          sourceLanguage: "zh",
+          targetLanguage: "fr",
+          path: projectPath,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        repo.create(project);
+      }
+    } finally {
+      db.close();
     }
 
-    db.close();
     await this.addToRecent(project);
     return project;
   }
@@ -158,10 +169,14 @@ export class ProjectManager {
     const projectPath = recent.find((p) => {
       const dbPath = path.join(p, "project.db");
       if (!fs.existsSync(dbPath)) {return false;}
-      const db = createProjectDatabase(p);
-      const project = new ProjectRepository(db).getById(projectId);
-      db.close();
-      return project !== undefined;
+      let db;
+      try {
+        db = createProjectDatabase(p);
+        const project = new ProjectRepository(db).getById(projectId);
+        return project !== undefined;
+      } finally {
+        if (db) {db.close();}
+      }
     });
 
     if (!projectPath) {
@@ -719,10 +734,14 @@ export class ProjectManager {
     const projectPath = (
       (this.settings.get("recentProjects")) ?? []
     ).find((p) => {
-      const db = createProjectDatabase(p);
-      const found = new ProjectRepository(db).getById(projectId);
-      db.close();
-      return found !== undefined;
+      let db;
+      try {
+        db = createProjectDatabase(p);
+        const found = new ProjectRepository(db).getById(projectId);
+        return found !== undefined;
+      } finally {
+        if (db) {db.close();}
+      }
     });
 
     if (!projectPath) {
@@ -765,10 +784,14 @@ export class ProjectManager {
     const projectPath = (
       (this.settings.get("recentProjects")) ?? []
     ).find((p) => {
-      const db = createProjectDatabase(p);
-      const found = new ProjectRepository(db).getById(projectId);
-      db.close();
-      return found !== undefined;
+      let db;
+      try {
+        db = createProjectDatabase(p);
+        const found = new ProjectRepository(db).getById(projectId);
+        return found !== undefined;
+      } finally {
+        if (db) {db.close();}
+      }
     });
 
     if (!projectPath) {
