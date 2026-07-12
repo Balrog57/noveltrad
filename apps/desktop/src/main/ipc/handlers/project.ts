@@ -12,26 +12,28 @@ import { assertWithinProject } from "../../utils/paths.js";
 const settings = new SettingsManager();
 const projectManager = new ProjectManager(settings);
 
+const TRAVERSAL_REGEX = /(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i;
+
 const createProjectSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100).refine((val) => !TRAVERSAL_REGEX.test(val), { message: "Path traversal detected" }),
   author: z.string().max(100).optional(),
   sourceLanguage: z.string().length(2),
   targetLanguage: z.string().length(2),
-  parentPath: z.string().min(1),
+  parentPath: z.string().min(1).refine((val) => !TRAVERSAL_REGEX.test(val), { message: "Path traversal detected" }),
 });
 
-const projectPathSchema = z.string().min(1, { message: "projectPath requis" });
+const projectPathSchema = z.string().min(1, { message: "projectPath requis" }).refine((val) => !TRAVERSAL_REGEX.test(val), { message: "Path traversal detected" });
 
 const importFilesSchema = z.object({
   projectId: z.string().uuid(),
-  filePaths: z.array(z.string().min(1)).min(1).max(50),
+  filePaths: z.array(z.string().min(1).refine((val) => !TRAVERSAL_REGEX.test(val), { message: "Path traversal detected" })).min(1).max(50),
 });
 
 const projectIdSchema = z.string().uuid();
 
 const chapterImportSchema = z.object({
   projectId: z.string().uuid(),
-  filePath: z.string().min(1),
+  filePath: z.string().min(1).refine((val) => !TRAVERSAL_REGEX.test(val), { message: "Path traversal detected" }),
 });
 
 export function registerProjectHandlers(): void {
@@ -239,7 +241,7 @@ export function registerProjectHandlers(): void {
    */
   const detectDuplicateSchema = z.object({
     projectId: z.string().uuid(),
-    filePath: z.string().min(1),
+    filePath: z.string().min(1).refine((val) => !TRAVERSAL_REGEX.test(val), { message: "Path traversal detected" }),
   });
 
   ipcMain.handle(
