@@ -66,10 +66,21 @@ const emit = defineEmits<{
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition:
+    opacity 0.15s ease,
+    transform 0.1s ease;
 }
 
 .nt-empty-action:hover {
   opacity: 0.85;
+}
+
+.nt-empty-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nt-empty-action:active {
+  transform: scale(0.97);
 }
 </style>

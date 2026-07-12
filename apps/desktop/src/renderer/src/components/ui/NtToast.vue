@@ -146,9 +146,17 @@ onUnmounted(() => {
   font-size: 14px;
   padding: 2px 4px;
   flex-shrink: 0;
+  border-radius: 4px;
+  transition: opacity 0.15s ease;
 }
 
 .nt-toast-close:hover {
+  opacity: 1;
+}
+
+.nt-toast-close:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
   opacity: 1;
 }
 

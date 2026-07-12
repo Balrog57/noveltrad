@@ -200,11 +200,19 @@ const sizeClass = {
   padding: 4px 8px;
   border-radius: 4px;
   line-height: 1;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .nt-modal-close:hover {
   color: var(--text-primary);
   background-color: var(--bg-tertiary);
+}
+
+.nt-modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .nt-modal-body {
