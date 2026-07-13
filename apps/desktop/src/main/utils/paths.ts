@@ -22,6 +22,11 @@ export function assertWithinProject(
   basePath: string,
   targetPath: string,
 ): void {
+  // SDD §21.3 — Reject URL-encoded traversal sequences BEFORE path resolution
+  if (/(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i.test(targetPath)) {
+    throw new Error("Path traversal detected");
+  }
+
   const resolvedBase = path.resolve(basePath);
   const resolvedTarget = path.resolve(targetPath);
   if (!resolvedTarget.startsWith(resolvedBase + path.sep) &&

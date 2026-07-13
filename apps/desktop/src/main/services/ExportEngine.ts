@@ -66,6 +66,11 @@ export class ExportEngine {
     const outputPath = input.outputPath ?? this.defaultOutputPath(input);
 
     // SDD §21.3 — Protection contre le path traversal
+    // Empêche les chemins contenant ".." et URL-encoded path traversal
+    if (/(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i.test(outputPath)) {
+      throw new Error("Path traversal detected");
+    }
+
     const basePath = input.outputPath
       ? path.dirname(path.resolve(input.outputPath))
       : path.resolve(".");

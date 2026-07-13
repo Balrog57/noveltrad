@@ -65,9 +65,8 @@ export function registerExportHandlers(): void {
 
         // SDD §21.3 — Protection contre le path traversal sur le dossier de sortie
         if (input.outputPath) {
-          const resolvedOutput = path.resolve(input.outputPath);
-          // Empêche les chemins contenant ".." de sortir du répertoire courant
-          if (resolvedOutput.includes("..")) {
+          // Empêche les chemins contenant ".." et URL-encoded path traversal
+          if (/(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i.test(input.outputPath)) {
             return {
               success: false,
               error: {
@@ -145,8 +144,8 @@ export function registerExportHandlers(): void {
         const input = exportBatchSchema.parse(payload);
 
         // SDD §21.3 — Protection contre le path traversal sur le dossier de sortie
-        const resolvedDir = path.resolve(input.outputDir);
-        if (resolvedDir.includes("..")) {
+        // Empêche les chemins contenant ".." et URL-encoded path traversal
+        if (/(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i.test(input.outputDir)) {
           return {
             success: false,
             error: {
