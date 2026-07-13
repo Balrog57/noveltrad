@@ -5,6 +5,7 @@ import { useProjectStore } from "../stores/project";
 import { useOllamaStore } from "../stores/ollama";
 import { useUpdateStore } from "../stores/update";
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@shared/constants/languages.js";
+import type { Project } from "@shared/types/index.js";
 
 const router = useRouter();
 const projectStore = useProjectStore();
@@ -83,6 +84,28 @@ async function open(path: string) {
   }
 }
 
+/**
+ * Ouvre un sélecteur de dossier pour choisir un projet existant sur le disque
+ * (utile quand un projet n'est pas dans la liste des recents — ex. dossier
+ * créé manuellement, projet perdu après un crash, restauration de sauvegarde).
+ * Le handler IPC `project:open-dialog` ouvre le dialog natif puis appelle
+ * ProjectManager.open(projectPath) qui valide la DB et ajoute aux recents.
+ */
+async function openFromDialog(): Promise<void> {
+  openError.value = null;
+  try {
+    const project = await window.novelTradAPI.invoke<Project | null>("project:open-dialog");
+    if (!project) {
+      // Utilisateur a annulé le dialog
+      return;
+    }
+    await projectStore.loadRecent();
+    router.push({ name: "project", params: { projectId: project.id } });
+  } catch (err) {
+    openError.value = err instanceof Error ? err.message : "Erreur lors de l'ouverture du projet";
+  }
+}
+
 /** Ouvre le dialogue de confirmation de suppression (SDD §5.11) */
 function openDeleteDialog(projectId: string, projectName: string): void {
   deleteProjectId.value = projectId;
@@ -131,6 +154,9 @@ async function confirmDelete(): Promise<void> {
     <section class="actions">
       <button class="btn-primary" @click="showCreate = true">
         + Nouveau projet
+      </button>
+      <button class="btn-secondary" @click="openFromDialog">
+        📂 Ouvrir un projet
       </button>
     </section>
 
@@ -288,6 +314,9 @@ async function confirmDelete(): Promise<void> {
 
 .actions {
   margin-bottom: 24px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
 }
 
 .card {
@@ -334,6 +363,20 @@ select {
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--bg-tertiary);
+  padding: 10px 20px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background-color: var(--accent);
+  color: white;
 }
 
 .project-item {
