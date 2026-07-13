@@ -622,135 +622,161 @@ export class ProjectManager {
     );
 
     const db = createProjectDatabase(projectPath);
-    runMigrations(db);
-
-    // Récupérer le dernier orderIndex existant via la même DB
-    const existingRows = db
-      .prepare(
-        "SELECT order_index FROM chapters WHERE project_id = ? ORDER BY order_index DESC LIMIT 1",
-      )
-      .get([projectId]) as { order_index: number } | undefined;
-    let nextOrderIndex = existingRows ? existingRows.order_index + 1 : 0;
-
-    const createdChapters: Chapter[] = [];
-
-    // Calculer le hash SHA256 du fichier original (pour detectDuplicate et refreshSource)
-    const originalFileHash = crypto
-      .createHash("sha256")
-      .update(fs.readFileSync(filePath))
-      .digest("hex");
-
-    // Bug fix : suivre les fichiers .md écrits pendant la transaction pour
-    // pouvoir les supprimer en cas d'échec DB (sinon chaque import raté laisse
-    // des fichiers orphelins dans source/ avec des UUID jamais référencés).
-    const writtenSourceFiles: string[] = [];
-
-    db.exec("BEGIN TRANSACTION");
     try {
-      for (const chapterText of chapterTexts) {
-      const chapterId = crypto.randomUUID();
-      const title =
-        chapterTexts.length === 1
-          ? fileName
-          : `${fileName} — Chapitre ${createdChapters.length + 1}`;
+      runMigrations(db);
 
-      // Stocker la source nettoyée en .md
-      const sourceFilePath = path.join(projectPath, "source", `${chapterId}.md`);
-      fs.writeFileSync(sourceFilePath, chapterText, "utf-8");
-      writtenSourceFiles.push(sourceFilePath);
+      // Récupérer le dernier orderIndex existant via la même DB
+      const existingRows = db
+        .prepare(
+          "SELECT order_index FROM chapters WHERE project_id = ? ORDER BY order_index DESC LIMIT 1",
+        )
+        .get([projectId]) as { order_index: number } | undefined;
+      let nextOrderIndex = existingRows ? existingRows.order_index + 1 : 0;
 
-      // Métadonnées du chapitre : langue détectée + hash du fichier original (SDD §5.8, §5.10)
-      const sourceHash = crypto
+      // Calculer le hash SHA256 du fichier original (pour detectDuplicate et refreshSource)
+      const originalFileHash = crypto
         .createHash("sha256")
-        .update(chapterText, "utf-8")
+        .update(fs.readFileSync(filePath))
         .digest("hex");
 
-      const metadata: Record<string, unknown> = {
-        originalFileHash,
-        sourceHash,
-      };
-      if (detectedLanguage) {
-        metadata.detectedLanguage = detectedLanguage.code;
-        metadata.detectedLanguageName = detectedLanguage.name;
-        metadata.detectedLanguageConfidence = detectedLanguage.confidence;
+      // PRÉPARER TOUT le travail non-DB AVANT la transaction : générer les UUID,
+      // écrire les fichiers .md, calculer les hashes, découper les paragraphes.
+      // Tenir une transaction écriture ouverte pendant fs.writeFileSync /
+      // crypto.createHash bloquait les lecteurs concurrents (IPC handlers
+      // chapter:list, workflow:list, ...) et causait "database is locked".
+      // Bug fix : suivre les fichiers .md écrits pour pouvoir les supprimer en
+      // cas d'échec DB (sinon chaque import raté laisse des orphelins).
+      const writtenSourceFiles: string[] = [];
+      interface PreparedChapter {
+        chapterId: string;
+        title: string;
+        sourceFilePath: string;
+        metadata: string;
+        paragraphs: {
+          id: string;
+          chapter_id: string;
+          index_in_chapter: number;
+          source_text: string;
+          translated_text: null;
+          status: string;
+        }[];
+        chapter: Chapter;
+      }
+      const prepared: PreparedChapter[] = [];
+
+      for (const chapterText of chapterTexts) {
+        const chapterId = crypto.randomUUID();
+        const title =
+          chapterTexts.length === 1
+            ? fileName
+            : `${fileName} — Chapitre ${prepared.length + 1}`;
+
+        // Stocker la source nettoyée en .md (hors transaction)
+        const sourceFilePath = path.join(projectPath, "source", `${chapterId}.md`);
+        fs.writeFileSync(sourceFilePath, chapterText, "utf-8");
+        writtenSourceFiles.push(sourceFilePath);
+
+        // Métadonnées du chapitre : langue détectée + hash (SDD §5.8, §5.10)
+        const sourceHash = crypto
+          .createHash("sha256")
+          .update(chapterText, "utf-8")
+          .digest("hex");
+
+        const metadata: Record<string, unknown> = {
+          originalFileHash,
+          sourceHash,
+        };
+        if (detectedLanguage) {
+          metadata.detectedLanguage = detectedLanguage.code;
+          metadata.detectedLanguageName = detectedLanguage.name;
+          metadata.detectedLanguageConfidence = detectedLanguage.confidence;
+        }
+
+        // Découper en paragraphes (hors transaction)
+        const paragraphs = chapterText
+          .split(/\n\n+/)
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .map((sourceText, index) => ({
+            id: crypto.randomUUID(),
+            chapter_id: chapterId,
+            index_in_chapter: index + 1,
+            source_text: sourceText,
+            translated_text: null,
+            status: "pending",
+          }));
+
+        prepared.push({
+          chapterId,
+          title,
+          sourceFilePath,
+          metadata: JSON.stringify(metadata),
+          paragraphs,
+          chapter: {
+            id: chapterId,
+            projectId,
+            title,
+            sourcePath: filePath,
+            orderIndex: nextOrderIndex,
+            status: "pending",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        });
+        nextOrderIndex++;
       }
 
-      // Créer le chapitre dans la DB
-      db.prepare(
-        `
+      // TRANSACTION ÉCRITURE COURTE : uniquement les INSERT, plus de I/O disque
+      // ni de hash CPU dedans. Durée typique < 100 ms même pour un gros EPUB.
+      const insertChapter = db.prepare(`
         INSERT INTO chapters (id, project_id, title, source_path, order_index, status, created_at, updated_at, metadata)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      ).run([
-        chapterId,
-        projectId,
-        title,
-        filePath,
-        nextOrderIndex,
-        "pending",
-        new Date().toISOString(),
-        new Date().toISOString(),
-        JSON.stringify(metadata),
-      ]);
-
-      // Découper en paragraphes
-      const paragraphs = chapterText
-        .split(/\n\n+/)
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .map((sourceText, index) => ({
-          id: crypto.randomUUID(),
-          chapter_id: chapterId,
-          index_in_chapter: index + 1,
-          source_text: sourceText,
-          translated_text: null,
-          status: "pending",
-        }));
-
+      `);
       const insertParagraph = db.prepare(`
         INSERT INTO paragraphs (id, chapter_id, index_in_chapter, source_text, translated_text, status)
         VALUES (?, ?, ?, ?, ?, ?)
       `);
-      for (const p of paragraphs) {
-        insertParagraph.run([
-          p.id,
-          p.chapter_id,
-          p.index_in_chapter,
-          p.source_text,
-          p.translated_text,
-          p.status,
-        ]);
+
+      try {
+        db.exec("BEGIN TRANSACTION");
+        for (const c of prepared) {
+          insertChapter.run([
+            c.chapterId,
+            projectId,
+            c.title,
+            filePath,
+            c.chapter.orderIndex,
+            "pending",
+            c.chapter.createdAt,
+            c.chapter.updatedAt,
+            c.metadata,
+          ]);
+          for (const p of c.paragraphs) {
+            insertParagraph.run([
+              p.id,
+              p.chapter_id,
+              p.index_in_chapter,
+              p.source_text,
+              p.translated_text,
+              p.status,
+            ]);
+          }
+        }
+        db.exec("COMMIT");
+      } catch (err) {
+        try { db.exec("ROLLBACK"); } catch {/* déjà rollback ou pas de txn ouverte */}
+        // Nettoyer les fichiers .md déjà écrits (le ROLLBACK DB annule les rows,
+        // mais les écritures disque ne sont pas transactionnelles).
+        for (const f of writtenSourceFiles) {
+          try {fs.rmSync(f, { force: true, maxRetries: 3, retryDelay: 100 });} catch {/* best-effort */}
+        }
+        throw err;
       }
 
-      createdChapters.push({
-        id: chapterId,
-        projectId,
-        title,
-        sourcePath: filePath,
-        orderIndex: nextOrderIndex,
-        status: "pending",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      nextOrderIndex++;
-      }
-
-      db.exec("COMMIT");
-    } catch (err) {
-      db.exec("ROLLBACK");
+      return prepared.map((c) => c.chapter);
+    } finally {
       db.close();
-      // Bug fix : nettoyer les fichiers .md déjà écrits pour ne pas laisser
-      // d'orphelins dans source/ (le ROLLBACK DB annule les rows, mais les
-      // écritures disque ne sont pas transactionnelles).
-      for (const f of writtenSourceFiles) {
-        try {fs.rmSync(f, { force: true });} catch {/* best-effort */}
-      }
-      throw err;
     }
-
-    db.close();
-    return createdChapters;
   }
 
   async listChapters(projectId: string): Promise<Chapter[]> {

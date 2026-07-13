@@ -127,20 +127,24 @@ export function registerWorkflowHandlers(): void {
   ipcMain.handle("workflow:list", async (_event, projectPath: unknown) => {
     const parsed = z.object({ projectPath: projectPathSchema }).parse({ projectPath });
     const db = createProjectDatabase(parsed.projectPath);
-    const project = new ProjectRepository(db).getByPath(parsed.projectPath);
-    if (!project) {throw new Error(`Projet non trouve : ${parsed.projectPath}`);}
-    const jobs = new JobRepository(db).listByProject(project.id);
-    db.close();
-    return jobs;
+    try {
+      const project = new ProjectRepository(db).getByPath(parsed.projectPath);
+      if (!project) {throw new Error(`Projet non trouve : ${parsed.projectPath}`);}
+      return new JobRepository(db).listByProject(project.id);
+    } finally {
+      db.close();
+    }
   });
 
   // SDD §7.11 : liste les jobs en cours (running/paused) pour la reprise au démarrage
   ipcMain.handle("workflow:list-active", async (_event, projectPath: unknown) => {
     const parsed = z.object({ projectPath: projectPathSchema }).parse({ projectPath });
     const db = createProjectDatabase(parsed.projectPath);
-    const jobs = new JobRepository(db).listActive();
-    db.close();
-    return jobs;
+    try {
+      return new JobRepository(db).listActive();
+    } finally {
+      db.close();
+    }
   });
 
   // SDD §7.11 : reprend un job batch interrompu au dernier chapitre non terminé

@@ -3,7 +3,6 @@ import type { Database as SqliteDatabase } from "node-sqlite3-wasm";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import {
   createProjectDatabase,
-  runMigrations,
 } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { HistoryRepository } from "../../db/repositories/HistoryRepository.js";
@@ -103,7 +102,6 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db);
       const repo = new HistoryRepository(db);
 
       if (chapterId) {
@@ -124,7 +122,6 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db);
       const repo = new HistoryRepository(db);
 
       const paragraphsA = repo.getFullParagraphs(snapshotIdA);
@@ -156,7 +153,6 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db);
 
       const historyRepo = new HistoryRepository(db);
       const paragraphRepo = new ParagraphRepository(db);
@@ -219,7 +215,6 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db);
 
       const historyRepo = new HistoryRepository(db);
       const paragraphRepo = new ParagraphRepository(db);
@@ -315,7 +310,6 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db);
 
       const repo = new HistoryRepository(db);
       const paragraphs = repo.getFullParagraphs(snapshotId);
@@ -336,7 +330,6 @@ export function registerHistoryHandlers(): void {
 
       try {
         db = createProjectDatabase(projectPath);
-        runMigrations(db);
 
         const repo = new HistoryRepository(db);
         const audit = new AuditService(db);
@@ -387,7 +380,6 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db);
       const audit = new AuditService(db);
 
       const entries = projectId

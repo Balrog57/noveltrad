@@ -14,6 +14,16 @@ export function createProjectDatabase(projectPath: string): Database {
   const db = new sqlite3.Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
+  // busy_timeout : critique pour éviter "database is locked". Sans cette
+  // valeur (SQLite default = 0 ms), toute contention de lock échoue
+  // immédiatement avec SQLITE_BUSY. Avec 5000 ms, SQLite retry/attend jusqu'à
+  // 5 s avant de lever — élimine la grande majorité des erreurs de lock en
+  // présence de lecteurs/écrivains concurrents (IPC handlers vs import/writer).
+  db.exec("PRAGMA busy_timeout = 5000");
+  // synchronous = NORMAL : safe en WAL (pas de corruption possible, juste un
+  // risque minime de perdre la dernière transaction en cas de crash système).
+  // Accélère significativement les commits vs le default FULL.
+  db.exec("PRAGMA synchronous = NORMAL");
   return db;
 }
 

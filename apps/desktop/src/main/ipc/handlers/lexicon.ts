@@ -1,6 +1,6 @@
 import { ipcMain } from "electron";
 import { SettingsManager } from "../../managers/SettingsManager.js";
-import { createProjectDatabase, runMigrations } from "../../db/connection.js";
+import { createProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { LexiconRepository } from "../../db/repositories/LexiconRepository.js";
 import { LexiconEngine } from "../../services/LexiconEngine.js";
@@ -53,11 +53,9 @@ function resolveProjectPath(projectId: string): string {
   return projectPath;
 }
 
-/** Ouvre la DB du projet et exécute les migrations */
+/** Ouvre la DB du projet. Les migrations sont exécutées une fois au open(). */
 function openProjectDb(projectPath: string) {
-  const db = createProjectDatabase(projectPath);
-  runMigrations(db);
-  return db;
+  return createProjectDatabase(projectPath);
 }
 
 export function registerLexiconHandlers(): void {

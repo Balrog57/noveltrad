@@ -1,6 +1,6 @@
 import { ipcMain } from "electron";
 import { SettingsManager } from "../../managers/SettingsManager.js";
-import { createProjectDatabase, runMigrations } from "../../db/connection.js";
+import { createProjectDatabase } from "../../db/connection.js";
 import { ParagraphRepository } from "../../db/repositories/ParagraphRepository.js";
 import { ChapterRepository } from "../../db/repositories/ChapterRepository.js";
 import {
@@ -27,7 +27,6 @@ export function registerParagraphHandlers(): void {
     for (const projectPath of recent) {
       if (!fs.existsSync(path.join(projectPath, "project.db"))) {continue;}
       const db = createProjectDatabase(projectPath);
-      runMigrations(db);
       const chapter = new ChapterRepository(db).getById(chapterId);
       if (chapter) {
         paragraphRepo = new ParagraphRepository(db);
@@ -63,7 +62,6 @@ export function registerParagraphHandlers(): void {
     for (const projectPath of recent) {
       if (!fs.existsSync(path.join(projectPath, "project.db"))) {continue;}
       const db = createProjectDatabase(projectPath);
-      runMigrations(db);
       chapterRepo = new ChapterRepository(db);
       const chapter = chapterRepo.getById(chapterId);
       if (chapter) {
