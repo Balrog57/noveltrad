@@ -2,6 +2,7 @@ import sqlite3 from "node-sqlite3-wasm";
 import type { Database } from "node-sqlite3-wasm";
 import path from "node:path";
 import fs from "node:fs";
+import { MIGRATIONS } from "./migrationsManifest.js";
 
 export type ProjectDatabase = Database;
 
@@ -64,45 +65,68 @@ export function runMigrations(db: Database, migrationsDir?: string): void {
     }
   }
 
-  if (migrationsDir && fs.existsSync(migrationsDir)) {
+  // Source des migrations : soit un dossier explicite (tests), soit le
+  // manifest bundled (prod — voir migrationsManifest.ts). On ne silencie plus
+  // l'absence de migrations : c'est précisément ce qui masquait le vrai bug
+  // "no such table: projects" (le dossier n'était pas embarqué dans le build).
+  let pending: { version: number; name: string; sql: string }[];
+  if (migrationsDir) {
+    if (!fs.existsSync(migrationsDir)) {
+      throw new Error(
+        `Dossier de migrations introuvable : ${migrationsDir}`,
+      );
+    }
     const files = fs
       .readdirSync(migrationsDir)
       .filter((f) => f.endsWith(".sql") && /^\d+/.test(f))
       .sort();
-
-    for (const file of files) {
+    pending = files.map((file) => {
       const match = file.match(/^(\d+)/);
-      if (!match) continue;
-      const version = parseInt(match[1], 10);
-      if (applied.has(version)) continue;
-
+      const version = match ? parseInt(match[1], 10) : NaN;
       const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
-      // T4B fix : robustesse transactionnelle. Si le SQL de migration contient
-      // déjà sa propre transaction (BEGIN/COMMIT/START TRANSACTION), on ne
-      // wrapper pas — SQLite ne supporte pas les transactions imbriquées via
-      // exec() brut et lèverait "cannot start a transaction within a transaction".
-      const hasOwnTransaction = /\b(BEGIN|START\s+TRANSACTION|COMMIT)\b/i.test(sql);
+      return { version, name: file, sql };
+    });
+  } else {
+    pending = MIGRATIONS;
+  }
 
-      try {
-        if (!hasOwnTransaction) {
-          db.exec("BEGIN");
-        }
-        db.exec(sql);
-        const now = new Date().toISOString();
-        db.prepare(
-          "INSERT INTO __migrations (version, name, applied_at) VALUES (?, ?, ?)",
-        ).run([version, file, now]);
-        if (!hasOwnTransaction) {
-          db.exec("COMMIT");
-        }
-        applied.add(version);
-      } catch (e) {
-        // Ne tenter un ROLLBACK que si on a ouvert une transaction
-        if (!hasOwnTransaction) {
-          try { db.exec("ROLLBACK"); } catch { /* déjà rollback ou pas de txn ouverte */ }
-        }
-        throw e;
+  if (pending.length === 0) {
+    // Échec bruyant : éviter de créer une base sans schéma puis de planter
+    // plus loin avec une erreur trompeuse (ex: "no such table").
+    throw new Error(
+      "Aucune migration à appliquer : vérifier le bundle migrationsManifest / le migrationsDir.",
+    );
+  }
+
+  for (const { version, name: file, sql } of pending) {
+    if (Number.isNaN(version)) continue;
+    if (applied.has(version)) continue;
+
+    // T4B fix : robustesse transactionnelle. Si le SQL de migration contient
+    // déjà sa propre transaction (BEGIN/COMMIT/START TRANSACTION), on ne
+    // wrapper pas — SQLite ne supporte pas les transactions imbriquées via
+    // exec() brut et lèverait "cannot start a transaction within a transaction".
+    const hasOwnTransaction = /\b(BEGIN|START\s+TRANSACTION|COMMIT)\b/i.test(sql);
+
+    try {
+      if (!hasOwnTransaction) {
+        db.exec("BEGIN");
       }
+      db.exec(sql);
+      const now = new Date().toISOString();
+      db.prepare(
+        "INSERT INTO __migrations (version, name, applied_at) VALUES (?, ?, ?)",
+      ).run([version, file, now]);
+      if (!hasOwnTransaction) {
+        db.exec("COMMIT");
+      }
+      applied.add(version);
+    } catch (e) {
+      // Ne tenter un ROLLBACK que si on a ouvert une transaction
+      if (!hasOwnTransaction) {
+        try { db.exec("ROLLBACK"); } catch { /* déjà rollback ou pas de txn ouverte */ }
+      }
+      throw e;
     }
   }
 }

@@ -35,8 +35,6 @@ const DEFAULT_CHAPTER_PATTERNS = [
 /** Seuil de confiance minimal pour la détection de langue (SDD §5.7) */
 const LANGUAGE_CONFIDENCE_THRESHOLD = 0.8;
 
-const migrationsDir = path.join(__dirname, "../../db/migrations");
-
 export class ProjectManager {
   constructor(private settings: SettingsManager) {}
 
@@ -93,18 +91,38 @@ export class ProjectManager {
     // partiellement créé pour éviter le lockout permanent ("Le projet existe
     // deja") au prochain essai avec le même nom. On ferme aussi la connexion
     // DB dans tous les cas (try/finally) pour éviter les fuites WAL.
+    //
+    // IMPORTANT : la suppression du dossier est best-effort. Sur Windows, les
+    // fichiers WAL/SHM de SQLite (project.db-wal/-shm) peuvent rester ouverts
+    // quelques instants après db.close() et faire échouer le rmSync récursif
+    // avec ENOTEMPTY — ce qui masquait systématiquement la VRAIE erreur sous-
+    // jacente (ex: "no such table: projects"). On loggue donc un échec de
+    // nettoyage mais on relance toujours l'erreur d'origine.
     let db;
     let dbClosed = false;
     try {
       db = createProjectDatabase(projectDir);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
       new ProjectRepository(db).create(project);
     } catch (err) {
       if (db) {
         db.close();
         dbClosed = true;
       }
-      fs.rmSync(projectDir, { recursive: true, force: true });
+      try {
+        // maxRetries/retryDelay : indispensable sur Windows pour absorber la
+        // libération asynchrone des handles (WAL/SHM, antivirus, indexeur).
+        fs.rmSync(projectDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 3,
+          retryDelay: 100,
+        });
+      } catch (cleanupErr) {
+        logger.warn(
+          `Échec du nettoyage du dossier projet après échec DB (${projectDir}) : ${String(cleanupErr)}`,
+        );
+      }
       throw err;
     } finally {
       if (db && !dbClosed) {db.close();}
@@ -118,7 +136,7 @@ export class ProjectManager {
     const db = createProjectDatabase(projectPath);
     let project: Project;
     try {
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
       const repo = new ProjectRepository(db);
       const found = repo.getByPath(projectPath);
 
@@ -184,7 +202,12 @@ export class ProjectManager {
     }
 
     if (removeFiles && fs.existsSync(projectPath)) {
-      fs.rmSync(projectPath, { recursive: true, force: true });
+      fs.rmSync(projectPath, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
     }
 
     const nextRecent = recent.filter((p) => p !== projectPath);
@@ -206,7 +229,7 @@ export class ProjectManager {
 
     // Lire le chapitre depuis la DB
     const db = createProjectDatabase(projectPath);
-    runMigrations(db, migrationsDir);
+    runMigrations(db);
     let chapter: Chapter | undefined;
     let chapterMetadata: Record<string, unknown> = {};
     try {
@@ -358,7 +381,7 @@ export class ProjectManager {
 
         // Mettre à jour les paragraphes dans la DB
         const db2 = createProjectDatabase(projectPath);
-        runMigrations(db2, migrationsDir);
+        runMigrations(db2);
         try {
           db2.exec("BEGIN TRANSACTION");
           const deleteParas = db2.prepare(
@@ -416,7 +439,7 @@ export class ProjectManager {
 
         // Mettre à jour les paragraphes dans la DB
         const db2 = createProjectDatabase(projectPath);
-        runMigrations(db2, migrationsDir);
+        runMigrations(db2);
         try {
           db2.exec("BEGIN TRANSACTION");
           const deleteParas = db2.prepare(
@@ -599,7 +622,7 @@ export class ProjectManager {
     );
 
     const db = createProjectDatabase(projectPath);
-    runMigrations(db, migrationsDir);
+    runMigrations(db);
 
     // Récupérer le dernier orderIndex existant via la même DB
     const existingRows = db

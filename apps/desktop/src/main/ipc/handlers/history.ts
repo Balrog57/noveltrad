@@ -28,7 +28,6 @@ import path from "node:path";
 import fs from "node:fs";
 
 const settings = new SettingsManager();
-const migrationsDir = path.join(__dirname, "../../db/migrations");
 
 /**
  * Résout le chemin du dossier projet à partir de `projectId`.
@@ -104,7 +103,7 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
       const repo = new HistoryRepository(db);
 
       if (chapterId) {
@@ -125,7 +124,7 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
       const repo = new HistoryRepository(db);
 
       const paragraphsA = repo.getFullParagraphs(snapshotIdA);
@@ -157,7 +156,7 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
 
       const historyRepo = new HistoryRepository(db);
       const paragraphRepo = new ParagraphRepository(db);
@@ -220,7 +219,7 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
 
       const historyRepo = new HistoryRepository(db);
       const paragraphRepo = new ParagraphRepository(db);
@@ -316,7 +315,7 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
 
       const repo = new HistoryRepository(db);
       const paragraphs = repo.getFullParagraphs(snapshotId);
@@ -337,7 +336,7 @@ export function registerHistoryHandlers(): void {
 
       try {
         db = createProjectDatabase(projectPath);
-        runMigrations(db, migrationsDir);
+        runMigrations(db);
 
         const repo = new HistoryRepository(db);
         const audit = new AuditService(db);
@@ -388,7 +387,7 @@ export function registerHistoryHandlers(): void {
 
     try {
       db = createProjectDatabase(projectPath);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
       const audit = new AuditService(db);
 
       const entries = projectId

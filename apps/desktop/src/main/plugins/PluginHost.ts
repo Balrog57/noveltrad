@@ -299,7 +299,12 @@ export class PluginHost {
     const pluginDir = loaded.path;
     if (fs.existsSync(pluginDir)) {
       try {
-        fs.rmSync(pluginDir, { recursive: true, force: true });
+        fs.rmSync(pluginDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 3,
+          retryDelay: 100,
+        });
         logger.info(`[PluginHost] Dossier plugin supprimé : ${pluginDir}`);
       } catch (err) {
         logger.error(`[PluginHost] Erreur suppression dossier plugin "${pluginDir}" :`, err);

@@ -304,4 +304,34 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     expect(rows.length).toBe(1);
     expect(rows[0].version).toBe(1);
   });
+
+  // ── Test 8 (régression ENOTEMPTY) : manifest bundled sans dossier ──
+  // Garde contre la régression où le dossier migrations n'était pas embarqué
+  // dans le build : runMigrations(db) doit utiliser le manifest bundled et
+  // créer TOUTES les tables (dont projects), sans skip silencieux.
+  it("sans migrationsDir : utilise le manifest bundled et crée la table projects", () => {
+    // Aucun dossier passé → le manifest bundled (import.meta.glob) doit servir.
+    runMigrations(db);
+
+    const rows = getMigrations(db);
+    expect(rows.length).toBe(16);
+
+    // La table projects (001_initial.sql) doit exister — c'est précisément
+    // son absence qui causait "no such table: projects" → ENOTEMPTY masqué.
+    const tables = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'",
+      )
+      .all() as { name: string }[];
+    expect(tables.length).toBe(1);
+    expect(tables[0].name).toBe("projects");
+  });
+
+  // ── Test 9 (régression ENOTEMPTY) : dossier inexistant → throw (pas de skip) ──
+  it("migrationsDir inexistant : throw au lieu de skip silencieux", () => {
+    const bogusDir = path.join(os.tmpdir(), "does-not-exist-migrations-xyz");
+    expect(() => runMigrations(db, bogusDir)).toThrow(
+      /Dossier de migrations introuvable/,
+    );
+  });
 });

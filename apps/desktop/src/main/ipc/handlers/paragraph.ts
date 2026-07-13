@@ -12,7 +12,6 @@ import path from "node:path";
 import fs from "node:fs";
 
 const settings = new SettingsManager();
-const migrationsDir = path.join(__dirname, "../../db/migrations");
 
 export function registerParagraphHandlers(): void {
   // Récupérer les paragraphes d'un chapitre
@@ -28,7 +27,7 @@ export function registerParagraphHandlers(): void {
     for (const projectPath of recent) {
       if (!fs.existsSync(path.join(projectPath, "project.db"))) {continue;}
       const db = createProjectDatabase(projectPath);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
       const chapter = new ChapterRepository(db).getById(chapterId);
       if (chapter) {
         paragraphRepo = new ParagraphRepository(db);
@@ -64,7 +63,7 @@ export function registerParagraphHandlers(): void {
     for (const projectPath of recent) {
       if (!fs.existsSync(path.join(projectPath, "project.db"))) {continue;}
       const db = createProjectDatabase(projectPath);
-      runMigrations(db, migrationsDir);
+      runMigrations(db);
       chapterRepo = new ChapterRepository(db);
       const chapter = chapterRepo.getById(chapterId);
       if (chapter) {

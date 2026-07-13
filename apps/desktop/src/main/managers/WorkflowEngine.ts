@@ -108,7 +108,7 @@ class WorkflowRunner extends EventEmitter {
     this.profiler = profiler ?? new PerformanceProfiler();
     this.db = createProjectDatabase(projectPath);
     try {
-      runMigrations(this.db, path.join(__dirname, "../../db/migrations"));
+      runMigrations(this.db);
 
       const projectRepo = new ProjectRepository(this.db);
       const found = projectRepo.getByPath(projectPath);
@@ -1157,7 +1157,7 @@ export class WorkflowEngine {
     for (const projectPath of projectPaths) {
       try {
         const db = createProjectDatabase(projectPath);
-        runMigrations(db, path.join(__dirname, "../../db/migrations"));
+        runMigrations(db);
         const jobRepo = new JobRepository(db);
         const activeJobs = jobRepo.listActive();
 

@@ -22,7 +22,6 @@ import fs from "node:fs";
 import { assertWithinProject } from "../../utils/paths.js";
 
 const settings = new SettingsManager();
-const migrationsDir = path.join(__dirname, "../../db/migrations");
 const lexiconEngine = new LexiconEngine();
 
 /**
@@ -57,7 +56,7 @@ function resolveProjectPath(projectId: string): string {
 /** Ouvre la DB du projet et exécute les migrations */
 function openProjectDb(projectPath: string) {
   const db = createProjectDatabase(projectPath);
-  runMigrations(db, migrationsDir);
+  runMigrations(db);
   return db;
 }
 
