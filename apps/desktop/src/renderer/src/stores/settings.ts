@@ -58,7 +58,13 @@ export const useSettingsStore = defineStore("settings", () => {
     value: AppSettings[K],
   ) {
     try {
-      data.value = await window.novelTradAPI.invoke("settings:set", key, toPlain(value));
+      // Bug fix : ne PAS écraser tout data.value avec le retour IPC.
+      // Avant, settings:set retournait l'objet complet re-lu du disque
+      // (getAll()), ce qui écrasait les modifications en mémoire pas encore
+      // sauvées pendant la boucle saveSettings() (ex: defaultModel perdu
+      // après la sauvegarde de ollamaHost). On merge uniquement la clé écrite.
+      await window.novelTradAPI.invoke("settings:set", key, toPlain(value));
+      data.value = { ...data.value, [key]: toPlain(value) };
     } catch (err) {
       error.value = err instanceof Error ? err.message : `Erreur lors de la sauvegarde de ${key}`;
     }

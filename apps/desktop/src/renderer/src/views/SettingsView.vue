@@ -109,14 +109,25 @@ async function saveSettings(): Promise<void> {
     "reviewLoopEnabled",
     "summarizerEnabled",
   ] as const;
+  // Bug fix : snapshot de TOUTES les valeurs AVANT la boucle. Avant, chaque
+  // settings.set() écrasait settings.data (via le retour getAll du main),
+  // détruisant les modifications pas encore sauvées (ex: defaultModel perdu
+  // après la sauvegarde de ollamaHost). Le store ne fait plus cet écrasement,
+  // mais on snapshot quand même pour robustesse défensive.
+  const snapshot: Record<string, unknown> = {};
   for (const key of keys) {
-    const value = settings.data[key];
+    snapshot[key] = toPlain(settings.data[key]);
+  }
+  const tolerancesSnapshot = toPlain(tolerances.value);
+
+  for (const key of keys) {
+    const value = snapshot[key];
     if (value !== undefined) {
       await settings.set(key, value as never);
     }
   }
-  // Sauvegarder les tolérances (tolerances.value est réactif → toPlain)
-  await settings.set("consistencyTolerances", toPlain(tolerances.value) as never);
+  // Sauvegarder les tolérances (snapshot pris avant la boucle)
+  await settings.set("consistencyTolerances", tolerancesSnapshot as never);
   saved.value = true;
   setTimeout(() => {
     saved.value = false;
@@ -220,6 +231,9 @@ onMounted(() => {
   applyTheme((settings.data.theme as "dark" | "light" | "system") ?? "system");
   setupSystemThemeListener();
   initTolerances();
+  // Auto-détecter les modèles Ollama au montage pour peupler les <select> de
+  // modèles sans obliger l'utilisateur à cliquer "Tester" manuellement.
+  ollama.check();
 });
 
 onUnmounted(() => {
