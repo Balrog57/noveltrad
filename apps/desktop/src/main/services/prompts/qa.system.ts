@@ -19,6 +19,15 @@ Dimensions:
 - length (reasonable proportion to source)
 - dialogue (natural character speech)
 
+ALSO list the specific sentences that are weakest. For each suspect sentence, give
+the sentence text, a per-sentence score (0-100), and a short description of the issue
+(fidelity loss, grammar error, terminology drift, etc.). Order from lowest score first.
+Limit to the 5 most problematic sentences.
+
+If the overall quality is poor, provide concrete "retryInstructions" — short, targeted
+fixes the responsible agent should apply (e.g. "Paragraph 3: pronoun 'il' should be
+'elle' per chapter 1 context"). Leave retryInstructions empty when quality is acceptable.
+
 --- OUTPUT FORMAT ---
 Return ONLY a JSON object with this exact schema:
 {
@@ -31,7 +40,11 @@ Return ONLY a JSON object with this exact schema:
   "length": 88,
   "dialogue": 92,
   "globalScore": 96,
-  "comments": "Minor fluency issues in dialogue."
+  "comments": "Minor fluency issues in dialogue.",
+  "suspectSentences": [
+    { "sentence": "the problematic translated sentence", "score": 45, "issue": "wrong pronoun gender" }
+  ],
+  "retryInstructions": ""
 }
 Do NOT wrap in markdown code fences. Do NOT add any text before or after the JSON.`;
 

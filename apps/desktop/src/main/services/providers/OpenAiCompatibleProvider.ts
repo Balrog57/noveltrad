@@ -3,6 +3,8 @@ import type {
   AiProvider,
   ChatMessage,
   ChatOptions,
+  ChatResult,
+  TokenUsage,
 } from "@shared/types/index.js";
 import { logger } from "../../utils/logger.js";
 
@@ -49,6 +51,19 @@ export class OpenAiCompatibleProvider implements AiProvider {
   }
 
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<string> {
+    const result = await this.chatWithUsage(messages, options);
+    return result.content;
+  }
+
+  /**
+   * SDD §3.8 : variante de chat() qui capture l'objet `usage` renvoyé par
+   * l'API OpenAI (prompt_tokens / completion_tokens / total_tokens).
+   * Permet le suivi de consommation pour la facturation et le cap maxJobTokens.
+   */
+  async chatWithUsage(
+    messages: ChatMessage[],
+    options?: ChatOptions,
+  ): Promise<ChatResult> {
     try {
       const response = await this.client.chat.completions.create({
         model: this.model,
@@ -56,7 +71,20 @@ export class OpenAiCompatibleProvider implements AiProvider {
         temperature: options?.temperature ?? 0.7,
         response_format: options?.jsonMode ? { type: "json_object" } : undefined,
       });
-      return response.choices[0]?.message?.content ?? "";
+      const content = response.choices[0]?.message?.content ?? "";
+      // SDD §3.8 : extraire l'usage si le provider le renvoie (cloud uniquement)
+      let usage: TokenUsage | undefined;
+      const rawUsage = response.usage as
+        | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+        | undefined;
+      if (rawUsage && typeof rawUsage.total_tokens === "number") {
+        usage = {
+          promptTokens: rawUsage.prompt_tokens ?? 0,
+          completionTokens: rawUsage.completion_tokens ?? 0,
+          totalTokens: rawUsage.total_tokens,
+        };
+      }
+      return { content, usage };
     } catch (err) {
       await handle429IfApplicable(err);
       throw err;

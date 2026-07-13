@@ -114,6 +114,16 @@ export const qaOutputSchema = z.object({
     dialogue: z.number().min(0).max(100),
     globalScore: z.number().min(0).max(100),
     comments: z.string(),
+    suspectSentences: z
+      .array(
+        z.object({
+          sentence: z.string(),
+          score: z.number().min(0).max(100),
+          issue: z.string(),
+        }),
+      )
+      .optional(),
+    retryInstructions: z.string().optional(),
   }),
   score: z.number().min(0).max(100),
 });

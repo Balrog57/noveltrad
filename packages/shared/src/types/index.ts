@@ -100,6 +100,8 @@ export interface Job {
   options?: WorkflowOptions;
   metadata?: Record<string, unknown>;
   costUsd?: number;
+  /** Guards anti-boucle : compteur de retries QA automatiques (migration 017). */
+  qaRetryCount?: number;
   createdAt: string;
 }
 
@@ -162,6 +164,10 @@ export interface QualityReport {
   dialogue: number;
   globalScore: number;
   comments: string;
+  /** QA per-sentence : phrases suspectes avec score individuel (optionnel, rétrocompatible). */
+  suspectSentences?: Array<{ sentence: string; score: number; issue: string }>;
+  /** QA per-sentence : instructions de retry ciblées si globalScore < seuil (vide sinon). */
+  retryInstructions?: string;
 }
 
 // ── v1.4 : Boucle de révision pro (review / revise) ───────────────────────
@@ -324,6 +330,10 @@ export interface AppSettings {
   summarizerEnabled: boolean;
   /** SDD §17.9 : vérification automatique des mises à jour */
   autoUpdateCheck: boolean;
+  /** Guards anti-boucle : nb max de retries QA automatiques par chapitre (défaut 3). */
+  maxQaRetries: number;
+  /** Guards anti-boucle : plafond de tokens cumulés par job, 0 = désactivé (défaut 50000). */
+  maxJobTokens: number;
 }
 
 export interface CreateProjectPayload {
@@ -345,6 +355,27 @@ export interface ChatOptions {
   jsonMode?: boolean;
 }
 
+/**
+ * SDD §3.8 : usage de tokens renvoyé par le provider après un appel chat().
+ * Permet le suivi de consommation (job.costUsd, cap maxJobTokens).
+ * Optionnel : les providers qui ne l'exposent pas renvoient undefined.
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Résultat d'un appel chat() incluant l'usage de tokens.
+ * `chat()` (hérité) retourne seulement le contenu string ; `chatWithUsage()`
+ * retourne le contenu + l'usage pour le suivi de consommation.
+ */
+export interface ChatResult {
+  content: string;
+  usage?: TokenUsage;
+}
+
 export interface AiProvider {
   readonly id: string;
   readonly name: string;
@@ -353,6 +384,14 @@ export interface AiProvider {
   readonly apiKey?: string;
   listModels(): Promise<string[]>;
   chat(messages: ChatMessage[], options?: ChatOptions): Promise<string>;
+  /**
+   * Variante de chat() qui retourne aussi l'usage de tokens (SDD §3.8).
+   * L'implémentation par défaut peut déléguer à chat() et omettre l'usage.
+   */
+  chatWithUsage?(
+    messages: ChatMessage[],
+    options?: ChatOptions,
+  ): Promise<ChatResult>;
   streamChat(
     messages: ChatMessage[],
     options?: ChatOptions,

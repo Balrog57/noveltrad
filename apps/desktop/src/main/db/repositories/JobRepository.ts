@@ -8,8 +8,8 @@ export class JobRepository {
     this.db
       .prepare(
         `
-      INSERT INTO jobs (id, project_id, chapter_id, type, status, started_at, finished_at, error_message, created_at, chapter_ids, metadata, cost_usd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO jobs (id, project_id, chapter_id, type, status, started_at, finished_at, error_message, created_at, chapter_ids, metadata, cost_usd, qa_retry_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run([
@@ -25,6 +25,7 @@ export class JobRepository {
         job.chapterIds ? JSON.stringify(job.chapterIds) : null,
         job.metadata ? JSON.stringify(job.metadata) : null,
         job.costUsd ?? null,
+        job.qaRetryCount ?? 0,
       ]);
   }
 
@@ -57,7 +58,7 @@ export class JobRepository {
   updateJob(job: Job): void {
     this.db
       .prepare(
-        `UPDATE jobs SET status = ?, started_at = ?, finished_at = ?, error_message = ?, chapter_ids = ?, metadata = ?, cost_usd = ? WHERE id = ?`,
+        `UPDATE jobs SET status = ?, started_at = ?, finished_at = ?, error_message = ?, chapter_ids = ?, metadata = ?, cost_usd = ?, qa_retry_count = ? WHERE id = ?`,
       )
       .run([
         job.status,
@@ -67,6 +68,7 @@ export class JobRepository {
         job.chapterIds ? JSON.stringify(job.chapterIds) : null,
         job.metadata ? JSON.stringify(job.metadata) : null,
         job.costUsd ?? null,
+        job.qaRetryCount ?? 0,
         job.id,
       ]);
   }
@@ -155,6 +157,7 @@ export class JobRepository {
         ? (JSON.parse(String(row.metadata)) as Record<string, unknown>)
         : undefined,
       costUsd: row.cost_usd != null ? Number(row.cost_usd) : undefined,
+      qaRetryCount: row.qa_retry_count != null ? Number(row.qa_retry_count) : undefined,
       createdAt: String(row.created_at),
     };
   }

@@ -440,6 +440,24 @@ describe("buildGrammarUserPrompt", () => {
     expect(result).toContain("Le dragon volaient.");
     expect(result).toContain("Corrected text:");
   });
+
+  it("devrait inclure le bloc contexte cross-chapitre si novelSummary fourni", () => {
+    const result = buildGrammarUserPrompt({
+      text: "Le dragon volaient.",
+      targetLanguage: "fr",
+      novelSummary: "Lin est une guerrière. Elle combat au chapitre 1.",
+    });
+    expect(result).toContain("--- PREVIOUS CHAPTERS CONTEXT ---");
+    expect(result).toContain("Lin est une guerrière");
+  });
+
+  it("ne devrait pas inclure le bloc contexte si novelSummary absent", () => {
+    const result = buildGrammarUserPrompt({
+      text: "Le dragon volaient.",
+      targetLanguage: "fr",
+    });
+    expect(result).not.toContain("PREVIOUS CHAPTERS CONTEXT");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -456,6 +474,16 @@ describe("buildStyleUserPrompt", () => {
     expect(result).toContain("Le dragon a volé.");
     expect(result).toContain("Rewritten text:");
   });
+
+  it("devrait inclure le bloc contexte cross-chapitre si novelSummary fourni", () => {
+    const result = buildStyleUserPrompt({
+      text: "Le dragon a volé.",
+      targetLanguage: "fr",
+      novelSummary: "Style épique et soutenu établi au chapitre 1.",
+    });
+    expect(result).toContain("--- PREVIOUS CHAPTERS CONTEXT ---");
+    expect(result).toContain("Style épique");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -471,6 +499,16 @@ describe("buildPolishUserPrompt", () => {
     expect(result).toContain("Text to polish (fr)");
     expect(result).toContain("Le dragon volait dans le ciel.");
     expect(result).toContain("Polished text:");
+  });
+
+  it("devrait inclure le bloc contexte cross-chapitre si novelSummary fourni", () => {
+    const result = buildPolishUserPrompt({
+      text: "Le dragon volait dans le ciel.",
+      targetLanguage: "fr",
+      novelSummary: "Dialogues au présent, narration au passé simple.",
+    });
+    expect(result).toContain("--- PREVIOUS CHAPTERS CONTEXT ---");
+    expect(result).toContain("Dialogues au présent");
   });
 });
 
@@ -512,6 +550,16 @@ describe("buildConsistencyUserPrompt", () => {
     });
     expect(result).toContain("Dragon → Dragon");
   });
+
+  it("devrait inclure le bloc contexte cross-chapitre si novelSummary fourni", () => {
+    const result = buildConsistencyUserPrompt({
+      sourceText: "Hello",
+      translatedText: "Bonjour",
+      novelSummary: "Chapitre 1 : Lin est une femme guerrière.",
+    });
+    expect(result).toContain("--- PREVIOUS CHAPTERS CONTEXT ---");
+    expect(result).toContain("Lin est une femme");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -546,6 +594,20 @@ describe("buildQaUserPrompt", () => {
     expect(result).toContain("Hello world");
     expect(result).toContain("Translation (fr):");
     expect(result).toContain("Bonjour le monde");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// QA per-sentence (suspectSentences + retryInstructions)
+// ---------------------------------------------------------------------------
+
+describe("QA prompt — per-sentence", () => {
+  it("le system prompt QA demande suspectSentences", () => {
+    expect(QA_SYSTEM_PROMPT).toContain("suspectSentences");
+  });
+
+  it("le system prompt QA demande retryInstructions", () => {
+    expect(QA_SYSTEM_PROMPT).toContain("retryInstructions");
   });
 });
 

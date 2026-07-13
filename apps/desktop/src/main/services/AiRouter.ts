@@ -3,6 +3,7 @@ import type {
   AiProvider,
   ChatMessage,
   ChatOptions,
+  TokenUsage,
 } from "@shared/types/index.js";
 import type { AiCache } from "./AiCache.js";
 import type { PromptLoader } from "./prompts/PromptLoader.js";
@@ -16,6 +17,12 @@ export class AiRouter {
   private getPluginProviderFn?: (id: string) => AiProvider | undefined;
   /** SDD §3.8 : coûts par modèle (clé = model id). Vide = pas de suivi. */
   private modelCosts: Record<string, { costPerInputToken: number; costPerOutputToken: number }> = {};
+  /**
+   * SDD §3.8 : accumulateur d'usage de tokens pour le step courant.
+   * Reset via resetUsage() au début de chaque step, lu via getAndResetUsage()
+   * à la fin pour remplir step.tokensIn/Out.
+   */
+  private usageAccumulator: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   register(provider: AiProvider): void {
     this.providers.set(provider.id, provider);
@@ -47,6 +54,39 @@ export class AiRouter {
       (inputTokens / 1000) * cost.costPerInputToken +
       (outputTokens / 1000) * cost.costPerOutputToken
     );
+  }
+
+  /**
+   * SDD §3.8 : réinitialise l'accumulateur d'usage de tokens.
+   * À appeler en début de step (WorkflowEngine.runStep) pour isoler la
+   * consommation de chaque étape.
+   */
+  resetUsage(): void {
+    this.usageAccumulator = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  }
+
+  /**
+   * SDD §3.8 : retourne l'usage accumulé depuis le dernier resetUsage() et
+   * le réinitialise. Retourne undefined si aucun appel n'a été fait (tous les
+   * champs à 0), pour rester cohérent avec step.tokensIn/Out optionnels.
+   */
+  getAndResetUsage(): TokenUsage | undefined {
+    const u = this.usageAccumulator;
+    const empty = u.promptTokens === 0 && u.completionTokens === 0;
+    this.resetUsage();
+    return empty ? undefined : u;
+  }
+
+  /**
+   * SDD §3.8 : additionne un usage à l'accumulateur courant.
+   * @internal — utilisé par chat() et chatWithChunking() quand un provider
+   * renvoie un usage. Ignore undefined silencieusement.
+   */
+  private accumulateUsage(usage?: TokenUsage): void {
+    if (!usage) {return;}
+    this.usageAccumulator.promptTokens += usage.promptTokens;
+    this.usageAccumulator.completionTokens += usage.completionTokens;
+    this.usageAccumulator.totalTokens += usage.totalTokens;
   }
 
   /**
@@ -101,6 +141,23 @@ export class AiRouter {
     messages: ChatMessage[],
     options?: ChatOptions,
   ): Promise<string> {
+    const result = await this.chatWithUsage(providerId, messages, options);
+    return result.content;
+  }
+
+  /**
+   * SDD §3.8 : variante de chat() qui retourne aussi l'usage de tokens.
+   * Utilisée par l'AiRouter pour accumuler l'usage (accumulateur interne) et
+   * par le WorkflowEngine pour remplir step.tokensIn/Out.
+   *
+   * Délègue à `provider.chatWithUsage()` si le provider l'implémente (capture
+   * l'usage), sinon fallback à `provider.chat()` (usage undefined).
+   */
+  async chatWithUsage(
+    providerId: string,
+    messages: ChatMessage[],
+    options?: ChatOptions,
+  ): Promise<{ content: string; usage?: TokenUsage }> {
     const provider = this.get(providerId);
 
     // SDD §22.1 : vérifier le cache avant d'appeler le LLM
@@ -122,33 +179,38 @@ export class AiRouter {
       );
       const cached = this.aiCache.get(cacheKey);
       if (cached !== null) {
-        return cached;
+        // HIT cache : pas d'appel provider, pas d'usage à accumuler.
+        return { content: cached };
       }
 
-      // SDD §7.10 : Retry réseau (5xx, ECONNREFUSED, timeout), pas de retry sur 4xx
-      const response = await pRetry(
-        () => provider.chat(messages, options),
-        {
-          retries: 3,
-          factor: 2,
-          minTimeout: 1000,
-          onFailedAttempt: (err) => {
-            logger.warn(
-              `[AiRouter] chat() tentative ${err.attemptNumber} échouée (${err.retriesLeft} restantes)`,
-              { error: err.error?.message },
-            );
-          },
-        },
-      );
-
-      // Stocker la réponse dans le cache pour les appels futurs
-      this.aiCache.set(cacheKey, response);
-      return response;
+      const result = await this.callProviderWithUsage(provider, messages, options);
+      this.accumulateUsage(result.usage);
+      this.aiCache.set(cacheKey, result.content);
+      return result;
     }
 
-    // SDD §7.10 : Retry réseau (5xx, ECONNREFUSED, timeout), pas de retry sur 4xx
-    return pRetry(
-      () => provider.chat(messages, options),
+    const result = await this.callProviderWithUsage(provider, messages, options);
+    this.accumulateUsage(result.usage);
+    return result;
+  }
+
+  /**
+   * @internal : effectue l'appel provider avec retry réseau, en utilisant
+   * chatWithUsage() si disponible (capture usage), sinon chat() (usage = undefined).
+   */
+  private async callProviderWithUsage(
+    provider: AiProvider,
+    messages: ChatMessage[],
+    options?: ChatOptions,
+  ): Promise<{ content: string; usage?: TokenUsage }> {
+    const result = await pRetry(
+      async () => {
+        if (provider.chatWithUsage) {
+          return provider.chatWithUsage(messages, options);
+        }
+        const content = await provider.chat(messages, options);
+        return { content };
+      },
       {
         retries: 3,
         factor: 2,
@@ -161,6 +223,7 @@ export class AiRouter {
         },
       },
     );
+    return result;
   }
 
   async *streamChat(
@@ -212,7 +275,8 @@ export class AiRouter {
 
     // Si en dessous du seuil, pas de découpage nécessaire
     if (totalTokens <= contextWindow * 0.5) {
-      return this.chat(providerId, messages, options);
+      const r = await this.chatWithUsage(providerId, messages, options);
+      return r.content;
     }
 
     // Séparer les messages système (gardés avec chaque chunk)
@@ -225,7 +289,8 @@ export class AiRouter {
     // Découper le texte utilisateur en paragraphes
     const paragraphs = userTexts.split(/\n\n+/).filter((p) => p.trim().length > 0);
     if (paragraphs.length === 0) {
-      return this.chat(providerId, messages, options);
+      const r = await this.chatWithUsage(providerId, messages, options);
+      return r.content;
     }
 
     const systemTokens = systemMessages.length > 0
@@ -245,11 +310,12 @@ export class AiRouter {
         currentBatch.length > 0
       ) {
         const chunkText = currentBatch.join("\n\n");
-        const chunkResult = await this.chat(providerId, [
+        // SDD §3.8 : chatWithUsage accumule l'usage de chaque chunk.
+        const chunkResult = await this.chatWithUsage(providerId, [
           ...systemMessages,
           { role: "user", content: chunkText },
         ], options);
-        chunks.push(chunkResult);
+        chunks.push(chunkResult.content);
 
         currentBatch = [para];
         currentTokens = paraTokens;
@@ -261,11 +327,11 @@ export class AiRouter {
 
     if (currentBatch.length > 0) {
       const chunkText = currentBatch.join("\n\n");
-      const chunkResult = await this.chat(providerId, [
+      const chunkResult = await this.chatWithUsage(providerId, [
         ...systemMessages,
         { role: "user", content: chunkText },
       ], options);
-      chunks.push(chunkResult);
+      chunks.push(chunkResult.content);
     }
 
     return chunks.join("\n\n");

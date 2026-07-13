@@ -35,6 +35,8 @@ export class ConsistencyAgent extends Agent {
     // SDD §11.4 : construire la paire de langues pour appliquer les tolérances
     const sourceLang = input.options?.sourceLanguage as string | undefined;
     const targetLang = input.options?.targetLanguage as string | undefined;
+    const novelSummary =
+      (input.options?.novelSummary as string | undefined) ?? undefined;
     const languagePair =
       sourceLang && targetLang ? `${sourceLang}-${targetLang}` : undefined;
 
@@ -52,6 +54,7 @@ export class ConsistencyAgent extends Agent {
         sourceText,
         translatedText,
         lexiconBlock: lexiconBlock || undefined,
+        novelSummary,
       });
 
       const response = await this.aiRouter.chat(

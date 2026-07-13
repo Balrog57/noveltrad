@@ -84,6 +84,10 @@ class WorkflowRunner extends EventEmitter {
   private steps: Step[] = [];
   private paused = false;
   private cancelled = false;
+  /** Guards anti-boucle : compteur de retries QA pour le chapitre courant. */
+  private qaRetryCount = 0;
+  /** Guards anti-boucle : cumul de tokens (in+out) consommés par le job courant. */
+  private jobTokensUsed = 0;
   private factory: AgentFactory;
   private aiRouter: AiRouter;
   private jobRepo: JobRepository;
@@ -100,7 +104,7 @@ class WorkflowRunner extends EventEmitter {
     projectPath: string,
     private settings: SettingsManager,
     private emitProgress: (payload: WorkflowProgress) => void,
-    private emitQualityFailed?: (payload: { jobId: string; score: number; threshold: number }) => void,
+    private emitQualityFailed?: (payload: { jobId: string; score: number; threshold: number; reason?: string; tokensUsed?: number }) => void,
     profiler?: PerformanceProfiler,
     private pluginHost?: PluginHost,
   ) {
@@ -270,6 +274,10 @@ class WorkflowRunner extends EventEmitter {
       this.paragraphs = this.paragraphRepo.listByChapter(chapterId);
     }
 
+    // Guards anti-boucle : réinitialiser les compteurs pour ce chapitre/job.
+    this.qaRetryCount = 0;
+    this.jobTokensUsed = 0;
+
     this.job = {
       id: crypto.randomUUID(),
       projectId: this.project.id,
@@ -340,6 +348,8 @@ class WorkflowRunner extends EventEmitter {
       }
 
       this.paragraphs = this.paragraphRepo.listByChapter(this.chapter.id);
+      // Guards anti-boucle : réinitialiser le compteur de retries QA par chapitre.
+      this.qaRetryCount = 0;
       this.steps = this.getActiveStages().map((stage, index) => ({
         id: crypto.randomUUID(),
         jobId: this.job.id,
@@ -546,6 +556,14 @@ class WorkflowRunner extends EventEmitter {
       step.inputSnapshot = input as unknown as Record<string, unknown>;
       this.jobRepo.updateStep(step);
 
+      // SDD §3.8 : réinitialiser l'accumulateur d'usage de tokens avant
+      // l'exécution de l'agent pour isoler la consommation de ce step.
+      // NOTE : inopérant en mode worker (l'agent s'exécute dans un thread
+      // séparé qui ne partage pas l'accumulateur du router principal).
+      if (!this.settings.get("useWorkerThreads")) {
+        this.aiRouter.resetUsage();
+      }
+
       // SDD §22.2 : exécution dans un Worker thread si activé
       const useWorker = this.settings.get("useWorkerThreads");
       // SDD §7.10 : timeout par étape (stepTimeoutMs). Si l'agent ne répond
@@ -603,7 +621,7 @@ class WorkflowRunner extends EventEmitter {
 
       // SDD §7.1 : Branching QA — décision après exécution du QA agent
       if (step.stage === "qa" && output) {
-        const qualityThreshold = this.settings.get("qualityThreshold") ?? 80;
+        const qualityThreshold = this.settings.get("qualityThreshold") ?? 70;
         const score = output.score ?? 0;
 
         if (score >= qualityThreshold) {
@@ -611,8 +629,36 @@ class WorkflowRunner extends EventEmitter {
           logger.info(`[Workflow] QA score ${score} ≥ seuil ${qualityThreshold}, poursuite`);
         } else if (score >= qualityThreshold - 20) {
           // Score intermédiaire → retry du step le plus faible
+          // Guards anti-boucle : borner le nombre de retries QA automatiques
+          // par chapitre (setting maxQaRetries, défaut 3) pour éviter qu'un
+          // chapitre ne boucle indéfiniment sur la passe de révision.
+          const maxQaRetries = this.settings.get("maxQaRetries") ?? 3;
+          this.qaRetryCount += 1;
+          this.job.qaRetryCount = this.qaRetryCount;
+          this.jobRepo.updateJob(this.job);
+
+          if (this.qaRetryCount > maxQaRetries) {
+            logger.warn(
+              `[Workflow] QA retry ${this.qaRetryCount} > cap ${maxQaRetries}, pause du workflow (max retries dépassé)`,
+            );
+            step.status = "completed";
+            step.score = score;
+            step.outputSnapshot = output as unknown as Record<string, unknown>;
+            step.finishedAt = new Date().toISOString();
+            step.durationMs = Date.now() - startTime;
+            this.jobRepo.updateStep(step);
+            this.pause();
+            this.emitQualityFailed?.({
+              jobId: this.job.id,
+              score,
+              threshold: qualityThreshold,
+              reason: "max_qa_retries_exceeded",
+            });
+            return output;
+          }
+
           logger.warn(
-            `[Workflow] QA score ${score} < ${qualityThreshold} mais ≥ ${qualityThreshold - 20}, retry step le plus faible`,
+            `[Workflow] QA score ${score} < ${qualityThreshold} mais ≥ ${qualityThreshold - 20}, retry step le plus faible (${this.qaRetryCount}/${maxQaRetries})`,
           );
           // Marquer le step comme complété avant retry
           step.status = "completed";
@@ -690,12 +736,13 @@ class WorkflowRunner extends EventEmitter {
 
     step.finishedAt = new Date().toISOString();
     step.durationMs = Date.now() - startTime;
-    step.tokensIn = output?.report
-      ? (output.report as Record<string, unknown>)?.tokensIn as number
-      : undefined;
-    step.tokensOut = output?.report
-      ? (output.report as Record<string, unknown>)?.tokensOut as number
-      : undefined;
+    // SDD §3.8 : lire l'usage de tokens accumulé par l'AiRouter durant ce
+    // step. Remplace l'ancienne lecture (output.report.tokensIn/Out) qui
+    // n'était jamais remplie — les agents ne peuplaient pas ces champs.
+    // Inopérant en mode worker (accumulateur non partagé entre threads).
+    const stepUsage = this.aiRouter.getAndResetUsage();
+    step.tokensIn = stepUsage?.promptTokens;
+    step.tokensOut = stepUsage?.completionTokens;
     this.jobRepo.updateStep(step);
 
     // SDD §3.8 : accumuler le coût estimé (providers cloud uniquement)
@@ -708,6 +755,31 @@ class WorkflowRunner extends EventEmitter {
       );
       if (stepCost > 0) {
         this.job.costUsd = (this.job.costUsd ?? 0) + stepCost;
+      }
+
+      // Guards anti-boucle : plafond de tokens cumulés par job (setting
+      // maxJobTokens, défaut 50000, 0 = désactivé). Au-delà, on met en pause
+      // pour review humaine afin d'éviter un agent qui boucle et explose la
+      // facturation. NOTE: inactif tant que les providers ne renvoient pas
+      // l'objet usage (tokensIn/Out restent undefined — voir token accounting).
+      const maxJobTokens = this.settings.get("maxJobTokens") ?? 50000;
+      if (maxJobTokens > 0) {
+        this.jobTokensUsed += (step.tokensIn ?? 0) + (step.tokensOut ?? 0);
+        if (this.jobTokensUsed > maxJobTokens) {
+          logger.warn(
+            `[Workflow] Plafond tokens job dépassé : ${this.jobTokensUsed} > ${maxJobTokens}, pause du workflow`,
+          );
+          this.jobRepo.updateJob(this.job);
+          this.pause();
+          this.emitQualityFailed?.({
+            jobId: this.job.id,
+            score: step.score ?? 0,
+            threshold: this.settings.get("qualityThreshold") ?? 70,
+            reason: "max_tokens_exceeded",
+            tokensUsed: this.jobTokensUsed,
+          });
+          return output;
+        }
         this.jobRepo.updateJob(this.job);
       }
     }
@@ -1036,7 +1108,7 @@ export class WorkflowEngine {
     }
   }
 
-  private emitQualityFailed(payload: { jobId: string; score: number; threshold: number }): void {
+  private emitQualityFailed(payload: { jobId: string; score: number; threshold: number; reason?: string; tokensUsed?: number }): void {
     const win = this.getMainWindow?.();
     if (win && !win.isDestroyed()) {
       win.webContents.send("workflow:quality-failed", payload);

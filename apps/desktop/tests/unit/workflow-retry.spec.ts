@@ -43,16 +43,14 @@ describe("Retry centralisé — AiRouter (SDD §7.10, post-T3 fix)", () => {
     // T3 fix : le provider ne retry plus — le retry est délégué à AiRouter.
     // On vérifie qu'une erreur 5xx n'inclenche qu'UN seul fetch côté provider.
     const provider = new OllamaProvider("ollama", "Ollama", "qwen3.5:9b");
-    // Spy sur chat pour compter les appels internes — on mock via monkey-patch
-    // du fetch que le provider utilise (net.fetch). Plus simple : on wrap chat.
+    // SDD §3.8 : l'AiRouter appelle provider.chatWithUsage() quand le provider
+    // l'implémente (OllamaProvider le fait). On wrap donc chatWithUsage pour
+    // compter les appels et simuler l'erreur 5xx.
     let calls = 0;
-    const originalChat = provider.chat.bind(provider);
-    provider.chat = async (...args) => {
+    provider.chatWithUsage = async () => {
       calls++;
-      // Simule une erreur 5xx côté provider (un seul fetch, puis throw)
       throw new Error("HTTP 500");
     };
-    void originalChat; // pas utilisé directement, on compte les appels à provider.chat
 
     // Maintenant on passe ce provider dans AiRouter qui retry
     const router = new AiRouter();

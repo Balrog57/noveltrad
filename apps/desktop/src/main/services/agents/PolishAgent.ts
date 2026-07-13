@@ -26,10 +26,15 @@ export class PolishAgent extends Agent {
     const text = input.text ?? "";
     const targetLanguage =
       (input.options?.targetLanguage as string) ?? "French";
+    const novelSummary =
+      (input.options?.novelSummary as string | undefined) ?? undefined;
 
-    const userPrompt = buildPolishUserPrompt({ text, targetLanguage });
+    const userPrompt = buildPolishUserPrompt({ text, targetLanguage, novelSummary });
 
-    const response = await this.aiRouter.chat(this.config.providerId, [
+    // SDD §3.6b : chatWithChunking découpe automatiquement le chapitre long.
+    // Le polissage est paragraphes-indépendant : découper puis concaténer
+    // préserve la structure.
+    const response = await this.aiRouter.chatWithChunking(this.config.providerId, [
       { role: "system", content: POLISH_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ]);

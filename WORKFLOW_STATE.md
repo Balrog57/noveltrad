@@ -1,5 +1,182 @@
 ﻿# Workflow State
 
+## Request — 3 axes perf/économie : pré-scan glossary, chunking, token accounting (2026-07-14)
+
+**Contexte** : suite des axes SaaS restants. 3 axes traités en une session, puis commit + push.
+
+### Axe 1 — Pré-scan glossary
+**Constat** : `TranslateAgent.buildLexiconBlock` envoyait TOUT le lexique du projet (potentiellement des centaines d'entrées) au LLM.
+**Correction** : ajout de `filterLexiconForChapter()` dans `TranslateAgent.ts` — ne garde que :
+- les entrées dont le `term` ou un alias apparaît dans le texte source du chapitre (recherche sous-chaîne, fonctionne pour les langues CJC sans espaces)
+- les entrées `locked` (toujours incluses : peu nombreuses et critiques)
+- Économie typique : plusieurs centaines → 5-15 termes utiles
+
+### Axe 2 — Chunking longs chapitres
+**Constat** : `AiRouter.chatWithChunking()` était codé mais jamais appelé. Les stages grammar/style/polish envoyaient tout le chapitre en 1 prompt → risque d'overflow context window.
+**Correction** : les 3 agents texte (Grammar/Style/Polish) utilisent maintenant `chatWithChunking` au lieu de `chat`. Découpage automatique si > 50% fenêtre de contexte (défaut 32768), sinon `chat` normal. La correction/style/polish étant paragraphes-indépendants, la concaténation `\n\n` préserve la structure.
+**Non concernés** : consistency/qa/review (retournent du JSON — le chunking casserait la structure).
+
+### Axe 3 — Token accounting (câblage response.usage)
+**Constat** : les providers jetaient l'objet `usage`. `step.tokensIn/Out` et `job.costUsd` restaient toujours vides malgré toute la plomberie existante (schema DB, estimateCost, cap maxJobTokens).
+**Correction** (approche additive, non-cassante) :
+- **Types** (`packages/shared`) : ajout `TokenUsage`, `ChatResult`, méthode optionnelle `chatWithUsage()` sur `AiProvider`
+- **OpenAiCompatibleProvider** : `chat()` délègue à `chatWithUsage()` qui lit `response.usage` (prompt_tokens/completion_tokens/total_tokens)
+- **OllamaProvider** : idem, lit `prompt_eval_count`/`eval_count` (changé `data.message.content` → `data.message?.content ?? ""` pour cohérence avec OpenAI)
+- **AiRouter** : `chat()` délègue à `chatWithUsage()` qui appelle `provider.chatWithUsage()` si dispo (sinon fallback `chat()`), accumule l'usage via `resetUsage()`/`getAndResetUsage()`. `chatWithChunking` accumule aussi l'usage des chunks
+- **WorkflowEngine.runStep** : `resetUsage()` avant l'agent, `getAndResetUsage()` après pour remplir `step.tokensIn/Out` → le cap maxJobTokens et estimateCost sont désormais **actifs**
+- **Limitation worker threads** : inopérant en mode worker (accumulateur non partagé entre threads) — documenté dans le code
+
+### Fichiers modifiés
+- `apps/desktop/src/main/services/agents/TranslateAgent.ts` (pré-scan glossary)
+- `apps/desktop/src/main/services/agents/GrammarAgent.ts` (chunking)
+- `apps/desktop/src/main/services/agents/StyleAgent.ts` (chunking)
+- `apps/desktop/src/main/services/agents/PolishAgent.ts` (chunking)
+- `apps/desktop/src/main/services/providers/OpenAiCompatibleProvider.ts` (chatWithUsage)
+- `apps/desktop/src/main/services/providers/OllamaProvider.ts` (chatWithUsage)
+- `apps/desktop/src/main/services/AiRouter.ts` (accumulateur + chatWithUsage)
+- `apps/desktop/src/main/managers/WorkflowEngine.ts` (resetUsage/getAndResetUsage)
+- `packages/shared/src/types/index.ts` (TokenUsage, ChatResult, chatWithUsage)
+- `apps/desktop/tests/unit/providers.spec.ts` (+2 tests chatWithUsage, 1 adapté)
+- `apps/desktop/tests/unit/agents.spec.ts` (mocks chatWithChunking + 3 tests erreur adaptés)
+- `apps/desktop/tests/unit/workflow-retry.spec.ts` (test retry adapté chatWithUsage)
+- `apps/desktop/tests/unit/ai-usage.spec.ts` (**NOUVEAU**, 8 tests accumulateur)
+
+### Tests
+- `npm test --workspace=apps/desktop -- ai-usage` → **8/8** (nouveau)
+- Non-régression : `agents` (77), `providers` (28), `ai-router` (7), `ai-chunking` (8), `workflow-retry` (6), `cost-estimation` (4), `prompts` (69), `quality-*` (47), `workflow-guards` (15), `settings` (10), etc. → **tout passe**
+- `npm run lint` → **0 errors**, 19 warnings préexistants (0 dans les fichiers modifiés)
+
+### Décisions & hypothèses
+- `chatWithUsage()` est **optionnelle** sur l'interface `AiProvider` → les providers/plugins legacy qui ne l'implémentent pas continuent de fonctionner (fallback `chat()`, usage = undefined)
+- Le cap maxJobTokens est désormais **actif** pour Ollama ET OpenAI (les deux providers renvoient l'usage)
+- Comptage inopérant en mode worker thread (documenté) — acceptable car `useWorkerThreads` concerne surtout les agents CPU-bound (split/export), pas les agents LLM
+
+### Open Questions
+- None.
+
+### Handoff pour le prochain agent
+**Axes SaaS traités ce jour (3 sessions cumulées)** : guards anti-boucle, contexte cross-chapitre, QA per-sentence, threshold unifié, pré-scan glossary, chunking, token accounting.
+**File d'attente restante** :
+1. **Register wuxia/xianxia** — nécessite champ `genre` sur Project + migration, puis injection dans StyleAgent
+2. **Refonte outputs SaaS** (`translation_draft`, etc.) — refonte lourde, cassait la compat, reportée
+3. **SplitAgent/ExportAgent en LLM** — volontairement non-IA per SDD §25.6
+
+---
+
+## Request — Prompts + features ciblées : 3 axes (2026-07-14)
+
+**Contexte** : suite de la comparaison prompts SaaS (conversation Cursor) vs les 10 prompts existants NovelTrad. Choix utilisateur : mode "prompts + features ciblées" sur 3 axes, sans casser le modèle de données. Les outputs SaaS (`translation_draft`, etc.) ne sont PAS adoptés.
+
+### Axe 1 — Contexte cross-chapitre (novelSummary)
+**Constat** : `novelSummary` était déjà injecté dans `WorkflowEngine.buildAgentInput` pour tous les stages, mais seuls TranslateAgent et ReviewAgent le consommaient.
+**Corrections** :
+- 4 prompts étendus : `style.system.ts`, `grammar.system.ts`, `polish.system.ts`, `consistency.system.ts` — ajout bloc `--- PREVIOUS CHAPTERS CONTEXT ---` + param `novelSummary?` aux builders
+- 4 agents câblés : `StyleAgent`, `GrammarAgent`, `PolishAgent`, `ConsistencyAgent` lisent `input.options?.novelSummary` et le passent au builder
+- ConsistencyAgent particulièrement important : instruction ajoutée pour vérifier cohérence personnages/lieux/chronologie vs chapitres précédents (rôle "mémoire longue" du prompt SaaS)
+
+### Axe 2 — QA per-sentence
+**Constat** : le prompt QA retournait 8 scores globaux + 1 comments string. Pas de détail par phrase.
+**Corrections** :
+- `QualityReport` (`types/index.ts`) + `qaOutputSchema` (`schemas/agent-io.ts`) étendus avec `suspectSentences?: Array<{sentence, score, issue}>` et `retryInstructions?: string` (optionnels → rétrocompatibles)
+- `qa.system.ts` : prompt étendu pour demander les phrases suspectes (top 5, triées par score) + instructions de retry ciblées si qualité faible
+- `QaAgent.ts` : parsing des nouveaux champs avec fallback `[]` / `""`
+- Les 8 dimensions sont conservées (nécessaires pour la `CalibrationService`)
+
+### Axe 3 — Threshold QA unifié
+**Constat** : 3 valeurs incohérentes (Zod default 70, engine fallback `?? 80`, SettingsView reset 70).
+**Correction** : `WorkflowEngine.ts` lignes 616 + 768 — `?? 80` → `?? 70` (cohérent avec le schema et l'UI)
+
+### Fichiers modifiés
+- `apps/desktop/src/main/services/prompts/style.system.ts`
+- `apps/desktop/src/main/services/prompts/grammar.system.ts`
+- `apps/desktop/src/main/services/prompts/polish.system.ts`
+- `apps/desktop/src/main/services/prompts/consistency.system.ts`
+- `apps/desktop/src/main/services/prompts/qa.system.ts`
+- `apps/desktop/src/main/services/agents/StyleAgent.ts`
+- `apps/desktop/src/main/services/agents/GrammarAgent.ts`
+- `apps/desktop/src/main/services/agents/PolishAgent.ts`
+- `apps/desktop/src/main/services/agents/ConsistencyAgent.ts`
+- `apps/desktop/src/main/services/agents/QaAgent.ts`
+- `apps/desktop/src/main/managers/WorkflowEngine.ts` (threshold ×2)
+- `packages/shared/src/types/index.ts` (QualityReport)
+- `packages/shared/src/schemas/agent-io.ts` (qaOutputSchema)
+- `apps/desktop/tests/unit/prompts.spec.ts` (+7 tests)
+- `apps/desktop/tests/unit/agents.spec.ts` (+2 tests QA)
+
+### Tests
+- `npm test --workspace=apps/desktop -- prompts agents` → **146/146** (7 nouveaux)
+- Non-régression : `quality-checker` (6), `quality-advanced` (41), `workflow-branching` (5), `review-revise` (9), `summarizer` (6) → **tout passe**
+- `npm run lint` → **0 errors**, 20 warnings préexistants (0 dans les fichiers modifiés)
+
+### Décisions & hypothèses
+- Outputs SaaS (`translation_draft`, `translation_coherent`, etc.) NON adoptés : refonte trop lourde, casserait le modèle `paragraphs[].translatedText` / `text` / `report`
+- Threshold unifié à 70 (pas 90 de la spec SaaS — trop strict pour desktop local)
+- 8 dimensions QA conservées (calibration), suspectSentences ajouté en complément
+- Pas de nouveau champ en DB pour novelSummary (déjà persisté par SummarizerAgent)
+
+### Open Questions
+- None pour ces axes.
+
+### Handoff pour le prochain agent
+**File d'attente** (axes restants du prompt SaaS) :
+1. **Register wuxia/xianxia** — nécessite champ `genre`/`register` sur Project + migration DB, puis injection dans StyleAgent
+2. **Pré-scan glossary** — filtrer le glossary pour n'envoyer que les termes présents dans le chapitre (5-15 au lieu de 500)
+3. **Chunking longs chapitres** — activer `AiRouter.chatWithChunking()` (déjà codé) sur review/qa/consistency/grammar/style/polish
+4. **Token accounting** — câbler `response.usage` providers (prérequis pour activer le cap maxJobTokens de la session précédente)
+
+---
+
+## Request — Guards anti-boucle multi-agent (2026-07-14)
+
+**Contexte** : inspiration d'un design SaaS multi-agent (conversation Cursor) pour corriger NovelTrad desktop. 3 axes identifiés vs le code existant : chunking longs chapitres, guards anti-boucle, pré-scan glossary. Choix utilisateur : traiter **1 axe complet** → **Guards anti-boucle**.
+
+### Changements (axe Guards anti-boucle — COMPLÉT)
+3 garde-fous ajoutés, inspirés du prompt SaaS « stoppe si > 50k tokens / 3 appels / résumé < 90% » :
+
+1. **Cap retries QA par chapitre** (`maxQaRetries`, défaut 3)
+   - `WorkflowEngine.runStep()` branche "score intermédiaire" : incrémente `qaRetryCount`, au-delà du cap → pause + event `reason: "max_qa_retries_exceeded"` au lieu de boucler
+   - Compteur réinitialisé par chapitre (`runSingle` + boucle `runBatch`)
+   - Persistance DB : colonne `qa_retry_count` (migration 017) + `job.qaRetryCount` type/repository
+2. **Cap tokens cumulés par job** (`maxJobTokens`, défaut 50000, 0 = off)
+   - Dans `runStep` après accumulation coût : cumul `jobTokensUsed`, pause + event `reason: "max_tokens_exceeded"` au-delà
+   - **NOTE** : inactif tant que le token accounting n'est pas câblé (providers ne renvoient pas `usage` → `tokensIn/Out` undefined). Correctement préparé pour activation future.
+3. **Garde-fou anti-résumé 90%** dans `TranslateAgent.execute()`
+   - Paragraphe traduit < 90% mots source (et source > 20 mots) → status `pending` + metadata `{ lengthAnomaly: true, anomalyCount: n }`
+   - Détecte les hallucinations/résumés silencieux sans casser le workflow
+
+### Fichiers modifiés
+- `packages/shared/src/types/index.ts` — +`AppSettings.maxQaRetries/maxJobTokens`, +`Job.qaRetryCount`
+- `packages/shared/src/schemas/index.ts` — defaults Zod
+- `apps/desktop/src/main/db/migrations/017_guards.sql` — colonne `qa_retry_count`
+- `apps/desktop/src/main/db/repositories/JobRepository.ts` — insert/update/map `qa_retry_count`
+- `apps/desktop/src/main/managers/WorkflowEngine.ts` — 3 guards + type callback étendu (`reason?`, `tokensUsed?`)
+- `apps/desktop/src/main/services/agents/TranslateAgent.ts` — garde-fou 90%
+- `apps/desktop/tests/unit/workflow-guards.spec.ts` — **NOUVEAU**, 15 tests
+- `apps/desktop/tests/unit/db-migrations.spec.ts` — assertions 16→17 migrations + check colonne
+- `WORKFLOW_STATE.md` — cette section
+
+### Tests
+- `npm test --workspace=apps/desktop -- workflow-guards` → **15/15 passent**
+- Non-régression : `agents` (75), `db-migrations` (9), `settings` (10), `workflow-branching` (6), `workflow-retry` (6), `workflow-timeout` (4), `cost-estimation` (4), `review-revise` (9) → **tout passe**
+- `npm run lint` → **0 errors**, 20 warnings préexistants (0 dans les nouveaux fichiers)
+
+### Décisions & hypothèses
+- Compteur QA en colonne dédiée (pas JSON metadata) — lisible/queryable, cohérent avec `cost_usd`
+- Seuil 20 mots minimum pour garde-fou anti-résumé → évite faux positifs sur phrases courtes
+- `emitQualityFailed` étendu avec champs optionnels (rétrocompatible, pas de breaking IPC)
+- Cap tokens désactivable (`maxJobTokens = 0`) pour users locaux Ollama illimités
+
+### Open Questions
+- None pour cet axe.
+
+### Handoff pour le prochain agent
+**File d'attente** (2 axes SaaS restants à traiter dans des sessions séparées) :
+1. **Chunking longs chapitres** : `AiRouter.chatWithChunking()` est déjà codé mais inutilisé. À activer sur review/qa/consistency/grammar/style/polish (stages qui envoient tout le chapitre en 1 prompt). Risque : overflow context window sur gros chapitres.
+2. **Pré-scan glossary** : filtrer le glossary pour n'envoyer que les termes présents dans le chapitre (5-15 au lieu de 500). Nouvelle fonction `lib/context.ts` + modif `TranslateAgent.buildLexiconBlock`.
+3. **Token accounting** (prérequis pour activer le cap maxJobTokens) : câbler `response.usage` dans `OpenAiCompatibleProvider.chat()` et `count` dans `OllamaProvider.chat()`.
+
+---
+
 ## Request — Fix 12 bugs audit restants (2026-07-11)
 - **12 bugs corrigés** (sur les 12 bugs listés dans l'audit) :
   1. **HIGH** `editorStore.saveAll()` race condition — snapshot atomique du dirty set, verrou `isSaving` pour sérialiser les appels concurrents, nettoyage sélectif des IDs envoyés, pas de vidage sur échec.

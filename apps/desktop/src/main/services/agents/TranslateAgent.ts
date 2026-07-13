@@ -33,18 +33,38 @@ export class TranslateAgent extends Agent {
 
   async execute(input: AgentInput): Promise<AgentOutput> {
     const paragraphs = input.paragraphs ?? [];
-    const lexiconBlock = this.buildLexiconBlock(input.lexicon);
+    // Pré-scan glossary : ne pas envoyer tout le lexique du projet (potentiellement
+    // des centaines d'entrées) au LLM. On ne garde que les termes (et alias)
+    // réellement présents dans le texte source du chapitre, plus tous les termes
+    // verrouillés (peu nombreux et critiques pour la cohérence).
+    const chapterSourceText = paragraphs.map((p) => p.sourceText).join("\n");
+    const filteredLexicon = this.filterLexiconForChapter(input.lexicon, chapterSourceText);
+    const lexiconBlock = this.buildLexiconBlock(filteredLexicon);
     const memoryBlock = this.buildMemoryBlock(input);
     const sourceLanguage = (input.options?.sourceLanguage as string) ?? "text";
     const targetLanguage =
       (input.options?.targetLanguage as string) ?? "French";
 
     this.refusalDetected = false;
+    let lengthAnomalyCount = 0;
     const translated: Paragraph[] = [];
 
     // Lire le contexte RAG (paragraphes similaires déjà traduits)
     const ragContext = input.options?.ragContext as
       Record<string, RagMatch[]> | undefined;
+
+    /**
+     * Garde-fou anti-résumé : un traducteur littéraire ne doit jamais résumer.
+     * Si la traduction fait < 90% du nombre de mots source (et que le source
+     * est assez long pour éviter les faux positifs), on marque le paragraphe
+     * `pending` pour que le reviewer/QA le voie, et on lève un flag metadata.
+     */
+    const isLengthAnomaly = (source: string, translatedText: string): boolean => {
+      const sourceWords = source.split(/\s+/).filter(Boolean).length;
+      if (sourceWords < 20) {return false;} // phrases courtes : bruit
+      const translatedWords = translatedText.split(/\s+/).filter(Boolean).length;
+      return translatedWords < sourceWords * 0.9;
+    };
 
     for (const paragraph of paragraphs) {
       // T11 : Vérifier d'abord la correspondance exacte TM
@@ -101,17 +121,59 @@ export class TranslateAgent extends Agent {
         continue;
       }
 
+      // Garde-fou anti-résumé : si la sortie est < 90% des mots source, le
+      // modèle a probablement résumé ou omis du contenu. On garde la traduction
+      // (pour review) mais on marque le paragraphe pending + flag metadata.
+      const trimmedResponse = response.trim();
+      const anomaly = isLengthAnomaly(paragraph.sourceText, trimmedResponse);
+      if (anomaly) {
+        lengthAnomalyCount += 1;
+        logger.warn(
+          `[TranslateAgent] Anomalie de longueur détectée (résumé possible) pour le paragraphe ${paragraph.id}`,
+        );
+      }
+
       translated.push({
         ...paragraph,
-        translatedText: response.trim(),
-        status: "translated",
+        translatedText: trimmedResponse,
+        status: anomaly ? "pending" : "translated",
       });
     }
 
+    const metadata: Record<string, unknown> = {};
+    if (this.refusalDetected) {metadata.ethicalRefusal = true;}
+    if (lengthAnomalyCount > 0) {metadata.lengthAnomaly = true; metadata.anomalyCount = lengthAnomalyCount;}
+
     return {
       paragraphs: translated,
-      metadata: this.refusalDetected ? { ethicalRefusal: true } : undefined,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     };
+  }
+
+  /**
+   * Pré-scan glossary : filtre le lexique pour ne garder que les entrées
+   * pertinentes au chapitre courant.
+   *
+   * Règles :
+   * - Une entrée est retenue si son `term` ou l'un de ses `aliases` apparaît
+   *   dans le texte source (recherche sous-chaîne, fonctionne aussi pour les
+   *   langues sans espaces comme le chinois).
+   * - Les entrées `locked` sont TOUJOURS retenues : elles sont peu nombreuses
+   *   et critiques pour la cohérence (noms propres, terminologie imposée).
+   *
+   * Économie typique : on passe de plusieurs centaines d'entrées à 5-15 termes
+   * utiles, ce qui réduit fortement les tokens du prompt de traduction.
+   */
+  private filterLexiconForChapter(
+    entries: AgentInput["lexicon"],
+    chapterSourceText: string,
+  ): AgentInput["lexicon"] {
+    if (!entries?.length || chapterSourceText.length === 0) {return entries;}
+    return entries.filter((e) => {
+      if (e.locked) {return true;}
+      if (chapterSourceText.includes(e.term)) {return true;}
+      return (e.aliases ?? []).some((alias) => chapterSourceText.includes(alias));
+    });
   }
 
   private buildLexiconBlock(entries?: AgentInput["lexicon"]): string {

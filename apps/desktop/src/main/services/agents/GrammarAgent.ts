@@ -26,10 +26,16 @@ export class GrammarAgent extends Agent {
     const text = input.text ?? "";
     const targetLanguage =
       (input.options?.targetLanguage as string) ?? "French";
+    const novelSummary =
+      (input.options?.novelSummary as string | undefined) ?? undefined;
 
-    const userPrompt = buildGrammarUserPrompt({ text, targetLanguage });
+    const userPrompt = buildGrammarUserPrompt({ text, targetLanguage, novelSummary });
 
-    const response = await this.aiRouter.chat(this.config.providerId, [
+    // SDD §3.6b : chatWithChunking découpe automatiquement le chapitre si le
+    // prompt dépasse 50% de la fenêtre de contexte (défaut 32768). La
+    // correction grammaticale est paragraphes-indépendante : découper puis
+    // concaténer préserve la structure (1 paragraphe → 1 paragraphe corrigé).
+    const response = await this.aiRouter.chatWithChunking(this.config.providerId, [
       { role: "system", content: GRAMMAR_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ]);
