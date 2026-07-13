@@ -11,6 +11,32 @@ export function createProjectDatabase(projectPath: string): Database {
     throw new Error(`Dossier projet introuvable : ${projectPath}`);
   }
   const dbPath = path.join(projectPath, "project.db");
+
+  // node-sqlite3-wasm gère le locking SQLite via un DOSSIER `<dbpath>.lock/`
+  // (mkdirSync à l'ouverture, rmdirSync au close). Si l'app crashe sans
+  // appeler db.close() proprement (OU si un kill -9 / taskkill / panne de
+  // courant), ce dossier reste et la DB est PERMANENTMENT verrouillée — toute
+  // ouverture ultérieure échoue avec "database is locked" car le mkdirSync
+  // retourne EEXIST → SQLITE_BUSY.
+  //
+  // Recovery : on supprime un éventuel dossier .lock/ stale avant d'ouvrir.
+  // C'est sûr car à ce stade aucune connexion n'est active dans CE process, et
+  // si une autre instance de l'app tenait réellement la DB, SQLite gérerait le
+  // conflit au niveau fichier (le .lock/ serait recréé immédiatement par
+  // l'autre process lors de sa prochaine opération). Le seul cas où l'on
+  // supprimerait un lock légitime est celui de 2 instances de NovelTrad sur le
+  // même projet simultanément — scénario non supporté et déjà problématique.
+  const lockDir = `${dbPath}.lock`;
+  if (fs.existsSync(lockDir)) {
+    try {
+      fs.rmSync(lockDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    } catch {
+      // Si la suppression échoue (lock légitime d'un autre process, ou
+      // permission), on laisse faire — l'ouverture qui suit échouera avec
+      // SQLITE_BUSY et l'utilisateur comprendra qu'un autre process tient la DB.
+    }
+  }
+
   const db = new sqlite3.Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
