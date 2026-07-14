@@ -116,20 +116,8 @@ export function registerLexiconHandlers(): void {
     try {
       const repo = new LexiconRepository(db);
       const imported = parseImportData(format, data, projectId);
-      // Charger les IDs existants une seule fois pour éviter O(n²)
-      const existingIds = new Set(
-        repo.listByProject(projectId).map((e) => e.id),
-      );
-      let count = 0;
-      for (const entry of imported) {
-        const mapped = mapToDb(entry);
-        if (existingIds.has(entry.id)) {
-          repo.update(mapped);
-        } else {
-          repo.create(mapped);
-        }
-        count++;
-      }
+      const mappedEntries = imported.map((e) => mapToDb(e));
+      const count = repo.importMany(mappedEntries, projectId);
       return { success: true, count };
     } finally {
       db.close();

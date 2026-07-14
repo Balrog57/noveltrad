@@ -97,9 +97,12 @@ export class LexiconRepository {
   /**
    * Synchronise les aliases d'une entrée du lexique dans la table lexicon_aliases.
    * Supprime tous les aliases existants pour cette entrée, puis insère les nouveaux.
+   * @param useTransaction Par défaut `true`. À passer à `false` si appelé depuis une transaction parente.
    */
-  private syncAliases(lexiconId: string, aliases: string[]): void {
-    this.db.exec("BEGIN TRANSACTION");
+  private syncAliases(lexiconId: string, aliases: string[], useTransaction = true): void {
+    if (useTransaction) {
+      this.db.exec("BEGIN TRANSACTION");
+    }
     try {
       this.db
         .prepare("DELETE FROM lexicon_aliases WHERE lexicon_id = ?")
@@ -110,11 +113,84 @@ export class LexiconRepository {
       for (const alias of aliases) {
         insert.run([randomUUID(), lexiconId, alias]);
       }
+      if (useTransaction) {
+        this.db.exec("COMMIT");
+      }
+    } catch (e) {
+      if (useTransaction) {
+        this.db.exec("ROLLBACK");
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Importe un lot d'entrées du lexique en une seule transaction.
+   * Améliore significativement les performances d'import (évite O(n) transactions).
+   */
+  importMany(entries: LexiconEntry[], projectId: string): number {
+    const existingIds = new Set(
+      this.listByProject(projectId).map((e) => e.id),
+    );
+    let count = 0;
+
+    const insertStmt = this.db.prepare(`
+      INSERT INTO lexicon (id, project_id, term, translation, category, aliases, locked, forbidden, priority, description, notes, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const updateStmt = this.db.prepare(`
+      UPDATE lexicon SET term = ?, translation = ?, category = ?, aliases = ?, locked = ?, forbidden = ?, priority = ?, description = ?, notes = ?, metadata = ?
+      WHERE id = ?
+    `);
+
+    // ⚡ Bolt: Bulk inserts in node-sqlite3-wasm cause massive N+1 overhead.
+    // Wrapping the loop in an explicit transaction forces SQLite to flush to disk only once.
+    this.db.exec("BEGIN TRANSACTION");
+    try {
+      for (const entry of entries) {
+        if (existingIds.has(entry.id)) {
+          updateStmt.run([
+            entry.term,
+            entry.translation,
+            entry.category,
+            entry.aliases.join("|"),
+            entry.locked ? 1 : 0,
+            entry.forbidden ? entry.forbidden.join("|") : null,
+            entry.priority,
+            entry.description ?? null,
+            entry.notes ?? null,
+            entry.metadata ? JSON.stringify(entry.metadata) : null,
+            entry.id,
+          ]);
+        } else {
+          insertStmt.run([
+            entry.id,
+            entry.projectId,
+            entry.term,
+            entry.translation,
+            entry.category,
+            entry.aliases.join("|"),
+            entry.locked ? 1 : 0,
+            entry.forbidden ? entry.forbidden.join("|") : null,
+            entry.priority,
+            entry.description ?? null,
+            entry.notes ?? null,
+            entry.metadata ? JSON.stringify(entry.metadata) : null,
+          ]);
+        }
+        // Appeler syncAliases en désactivant sa propre transaction pour ne pas
+        // créer de transaction imbriquée (non supporté par SQLite)
+        this.syncAliases(entry.id, entry.aliases, false);
+        count++;
+      }
       this.db.exec("COMMIT");
     } catch (e) {
       this.db.exec("ROLLBACK");
       throw e;
     }
+
+    return count;
   }
 
   private map(row: Record<string, unknown>): LexiconEntry {
