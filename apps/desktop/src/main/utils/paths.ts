@@ -22,6 +22,13 @@ export function assertWithinProject(
   basePath: string,
   targetPath: string,
 ): void {
+  // Rejeter les séquences de path traversal encodées ou brutes avant la résolution de path
+  // Intercepte '../', '..\\', '%2e%2e%2f', '%2e%2e', etc.
+  const traversalRegex = /(?:^|\/|\\|%2f|%5c)(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i;
+  if (traversalRegex.test(targetPath)) {
+    throw new Error("Path traversal detected");
+  }
+
   const resolvedBase = path.resolve(basePath);
   const resolvedTarget = path.resolve(targetPath);
   if (!resolvedTarget.startsWith(resolvedBase + path.sep) &&

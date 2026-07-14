@@ -1,0 +1,4 @@
+## 2024-05-18 - Path Traversal bypass via URL-encoding
+**Vulnerability:** URL-encoded directory traversal sequences (`%2e%2e%2f`) bypassed the `assertWithinProject` check because `path.resolve` does not decode URL encodings, treating them as literal path segments.
+**Learning:** When mitigating path traversal attacks in IPC boundaries (especially since Electron IPC uses Structured Clone and transmits strings raw), validation must be applied *before* low-level filesystem resolution. `path.resolve` is insufficient on its own because it normalizes unencoded traversals (`../`) but leaves encoded ones intact.
+**Prevention:** Validate and reject both raw (`.`, `../`) and URL-encoded (`%2e%2e%2f`, `%2e`) traversal sequences using a comprehensive regex (e.g., `/(?:^|\/|\\|%2f|%5c)(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i`) before any `path.resolve` or `decodeURIComponent` calls (as decoding might legitimately allow `%` in filenames).
