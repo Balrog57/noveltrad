@@ -1,0 +1,4 @@
+## 2024-05-24 - Path Traversal in URL-encoded Strings
+**Vulnerability:** The initial `assertWithinProject` utility resolved paths natively using `path.resolve`, which did not decode URL-encoded segments like `%2e%2e%2f` (`../`), allowing bypass of the validation.
+**Learning:** `path.resolve` treats `%2e%2e` as a literal folder name rather than a traversal segment. When dealing with IPC boundaries or external inputs, validation must explicitly reject raw and URL-encoded traversal characters *before* native path resolution.
+**Prevention:** Use a regex `/(?:^|\/|\\|%2f|%5c)(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i` to proactively reject both standard (`../`) and URL-encoded (`%2e%2e%2f`) path traversal attempts before passing the path to `path.resolve`. Do not use `decodeURIComponent` at the low-level filesystem validation layer as it can legitimately allow `%`.
