@@ -66,8 +66,11 @@ export const useEditorStore = defineStore("editor", () => {
     if (isSaving.value) {return;}
     isSaving.value = true;
 
+    // ⚡ Bolt: Use O(1) Set lookup instead of O(N) Array.includes to prevent
+    // O(N*M) complexity when filtering large chapters with many dirty paragraphs.
+    const toSendSet = new Set(toSend);
     const dirtyList = paragraphs.value.filter((p) =>
-      toSend.includes(p.id),
+      toSendSet.has(p.id),
     );
     if (dirtyList.length === 0) {
       isSaving.value = false;
