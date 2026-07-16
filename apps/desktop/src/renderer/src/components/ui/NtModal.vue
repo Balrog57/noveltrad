@@ -112,6 +112,7 @@ const sizeClass = {
           <button
             class="nt-modal-close"
             aria-label="Fermer"
+            title="Fermer"
             @click="emit('close')"
           >
             ✕
