@@ -1,0 +1,4 @@
+## 2024-07-16 - URL-encoded Path Traversal in IPC Handlers
+**Vulnerability:** The `assertWithinProject` function used to validate file paths from IPC boundaries failed to decode URL-encoded traversal sequences like `%2e%2e%2f` (`../`), allowing potential path traversal attacks if standard path resolution libraries process the path down the line.
+**Learning:** `path.resolve` in Node.js treats `%2e%2e%2f` as a literal folder name, bypassing naive validation checks that rely solely on string prefix matching after resolution. IPC boundaries can receive raw strings, meaning structured clone encoding allows traversal strings through.
+**Prevention:** Always validate against BOTH raw and URL-encoded traversal sequences using a comprehensive regex *before* applying filesystem path resolution functions.
