@@ -237,8 +237,11 @@ export function registerHistoryHandlers(): void {
       const byIndex = new Map(
         currentParagraphs.map((p) => [p.indexInChapter, p]),
       );
+      // PR #95 : Set pour lookup O(1) (paragraphIds peut contenir des
+      // centaines d'IDs sur un gros chapitre).
+      const paragraphIdsSet = new Set(paragraphIds);
       const resolvedParagraphs = snapshot
-        .filter((p) => paragraphIds.includes(p.id))
+        .filter((p) => paragraphIdsSet.has(p.id))
         .map((p) => {
           if (p.id.startsWith("reconstructed-")) {
             const real = byIndex.get(p.indexInChapter);

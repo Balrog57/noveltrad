@@ -62,12 +62,16 @@ export const useEditorStore = defineStore("editor", () => {
     // les nouveaux edits concurrents
     const toSend = [...dirtyParagraphs.value];
     if (toSend.length === 0) {return;}
+    // PR #95 : Set pour lookup O(1) au lieu de Array.includes O(n) dans le
+    // filter ci-dessous (à mesure que le chapitre grossit, le coût devient
+    // négligeable mais c'est gratuit à prendre).
+    const toSendSet = new Set(toSend);
     // Sérialiser les appels concurrents
     if (isSaving.value) {return;}
     isSaving.value = true;
 
     const dirtyList = paragraphs.value.filter((p) =>
-      toSend.includes(p.id),
+      toSendSet.has(p.id),
     );
     if (dirtyList.length === 0) {
       isSaving.value = false;

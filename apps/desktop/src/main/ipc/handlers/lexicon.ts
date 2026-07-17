@@ -120,16 +120,13 @@ export function registerLexiconHandlers(): void {
       const existingIds = new Set(
         repo.listByProject(projectId).map((e) => e.id),
       );
-      let count = 0;
-      for (const entry of imported) {
-        const mapped = mapToDb(entry);
-        if (existingIds.has(entry.id)) {
-          repo.update(mapped);
-        } else {
-          repo.create(mapped);
-        }
-        count++;
-      }
+      // PR #89 : importer tout le lot en UNE SEULE transaction (avant :
+      // N transactions, N fsyncs). Le caller classifie create vs update.
+      const batch = imported.map((entry) => ({
+        entry: mapToDb(entry),
+        mode: existingIds.has(entry.id) ? ("update" as const) : ("create" as const),
+      }));
+      const count = repo.importMany(batch);
       return { success: true, count };
     } finally {
       db.close();
