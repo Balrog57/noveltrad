@@ -40,19 +40,32 @@ describe("Path traversal protection (SDD §21.3)", () => {
     expect(() => assertWithinProject(BASE, target)).toThrow("Path traversal detected");
   });
 
-  // Cas 3 : URL-encoded traversal (%2e%2e%2f)
-  // Note : assertWithinProject utilise path.resolve qui NE décode PAS
-  // les encodages URL. %2e%2e%2f reste un nom de dossier littéral.
-  // Ce test documente la limitation : les chemins URL-encodés ne sont
-  // pas décodés et peuvent donc contourner la vérification.
-  // La mitigation est de ne jamais accepter de chemins URL-encodés
-  // depuis l'UI ou les IPC.
-  it("cas 3: URL-encoded traversal (%2e%2e%2f) — treated as literal path (documented limitation)", () => {
-    const target = path.join(BASE, "%2e%2e%2fsecret.txt");
-    // path.resolve ne décode pas les URL-encodings
-    const resolved = path.resolve(target);
-    const isWithin = resolved.startsWith(path.resolve(BASE) + path.sep);
-    expect(isWithin).toBe(true);
+  // Cas 3 : URL-encoded traversal (%2e%2e%2f) — désormais REJETÉ.
+  // Consolidation des 6 PRs sentinel (#86/#87/#90/#91/#93/#96) : la regex
+  // TRAVERSAL_REGEX attrape les séquences URL-encodées AVANT résolution.
+  // Avant ce fix, path.resolve traitait %2e%2e comme un littéral → bypass.
+  it("cas 3: URL-encoded traversal (%2e%2e%2f) — rejected", () => {
+    const target = `${BASE}/%2e%2e%2fsecret.txt`;
+    expect(() => assertWithinProject(BASE, target)).toThrow("Path traversal detected");
+  });
+
+  it("cas 3b: URL-encoded traversal (%2e%2e%5c) — rejected", () => {
+    const target = `${BASE}/%2e%2e%5csecret.txt`;
+    expect(() => assertWithinProject(BASE, target)).toThrow("Path traversal detected");
+  });
+
+  it("cas 3c: URL-encoded basePath traversal — rejected (defense on both args)", () => {
+    // #91 : validate basePath aussi (un caller compromis pourrait passer un
+    // basePath malveillant).
+    expect(() => assertWithinProject(`${BASE}/%2e%2e`, `${BASE}/file.txt`)).toThrow(
+      "Path traversal detected",
+    );
+  });
+
+  it("cas 3d: literal '..' inside a filename is NOT flagged (no false positive)", () => {
+    // La regex est ancrée sur les séparateurs : my..file.txt reste légitime.
+    const target = path.join(BASE, "my..file.txt");
+    expect(() => assertWithinProject(BASE, target)).not.toThrow();
   });
 
   // Cas 4 : Symbolic link

@@ -106,6 +106,71 @@ export class LexiconRepository {
   }
 
   /**
+   * Import en masse (PR #89 — fix N+1 query bottleneck).
+   *
+   * Avant, l'IPC `lexicon:import` bouclait sur chaque entrée et appelait
+   * `create()`/`update()`, chacun ouvrant SA PROPRE transaction via
+   * `withTransaction` → N commits = N fsyncs disque. Sur un import de 500
+   * entrées, c'était ~500 fsyncs synchrones.
+   *
+   * `importMany` ouvre UNE SEULE transaction pour tout le lot. Le caller
+   * classifie chaque entrée en mode "create" ou "update" (via la lookup
+   * existingIds qu'il fait déjà une fois). À l'intérieur de la transaction,
+   * on prépare les statements INSERT/UPDATE/alias une fois et on les réutilise
+   * (prepared-statement reuse = gain supplémentaire).
+   *
+   * @param batch Entrées à importer avec leur mode (create/update).
+   * @returns Nombre d'entrées traitées.
+   */
+  importMany(batch: Array<{ entry: LexiconEntry; mode: "create" | "update" }>): number {
+    if (batch.length === 0) {return 0;}
+    // Préparer les statements UNE fois (réutilisés dans la boucle).
+    const insertStmt = this.db.prepare(
+      `INSERT INTO lexicon (id, project_id, term, translation, category, aliases, locked, forbidden, priority, description, notes, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const updateStmt = this.db.prepare(
+      `UPDATE lexicon SET term = ?, translation = ?, category = ?, aliases = ?, locked = ?, forbidden = ?, priority = ?, description = ?, notes = ?, metadata = ?
+       WHERE id = ?`,
+    );
+    const deleteAliasesStmt = this.db.prepare(
+      "DELETE FROM lexicon_aliases WHERE lexicon_id = ?",
+    );
+    const insertAliasStmt = this.db.prepare(
+      "INSERT INTO lexicon_aliases (id, lexicon_id, alias) VALUES (?, ?, ?)",
+    );
+
+    let count = 0;
+    withTransaction(this.db, () => {
+      for (const { entry, mode } of batch) {
+        const aliasesInline = entry.aliases.join("|");
+        const forbidden = entry.forbidden ? entry.forbidden.join("|") : null;
+        const metadata = jsonColumn.write(entry.metadata);
+        if (mode === "create") {
+          insertStmt.run([
+            entry.id, entry.projectId, entry.term, entry.translation,
+            entry.category, aliasesInline, entry.locked ? 1 : 0, forbidden,
+            entry.priority, entry.description ?? null, entry.notes ?? null, metadata,
+          ]);
+        } else {
+          updateStmt.run([
+            entry.term, entry.translation, entry.category, aliasesInline,
+            entry.locked ? 1 : 0, forbidden, entry.priority,
+            entry.description ?? null, entry.notes ?? null, metadata, entry.id,
+          ]);
+        }
+        // syncAliases inline (sans sa propre transaction — cf. note plus haut).
+        deleteAliasesStmt.run([entry.id]);
+        for (const alias of entry.aliases) {
+          insertAliasStmt.run([randomUUID(), entry.id, alias]);
+        }
+        count++;
+      }
+    });
+    return count;
+  }
+
+  /**
    * Synchronise les aliases d'une entrée du lexique dans la table lexicon_aliases.
    * Supprime tous les aliases existants pour cette entrée, puis insère les nouveaux.
    *

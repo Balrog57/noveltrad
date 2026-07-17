@@ -1,5 +1,57 @@
 ﻿# Workflow State
 
+## Request — Consolidation 13 PRs open → 1 (2026-07-18)
+
+**Contexte** : 13 PRs open (6 sécurité path-traversal, 3 perf, 4 UI/a11y) +
+1 branche stale. Consolidation en UNE SEULE branche
+`chore/consolidate-open-prs` puis fermeture des 13 PRs.
+
+### Cluster Sécurité (6 PRs → 1 fix consolidé)
+- PRs #86, #87, #90, #91, #93, #96 : variations sur le bypass URL-encoded
+  path traversal (`%2e%2e`). Audit révélé que `path.resolve` traitait `%2e%2e`
+  comme littéral → bypass.
+- **Fix consolidé** (`fix(security): consolidated path traversal fix`) :
+  - `TRAVERSAL_REGEX` ancrée dans `assertWithinProject` + `assertSafeProjectPath`
+    (attrape `%2e%2e`/`%2f`/`%5c` avant résolution, sur les deux chemins).
+  - `fs.realpathSync` sur base+target → ferme le bypass symlink (aucune des 6
+    PRs ne le couvrait).
+  - `export:batch` : remplace le check `resolvedDir.includes("..")` inopérant
+    par `assertSafeProjectPath` (cohérent avec `export:run`).
+  - Tests `path-traversal.spec.ts` : cas 3 flip de "limitation documentée" à
+    rejet + nouveaux cas `%2e%2e%5c`, basePath, faux positif `my..file.txt`.
+
+### Cluster Perf (3 PRs → 2 intégrés, #94 clos comme dup)
+- PR #95 : 3 Set lookups (editor.ts saveAll, history.ts rollback,
+  ProjectManager.ts merge dedupe).
+- PR #89 : `LexiconRepository.importMany(batch)` réécrit sur `withTransaction`
+  de Workstream A (la version originale ciblait l'ancien `syncAliases` qui ne
+  gère plus sa transaction). 1 transaction pour tout le lot + prepared-stmt
+  reuse. `lexicon:import` classifie create/update puis appelle importMany.
+- PR #94 : clos (strict subset de #95 — même change editor.ts).
+
+### Cluster UI/a11y (4 PRs → 1 commit consolidé)
+- PR #85 : `:focus-visible` outlines sur NtEmptyState/NtModal/NtToast.
+- PR #88 : NtDiffViewer mode toggle `:title` + `:aria-pressed`.
+- PR #92 : NtModal close `title="Fermer"`.
+- PR #97 : LexiconTable icons `role="img"` + aria-label, NtEmptyState/NtToast
+  icons `aria-hidden`, `type="button"`.
+
+### Branche stale
+- `feat/pipeline-agent-durcissement` (PR #98 déjà mergé) → à supprimer.
+
+### Tests & vérification
+- `type-check` → **0 errors**
+- `test` → **1022/1022 passent** (73 files, +3 vs 1019 — nouveaux cas
+  path-traversal)
+- `lint` → **0 errors**, 20 warnings préexistants
+
+### Handoff
+Branche `chore/consolidate-open-prs` poussée, PR ouvert vers `main`. Après
+merge : fermer les 13 PRs avec commentaires pointant vers le fix consolidé,
+supprimer les 14 branches distantes (13 PRs + stale).
+
+---
+
 ## Request — Refactor architecture 5 workstreams (2026-07-17)
 
 **Contexte** : audit complet du codebase (~30K LOC, 1019 tests). 5 workstreams

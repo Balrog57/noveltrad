@@ -370,8 +370,11 @@ export class ProjectManager {
           .filter(Boolean);
 
         const merged = [...currentParagraphs];
+        // PR #95 : Set pour la déduplication (O(1) par lookup au lieu de
+        // O(n) avec Array.includes dans la boucle).
+        const currentSet = new Set(currentParagraphs);
         for (const np of newParagraphs) {
-          if (!currentParagraphs.includes(np)) {
+          if (!currentSet.has(np)) {
             merged.push(np);
           }
         }

@@ -14,6 +14,7 @@ import type { ProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { ChapterRepository } from "../../db/repositories/ChapterRepository.js";
 import { ParagraphRepository } from "../../db/repositories/ParagraphRepository.js";
+import { assertSafeProjectPath } from "../../utils/paths.js";
 
 const exportEngine = new ExportEngine();
 const settings = new SettingsManager();
@@ -69,7 +70,6 @@ export function registerExportHandlers(): void {
         // les zones système critiques (C:\Windows, /etc, etc.).
         if (input.outputPath) {
           try {
-            const { assertSafeProjectPath } = await import("../../utils/paths.js");
             assertSafeProjectPath(input.outputPath);
           } catch (e) {
             return {
@@ -149,15 +149,21 @@ export function registerExportHandlers(): void {
       try {
         const input = exportBatchSchema.parse(payload);
 
-        // SDD §21.3 — Protection contre le path traversal sur le dossier de sortie
-        const resolvedDir = path.resolve(input.outputDir);
-        if (resolvedDir.includes("..")) {
+        // P0-5 fix (consolidation PRs sentinel) : l'ancien check
+        // `resolvedDir.includes("..")` était inopérant (path.resolve collapse
+        // déjà les ".."). Remplacé par assertSafeProjectPath qui rejette les
+        // zones système + le bypass URL-encoded (%2e%2e). Cohérent avec le
+        // handler export:run (cf. plus haut dans ce fichier).
+        try {
+          assertSafeProjectPath(input.outputDir);
+        } catch (e) {
           return {
             success: false,
             error: {
               code: "VALIDATION_ERROR",
               message:
-                "Chemin de sortie invalide : tentatives de path traversal détectées.",
+                "Chemin de sortie invalide : " +
+                (e instanceof Error ? e.message : "path traversal détecté"),
             },
           };
         }

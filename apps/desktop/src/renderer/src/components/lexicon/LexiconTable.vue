@@ -87,8 +87,8 @@ function aliasPreview(aliases: string[]): string {
     >
       <!-- Colonne Verrou : icône 🔒 -->
       <template #cell-locked="{ value }">
-        <span v-if="value">🔒</span>
-        <span v-else style="opacity: 0.3">🔓</span>
+        <span v-if="value" role="img" aria-label="Verrouillé" title="Verrouillé">🔒</span>
+        <span v-else style="opacity: 0.3" role="img" aria-label="Déverrouillé" title="Déverrouillé">🔓</span>
       </template>
 
       <!-- Colonne Alias : aperçu -->

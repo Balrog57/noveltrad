@@ -80,9 +80,9 @@ onUnmounted(() => {
         role="alert"
         :aria-live="type === 'error' ? 'assertive' : 'polite'"
       >
-        <span class="nt-toast-icon">{{ icon() }}</span>
+        <span class="nt-toast-icon" aria-hidden="true">{{ icon() }}</span>
         <span class="nt-toast-message">{{ message }}</span>
-        <button class="nt-toast-close" aria-label="Fermer" @click="dismiss">
+        <button class="nt-toast-close" aria-label="Fermer" title="Fermer" @click="dismiss">
           \u2715
         </button>
       </div>
@@ -146,9 +146,17 @@ onUnmounted(() => {
   font-size: 14px;
   padding: 2px 4px;
   flex-shrink: 0;
+  border-radius: 4px;
+  transition: opacity 0.15s ease;
 }
 
 .nt-toast-close:hover {
+  opacity: 1;
+}
+
+.nt-toast-close:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
   opacity: 1;
 }
 
