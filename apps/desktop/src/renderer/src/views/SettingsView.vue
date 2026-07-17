@@ -3,7 +3,6 @@ import { onMounted, onUnmounted, watch, ref, computed, onBeforeMount } from "vue
 import { useSettingsStore } from "../stores/settings";
 import { useOllamaStore } from "../stores/ollama";
 import { useUpdateStore } from "../stores/update";
-import { useRouter } from "vue-router";
 import { toPlain } from "../utils/toPlain";
 import type { ConsistencyTolerance } from "@shared/types/index.js";
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@shared/constants/languages.js";
@@ -11,7 +10,6 @@ import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@shared/constants/languages.
 const settings = useSettingsStore();
 const ollama = useOllamaStore();
 const update = useUpdateStore();
-const router = useRouter();
 
 const themeValue = ref<string>(settings.data.theme ?? "system");
 const saved = ref(false);
@@ -215,8 +213,13 @@ async function resetPreferences(): Promise<void> {
 }
 
 async function restartWizard(): Promise<void> {
+  // P2 fix : l'ancien code faisait router.push("/wizard") mais cette route
+  // n'existe PAS dans router/index.ts → navigation silencieusement échouée.
+  // Le wizard est piloté par App.vue (showWizard ref lu au montage quand
+  // firstRunCompleted === false). On set le flag puis recharge l'app pour
+  // que App.vue ré-évalue la condition d'affichage.
   await settings.set("firstRunCompleted", false);
-  router.push("/wizard");
+  window.location.reload();
 }
 
 onBeforeMount(async () => {

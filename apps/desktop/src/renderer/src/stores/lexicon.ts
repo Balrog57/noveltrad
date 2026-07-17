@@ -86,7 +86,10 @@ export const useLexiconStore = defineStore("lexicon", () => {
         entry: LexiconEntry;
       }>("lexicon:save", {
         projectId: entry.projectId,
-        entry,
+        // toPlain : entry peut venir d'un formulaire Vue réactif (Proxy).
+        // Sans cela, ipcRenderer.invoke lèverait DataCloneError (structured
+        // clone rejette les Proxy Vue).
+        entry: toPlain(entry),
       });
       // Remplacer dans la liste locale si existant, sinon ajouter
       const idx = entries.value.findIndex((e) => e.id === result.entry.id);

@@ -7,7 +7,10 @@ import { appSettingsSchema } from "@shared/schemas/index.js";
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export class SettingsManager {
-  private readonly configPath: string;
+  // Le '!' est justifié : quand le constructeur retourne l'instance singleton
+  // existante (return anticipé), this.configPath n'est pas réassigné mais
+  // l'objet retourné l'a déjà été lors de sa création initiale.
+  private readonly configPath!: string;
 
   constructor() {
     // P1-4 fix : singleton transparent. Avant, chaque handler IPC faisait

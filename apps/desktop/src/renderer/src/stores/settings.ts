@@ -47,7 +47,9 @@ export const useSettingsStore = defineStore("settings", () => {
     loading.value = true;
     try {
       const result = await window.novelTradAPI.invoke<Partial<AppSettings>>("settings:get");
-      console.log("[Settings] IPC result:", result);
+      if (import.meta.env.DEV) {
+        console.log("[Settings] IPC result:", result);
+      }
       data.value = result && Object.keys(result).length > 0 ? result : { ...DEFAULT_SETTINGS };
     } catch (e) {
       console.error("[Settings] IPC failed, using defaults:", e);

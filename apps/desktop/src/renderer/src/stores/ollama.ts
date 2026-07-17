@@ -31,18 +31,24 @@ export const useOllamaStore = defineStore("ollama", () => {
       if (hostArg) {
         await window.novelTradAPI.invoke("settings:set", "ollamaHost", hostArg);
       }
-      console.log("[Ollama store] Calling ollama:is-available...");
+      if (import.meta.env.DEV) {
+        console.log("[Ollama store] Calling ollama:is-available...");
+      }
       const result = await window.novelTradAPI.invoke<OllamaAvailability>(
         "ollama:is-available",
       );
-      console.log("[Ollama store] available =", result.available);
+      if (import.meta.env.DEV) {
+        console.log("[Ollama store] available =", result.available);
+      }
       available.value = result.available;
       host.value = result.host;
       if (result.available) {
         error.value = null;
         errorKind.value = null;
         models.value = await window.novelTradAPI.invoke("ollama:list-models");
-        console.log("[Ollama store] models =", models.value.length);
+        if (import.meta.env.DEV) {
+          console.log("[Ollama store] models =", models.value.length);
+        }
       } else {
         error.value = result.error ?? "Raison inconnue";
         errorKind.value = result.errorKind ?? "unknown";

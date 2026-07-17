@@ -281,12 +281,22 @@ onMounted(() => {
   loadJobs();
 });
 
+// P1-3 fix : l'ancien handler rechargeait toute la liste des jobs via IPC à
+// CHAQUE événement workflow:progress (un par step, potentiellement des
+// dizaines par seconde sur un batch). Le store workflow maintient déjà la
+// progression réactive (workflowStore.progress), ce reload n'a pour seul
+// but que de rafraîchir le statut global des jobs. On le throttle à 1/s.
+let progressReloadTimer: ReturnType<typeof setTimeout> | null = null;
 const unlisten = window.novelTradAPI.on("workflow:progress", () => {
-  // Recharger les jobs quand il y a du progr\u00E8s
-  loadJobs();
+  if (progressReloadTimer) {return;}
+  progressReloadTimer = setTimeout(() => {
+    progressReloadTimer = null;
+    loadJobs();
+  }, 1000);
 });
 
 onUnmounted(() => {
+  if (progressReloadTimer) {clearTimeout(progressReloadTimer);}
   unlisten();
 });
 </script>
