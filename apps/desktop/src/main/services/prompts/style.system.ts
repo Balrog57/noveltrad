@@ -33,3 +33,15 @@ ${text}
 
 Rewritten text:`;
 }
+
+/**
+ * Spécification consommée par TextRefineAgent (P2-5 refactor).
+ */
+import type { RefineSpec } from "../agents/TextRefineAgent.js";
+export const STYLE_SPEC: RefineSpec = {
+  id: "style",
+  name: "Style",
+  stage: "style",
+  systemPrompt: STYLE_SYSTEM_PROMPT,
+  buildUserPrompt: buildStyleUserPrompt,
+};

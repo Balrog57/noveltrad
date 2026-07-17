@@ -7,6 +7,7 @@ import {
   LEXICON_SYSTEM_PROMPT,
   buildLexiconUserPrompt,
 } from "../prompts/lexicon.system.js";
+import { buildLexiconBlock } from "../prompts/blocks.js";
 import { lexiconOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
@@ -38,7 +39,7 @@ export class LexiconAgent extends Agent {
     }> = [];
 
     try {
-      const lexiconBlock = this.buildLexiconBlock(lexicon);
+      const lexiconBlock = buildLexiconBlock(lexicon);
       const userPrompt = buildLexiconUserPrompt({
         translatedText: text,
         lexiconBlock,
@@ -95,12 +96,4 @@ export class LexiconAgent extends Agent {
     };
   }
 
-  private buildLexiconBlock(entries: AgentInput["lexicon"]): string {
-    if (!entries?.length) {return "";}
-    const lines = entries.map(
-      (e) =>
-        `- ${e.term} → ${e.translation}${e.locked ? " (LOCKED)" : ""}`,
-    );
-    return `--- LEXICON ---\n${lines.join("\n")}\n--- END LEXICON ---\n\n`;
-  }
 }

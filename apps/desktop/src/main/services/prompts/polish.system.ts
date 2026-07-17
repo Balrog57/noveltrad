@@ -33,3 +33,15 @@ ${text}
 
 Polished text:`;
 }
+
+/**
+ * Spécification consommée par TextRefineAgent (P2-5 refactor).
+ */
+import type { RefineSpec } from "../agents/TextRefineAgent.js";
+export const POLISH_SPEC: RefineSpec = {
+  id: "polish",
+  name: "Polish",
+  stage: "polish",
+  systemPrompt: POLISH_SYSTEM_PROMPT,
+  buildUserPrompt: buildPolishUserPrompt,
+};

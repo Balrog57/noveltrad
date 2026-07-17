@@ -8,6 +8,7 @@ import {
   CONSISTENCY_SYSTEM_PROMPT,
   buildConsistencyUserPrompt,
 } from "../prompts/consistency.system.js";
+import { buildLexiconBlock } from "../prompts/blocks.js";
 import { consistencyOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
@@ -49,7 +50,7 @@ export class ConsistencyAgent extends Agent {
     let llmAvailable = false;
 
     try {
-      const lexiconBlock = this.buildLexiconBlock(input.lexicon);
+      const lexiconBlock = buildLexiconBlock(input.lexicon);
       const userPrompt = buildConsistencyUserPrompt({
         sourceText,
         translatedText,
@@ -121,12 +122,4 @@ export class ConsistencyAgent extends Agent {
     };
   }
 
-  private buildLexiconBlock(entries?: AgentInput["lexicon"]): string {
-    if (!entries?.length) {return "";}
-    const lines = entries.map(
-      (e) =>
-        `- ${e.term} → ${e.translation}${e.locked ? " (LOCKED)" : ""}`,
-    );
-    return `--- LEXICON ---\n${lines.join("\n")}\n--- END LEXICON ---\n\n`;
-  }
 }

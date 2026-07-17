@@ -12,6 +12,7 @@ import {
   TRANSLATE_SYSTEM_PROMPT,
   buildTranslateUserPrompt,
 } from "../prompts/translate.system.js";
+import { buildLexiconBlock } from "../prompts/blocks.js";
 import { paragraphsOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
@@ -39,7 +40,7 @@ export class TranslateAgent extends Agent {
     // verrouillés (peu nombreux et critiques pour la cohérence).
     const chapterSourceText = paragraphs.map((p) => p.sourceText).join("\n");
     const filteredLexicon = this.filterLexiconForChapter(input.lexicon, chapterSourceText);
-    const lexiconBlock = this.buildLexiconBlock(filteredLexicon);
+    const lexiconBlock = buildLexiconBlock(filteredLexicon);
     const memoryBlock = this.buildMemoryBlock(input);
     const sourceLanguage = (input.options?.sourceLanguage as string) ?? "text";
     const targetLanguage =
@@ -102,10 +103,35 @@ export class TranslateAgent extends Agent {
         TRANSLATE_SYSTEM_PROMPT,
       );
 
-      const response = await this.aiRouter.chat(this.config.providerId, [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ]);
+      // P0-6 fix : isoler l'appel LLM par paragraphe. Avant, une erreur
+      // réseau (429 après épuisement des retries, timeout, etc.) sur UN
+      // paragraphe faisait échouer tout le chapitre (l'exception remontait
+      // jusqu'à WorkflowEngine.runStep qui marquait le step failed). Désormais
+      // on capture l'erreur, on marque le paragraphe `pending` avec un flag
+      // metadata, et on continue les paragraphes suivants — le QA/reviewer
+      // verra les paragraphes non traduits.
+      let response: string;
+      try {
+        response = await this.aiRouter.chat(this.config.providerId, [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ]);
+      } catch (llmErr) {
+        logger.error(
+          `[TranslateAgent] Échec LLM pour le paragraphe ${paragraph.id}, marqué pending`,
+          llmErr,
+        );
+        translated.push({
+          ...paragraph,
+          translatedText: paragraph.sourceText,
+          status: "pending",
+          metadata: {
+            ...(paragraph.metadata ?? {}),
+            llmError: llmErr instanceof Error ? llmErr.message : String(llmErr),
+          },
+        });
+        continue;
+      }
 
       // Détection de refus éthique
       if (this.aiRouter.isEthicalRefusal(response)) {
@@ -174,14 +200,6 @@ export class TranslateAgent extends Agent {
       if (chapterSourceText.includes(e.term)) {return true;}
       return (e.aliases ?? []).some((alias) => chapterSourceText.includes(alias));
     });
-  }
-
-  private buildLexiconBlock(entries?: AgentInput["lexicon"]): string {
-    if (!entries?.length) {return "";}
-    const lines = entries.map(
-      (e) => `- ${e.term} → ${e.translation}${e.locked ? " (LOCKED)" : ""}`,
-    );
-    return `--- LEXICON ---\n${lines.join("\n")}\n--- END LEXICON ---\n\n`;
   }
 
   private buildMemoryBlock(input: AgentInput): string {

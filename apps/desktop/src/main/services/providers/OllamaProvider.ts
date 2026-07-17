@@ -8,6 +8,7 @@ import type {
   TokenUsage,
 } from "@shared/types/index.js";
 import { logger } from "../../utils/logger.js";
+import { sleepForRetryAfter, retryable429Error } from "./retry.js";
 
 /**
  * SDD §3.7 : Gestion réactive du HTTP 429 (Too Many Requests).
@@ -19,18 +20,17 @@ import { logger } from "../../utils/logger.js";
  *
  * Ollama (local) ne retourne normalement pas de 429, mais cette logique
  * s'applique aussi au OpenAiCompatibleProvider via le même pattern.
+ *
+ * P2-7 refactor : le sleep + log est délégué à sleepForRetryAfter (shared).
+ *
+ * NOTE : cette fonction DOIT toujours throw (type de retour `never`). Ne pas
+ * la refactorer pour qu'elle retourne sans throw — sinon un 429 tomberait
+ * dans la branche 4xx et lancerait une AbortError non-retryable.
  */
 async function handle429(res: Response): Promise<never> {
-  const retryAfter = res.headers.get("Retry-After");
-  if (retryAfter) {
-    const seconds = Number.parseInt(retryAfter, 10);
-    if (Number.isFinite(seconds) && seconds > 0 && seconds < 300) {
-      logger.warn(`[Provider] HTTP 429, attente Retry-After: ${seconds}s`);
-      await new Promise((r) => setTimeout(r, seconds * 1000));
-    }
-  }
+  await sleepForRetryAfter(res.headers.get("Retry-After"), "[Provider]");
   // Error retryable (pas AbortError) → pRetry va retry
-  throw new Error(`HTTP 429 Too Many Requests`);
+  throw retryable429Error();
 }
 
 export class OllamaProvider implements AiProvider {

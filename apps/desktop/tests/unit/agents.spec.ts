@@ -171,17 +171,21 @@ describe("TranslateAgent", () => {
     expect(userMsg.content).toContain("Le chat s'assit.");
   });
 
-  it("devrait gérer les erreurs AI", async () => {
+  it("devrait gérer les erreurs AI par paragraphe (P0-6 : isolation)", async () => {
+    // P0-6 fix : une erreur LLM sur un paragraphe ne doit plus faire échouer
+    // tout le chapitre. Le paragraphe est marqué `pending` avec un flag
+    // metadata.llmError, et les paragraphes suivants continuent d'être traités.
     (mockRouter.chat as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("AI indisponible"),
     );
     const agent = new TranslateAgent(CONFIG, mockRouter, mockTmEngine);
-    await expect(
-      agent.execute({
-        projectId: "proj-1",
-        paragraphs: [makeParagraph()],
-      }),
-    ).rejects.toThrow("AI indisponible");
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [makeParagraph()],
+    });
+    expect(output.paragraphs).toHaveLength(1);
+    expect(output.paragraphs![0].status).toBe("pending");
+    expect(output.paragraphs![0].metadata?.llmError).toBe("AI indisponible");
   });
 
   it("devrait utiliser TM exact match et sauter le LLM si trouvé (T11)", async () => {

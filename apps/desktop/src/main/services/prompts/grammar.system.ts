@@ -33,3 +33,16 @@ ${text}
 
 Corrected text:`;
 }
+
+/**
+ * Spécification consommée par TextRefineAgent (P2-5 refactor). Regroupe
+ * l'identité + le prompt du stage grammar en un objet unique.
+ */
+import type { RefineSpec } from "../agents/TextRefineAgent.js";
+export const GRAMMAR_SPEC: RefineSpec = {
+  id: "grammar",
+  name: "Grammaire",
+  stage: "grammar",
+  systemPrompt: GRAMMAR_SYSTEM_PROMPT,
+  buildUserPrompt: buildGrammarUserPrompt,
+};
