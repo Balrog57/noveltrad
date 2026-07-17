@@ -102,7 +102,12 @@ function toggleMode(): void {
           <input v-model="showLineLevel" type="checkbox">
           Afficher au niveau ligne
         </label>
-        <button class="btn-mode" @click="toggleMode">
+        <button
+          class="btn-mode"
+          :title="currentMode === 'side-by-side' ? 'Passer en vue unifiée' : 'Passer en vue côte à côte'"
+          :aria-pressed="currentMode === 'unified'"
+          @click="toggleMode"
+        >
           {{ currentMode === "side-by-side" ? "Vue unifiée" : "Côte à côte" }}
         </button>
       </div>
