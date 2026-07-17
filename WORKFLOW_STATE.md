@@ -1,5 +1,102 @@
 ﻿# Workflow State
 
+## Request — Refactor architecture 5 workstreams (2026-07-17)
+
+**Contexte** : audit complet du codebase (~30K LOC, 1019 tests). 5 workstreams
+de refactor exécutés séquentiellement sur la branche
+`feat/pipeline-agent-durcissement`. Objectif : qualité, scalabilité, fix
+d'erreurs, maintainabilité — **sans changement de fonctionnalité** (sauf P0-6
+intentionnel : isolation par paragraphe dans TranslateAgent).
+
+### Workstream A — DB layer hardening
+- `db/utils.ts` (nouveau) : `withTransaction()`, `jsonColumn`, `boolColumn`
+  helpers (collapse les patterns BEGIN/COMMIT/ROLLBACK + JSON coerce dupliqués).
+- **P0-3 fix** : `LexiconRepository.create/update` — INSERT principal +
+  syncAliases atomiques via `withTransaction` (avant : aliases table pouvait
+  désynchroniser d'un crash entre les deux writes).
+- **P0-4 fix** : `SummaryRepository.upsertNovelSummary` — `INSERT ... ON
+  CONFLICT` atomique remplace le read-then-write TOCTOU.
+- `ParagraphRepository` : utilise `withTransaction` + `jsonColumn`.
+- **P1-2 fix** : `HistoryRepository.getLastFullSnapshot` — SQL filter + LIMIT 1
+  au lieu de charger toutes les rows + filtre JS (O(N) → O(1) par snapshot
+  create). Migration 018 : `idx_history_project_chapter_created`.
+- `stores/settings.ts` : ajoute `maxQaRetries`/`maxJobTokens` manquants aux
+  DEFAULT_SETTINGS (fix type-check pré-existant).
+- Commit : `a20637e`.
+
+### Workstream B — WorkflowEngine decomposition
+- **`WorkflowRunner.dispose()`** : fermeture DB idempotente remplaçant 8+
+  `this.db.close()` inline dispersés.
+- **P0-1 fix (race start/startBatch)** : `jobId` pré-généré, runner enregistré
+  dans `this.runners` AVANT l'async `runner.start()` → `pause/cancel/retry`
+  dans le microtask gap ne no-op plus.
+- **P0-2 fix (tryCloseRunnerDb no-op)** : `resumeBatch` appelle
+  `existing.dispose()` au lieu de l'ancien `cancel()`-only qui leakait la DB.
+- `EventEmitter` (1 event "resume") remplacé par gate Promise
+  (`waitForResume`/`resumeFn`). `cancel()` débloque aussi une pause en cours.
+- Commit : `f4305a3`.
+
+### Workstream C — AiRouter split + agent dedup
+- **`TextRefineAgent`** (nouveau) : classe générique pour grammar/style/polish.
+  Les 3 anciens agents deviennent des thin wrappers (tests/worker/plugins
+  préservés). ~110 LOC de duplication supprimés (P2-5).
+- **`prompts/blocks.ts`** (nouveau) : `buildLexiconBlock()` partagé remplaçant
+  3 copies verbatim (P2-6).
+- **`providers/retry.ts`** (nouveau) : `sleepForRetryAfter()` +
+  `retryable429Error()` partagés (P2-7).
+- `TextRefineAgent` appelle `resolvePrompt()` → extend l'override DB (SDD §25)
+  de translate-only à grammar/style/polish (P2-11).
+- **P0-6 fix (TranslateAgent)** : wrap l'appel LLM par paragraphe dans try/catch
+  → une erreur réseau sur un paragraphe ne fait plus échouer tout le chapitre.
+  Paragraphe marqué `pending` + `metadata.llmError`, boucle continue.
+- Commit : `94eecf1`.
+
+### Workstream D — IPC contract + security
+- **`SettingsManager` singleton** : cache process-wide via constructeur +
+  `getSettingsManager()`/`setSettingsManagerInstance()`. Avant : 12+ instances
+  handlers faisaient chacune `fs.readFileSync` (P1-4).
+- **`assertSafeProjectPath()`** : rejette les zones système (C:\Windows, /etc,
+  /usr…) sur les write paths contrôlés par le renderer (P0-5). Appliqué à
+  `ProjectManager.create` et `export:run` (remplace le check
+  `resolvedOutput.includes("..")` inopérant).
+- **`project:path`** : try/finally sur la DB (P2-4 leak sur getById throw).
+- **`project:delete` + `chapter:list`** : validation Zod args (P2-13).
+- Commit : `65f9c7e`.
+
+### Workstream E — Renderer hygiene
+- **WorkflowView IPC storm (P1-3)** : throttle `workflow:progress` →
+  `loadJobs()` à 1/s (avant : IPC refetch par event, dizaines/sec sur batch).
+- **`lexicon.saveEntry`** : `toPlain(entry)` à la frontière IPC (latent
+  DataCloneError).
+- **`SettingsView.restartWizard`** : route `/wizard` morte → `location.reload()`
+  après set flag (App.vue ré-évalue `showWizard`).
+- Debug `console.log` gardés par `import.meta.env.DEV` (App.vue, settings,
+  ollama stores).
+- Commit : `49a5a76`.
+
+### Tests & vérification
+- `npm run type-check` → **0 errors** (2 erreurs pré-existantes corrigées en
+  prime : settings.ts defaults + import path).
+- `npm run test` → **1019/1019 passent** (73 files). Aucune régression.
+- `npm run lint` → **0 errors**, 20 warnings pré-existants.
+
+### Open Questions
+- None.
+
+### Handoff pour le prochain agent
+Refactor merged. La branche `feat/pipeline-agent-durcissement` contient les 5
+commits + le fix pré-existant. PR à merger vers `main`. Axes non traités
+(volontairement, scope trop large pour cette session) :
+- Décomposition des vues oversized (WorkflowView/ChaptersView/LexiconView) en
+  sous-composants — UI-only, low risk, grosse volumétrie.
+- `composables/` folder (useAsyncAction, useLinkedScroll, useStatusLabels).
+- Centralisation du contrat d'erreur IPC (`safeHandle` + envelope `{ok,data}`).
+- Split de `AiRouter` (god class) en collaborateurs (TokenUsageAccumulator,
+  JsonRepair, RefusalDetector, TextChunker).
+- `BaseRepository<T>` + migration des 7 repos vers la base.
+
+---
+
 ## Request — 3 axes perf/économie : pré-scan glossary, chunking, token accounting (2026-07-14)
 
 **Contexte** : suite des axes SaaS restants. 3 axes traités en une session, puis commit + push.
