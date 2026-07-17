@@ -46,16 +46,30 @@ export function registerProjectHandlers(): void {
     return projectManager.open(validatedPath);
   });
 
-  ipcMain.handle("project:path", async (_event, projectId: string) => {
+  ipcMain.handle("project:path", async (_event, projectId: unknown) => {
+    // P2-13 fix : valider projectId + P2-4 fix : try/finally sur la DB
+    // (avant : si getById throw sur une DB corrompue, db.close() était sauté
+    // → fuite de connexion WAL).
+    const validatedId = projectIdSchema.parse(projectId);
     const recent =
       (settings.get("recentProjects") as string[] | undefined) ?? [];
-    const projectPath = recent.find((p) => {
-      const db = createProjectDatabase(p);
-      const found = new ProjectRepository(db).getById(projectId);
-      db.close();
-      return found !== undefined;
-    });
-    if (!projectPath) {throw new Error(`Projet non trouve : ${projectId}`);}
+    let projectPath: string | undefined;
+    for (const p of recent) {
+      let db: ReturnType<typeof createProjectDatabase> | null = null;
+      try {
+        db = createProjectDatabase(p);
+        const found = new ProjectRepository(db).getById(validatedId);
+        if (found) {
+          projectPath = p;
+          break;
+        }
+      } catch {
+        // DB corrompue ou projet supprimé : ignorer ce candidat.
+      } finally {
+        db?.close();
+      }
+    }
+    if (!projectPath) {throw new Error(`Projet non trouve : ${validatedId}`);}
     return projectPath;
   });
 
@@ -65,13 +79,19 @@ export function registerProjectHandlers(): void {
 
   ipcMain.handle(
     "project:delete",
-    async (_event, projectId: string, removeFiles: boolean) => {
-      return projectManager.delete(projectId, removeFiles);
+    async (_event, projectId: unknown, removeFiles: unknown) => {
+      // P2-13 fix : valider les args (avant : bruts, non validés).
+      const validatedId = projectIdSchema.parse(projectId);
+      const validatedRemoveFiles =
+        typeof removeFiles === "boolean" ? removeFiles : false;
+      return projectManager.delete(validatedId, validatedRemoveFiles);
     },
   );
 
-  ipcMain.handle("chapter:list", async (_event, projectId: string) => {
-    return projectManager.listChapters(projectId);
+  ipcMain.handle("chapter:list", async (_event, projectId: unknown) => {
+    // P2-13 fix : valider projectId (avant : string brut non validé).
+    const validatedId = projectIdSchema.parse(projectId);
+    return projectManager.listChapters(validatedId);
   });
 
   ipcMain.handle(

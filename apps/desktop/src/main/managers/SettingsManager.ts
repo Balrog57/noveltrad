@@ -10,12 +10,22 @@ export class SettingsManager {
   private readonly configPath: string;
 
   constructor() {
+    // P1-4 fix : singleton transparent. Avant, chaque handler IPC faisait
+    // `new SettingsManager()` (12+ instances) qui relisaient config.json à
+    // chaque get/set. Désormais le constructeur retourne toujours la même
+    // instance process-wide. Les mocks de tests remplacent ce constructeur
+    // via vi.mock et ne sont pas affectés (ils instancient leur propre faux).
+    if (_settingsSingleton) {
+      return _settingsSingleton;
+    }
     const appData = process.env.APPDATA || path.join(os.homedir(), ".config");
     const configDir = path.join(appData, "NovelTrad");
     if (!fs.existsSync(configDir)) {
       fs.mkdirSync(configDir, { recursive: true });
     }
     this.configPath = path.join(configDir, "config.json");
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    _settingsSingleton = this;
   }
 
   getAll(): AppSettings {
@@ -36,4 +46,26 @@ export class SettingsManager {
     appSettingsSchema.parse(next);
     fs.writeFileSync(this.configPath, JSON.stringify(next, null, 2), "utf-8");
   }
+}
+
+/**
+ * Singleton process-wide du SettingsManager (Workstream D / P1-4 fix).
+ * Le constructeur `new SettingsManager()` retourne aussi cette instance
+ * (singleton transparent — cf. commentaire dans le constructeur).
+ */
+let _settingsSingleton: SettingsManager | null = null;
+
+export function getSettingsManager(): SettingsManager {
+  if (!_settingsSingleton) {
+    _settingsSingleton = new SettingsManager();
+  }
+  return _settingsSingleton;
+}
+
+/**
+ * Force une instance spécifique (tests / injection). Remet le singleton à
+ * null si on passe `null` (utile pour isoler les tests).
+ */
+export function setSettingsManagerInstance(sm: SettingsManager | null): void {
+  _settingsSingleton = sm;
 }
