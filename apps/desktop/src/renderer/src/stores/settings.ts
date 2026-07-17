@@ -32,6 +32,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   reviewLoopEnabled: true,
   summarizerEnabled: true,
   autoUpdateCheck: true,
+  // Guards anti-boucle (v2.2.7) — présents dans AppSettings mais manquants
+  // dans ce DEFAULT_SETTINGS, ce qui cassait le type-check.
+  maxQaRetries: 3,
+  maxJobTokens: 50000,
 };
 
 export const useSettingsStore = defineStore("settings", () => {

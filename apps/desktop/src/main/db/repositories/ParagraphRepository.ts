@@ -1,5 +1,6 @@
 import type { Database } from "node-sqlite3-wasm";
 import type { Paragraph } from "@shared/types/index.js";
+import { withTransaction, jsonColumn } from "../utils.js";
 
 export class ParagraphRepository {
   constructor(private db: Database) {}
@@ -9,8 +10,7 @@ export class ParagraphRepository {
       INSERT INTO paragraphs (id, chapter_id, index_in_chapter, source_text, translated_text, status, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    this.db.exec("BEGIN TRANSACTION");
-    try {
+    withTransaction(this.db, () => {
       for (const p of paragraphs) {
         insert.run([
           p.id,
@@ -19,14 +19,10 @@ export class ParagraphRepository {
           p.sourceText,
           p.translatedText ?? null,
           p.status,
-          p.metadata ? JSON.stringify(p.metadata) : null,
+          jsonColumn.write(p.metadata),
         ]);
       }
-      this.db.exec("COMMIT");
-    } catch (e) {
-      this.db.exec("ROLLBACK");
-      throw e;
-    }
+    });
   }
 
   listByChapter(chapterId: string): Paragraph[] {
@@ -46,7 +42,7 @@ export class ParagraphRepository {
       .run([
         paragraph.translatedText ?? null,
         paragraph.status,
-        paragraph.metadata ? JSON.stringify(paragraph.metadata) : null,
+        jsonColumn.write(paragraph.metadata),
         paragraph.id,
       ]);
   }
@@ -60,22 +56,17 @@ export class ParagraphRepository {
     const update = this.db.prepare(
       "UPDATE paragraphs SET source_text = ?, translated_text = ?, status = ?, metadata = ? WHERE id = ?",
     );
-    this.db.exec("BEGIN TRANSACTION");
-    try {
+    withTransaction(this.db, () => {
       for (const p of paragraphs) {
         update.run([
           p.sourceText,
           p.translatedText ?? null,
           p.status,
-          p.metadata ? JSON.stringify(p.metadata) : null,
+          jsonColumn.write(p.metadata),
           p.id,
         ]);
       }
-      this.db.exec("COMMIT");
-    } catch (e) {
-      this.db.exec("ROLLBACK");
-      throw e;
-    }
+    });
   }
 
   private map(row: Record<string, unknown>): Paragraph {
@@ -91,7 +82,7 @@ export class ParagraphRepository {
         ? String(row.pre_translated_text)
         : undefined,
       status: String(row.status) as Paragraph["status"],
-      metadata: row.metadata ? JSON.parse(String(row.metadata)) : undefined,
+      metadata: jsonColumn.read(row, "metadata") as Record<string, unknown> | undefined,
     };
   }
 }
