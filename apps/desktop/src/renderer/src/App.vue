@@ -17,7 +17,9 @@ const _updateStore = useUpdateStore();
 
 onMounted(async () => {
   await settings.load();
-  console.log("[App] Settings loaded:", JSON.stringify(settings.data));
+  if (import.meta.env.DEV) {
+    console.log("[App] Settings loaded:", JSON.stringify(settings.data));
+  }
   // SDD §4.18 : afficher le wizard au premier lancement
   if (settings.data.firstRunCompleted === false) {
     showWizard.value = true;

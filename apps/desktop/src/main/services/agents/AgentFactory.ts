@@ -9,13 +9,14 @@ import { PreTranslateAgent } from "./PreTranslateAgent.js";
 import { TranslateAgent } from "./TranslateAgent.js";
 import { ConsistencyAgent } from "./ConsistencyAgent.js";
 import { LexiconAgent } from "./LexiconAgent.js";
-import { GrammarAgent } from "./GrammarAgent.js";
-import { StyleAgent } from "./StyleAgent.js";
-import { PolishAgent } from "./PolishAgent.js";
+import { TextRefineAgent } from "./TextRefineAgent.js";
 import { ReviewAgent } from "./ReviewAgent.js";
 import { ReviseAgent } from "./ReviseAgent.js";
 import { QaAgent } from "./QaAgent.js";
 import { ExportAgent } from "./ExportAgent.js";
+import { GRAMMAR_SPEC } from "../prompts/grammar.system.js";
+import { STYLE_SPEC } from "../prompts/style.system.js";
+import { POLISH_SPEC } from "../prompts/polish.system.js";
 import type { LexiconEngine } from "../LexiconEngine.js";
 import type { TranslationMemoryEngine } from "../TranslationMemoryEngine.js";
 import type { ConsistencyChecker } from "../ConsistencyChecker.js";
@@ -66,11 +67,12 @@ export class AgentFactory {
       case "lexicon":
         return new LexiconAgent(config, this.services.lexiconEngine, this.services.aiRouter);
       case "grammar":
-        return new GrammarAgent(config, this.services.aiRouter);
+        // P2-5 refactor : Grammar/Style/Polish factorisés dans TextRefineAgent.
+        return new TextRefineAgent(config, this.services.aiRouter, GRAMMAR_SPEC);
       case "style":
-        return new StyleAgent(config, this.services.aiRouter);
+        return new TextRefineAgent(config, this.services.aiRouter, STYLE_SPEC);
       case "polish":
-        return new PolishAgent(config, this.services.aiRouter);
+        return new TextRefineAgent(config, this.services.aiRouter, POLISH_SPEC);
       case "review":
         return new ReviewAgent(config, this.services.aiRouter);
       case "revise":

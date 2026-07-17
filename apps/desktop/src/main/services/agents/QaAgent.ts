@@ -90,6 +90,16 @@ export class QaAgent extends Agent {
       const parsed = this.aiRouter.tryParseJson(response);
       if (parsed && typeof parsed === "object") {
         const obj = parsed as Record<string, unknown>;
+        // QA per-sentence : parser les phrases suspectes (fallback [] si absent)
+        const suspectSentences = Array.isArray(obj.suspectSentences)
+          ? (obj.suspectSentences as Array<Record<string, unknown>>)
+              .map((raw) => ({
+                sentence: String(raw.sentence ?? ""),
+                score: typeof raw.score === "number" ? raw.score : 50,
+                issue: String(raw.issue ?? ""),
+              }))
+              .filter((s) => s.sentence.length > 0)
+          : [];
         report = {
           consistency: typeof obj.consistency === "number" ? obj.consistency : 50,
           grammar: typeof obj.grammar === "number" ? obj.grammar : 50,
@@ -101,6 +111,8 @@ export class QaAgent extends Agent {
           dialogue: typeof obj.dialogue === "number" ? obj.dialogue : 50,
           globalScore: typeof obj.globalScore === "number" ? obj.globalScore : 50,
           comments: String(obj.comments ?? ""),
+          suspectSentences,
+          retryInstructions: typeof obj.retryInstructions === "string" ? obj.retryInstructions : "",
         };
       } else {
         // Phase 2 : Fallback to heuristic evaluation

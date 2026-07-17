@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import path from "node:path";
 import PQueue from "p-queue";
 import type { BrowserWindow } from "electron";
@@ -75,7 +74,7 @@ export interface WorkflowProgress {
   batchTotalChapters?: number;
 }
 
-class WorkflowRunner extends EventEmitter {
+class WorkflowRunner {
   private db: ProjectDatabase;
   private project: Project;
   private chapter?: Chapter;
@@ -84,6 +83,25 @@ class WorkflowRunner extends EventEmitter {
   private steps: Step[] = [];
   private paused = false;
   private cancelled = false;
+  /**
+   * P0-2 fix : garde contre la double fermeture de la DB. `dispose()` est
+   * idempotent — les 8+ chemins d'exit (cancel, failed, completed, catch
+   * constructeur, early-returns de runBatch, etc.) peuvent tous l'appeler
+   * sans risque. Avant, chaque chemin appelait `this.db.close()` inline →
+   * fragile, facile d'en oublier un sur un nouveau code path.
+   */
+  private disposed = false;
+  /**
+   * Gate de pause/resume basée sur une Promise (remplace l'EventEmitter qui
+   * ne servait qu'à émettre un unique événement "resume"). `resumeFn` est la
+   * fonction de résolution capturée à la création de la Promise d'attente ;
+   * l'appeler débloque `waitForResume()`.
+   */
+  private resumeFn: (() => void) | null = null;
+  /** Guards anti-boucle : compteur de retries QA pour le chapitre courant. */
+  private qaRetryCount = 0;
+  /** Guards anti-boucle : cumul de tokens (in+out) consommés par le job courant. */
+  private jobTokensUsed = 0;
   private factory: AgentFactory;
   private aiRouter: AiRouter;
   private jobRepo: JobRepository;
@@ -100,11 +118,10 @@ class WorkflowRunner extends EventEmitter {
     projectPath: string,
     private settings: SettingsManager,
     private emitProgress: (payload: WorkflowProgress) => void,
-    private emitQualityFailed?: (payload: { jobId: string; score: number; threshold: number }) => void,
+    private emitQualityFailed?: (payload: { jobId: string; score: number; threshold: number; reason?: string; tokensUsed?: number }) => void,
     profiler?: PerformanceProfiler,
     private pluginHost?: PluginHost,
   ) {
-    super();
     this.profiler = profiler ?? new PerformanceProfiler();
     this.db = createProjectDatabase(projectPath);
     try {
@@ -199,20 +216,47 @@ class WorkflowRunner extends EventEmitter {
       // Bug fix : fermer la DB si n'importe quelle étape du constructeur
       // échoue (migration, lookup projet, AiRouter, AiCache, PromptLoader,
       // RagEngine, AgentFactory, etc.) pour éviter une fuite de connexion WAL.
-      this.db.close();
+      this.dispose();
       throw err;
     }
   }
 
-  async start(chapterId?: string): Promise<Job> {
-    return this.runSingle(chapterId);
+  /**
+   * P0-2 fix : fermeture idempotente de la DB. Centralise tous les chemins
+   * d'exit du runner (8+ sites appelaient `this.db.close()` inline).
+   * Sans danger à appeler plusieurs fois.
+   */
+  dispose(): void {
+    if (this.disposed) {return;}
+    this.disposed = true;
+    try {
+      this.db.close();
+    } catch {
+      // DB peut déjà être fermée (ex: dispose appelé après un runBatch
+      // complété). Idempotence → on ignore.
+    }
   }
 
-  async startBatch(chapterIds: string[]): Promise<Job> {
+  /**
+   * Démarre un workflow single-chapter.
+   *
+   * P0-1 fix : `jobId` est pré-généré par l'appelant (WorkflowEngine) afin que
+   * le runner puisse être enregistré dans `this.runners` AVANT que
+   * `runSingle` ne déclenche son fire-and-forget (`runSequential().catch`).
+   * L'ancien code générait l'id dans `runSingle` et n'enregistrait le runner
+   * qu'après résolution de `start()` → fenêtre de course où `pause(jobId)` /
+   * `cancel(jobId)` arrivaient pendant le microtask gap et no-opaient
+   * silencieusement (`runners.get(jobId) === undefined`).
+   */
+  async start(jobId: string, chapterId?: string): Promise<Job> {
+    return this.runSingle(jobId, chapterId);
+  }
+
+  async startBatch(jobId: string, chapterIds: string[]): Promise<Job> {
     if (chapterIds.length === 0) {throw new Error("Aucun chapitre selectionne");}
 
     this.job = {
-      id: crypto.randomUUID(),
+      id: jobId,
       projectId: this.project.id,
       chapterIds,
       type: "batch",
@@ -229,8 +273,7 @@ class WorkflowRunner extends EventEmitter {
       this.job.errorMessage = err instanceof Error ? err.message : String(err);
       this.job.finishedAt = new Date().toISOString();
       this.jobRepo.updateJob(this.job);
-      // Bug fix : fermer la DB sur échec (le runBatch normal ne l'atteint pas).
-      this.db.close();
+      this.dispose();
     });
 
     return this.job;
@@ -258,20 +301,23 @@ class WorkflowRunner extends EventEmitter {
       this.job.errorMessage = err instanceof Error ? err.message : String(err);
       this.job.finishedAt = new Date().toISOString();
       this.jobRepo.updateJob(this.job);
-      // Bug fix : fermer la DB sur échec.
-      this.db.close();
+      this.dispose();
     });
   }
 
-  private async runSingle(chapterId?: string): Promise<Job> {
+  private async runSingle(jobId: string, chapterId?: string): Promise<Job> {
     if (chapterId) {
       this.chapter = this.chapterRepo.getById(chapterId);
       if (!this.chapter) {throw new Error(`Chapitre non trouve : ${chapterId}`);}
       this.paragraphs = this.paragraphRepo.listByChapter(chapterId);
     }
 
+    // Guards anti-boucle : réinitialiser les compteurs pour ce chapitre/job.
+    this.qaRetryCount = 0;
+    this.jobTokensUsed = 0;
+
     this.job = {
-      id: crypto.randomUUID(),
+      id: jobId,
       projectId: this.project.id,
       chapterId,
       type: "single",
@@ -301,8 +347,7 @@ class WorkflowRunner extends EventEmitter {
       this.job.errorMessage = err instanceof Error ? err.message : String(err);
       this.job.finishedAt = new Date().toISOString();
       this.jobRepo.updateJob(this.job);
-      // Bug fix : fermer la DB sur échec (le runSingle normal ne l'atteint pas).
-      this.db.close();
+      this.dispose();
     });
 
     return this.job;
@@ -317,8 +362,7 @@ class WorkflowRunner extends EventEmitter {
       if (this.cancelled) {
         this.job.status = "cancelled";
         this.jobRepo.updateJob(this.job);
-        // Bug fix : fermer la DB sur early-return (cancel).
-        this.db.close();
+        this.dispose();
         return;
       }
 
@@ -340,6 +384,8 @@ class WorkflowRunner extends EventEmitter {
       }
 
       this.paragraphs = this.paragraphRepo.listByChapter(this.chapter.id);
+      // Guards anti-boucle : réinitialiser le compteur de retries QA par chapitre.
+      this.qaRetryCount = 0;
       this.steps = this.getActiveStages().map((stage, index) => ({
         id: crypto.randomUUID(),
         jobId: this.job.id,
@@ -366,8 +412,7 @@ class WorkflowRunner extends EventEmitter {
       await this.runFromIndex(0);
 
       if (this.job.status === "failed") {
-        // Bug fix : fermer la DB sur early-return (échec chapitre).
-        this.db.close();
+        this.dispose();
         return;
       }
     }
@@ -375,20 +420,31 @@ class WorkflowRunner extends EventEmitter {
     this.job.status = "completed";
     this.job.finishedAt = new Date().toISOString();
     this.jobRepo.updateJob(this.job);
-    this.db.close();
+    this.dispose();
   }
 
   pause(): void {
     this.paused = true;
   }
 
+  /**
+   * Reprend le workflow. Résout la Promise d'attente de `waitForResume()` si
+   * une pause est en cours. Remplace l'ancien `EventEmitter.emit("resume")`.
+   */
   resume(): void {
     this.paused = false;
-    this.emit("resume");
+    if (this.resumeFn) {
+      const fn = this.resumeFn;
+      this.resumeFn = null;
+      fn();
+    }
   }
 
   cancel(): void {
     this.cancelled = true;
+    // Si une pause est en cours, la débloquer pour que les boucles de run
+    // puissent atteindre le check `cancelled` et sortir.
+    this.resume();
   }
 
   async retryStep(stepId: string): Promise<void> {
@@ -468,7 +524,7 @@ class WorkflowRunner extends EventEmitter {
       if (this.cancelled) {
         this.job.status = "cancelled";
         this.jobRepo.updateJob(this.job);
-        this.db.close();
+        this.dispose();
         return;
       }
 
@@ -507,16 +563,20 @@ class WorkflowRunner extends EventEmitter {
         triggeredBy: "workflow",
       });
     }
-    this.db.close();
+    this.dispose();
   }
 
+  /**
+   * Retourne une Promise qui se résout quand `resume()` est appelé.
+   * Remplace l'ancien pattern `EventEmitter.once("resume", ...)` qui
+   * nécessitait d'étendre EventEmitter pour un seul événement.
+   *
+   * Une seule pause peut être en attente à la fois (les boucles while/paused
+   * sont séquentielles) ; on stocke donc un unique `resumeFn`.
+   */
   private waitForResume(): Promise<void> {
-    return new Promise((resolve) => {
-      const onResume = (): void => {
-        this.off("resume", onResume);
-        resolve();
-      };
-      this.once("resume", onResume);
+    return new Promise<void>((resolve) => {
+      this.resumeFn = resolve;
     });
   }
 
@@ -545,6 +605,14 @@ class WorkflowRunner extends EventEmitter {
       const input = await this.buildAgentInput(step.stage);
       step.inputSnapshot = input as unknown as Record<string, unknown>;
       this.jobRepo.updateStep(step);
+
+      // SDD §3.8 : réinitialiser l'accumulateur d'usage de tokens avant
+      // l'exécution de l'agent pour isoler la consommation de ce step.
+      // NOTE : inopérant en mode worker (l'agent s'exécute dans un thread
+      // séparé qui ne partage pas l'accumulateur du router principal).
+      if (!this.settings.get("useWorkerThreads")) {
+        this.aiRouter.resetUsage();
+      }
 
       // SDD §22.2 : exécution dans un Worker thread si activé
       const useWorker = this.settings.get("useWorkerThreads");
@@ -603,7 +671,7 @@ class WorkflowRunner extends EventEmitter {
 
       // SDD §7.1 : Branching QA — décision après exécution du QA agent
       if (step.stage === "qa" && output) {
-        const qualityThreshold = this.settings.get("qualityThreshold") ?? 80;
+        const qualityThreshold = this.settings.get("qualityThreshold") ?? 70;
         const score = output.score ?? 0;
 
         if (score >= qualityThreshold) {
@@ -611,8 +679,36 @@ class WorkflowRunner extends EventEmitter {
           logger.info(`[Workflow] QA score ${score} ≥ seuil ${qualityThreshold}, poursuite`);
         } else if (score >= qualityThreshold - 20) {
           // Score intermédiaire → retry du step le plus faible
+          // Guards anti-boucle : borner le nombre de retries QA automatiques
+          // par chapitre (setting maxQaRetries, défaut 3) pour éviter qu'un
+          // chapitre ne boucle indéfiniment sur la passe de révision.
+          const maxQaRetries = this.settings.get("maxQaRetries") ?? 3;
+          this.qaRetryCount += 1;
+          this.job.qaRetryCount = this.qaRetryCount;
+          this.jobRepo.updateJob(this.job);
+
+          if (this.qaRetryCount > maxQaRetries) {
+            logger.warn(
+              `[Workflow] QA retry ${this.qaRetryCount} > cap ${maxQaRetries}, pause du workflow (max retries dépassé)`,
+            );
+            step.status = "completed";
+            step.score = score;
+            step.outputSnapshot = output as unknown as Record<string, unknown>;
+            step.finishedAt = new Date().toISOString();
+            step.durationMs = Date.now() - startTime;
+            this.jobRepo.updateStep(step);
+            this.pause();
+            this.emitQualityFailed?.({
+              jobId: this.job.id,
+              score,
+              threshold: qualityThreshold,
+              reason: "max_qa_retries_exceeded",
+            });
+            return output;
+          }
+
           logger.warn(
-            `[Workflow] QA score ${score} < ${qualityThreshold} mais ≥ ${qualityThreshold - 20}, retry step le plus faible`,
+            `[Workflow] QA score ${score} < ${qualityThreshold} mais ≥ ${qualityThreshold - 20}, retry step le plus faible (${this.qaRetryCount}/${maxQaRetries})`,
           );
           // Marquer le step comme complété avant retry
           step.status = "completed";
@@ -690,12 +786,13 @@ class WorkflowRunner extends EventEmitter {
 
     step.finishedAt = new Date().toISOString();
     step.durationMs = Date.now() - startTime;
-    step.tokensIn = output?.report
-      ? (output.report as Record<string, unknown>)?.tokensIn as number
-      : undefined;
-    step.tokensOut = output?.report
-      ? (output.report as Record<string, unknown>)?.tokensOut as number
-      : undefined;
+    // SDD §3.8 : lire l'usage de tokens accumulé par l'AiRouter durant ce
+    // step. Remplace l'ancienne lecture (output.report.tokensIn/Out) qui
+    // n'était jamais remplie — les agents ne peuplaient pas ces champs.
+    // Inopérant en mode worker (accumulateur non partagé entre threads).
+    const stepUsage = this.aiRouter.getAndResetUsage();
+    step.tokensIn = stepUsage?.promptTokens;
+    step.tokensOut = stepUsage?.completionTokens;
     this.jobRepo.updateStep(step);
 
     // SDD §3.8 : accumuler le coût estimé (providers cloud uniquement)
@@ -708,6 +805,31 @@ class WorkflowRunner extends EventEmitter {
       );
       if (stepCost > 0) {
         this.job.costUsd = (this.job.costUsd ?? 0) + stepCost;
+      }
+
+      // Guards anti-boucle : plafond de tokens cumulés par job (setting
+      // maxJobTokens, défaut 50000, 0 = désactivé). Au-delà, on met en pause
+      // pour review humaine afin d'éviter un agent qui boucle et explose la
+      // facturation. NOTE: inactif tant que les providers ne renvoient pas
+      // l'objet usage (tokensIn/Out restent undefined — voir token accounting).
+      const maxJobTokens = this.settings.get("maxJobTokens") ?? 50000;
+      if (maxJobTokens > 0) {
+        this.jobTokensUsed += (step.tokensIn ?? 0) + (step.tokensOut ?? 0);
+        if (this.jobTokensUsed > maxJobTokens) {
+          logger.warn(
+            `[Workflow] Plafond tokens job dépassé : ${this.jobTokensUsed} > ${maxJobTokens}, pause du workflow`,
+          );
+          this.jobRepo.updateJob(this.job);
+          this.pause();
+          this.emitQualityFailed?.({
+            jobId: this.job.id,
+            score: step.score ?? 0,
+            threshold: this.settings.get("qualityThreshold") ?? 70,
+            reason: "max_tokens_exceeded",
+            tokensUsed: this.jobTokensUsed,
+          });
+          return output;
+        }
         this.jobRepo.updateJob(this.job);
       }
     }
@@ -1036,7 +1158,7 @@ export class WorkflowEngine {
     }
   }
 
-  private emitQualityFailed(payload: { jobId: string; score: number; threshold: number }): void {
+  private emitQualityFailed(payload: { jobId: string; score: number; threshold: number; reason?: string; tokensUsed?: number }): void {
     const win = this.getMainWindow?.();
     if (win && !win.isDestroyed()) {
       win.webContents.send("workflow:quality-failed", payload);
@@ -1057,9 +1179,18 @@ export class WorkflowEngine {
     return this.profiler.exportCsv();
   }
 
-  /** SDD §7.4 : Concurrency gate — file d'attente si maxConcurrentJobs atteint. */
+  /**
+   * SDD §7.4 : Concurrency gate — file d'attente si maxConcurrentJobs atteint.
+   *
+   * P0-1 fix : le `jobId` est pré-généré ici, et le runner est enregistré dans
+   * `this.runners` AVANT l'appel asynchrone `runner.start()`. Comme `start()`
+   * déclenche `runSingle` qui fire-and-forget `runSequential().catch(...)`
+   * avant de retourner le job, tout `pause(jobId)` / `cancel(jobId)` arrivant
+   * dans le microtask gap entre création et retour trouve désormais le runner.
+   */
   async start(projectPath: string, chapterId?: string): Promise<Job> {
     return this.queue.add(async () => {
+      const jobId = crypto.randomUUID();
       const runner = new WorkflowRunner(
         projectPath,
         this.settings,
@@ -1068,19 +1199,20 @@ export class WorkflowEngine {
         this.profiler,
         this.pluginHost,
       );
-      // Bug fix : créer le job puis enregistrer le runner AVANT d'attendre
-      // runSequential (fire-and-forget). L'ancien ordre enregistrait le runner
-      // seulement après que le job soit résolu — fenêtre où pause/cancel/
-      // retry échouaient silencieusement (this.runners.get(jobId) = undefined).
-      const job = await runner.start(chapterId);
-      this.runners.set(job.id, runner);
-      return job;
+      this.runners.set(jobId, runner);
+      try {
+        return await runner.start(jobId, chapterId);
+      } catch (err) {
+        this.runners.delete(jobId);
+        throw err;
+      }
     });
   }
 
-  /** SDD §7.4 : Concurrency gate — file d'attente si maxConcurrentJobs atteint. */
+  /** SDD §7.4 : Concurrency gate — cf. start() pour le fix de race. */
   async startBatch(projectPath: string, chapterIds: string[]): Promise<Job> {
     return this.queue.add(async () => {
+      const jobId = crypto.randomUUID();
       const runner = new WorkflowRunner(
         projectPath,
         this.settings,
@@ -1089,11 +1221,13 @@ export class WorkflowEngine {
         this.profiler,
         this.pluginHost,
       );
-      // Bug fix : cf. start() — enregistrer le runner immédiatement pour
-      // éviter la fenêtre de course avec pause/cancel/retry.
-      const job = await runner.startBatch(chapterIds);
-      this.runners.set(job.id, runner);
-      return job;
+      this.runners.set(jobId, runner);
+      try {
+        return await runner.startBatch(jobId, chapterIds);
+      } catch (err) {
+        this.runners.delete(jobId);
+        throw err;
+      }
     });
   }
 
@@ -1104,16 +1238,13 @@ export class WorkflowEngine {
    */
   async resumeBatch(projectPath: string, job: Job): Promise<void> {
     return this.queue.add(async () => {
-      // Bug fix : si un runner existe déjà pour ce jobId (par ex. pause
-      // manuel + resume via IPC), fermer sa DB avant d'écraser la référence,
-      // sinon la connexion fuit et deux runners peuvent écrire en concurrence.
+      // P0-2 fix : si un runner existe déjà pour ce jobId, on libère sa DB
+      // via dispose() (idempotent) avant d'écraser la référence. L'ancien
+      // `tryCloseRunnerDb` n'appelait que `cancel()` sans fermer la DB → fuite.
       const existing = this.runners.get(job.id);
       if (existing) {
         this.runners.delete(job.id);
-        // L'ancienne DB est fermée par le runner (runSingle/runBatch) sur
-        // succès/échec ; on tente une fermeture best-effort via une prop
-        // publique si disponible.
-        this.tryCloseRunnerDb(existing);
+        existing.dispose();
       }
       const runner = new WorkflowRunner(
         projectPath,
@@ -1123,22 +1254,9 @@ export class WorkflowEngine {
         this.profiler,
         this.pluginHost,
       );
-      await runner.resumeBatch(job);
       this.runners.set(job.id, runner);
+      await runner.resumeBatch(job);
     });
-  }
-
-  /**
-   * Tente de fermer la DB d'un runner (best-effort). WorkflowRunner n'expose
-   * pas publiquement close(), mais runSingle/runBatch le font en interne. On
-   * déclenche cancel pour libérer les early-return et on laisse GC finaliser.
-   */
-  private tryCloseRunnerDb(runner: WorkflowRunner): void {
-    try {
-      runner.cancel();
-    } catch {
-      // ignore
-    }
   }
 
   /**

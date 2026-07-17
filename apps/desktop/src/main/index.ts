@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { registerIpcRouter } from "./ipc/router.js";
-import { SettingsManager } from "./managers/SettingsManager.js";
+import { getSettingsManager } from "./managers/SettingsManager.js";
 import { UpdateManager } from "./managers/UpdateManager.js";
 import { logger } from "./utils/logger.js";
 import { PluginHost } from "./plugins/PluginHost.js";
@@ -14,7 +14,9 @@ import { AiRouter } from "./services/AiRouter.js";
 import { LexiconEngine } from "./services/LexiconEngine.js";
 import { ExportEngine } from "./services/ExportEngine.js";
 
-const settings = new SettingsManager();
+// P1-4 fix : singleton process-wide partagé avec tous les handlers IPC
+// (avant, 12+ instances faisaient chacune des fs.readFileSync synchrones).
+const settings = getSettingsManager();
 let mainWindow: BrowserWindow | null = null;
 let updateManager: UpdateManager | null = null;
 let pluginHost: PluginHost | null = null;

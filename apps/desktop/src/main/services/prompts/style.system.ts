@@ -9,6 +9,10 @@ Rewrite the following text to improve flow, remove awkward phrasing, and elimina
 Keep the original meaning and genre tone. Maintain the same level of formality.
 Do not add or remove content — only improve the expression.
 
+If a "PREVIOUS CHAPTERS CONTEXT" block is provided, use it to keep the style,
+character voices, and narrative register consistent with earlier chapters. Do
+not introduce stylistic shifts that would break continuity with prior chapters.
+
 --- OUTPUT FORMAT ---
 Return ONLY the rewritten text. Do NOT wrap in markdown code fences. Do NOT add any text before or after. Do NOT add explanations.`;
 
@@ -18,10 +22,26 @@ Return ONLY the rewritten text. Do NOT wrap in markdown code fences. Do NOT add 
 export function buildStyleUserPrompt(params: {
   text: string;
   targetLanguage: string;
+  novelSummary?: string;
 }): string {
-  const { text, targetLanguage } = params;
-  return `Text to improve (${targetLanguage}):
+  const { text, targetLanguage, novelSummary } = params;
+  const contextBlock = novelSummary
+    ? `--- PREVIOUS CHAPTERS CONTEXT ---\n${novelSummary}\n--- END CONTEXT ---\n\n`
+    : "";
+  return `${contextBlock}Text to improve (${targetLanguage}):
 ${text}
 
 Rewritten text:`;
 }
+
+/**
+ * Spécification consommée par TextRefineAgent (P2-5 refactor).
+ */
+import type { RefineSpec } from "../agents/TextRefineAgent.js";
+export const STYLE_SPEC: RefineSpec = {
+  id: "style",
+  name: "Style",
+  stage: "style",
+  systemPrompt: STYLE_SYSTEM_PROMPT,
+  buildUserPrompt: buildStyleUserPrompt,
+};

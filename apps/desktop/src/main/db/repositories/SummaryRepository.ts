@@ -59,35 +59,27 @@ export class SummaryRepository {
   }
 
   upsertNovelSummary(projectId: string, summary: string): NovelSummary {
-    const existing = this.getNovelSummary(projectId);
+    // P0-4 fix : l'ancienne implémentation était un read-then-write (SELECT
+    // puis INSERT/UPDATE) sans transaction → TOCTOU. Deux upserts concurrents
+    // (ex: deux WorkflowRunner sur le même projet) pouvaient tous deux prendre
+    // la branche INSERT et violer UNIQUE(project_id).
+    //
+    // Solution : un unique UPSERT atomique via ON CONFLICT, comme
+    // upsertChapterSummary. On récupère ensuite la ligne pour connaître la
+    // version finale (version + 1 sur update, 1 sur insert).
     const updatedAt = new Date().toISOString();
-    if (existing) {
-      this.db
-        .prepare(
-          "UPDATE novel_summaries SET summary = ?, version = version + 1, updated_at = ? WHERE project_id = ?",
-        )
-        .run([summary, updatedAt, projectId]);
-      return {
-        ...existing,
-        summary,
-        version: existing.version + 1,
-        updatedAt,
-      };
-    }
-    const id = randomUUID();
     this.db
       .prepare(
         `INSERT INTO novel_summaries (id, project_id, summary, version, updated_at)
-         VALUES (?, ?, ?, 1, ?)`,
+         VALUES (?, ?, ?, 1, ?)
+         ON CONFLICT(project_id) DO UPDATE SET
+           summary = excluded.summary,
+           version = version + 1,
+           updated_at = excluded.updated_at`,
       )
-      .run([id, projectId, summary, updatedAt]);
-    return {
-      id,
-      projectId,
-      summary,
-      version: 1,
-      updatedAt,
-    };
+      .run([randomUUID(), projectId, summary, updatedAt]);
+    // Re-lecture pour récupérer l'id stable et la version effective.
+    return this.getNovelSummary(projectId)!;
   }
 
   // ── Mapping ───────────────────────────────────────────────────────────

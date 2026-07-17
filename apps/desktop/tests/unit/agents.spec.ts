@@ -171,17 +171,21 @@ describe("TranslateAgent", () => {
     expect(userMsg.content).toContain("Le chat s'assit.");
   });
 
-  it("devrait gérer les erreurs AI", async () => {
+  it("devrait gérer les erreurs AI par paragraphe (P0-6 : isolation)", async () => {
+    // P0-6 fix : une erreur LLM sur un paragraphe ne doit plus faire échouer
+    // tout le chapitre. Le paragraphe est marqué `pending` avec un flag
+    // metadata.llmError, et les paragraphes suivants continuent d'être traités.
     (mockRouter.chat as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("AI indisponible"),
     );
     const agent = new TranslateAgent(CONFIG, mockRouter, mockTmEngine);
-    await expect(
-      agent.execute({
-        projectId: "proj-1",
-        paragraphs: [makeParagraph()],
-      }),
-    ).rejects.toThrow("AI indisponible");
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [makeParagraph()],
+    });
+    expect(output.paragraphs).toHaveLength(1);
+    expect(output.paragraphs![0].status).toBe("pending");
+    expect(output.paragraphs![0].metadata?.llmError).toBe("AI indisponible");
   });
 
   it("devrait utiliser TM exact match et sauter le LLM si trouvé (T11)", async () => {
@@ -355,6 +359,7 @@ describe("GrammarAgent", () => {
   beforeEach(() => {
     mockRouter = {
       chat: vi.fn().mockResolvedValue("Le dragon survola les montagnes."),
+      chatWithChunking: vi.fn().mockResolvedValue("Le dragon survola les montagnes."),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
       resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
@@ -402,6 +407,9 @@ describe("GrammarAgent", () => {
     (mockRouter.chat as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("Erreur réseau"),
     );
+    (mockRouter.chatWithChunking as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Erreur réseau"),
+    );
     const agent = new GrammarAgent(CONFIG, mockRouter);
     await expect(
       agent.execute({ projectId: "proj-1", text: "test" }),
@@ -419,6 +427,7 @@ describe("StyleAgent", () => {
   beforeEach(() => {
     mockRouter = {
       chat: vi.fn().mockResolvedValue("Le dragon majestueux survola les montagnes enneigées."),
+      chatWithChunking: vi.fn().mockResolvedValue("Le dragon majestueux survola les montagnes enneigées."),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
       resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
@@ -462,6 +471,9 @@ describe("StyleAgent", () => {
     (mockRouter.chat as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("Service indisponible"),
     );
+    (mockRouter.chatWithChunking as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Service indisponible"),
+    );
     const agent = new StyleAgent(CONFIG, mockRouter);
     await expect(
       agent.execute({ projectId: "proj-1", text: "test" }),
@@ -479,6 +491,7 @@ describe("PolishAgent", () => {
   beforeEach(() => {
     mockRouter = {
       chat: vi.fn().mockResolvedValue("Le dragon survola les montagnes enneigées, ses ailes déployées."),
+      chatWithChunking: vi.fn().mockResolvedValue("Le dragon survola les montagnes enneigées, ses ailes déployées."),
       tryParseJson: vi.fn(),
       isEthicalRefusal: vi.fn().mockReturnValue(false),
       resolvePrompt: vi.fn().mockImplementation((_id: string, def: string) => Promise.resolve(def)),
@@ -517,6 +530,9 @@ describe("PolishAgent", () => {
 
   it("devrait gérer les erreurs AI", async () => {
     (mockRouter.chat as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Erreur"),
+    );
+    (mockRouter.chatWithChunking as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("Erreur"),
     );
     const agent = new PolishAgent(CONFIG, mockRouter);
@@ -848,6 +864,55 @@ describe("QaAgent", () => {
     });
     expect(output.score).toBeGreaterThanOrEqual(0);
     expect(output.report).toBeDefined();
+  });
+
+  it("devrait parser suspectSentences et retryInstructions depuis la sortie LLM", async () => {
+    // QA per-sentence : le LLM renvoie des phrases suspectes + instructions de retry
+    (mockRouter.chat as ReturnType<typeof vi.fn>).mockResolvedValue(
+      JSON.stringify({
+        consistency: 60,
+        grammar: 65,
+        fluency: 70,
+        style: 68,
+        lexicon: 90,
+        hallucination: 95,
+        length: 80,
+        dialogue: 75,
+        globalScore: 65,
+        comments: "Plusieurs phrases problématiques.",
+        suspectSentences: [
+          { sentence: "Il est allé au combat.", score: 40, issue: "mauvais pronom, devrait être Elle" },
+          { sentence: "Le dragon volaient.", score: 35, issue: "erreur d'accord" },
+        ],
+        retryInstructions: "Paragraph 2: corriger le pronom et l'accord verbal.",
+      }),
+    );
+    const agent = new QaAgent(CONFIG, mockRouter, mockQuality);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [
+        makeParagraph({ translatedText: "Il est allé au combat. Le dragon volaient." }),
+      ],
+    });
+    const report = output.report as QualityReport;
+    expect(report.suspectSentences).toHaveLength(2);
+    expect(report.suspectSentences![0].score).toBe(40);
+    expect(report.suspectSentences![0].issue).toContain("pronom");
+    expect(report.retryInstructions).toContain("corriger le pronom");
+  });
+
+  it("devrait retourner suspectSentences vide si le LLM ne fournit pas le champ", async () => {
+    // Rétrocompatibilité : un LLM qui ne renvoie pas suspectSentences → tableau vide
+    const agent = new QaAgent(CONFIG, mockRouter, mockQuality);
+    const output = await agent.execute({
+      projectId: "proj-1",
+      paragraphs: [
+        makeParagraph({ translatedText: "Le dragon survola les montagnes." }),
+      ],
+    });
+    const report = output.report as QualityReport;
+    expect(report.suspectSentences).toEqual([]);
+    expect(report.retryInstructions).toBe("");
   });
 
   it("devrait gérer des paragraphes vides", async () => {

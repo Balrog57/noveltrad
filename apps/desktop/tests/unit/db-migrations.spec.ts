@@ -84,7 +84,7 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     runMigrations(db, tempDir);
 
     const rows = getMigrations(db);
-    expect(rows.length).toBe(16);
+    expect(rows.length).toBe(18);
     expect(rows[0].version).toBe(1);
     expect(rows[12].version).toBe(13);
     expect(rows[12].name).toBe("013_index_cost.sql");
@@ -97,6 +97,12 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     // globales (promoteToGlobal)
     expect(rows[15].version).toBe(16);
     expect(rows[15].name).toBe("016_tm_global_nullable.sql");
+    // v2.2.7 : guards anti-boucle — compteur de retries QA par job
+    expect(rows[16].version).toBe(17);
+    expect(rows[16].name).toBe("017_guards.sql");
+    // v2.2.8 : index composite history_snapshots (Workstream A)
+    expect(rows[17].version).toBe(18);
+    expect(rows[17].name).toBe("018_history_index.sql");
 
     // Vérifier que la colonne metadata a été ajoutée à chapters
     expect(columnExists(db, "chapters", "metadata")).toBe(true);
@@ -104,10 +110,17 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     expect(columnExists(db, "prompts", "active")).toBe(true);
     // 013 : colonne cost_usd sur jobs + indexes de couverture
     expect(columnExists(db, "jobs", "cost_usd")).toBe(true);
+    // 017 : colonne qa_retry_count sur jobs (guards anti-boucle)
+    expect(columnExists(db, "jobs", "qa_retry_count")).toBe(true);
     const indexes = db
       .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_paragraphs_status', 'idx_prompts_agent')")
       .all() as { name: string }[];
     expect(indexes.length).toBe(2);
+    // 018 : index composite sur history_snapshots
+    const histIndex = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_history_project_chapter_created'")
+      .all() as { name: string }[];
+    expect(histIndex.length).toBe(1);
   });
 
   // ── Test 2 : DB existante v1-v8 → seules v9-v11 s'exécutent ──
@@ -314,7 +327,7 @@ describe("runMigrations — file-based unified runner (T2)", () => {
     runMigrations(db);
 
     const rows = getMigrations(db);
-    expect(rows.length).toBe(16);
+    expect(rows.length).toBe(18);
 
     // La table projects (001_initial.sql) doit exister — c'est précisément
     // son absence qui causait "no such table: projects" → ENOTEMPTY masqué.

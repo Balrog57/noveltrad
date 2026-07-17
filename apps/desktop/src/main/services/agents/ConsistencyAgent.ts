@@ -8,6 +8,7 @@ import {
   CONSISTENCY_SYSTEM_PROMPT,
   buildConsistencyUserPrompt,
 } from "../prompts/consistency.system.js";
+import { buildLexiconBlock } from "../prompts/blocks.js";
 import { consistencyOutputSchema } from "@shared/schemas/agent-io.js";
 import { logger } from "../../utils/logger.js";
 
@@ -35,6 +36,8 @@ export class ConsistencyAgent extends Agent {
     // SDD §11.4 : construire la paire de langues pour appliquer les tolérances
     const sourceLang = input.options?.sourceLanguage as string | undefined;
     const targetLang = input.options?.targetLanguage as string | undefined;
+    const novelSummary =
+      (input.options?.novelSummary as string | undefined) ?? undefined;
     const languagePair =
       sourceLang && targetLang ? `${sourceLang}-${targetLang}` : undefined;
 
@@ -47,11 +50,12 @@ export class ConsistencyAgent extends Agent {
     let llmAvailable = false;
 
     try {
-      const lexiconBlock = this.buildLexiconBlock(input.lexicon);
+      const lexiconBlock = buildLexiconBlock(input.lexicon);
       const userPrompt = buildConsistencyUserPrompt({
         sourceText,
         translatedText,
         lexiconBlock: lexiconBlock || undefined,
+        novelSummary,
       });
 
       const response = await this.aiRouter.chat(
@@ -118,12 +122,4 @@ export class ConsistencyAgent extends Agent {
     };
   }
 
-  private buildLexiconBlock(entries?: AgentInput["lexicon"]): string {
-    if (!entries?.length) {return "";}
-    const lines = entries.map(
-      (e) =>
-        `- ${e.term} → ${e.translation}${e.locked ? " (LOCKED)" : ""}`,
-    );
-    return `--- LEXICON ---\n${lines.join("\n")}\n--- END LEXICON ---\n\n`;
-  }
 }

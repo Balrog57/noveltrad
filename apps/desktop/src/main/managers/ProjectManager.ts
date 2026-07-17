@@ -12,7 +12,7 @@ import type {
 import type { SettingsManager } from "./SettingsManager.js";
 import { createProjectDatabase, runMigrations } from "../db/connection.js";
 import { ProjectRepository } from "../db/repositories/ProjectRepository.js";
-import { expandHome } from "../utils/paths.js";
+import { expandHome, assertSafeProjectPath } from "../utils/paths.js";
 import { logger } from "../utils/logger.js";
 import chardet from "chardet";
 import iconv from "iconv-lite";
@@ -40,7 +40,11 @@ export class ProjectManager {
 
   async create(payload: CreateProjectPayload): Promise<Project> {
     const parentPath = expandHome(payload.parentPath);
+    // P0-5 fix : rejeter les parentPath pointant vers des zones système
+    // (C:\Windows, /etc, etc.) même si le renderer est compromis.
+    assertSafeProjectPath(parentPath);
     const projectDir = path.join(parentPath, payload.name);
+    assertSafeProjectPath(projectDir);
 
     if (fs.existsSync(projectDir)) {
       throw new Error(`Le projet existe deja : ${projectDir}`);

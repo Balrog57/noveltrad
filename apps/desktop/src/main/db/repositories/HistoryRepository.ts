@@ -143,42 +143,59 @@ export class HistoryRepository {
 
   /**
    * Récupère le dernier snapshot complet pour un projet/chapitre.
+   *
+   * P1-2 fix : l'ancienne version chargeait TOUS les snapshots du
+   * projet/chapitre puis filtrait en JS pour trouver le premier "full" →
+   * O(N) rows lus à chaque création de snapshot incrémental, coût croissant
+   * avec l'historique. Désormais on filtre en SQL sur la métadonnée
+   * `snapshotType` (ou absence du champ = rétrocompatibilité "full") avec
+   * LIMIT 1, en s'appuyant sur l'index 018 (project_id, chapter_id, created_at).
+   *
+   * Le LIKE sur le JSON reste nécessaire car `metadata` est une colonne TEXT
+   * sérialisée (pas de JSON1 garanti sur le port wasm). On filtre d'abord par
+   * les deux préfixes possibles, puis on re-vérifie la métadonnée exacte en
+   * JS sur l'unique ligne retournée.
    */
   private getLastFullSnapshot(
     projectId: string,
     chapterId?: string,
   ): HistorySnapshot | null {
-    // Cherche le dernier snapshot avec metadata contenant "snapshotType":"full"
-    // En pratique, on cherche le snapshot complet le plus récent avant la création
-    // du nouveau. On utilise une approche simple : récupérer tous les snapshots
-    // et filtrer ceux qui sont "full".
-    const rows = this.db
-      .prepare(
-        `SELECT hs.*, js.score AS step_score
-         FROM history_snapshots hs
-         LEFT JOIN job_steps js ON hs.step_id = js.id
-         WHERE hs.project_id = ?
-         ${chapterId ? "AND hs.chapter_id = ?" : ""}
-         ORDER BY hs.created_at DESC`,
+    // P1-2 fix : cf. commentaire de méthode ci-dessus. On utilise deux
+    // prepared statements (avec/sans clause chapter) plutôt qu'un array de
+    // params construit dynamiquement — plus typé et lisible.
+    const fullClause = `
+      AND (
+        hs.metadata LIKE '%"snapshotType":"full"%'
+        OR hs.metadata NOT LIKE '%"snapshotType":%'
       )
-      .all(chapterId ? [projectId, chapterId] : [projectId]) as Record<
-      string,
-      unknown
-    >[];
+      ORDER BY hs.created_at DESC
+      LIMIT 1`;
+    const row = chapterId
+      ? (this.db
+          .prepare(
+            `SELECT hs.*, js.score AS step_score
+             FROM history_snapshots hs
+             LEFT JOIN job_steps js ON hs.step_id = js.id
+             WHERE hs.project_id = ? AND hs.chapter_id = ? ${fullClause}`,
+          )
+          .get([projectId, chapterId]) as Record<string, unknown> | undefined)
+      : (this.db
+          .prepare(
+            `SELECT hs.*, js.score AS step_score
+             FROM history_snapshots hs
+             LEFT JOIN job_steps js ON hs.step_id = js.id
+             WHERE hs.project_id = ? ${fullClause}`,
+          )
+          .get([projectId]) as Record<string, unknown> | undefined);
 
-    for (const row of rows) {
-      const meta = this.parseMetadata(row.metadata);
-      const isFull =
-        meta.snapshotType === "full" ||
-        meta.snapshotType === undefined; // rétrocompatibilité
-      if (isFull) {
-        const snapshot = this.mapRow(row);
-        // Reconstruire les paragraphes si nécessaire
-        snapshot.paragraphs = this.getParagraphsFromRow(row);
-        return snapshot;
-      }
-    }
-    return null;
+    if (!row) {return null;}
+    const meta = this.parseMetadata(row.metadata);
+    const isFull =
+      meta.snapshotType === "full" || meta.snapshotType === undefined;
+    if (!isFull) {return null;}
+    const snapshot = this.mapRow(row);
+    snapshot.paragraphs = this.getParagraphsFromRow(row);
+    return snapshot;
   }
 
   /**

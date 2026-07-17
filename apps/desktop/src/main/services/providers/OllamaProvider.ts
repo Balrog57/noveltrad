@@ -4,8 +4,11 @@ import type {
   AiProvider,
   ChatMessage,
   ChatOptions,
+  ChatResult,
+  TokenUsage,
 } from "@shared/types/index.js";
 import { logger } from "../../utils/logger.js";
+import { sleepForRetryAfter, retryable429Error } from "./retry.js";
 
 /**
  * SDD §3.7 : Gestion réactive du HTTP 429 (Too Many Requests).
@@ -17,18 +20,17 @@ import { logger } from "../../utils/logger.js";
  *
  * Ollama (local) ne retourne normalement pas de 429, mais cette logique
  * s'applique aussi au OpenAiCompatibleProvider via le même pattern.
+ *
+ * P2-7 refactor : le sleep + log est délégué à sleepForRetryAfter (shared).
+ *
+ * NOTE : cette fonction DOIT toujours throw (type de retour `never`). Ne pas
+ * la refactorer pour qu'elle retourne sans throw — sinon un 429 tomberait
+ * dans la branche 4xx et lancerait une AbortError non-retryable.
  */
 async function handle429(res: Response): Promise<never> {
-  const retryAfter = res.headers.get("Retry-After");
-  if (retryAfter) {
-    const seconds = Number.parseInt(retryAfter, 10);
-    if (Number.isFinite(seconds) && seconds > 0 && seconds < 300) {
-      logger.warn(`[Provider] HTTP 429, attente Retry-After: ${seconds}s`);
-      await new Promise((r) => setTimeout(r, seconds * 1000));
-    }
-  }
+  await sleepForRetryAfter(res.headers.get("Retry-After"), "[Provider]");
   // Error retryable (pas AbortError) → pRetry va retry
-  throw new Error(`HTTP 429 Too Many Requests`);
+  throw retryable429Error();
 }
 
 export class OllamaProvider implements AiProvider {
@@ -47,6 +49,20 @@ export class OllamaProvider implements AiProvider {
   }
 
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<string> {
+    const result = await this.chatWithUsage(messages, options);
+    return result.content;
+  }
+
+  /**
+   * SDD §3.8 : variante de chat() qui capture l'usage de tokens renvoyé par
+   * Ollama (prompt_eval_count = tokens d'entrée, eval_count = tokens de
+   * sortie). Permet le suivi de consommation même en local (utile pour le cap
+   * maxJobTokens et les statistiques).
+   */
+  async chatWithUsage(
+    messages: ChatMessage[],
+    options?: ChatOptions,
+  ): Promise<ChatResult> {
     // SDD §7.10 : le retry réseau est géré au niveau AiRouter (couche
     // orchestration) pour éviter un double-retry (AiRouter × Provider)
     // qui multiplierait les tentatives par 16. Ce provider n'effectue
@@ -84,8 +100,24 @@ export class OllamaProvider implements AiProvider {
       }
       throw new Error(`HTTP ${res.status}`);
     }
-    const data = await res.json();
-    return data.message.content;
+    const data = await res.json() as {
+      message: { content?: string };
+      prompt_eval_count?: number;
+      eval_count?: number;
+    };
+    const content = data.message?.content ?? "";
+    // SDD §3.8 : Ollama renvoie prompt_eval_count (in) et eval_count (out)
+    let usage: TokenUsage | undefined;
+    if (typeof data.prompt_eval_count === "number" || typeof data.eval_count === "number") {
+      const promptTokens = data.prompt_eval_count ?? 0;
+      const completionTokens = data.eval_count ?? 0;
+      usage = {
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens,
+      };
+    }
+    return { content, usage };
   }
 
   async *streamChat(

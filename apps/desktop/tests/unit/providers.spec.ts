@@ -286,9 +286,48 @@ describe("OllamaProvider", () => {
     );
     const provider = new OllamaProvider("ollama", "Ollama", "qwen3.5:9b");
 
-    // OllamaProvider.chat() returns data.message.content — undefined when missing
+    // OllamaProvider.chat() retourne "" quand message.content est absent
+    // (cohérent avec OpenAiCompatibleProvider, via ?? "").
     const result = await provider.chat([{ role: "user", content: "Hi" }]);
-    expect(result).toBeUndefined();
+    expect(result).toBe("");
+  });
+
+  it("devrait capturer l'usage de tokens via chatWithUsage (Ollama)", async () => {
+    // SDD §3.8 : Ollama renvoie prompt_eval_count (in) + eval_count (out)
+    mockNetFetch.mockResolvedValue(
+      mockJsonResponse({
+        message: { content: "Bonjour le monde" },
+        prompt_eval_count: 42,
+        eval_count: 8,
+      }),
+    );
+
+    const { OllamaProvider } = await import(
+      "../../src/main/services/providers/OllamaProvider"
+    );
+    const provider = new OllamaProvider("ollama", "Ollama", "qwen3.5:9b");
+    const result = await provider.chatWithUsage!([{ role: "user", content: "Hi" }]);
+
+    expect(result.content).toBe("Bonjour le monde");
+    expect(result.usage).toBeDefined();
+    expect(result.usage!.promptTokens).toBe(42);
+    expect(result.usage!.completionTokens).toBe(8);
+    expect(result.usage!.totalTokens).toBe(50);
+  });
+
+  it("devrait retourner usage undefined si Ollama ne renvoie pas les counts", async () => {
+    mockNetFetch.mockResolvedValue(
+      mockJsonResponse({ message: { content: "ok" } }),
+    );
+
+    const { OllamaProvider } = await import(
+      "../../src/main/services/providers/OllamaProvider"
+    );
+    const provider = new OllamaProvider("ollama", "Ollama", "qwen3.5:9b");
+    const result = await provider.chatWithUsage!([{ role: "user", content: "Hi" }]);
+
+    expect(result.content).toBe("ok");
+    expect(result.usage).toBeUndefined();
   });
 
   it("devrait propager l'erreur HTTP 500 sur streamChat sans retry (géré par AiRouter)", async () => {
@@ -466,6 +505,30 @@ describe("OpenAiCompatibleProvider", () => {
     );
     const result = await provider.chat([{ role: "user", content: "test" }]);
     expect(result).toBe("");
+  });
+
+  it("devrait capturer l'usage de tokens via chatWithUsage (OpenAI)", async () => {
+    // SDD §3.8 : OpenAI renvoie usage.prompt_tokens / completion_tokens / total_tokens
+    openaiMockChatCreate.mockResolvedValue({
+      choices: [{ message: { content: "Bonjour" } }],
+      usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 },
+    });
+    const { OpenAiCompatibleProvider } = await import(
+      "../../src/main/services/providers/OpenAiCompatibleProvider"
+    );
+    const provider = new OpenAiCompatibleProvider(
+      "openai",
+      "OpenAI",
+      "gpt-4",
+      "https://api.openai.com/v1",
+    );
+    const result = await provider.chatWithUsage!([{ role: "user", content: "Hi" }]);
+
+    expect(result.content).toBe("Bonjour");
+    expect(result.usage).toBeDefined();
+    expect(result.usage!.promptTokens).toBe(100);
+    expect(result.usage!.completionTokens).toBe(30);
+    expect(result.usage!.totalTokens).toBe(130);
   });
 
   it("devrait générer des embeddings", async () => {

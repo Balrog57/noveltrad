@@ -63,17 +63,22 @@ export function registerExportHandlers(): void {
           exportEngine.setDatabase(null as never);
         }
 
-        // SDD §21.3 — Protection contre le path traversal sur le dossier de sortie
+        // P0-5 fix : l'ancien check `resolvedOutput.includes("..")` était
+        // inopérant — path.resolve() collapse déjà les "..", donc la chaîne
+        // n'en contenait plus. Remplacé par assertSafeProjectPath qui rejette
+        // les zones système critiques (C:\Windows, /etc, etc.).
         if (input.outputPath) {
-          const resolvedOutput = path.resolve(input.outputPath);
-          // Empêche les chemins contenant ".." de sortir du répertoire courant
-          if (resolvedOutput.includes("..")) {
+          try {
+            const { assertSafeProjectPath } = await import("../../utils/paths.js");
+            assertSafeProjectPath(input.outputPath);
+          } catch (e) {
             return {
               success: false,
               error: {
                 code: "VALIDATION_ERROR",
                 message:
-                  "Chemin de sortie invalide : tentatives de path traversal détectées.",
+                  "Chemin de sortie invalide : " +
+                  (e instanceof Error ? e.message : "path traversal détecté"),
               },
             };
           }

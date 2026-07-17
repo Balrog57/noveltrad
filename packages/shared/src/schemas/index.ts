@@ -103,6 +103,15 @@ export const appSettingsSchema = z.object({
 
   // SDD §17.9 : vérification automatique des mises à jour
   autoUpdateCheck: z.boolean().default(true),
+
+  // Guards anti-boucle : nb max de retries QA automatiques par chapitre avant
+  // pause (défaut 3). Évite qu'un chapitre en boucle de révision ne consomme
+  // indéfiniment des appels LLM.
+  maxQaRetries: z.number().int().min(0).max(20).default(3),
+
+  // Guards anti-boucle : plafond de tokens (in+out) cumulés par job. Au-delà,
+  // le workflow est mis en pause pour review humaine. 0 = désactivé.
+  maxJobTokens: z.number().int().min(0).default(50000),
 });
 
 export const ipcChannelSchema = z.enum([
