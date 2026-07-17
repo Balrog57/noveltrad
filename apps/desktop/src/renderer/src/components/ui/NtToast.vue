@@ -80,9 +80,9 @@ onUnmounted(() => {
         role="alert"
         :aria-live="type === 'error' ? 'assertive' : 'polite'"
       >
-        <span class="nt-toast-icon">{{ icon() }}</span>
+        <span class="nt-toast-icon" aria-hidden="true">{{ icon() }}</span>
         <span class="nt-toast-message">{{ message }}</span>
-        <button class="nt-toast-close" aria-label="Fermer" @click="dismiss">
+        <button class="nt-toast-close" aria-label="Fermer" title="Fermer" @click="dismiss">
           \u2715
         </button>
       </div>
