@@ -366,8 +366,9 @@ export class ProjectManager {
           .filter(Boolean);
 
         const merged = [...currentParagraphs];
+        const currentSet = new Set(currentParagraphs);
         for (const np of newParagraphs) {
-          if (!currentParagraphs.includes(np)) {
+          if (!currentSet.has(np)) {
             merged.push(np);
           }
         }

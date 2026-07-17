@@ -66,8 +66,9 @@ export const useEditorStore = defineStore("editor", () => {
     if (isSaving.value) {return;}
     isSaving.value = true;
 
+    const toSendSet = new Set(toSend);
     const dirtyList = paragraphs.value.filter((p) =>
-      toSend.includes(p.id),
+      toSendSet.has(p.id),
     );
     if (dirtyList.length === 0) {
       isSaving.value = false;

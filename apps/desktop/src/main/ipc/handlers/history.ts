@@ -237,8 +237,9 @@ export function registerHistoryHandlers(): void {
       const byIndex = new Map(
         currentParagraphs.map((p) => [p.indexInChapter, p]),
       );
+      const idsSet = new Set(paragraphIds);
       const resolvedParagraphs = snapshot
-        .filter((p) => paragraphIds.includes(p.id))
+        .filter((p) => idsSet.has(p.id))
         .map((p) => {
           if (p.id.startsWith("reconstructed-")) {
             const real = byIndex.get(p.indexInChapter);
