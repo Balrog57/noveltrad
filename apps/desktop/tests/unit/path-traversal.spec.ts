@@ -41,18 +41,10 @@ describe("Path traversal protection (SDD §21.3)", () => {
   });
 
   // Cas 3 : URL-encoded traversal (%2e%2e%2f)
-  // Note : assertWithinProject utilise path.resolve qui NE décode PAS
-  // les encodages URL. %2e%2e%2f reste un nom de dossier littéral.
-  // Ce test documente la limitation : les chemins URL-encodés ne sont
-  // pas décodés et peuvent donc contourner la vérification.
-  // La mitigation est de ne jamais accepter de chemins URL-encodés
-  // depuis l'UI ou les IPC.
-  it("cas 3: URL-encoded traversal (%2e%2e%2f) — treated as literal path (documented limitation)", () => {
+  // Désormais rejeté par la regex initiale.
+  it("cas 3: URL-encoded traversal (%2e%2e%2f) — rejected", () => {
     const target = path.join(BASE, "%2e%2e%2fsecret.txt");
-    // path.resolve ne décode pas les URL-encodings
-    const resolved = path.resolve(target);
-    const isWithin = resolved.startsWith(path.resolve(BASE) + path.sep);
-    expect(isWithin).toBe(true);
+    expect(() => assertWithinProject(BASE, target)).toThrow("Path traversal detected");
   });
 
   // Cas 4 : Symbolic link

@@ -22,6 +22,11 @@ export function assertWithinProject(
   basePath: string,
   targetPath: string,
 ): void {
+  // Prevent URL-encoded and raw path traversal sequences before resolution
+  if (/(?:^|\/|\\|%2f|%5c)(?:\.|%2e){2}(?:$|\/|\\|%2f|%5c)/i.test(targetPath)) {
+    throw new Error("Path traversal detected");
+  }
+
   const resolvedBase = path.resolve(basePath);
   const resolvedTarget = path.resolve(targetPath);
   if (!resolvedTarget.startsWith(resolvedBase + path.sep) &&
