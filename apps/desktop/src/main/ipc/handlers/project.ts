@@ -7,7 +7,7 @@ import { ProjectManager } from "../../managers/ProjectManager.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import { createProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
-import { assertWithinProject } from "../../utils/paths.js";
+import { assertSafeProjectPath } from "../../utils/paths.js";
 
 const settings = new SettingsManager();
 const projectManager = new ProjectManager(settings);
@@ -42,7 +42,7 @@ export function registerProjectHandlers(): void {
 
   ipcMain.handle("project:open", async (_event, projectPath: unknown) => {
     const validatedPath = projectPathSchema.parse(projectPath);
-    assertWithinProject(path.dirname(validatedPath), validatedPath);
+    assertSafeProjectPath(validatedPath);
     return projectManager.open(validatedPath);
   });
 
