@@ -9,3 +9,6 @@
 ## 2024-07-13 - State Toggle Button Accessibility
 **Learning:** Adding an `aria-label` to a state-toggling button that already contains dynamic, informative text (e.g., `{{ currentMode === 'A' ? 'A' : 'B' }}`) is an accessibility anti-pattern. The `aria-label` completely overrides the visible text for screen readers, hiding the crucial state context.
 **Action:** When improving state toggle buttons, do not use `aria-label` if it overrides useful dynamic text. Instead, use a `title` attribute for a visual tooltip and `:aria-pressed="condition"` to expose the toggle state programmatically to screen readers.
+## 2024-07-26 - Accessible Required State Pattern for Custom Inputs
+**Learning:** When creating custom wrapper components for inputs in Vue (like `NtInput`), a simple visual asterisk isn't enough for screen readers, and screen readers will announce the asterisk if it's not hidden.
+**Action:** Always accept a `required` prop, render a visual indicator with `aria-hidden="true"` to prevent redundant "star" announcements, and apply `aria-required="true"` to the underlying native input element.
