@@ -75,6 +75,42 @@ export class ParagraphRepository extends BaseRepository<Paragraph> {
     });
   }
 
+  /**
+   * Upsert : insère les nouveaux paragraphes (ID inexistant) et met à jour
+   * les existants. Utilisé par WorkflowEngine.applyAgentOutput après le
+   * SplitAgent qui génère de nouveaux IDs (crypto.randomUUID) qui n'existent
+   * pas encore en DB — un UPDATE simple silently n'affectait aucune ligne.
+   *
+   * Bug fix : avant ce fix, les paragraphes traduits n'étaient JAMAIS
+   * persistés après un workflow single-chapter, car le split stage
+   * remplaçait this.paragraphs avec de nouveaux IDs que updateMany
+   * ne pouvait pas UPDATE (0 lignes affectées silencieusement).
+   */
+  upsertMany(chapterId: string, paragraphs: Paragraph[]): void {
+    const insert = this.db.prepare(`
+      INSERT INTO paragraphs (id, chapter_id, index_in_chapter, source_text, translated_text, status, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        source_text = excluded.source_text,
+        translated_text = excluded.translated_text,
+        status = excluded.status,
+        metadata = excluded.metadata
+    `);
+    withTransaction(this.db, () => {
+      for (const p of paragraphs) {
+        insert.run([
+          p.id,
+          p.chapterId || chapterId,
+          p.indexInChapter,
+          p.sourceText,
+          p.translatedText ?? null,
+          p.status,
+          jsonColumn.write(p.metadata),
+        ]);
+      }
+    });
+  }
+
   protected map(row: Record<string, unknown>): Paragraph {
     return {
       id: String(row.id),

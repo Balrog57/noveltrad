@@ -63,7 +63,21 @@ export class ExportEngine {
     this.db = db;
   }
   async export(input: ExportInput): Promise<string> {
-    const outputPath = input.outputPath ?? this.defaultOutputPath(input);
+    // Bug fix : si outputPath est un dossier (le workflow passe
+    // path.join(project.path, "exports")), on construit le nom de fichier
+    // via defaultOutputPath au lieu d'essayer d'écrire directement dans le
+    // dossier (EISDIR). Si outputPath est déjà un fichier, on l'utilise tel quel.
+    let outputPath: string;
+    if (input.outputPath && fs.statSync(input.outputPath, { throwIfNoEntry: false })?.isDirectory()) {
+      // C'est un dossier → construire le nom de fichier
+      outputPath = this.defaultOutputPath(input);
+    } else if (input.outputPath) {
+      // C'est déjà un fichier → utiliser tel quel
+      outputPath = input.outputPath;
+    } else {
+      // Pas de outputPath → default
+      outputPath = this.defaultOutputPath(input);
+    }
 
     // SDD §21.3 — Protection contre le path traversal
     const basePath = input.outputPath

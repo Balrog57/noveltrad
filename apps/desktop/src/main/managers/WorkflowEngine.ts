@@ -969,7 +969,12 @@ class WorkflowRunner {
         indexInChapter: p.indexInChapter ?? index + 1,
       }));
       if (this.chapter) {
-        this.paragraphRepo.updateMany(this.paragraphs);
+        // Bug fix : utiliser upsertMany (INSERT OR REPLACE) au lieu de
+        // updateMany. Le SplitAgent génère de nouveaux paragraphes avec des
+        // IDs fraîchement créés (crypto.randomUUID) qui n'existent pas encore
+        // en DB. updateMany faisait un UPDATE WHERE id=? qui affectait 0
+        // lignes silencieusement → les traductions n'étaient jamais persistées.
+        this.paragraphRepo.upsertMany(this.chapter.id, this.paragraphs);
       }
     }
 
@@ -983,7 +988,7 @@ class WorkflowRunner {
         translatedText: parts[i] ?? p.translatedText ?? "",
       }));
       if (this.chapter) {
-        this.paragraphRepo.updateMany(this.paragraphs);
+        this.paragraphRepo.upsertMany(this.chapter.id, this.paragraphs);
       }
     }
   }
