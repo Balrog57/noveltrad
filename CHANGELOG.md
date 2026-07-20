@@ -1,5 +1,60 @@
 # Changelog
 
+## v2.2.7 — Refactor clean architecture consolidation (2026-07-20)
+
+### Refactor (internal architecture — no behavior change)
+Refactor complet de la structure du codebase (~30K LOC, 1022 tests préservés à
+chaque commit). Objectif : séparer les responsabilités, augmenter la
+modularité, réduire le couplage, préparer la scalabilité. **Aucun changement
+de fonctionnalité** — 1022 tests verts du début à la fin.
+
+- **DB layer** : nouveau `db/base/BaseRepository<T>` avec helpers `protected`
+  opt-in (`queryOne`/`queryMany`/`execute`/`findById`/`deleteById` +
+  `abstract map()`). Les 7 repositories migrent vers la base ; aucun
+  call-site changé (9 sites d'import préservés).
+- **IPC layer** : les 8 schémas Zod handler-local sont promus vers
+  `packages/shared/src/schemas/ipc.ts` (source unique). Tuer une copie stale
+  de `workflowStageSchema` dans les tests (manquait `review`/`revise` —
+  bug-masker). Nouveau helper opt-in `ipc/safeHandle.ts` standardisant le
+  error path (Zod parse + try/catch + log + re-throw lisible).
+- **Services layer** : le god-class `AiRouter` (416 LOC, 8 responsabilités)
+  devient une facade + 6 collaborateurs dans `services/ai/` :
+  `TokenUsageAccumulator`, `CostEstimator`, `TextChunker`, `PromptResolver`,
+  `jsonRepair.ts` (pure fn), `refusalDetector.ts` (pure fn). API publique
+  byte-compatible — 0 changement aux 16 call-sites agents.
+- **Managers layer** : nouveau `managers/ProjectPathResolver.ts` qui tue la
+  duplication 8× du scan `recentProjects` (ProjectManager + 6 handlers IPC).
+  Corrige 2 fuites DB latentes (history.ts et tm.ts oubliaient le try/finally
+  intérieur). Nouveau `managers/workflow/PauseController.ts` extrait du
+  WorkflowRunner (cohorte pause/resume/cancel auto-contenue).
+- **Renderer** : nouveau dossier `composables/` (n'existait pas) avec
+  `useAsyncAction` (wrapper loading/error) et `useStatusLabels`
+  (consolidation de 9 sources de maps de statut). Nouveaux
+  `utils/format.ts` et `utils/download.ts`. `WorkflowView` adopte
+  `useStatusLabels` (5 fonctions locales → 1 import).
+- **Cleanup** : suppression du `ipcChannelSchema` mort (enum Zod stale de
+  25 entrées jamais importé). Fix d'une dérive latente : `workflow:quality-failed`
+  manquait dans l'allowlist du preload (aurait rejeté un listener renderer).
+- **Docs** : nouveau `ARCHITECTURE.md` (diagramme de couches, règles de
+  dépendance, conventions par couche, cheat-sheet "où va le nouveau code",
+  6 décisions architecturales documentées).
+
+### Décisions de scope documentées
+Plusieurs axes ont été volontairement réduits après audit car la version
+"complète" aurait cassé le comportement ou ajouté du risque sans valeur :
+- Enveloppe IPC `{ok,data,error}` imposée → aurait cassé les stores renderer
+  (ils consomment la valeur de retour directement ; erreurs via throw path).
+  `safeHandle` standardise le error path uniquement.
+- 4 collaborateurs `WorkflowRunner` restants (QaBranchPolicy, JobRecorder,
+  AgentIoAssembler, RunnerServices) → chacun aurait dû partager du mutable
+  state heavy avec le runner. PauseController seul était clean.
+- Décomposition des 6 vues oversized (~5000 LOC) → churn mécanique non testé
+  (pas de tests unitaires renderer). Pattern établi, adoption au cas par cas.
+
+### Version
+- Bump 2.2.6 → **2.2.7** (refactor interne pur ; aucune nouvelle feature,
+  aucun breaking change, 1022 tests préservés).
+
 ## v2.2.1 — Audit complet + 20 bugs corrigés (2026-07-10)
 
 ### Bug Fixes

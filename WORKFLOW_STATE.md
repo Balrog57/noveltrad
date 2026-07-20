@@ -54,6 +54,14 @@ type-check 0 erreurs, **1022/1022 tests passent** (73 files).
 - [x] WS-9 — ARCHITECTURE.md écrit
 - [x] WS-10 — verify final : type-check 0 erreurs, **1022/1022 tests**, lint 0 erreurs
 
+### Statut merge (2026-07-20)
+- **Squash-mergé vers `main`** : commit `d9e19ba refactor(architecture):
+  clean architecture consolidation (squash of refactor/clean-architecture)`.
+- Branche `refactor/clean-architecture` supprimée (locale ; jamais pushée).
+- Post-squash re-vérif : type-check 0 erreurs, **1022/1022 tests**, lint 0 erreurs.
+- **Suite** : 5 axes restants (cf. handoff ci-dessous) attaqués sur la branche
+  `refactor/clean-architecture-followup`.
+
 ### Bilan final refactor
 **10 commits atomiques** sur `refactor/clean-architecture` (depuis `main` @
 `7054c6a`). **Aucun changement de comportement** — 1022 tests préservés à
