@@ -238,7 +238,8 @@ export class ConsistencyChecker {
 
     // ── 5. Named entities / locked terms ──
     let hasLockedNameMissing = false;
-    for (const entry of lexicon.filter((e) => e.locked)) {
+    const lockedEntries = lexicon.filter((e) => e.locked);
+    for (const entry of lockedEntries) {
       const pattern = new RegExp(
         `\\b${this.escapeRegExp(entry.term)}\\b`,
         "gi",
@@ -253,7 +254,6 @@ export class ConsistencyChecker {
         });
       }
     }
-    const lockedEntries = lexicon.filter((e) => e.locked);
     metrics.push({
       name: "namedEntities",
       source: lockedEntries.length,
