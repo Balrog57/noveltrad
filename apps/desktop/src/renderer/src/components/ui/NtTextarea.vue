@@ -17,6 +17,8 @@ const props = withDefaults(
     rows?: number;
     /** Identifiant accessible (généré si absent) */
     id?: string;
+    /** Champ obligatoire */
+    required?: boolean;
   }>(),
   {
     modelValue: "",
@@ -26,6 +28,7 @@ const props = withDefaults(
     placeholder: undefined,
     rows: 4,
     id: undefined,
+    required: false,
   },
 );
 
@@ -55,9 +58,10 @@ function onInput(event: Event): void {
     class="nt-textarea-wrapper"
     :class="{ 'nt-textarea-wrapper--disabled': disabled }"
   >
-    <label v-if="label" class="nt-textarea-label" :for="textareaId">{{
-      label
-    }}</label>
+    <label v-if="label" class="nt-textarea-label" :for="textareaId">
+      {{ label }}
+      <span v-if="required" class="nt-required-indicator" aria-hidden="true">*</span>
+    </label>
     <textarea
       :id="textareaId"
       class="nt-textarea"
@@ -65,7 +69,9 @@ function onInput(event: Event): void {
       :value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
+      :required="required"
       :rows="rows"
+      :aria-required="required || undefined"
       :aria-invalid="hasError || undefined"
       :aria-describedby="error ? `${textareaId}-error` : undefined"
       @input="onInput"
@@ -142,5 +148,10 @@ function onInput(event: Event): void {
   font-size: 12px;
   color: var(--error);
   line-height: 1.3;
+}
+
+.nt-required-indicator {
+  color: var(--error);
+  margin-left: 2px;
 }
 </style>

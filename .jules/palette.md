@@ -9,3 +9,7 @@
 ## 2024-07-13 - State Toggle Button Accessibility
 **Learning:** Adding an `aria-label` to a state-toggling button that already contains dynamic, informative text (e.g., `{{ currentMode === 'A' ? 'A' : 'B' }}`) is an accessibility anti-pattern. The `aria-label` completely overrides the visible text for screen readers, hiding the crucial state context.
 **Action:** When improving state toggle buttons, do not use `aria-label` if it overrides useful dynamic text. Instead, use a `title` attribute for a visual tooltip and `:aria-pressed="condition"` to expose the toggle state programmatically to screen readers.
+
+## 2024-07-20 - Add explicit required state indicators to form components
+**Learning:** Custom Vue form components (like NtInput, NtSelect, NtTextarea) should handle required states by accepting a `required` prop, displaying a visual indicator (e.g., an asterisk) marked with `aria-hidden="true"`, and explicitly passing `aria-required="true"` to the internal native input element to ensure screen reader compatibility without redundant announcements.
+**Action:** Apply this pattern whenever creating or updating generic form wrapper components to ensure proper state communication to both sighted and assistive technology users.
