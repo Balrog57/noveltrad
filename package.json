@@ -1,6 +1,6 @@
 {
   "name": "noveltrad",
-  "version": "2.2.7",
+  "version": "2.3.0",
   "private": true,
   "description": "NovelTrad 2.0 — Multi-Agent Literary Translation Framework",
   "author": "Balrog57",
@@ -15,7 +15,12 @@
     "test:coverage": "npm run test:coverage --workspace=apps/desktop",
     "test:e2e": "npm run test:e2e --workspace=apps/desktop",
     "lint": "npm run lint --workspace=apps/desktop",
-    "generate-latest-json": "npx tsx scripts/generate-latest-json.ts"
+    "generate-latest-json": "npx tsx scripts/generate-latest-json.ts",
+    "cli": "tsx --tsconfig apps/desktop/tsconfig.json --import ./apps/desktop/src/cli/_cli-preload.ts apps/desktop/src/cli/index.ts",
+    "noveltrad": "tsx --tsconfig apps/desktop/tsconfig.json --import ./apps/desktop/src/cli/_cli-preload.ts apps/desktop/src/cli/index.ts"
+  },
+  "bin": {
+    "noveltrad": "apps/desktop/src/cli/index.ts"
   },
   "workspaces": [
     "apps/*",
@@ -31,6 +36,7 @@
     "vitepress": "^1.6.4"
   },
   "dependencies": {
+    "commander": "^12.1.0",
     "gpt-tokenizer": "^3.4.0"
   }
 }

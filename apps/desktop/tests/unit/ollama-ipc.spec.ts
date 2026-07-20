@@ -19,7 +19,10 @@ const { mockNetFetch, mockIpcMainHandle, mockLogger } = vi.hoisted(() => ({
 
 vi.mock("electron", () => ({
   ipcMain: { handle: mockIpcMainHandle },
-  net: { fetch: mockNetFetch },
+}));
+
+vi.mock("../../src/main/utils/fetch.js", () => ({
+  fetch: mockNetFetch,
 }));
 
 vi.mock("../../src/main/managers/SettingsManager.js", () => ({

@@ -1,5 +1,32 @@
 # Changelog
 
+## v2.3.0 — EPUB multi-file splitting + CLI pilotable par agent IA (2026-07-20)
+
+### Features
+- **Découpage EPUB multi-fichiers** : les sammelbände (recueils de plusieurs romans dans un seul EPUB) sont maintenant correctement découpés. Chaque fichier xhtml du spine devient un chapitre séparé. Un chapitre de plus de 100 000 caractères est re-découpé au prochain séparateur de paragraphe (jamais au milieu). Validé sur Perry Rhodan Sammelband 1876-1899 : **73 chapitres** au lieu d'1 seul de 4M caractères.
+- **CLI `noveltrad`** : nouvelle interface en ligne de commande complète, pilotable par un agent IA.
+  - Commandes : `create`, `list`, `import`, `chapters`, `translate`, `export`, `status`, `doctor`.
+  - Sortie JSON structurée (`--json`) : `{ ok, data }` ou `{ ok: false, error: { code, message } }`.
+  - Exit codes sémantiques : 0 OK / 1 user / 2 Ollama / 3 DB / 4 traduction / 5 inconnu.
+  - Progrès du workflow en NDJSON sur stderr (une ligne JSON par event).
+  - `doctor` diagnostique Ollama + settings + modèles + recommandations.
+  - Documentation complète : `docs/cli.md`.
+- **Shim fetch** : `utils/fetch.ts` permet aux providers (OllamaProvider, RagEngine, OllamaManager) de fonctionner à la fois dans Electron (`electron.net.fetch`) et en CLI pure Node (`globalThis.fetch`).
+- **Hook `onProgress`** sur WorkflowEngine : callback optionnel pour suivre le progrès du workflow sans BrowserWindow (CLI, scripts).
+
+### Refactor
+- `extractEpub` insère un séparateur `EPUB_FILE_BREAK` entre fichiers xhtml consécutifs.
+- `splitIntoChapters` réécrit avec 3 niveaux de priorité : séparateur EPUB → patterns (Chapter/Chapitre/第N章) → texte entier. Chunking par taille appliqué à toutes les branches.
+- Découplage d'Electron : 3 fichiers (OllamaProvider, RagEngine, OllamaManager) n'importent plus `net` depuis Electron directement.
+
+### Tests
+- `epub-split.spec.ts` (14 tests) : séparateur EPUB, patterns fallback, chunking par taille.
+- Suite complète : 1054 tests (75 fichiers), +14 vs v2.2.7.
+- Test e2e `epub-import.spec.ts` : valide 73 chapitres sur Perry Rhodan réel.
+
+### Version
+- Bump 2.2.7 → **2.3.0** (EPUB splitting + CLI = nouvelles features utilisateur).
+
 ## v2.2.7 — Refactor clean architecture consolidation (2026-07-20)
 
 ### Refactor (internal architecture — no behavior change)

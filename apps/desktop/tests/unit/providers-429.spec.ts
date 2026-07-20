@@ -47,8 +47,8 @@ vi.mock("../../src/main/utils/logger.js", () => ({
   },
 }));
 
-vi.mock("electron", () => ({
-  net: { fetch: mockNetFetch },
+vi.mock("../../src/main/utils/fetch.js", () => ({
+  fetch: mockNetFetch,
 }));
 
 import { OllamaProvider } from "../../src/main/services/providers/OllamaProvider";

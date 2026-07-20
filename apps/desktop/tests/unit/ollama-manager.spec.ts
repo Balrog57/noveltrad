@@ -74,8 +74,8 @@ function mockErrorResponse(status = 500) {
 
 const mockNetFetch = vi.fn();
 
-vi.mock("electron", () => ({
-  net: { fetch: mockNetFetch },
+vi.mock("../../src/main/utils/fetch.js", () => ({
+  fetch: mockNetFetch,
 }));
 
 vi.mock("../../src/main/managers/SettingsManager.js", () => ({

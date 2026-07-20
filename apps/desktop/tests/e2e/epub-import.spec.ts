@@ -106,41 +106,47 @@ test.describe(`Import EPUB : ${path.basename(EPUB_PATH)}`, () => {
     console.log(`  ✓ chapter:import terminé en ${elapsed}s — ${chapters.length} chapitre(s)`);
 
     // --- Phase 3 : assertions sur le résultat ---
-    expect(chapters.length, "au moins 1 chapitre attendu").toBeGreaterThan(0);
+    // Phase 1 (epub-split-and-cli) : le sammelband doit maintenant être découpé
+    // en plusieurs chapitres (48 fichiers xhtml → ~48-73 chapitres après
+    // chunking). Avant ce feature, l'import produisait 1 seul chapitre.
+    expect(chapters.length, "sammelband doit produire >10 chapitres (split EPUB)").toBeGreaterThan(10);
     console.log(`  Chapitres : ${chapters.length}`);
-    if (chapters.length > 0) {
-      console.log(`    Premier : "${chapters[0].title}" (order=${chapters[0].orderIndex})`);
-      console.log(`    Dernier : "${chapters[chapters.length - 1].title}"`);
+    console.log(`    Premier : "${chapters[0].title}"`);
+    console.log(`    Dernier : "${chapters[chapters.length - 1].title}"`);
+
+    // --- Phase 4 : vérifier un chapitre de contenu (skip cover qui est petite) ---
+    // Le 1er chapitre peut être la cover/title page (< 100 car). On cherche le
+    // 1er chapitre avec du vrai contenu littéraire.
+    let contentChapter: { id: string; title: string } | null = null;
+    for (const ch of chapters) {
+      const data = await window.evaluate(
+        async ({ chId }: { chId: string }) => {
+          const api = (window as unknown as {
+            novelTradAPI: { invoke: (ch: string, ...args: unknown[]) => Promise<unknown> };
+          }).novelTradAPI;
+          const paragraphs = (await api.invoke("chapter:get-paragraphs", { chapterId: chId })) as Array<{
+            sourceText: string;
+            status: string;
+          }>;
+          return {
+            count: paragraphs.length,
+            totalChars: paragraphs.reduce((s, p) => s + p.sourceText.length, 0),
+            preview: paragraphs[0]?.sourceText.slice(0, 150) ?? "",
+            statuses: [...new Set(paragraphs.map((p) => p.status))],
+          };
+        },
+        { chId: ch.id },
+      );
+      console.log(`  Chapitre "${ch.title}" : ${data.count} paragraphes, ${data.totalChars.toLocaleString()} car`);
+      if (data.totalChars > 1000) {
+        contentChapter = ch;
+        console.log(`    ✓ Chapitre de contenu trouvé. Aperçu :\n      "${data.preview.replace(/\n/g, " ")}..."`);
+        console.log(`    Status paragraphes : ${data.statuses.join(", ")}`);
+        expect(data.count, "chapitre contenu doit avoir des paragraphes").toBeGreaterThan(0);
+        expect(data.statuses).toContain("pending");
+        break;
+      }
     }
-
-    // --- Phase 4 : vérifier les paragraphes du 1er chapitre via IPC ---
-    const firstChapterId = chapters[0].id;
-    const firstChapterData = await window.evaluate(
-      async ({ chId }: { chId: string }) => {
-        const api = (window as unknown as {
-          novelTradAPI: { invoke: (ch: string, ...args: unknown[]) => Promise<unknown> };
-        }).novelTradAPI;
-        const paragraphs = (await api.invoke("chapter:get-paragraphs", { chapterId: chId })) as Array<{
-          id: string;
-          sourceText: string;
-          status: string;
-        }>;
-        return {
-          count: paragraphs.length,
-          totalChars: paragraphs.reduce((s, p) => s + p.sourceText.length, 0),
-          preview: paragraphs[0]?.sourceText.slice(0, 200) ?? "",
-          statuses: [...new Set(paragraphs.map((p) => p.status))],
-        };
-      },
-      { chId: firstChapterId },
-    );
-    console.log(`  Paragraphes du 1er chapitre : ${firstChapterData.count}`);
-    console.log(`  Caractères source total (1er chapitre) : ${firstChapterData.totalChars.toLocaleString()}`);
-    console.log(`  Status des paragraphes : ${firstChapterData.statuses.join(", ")}`);
-    console.log(`  Aperçu 1er paragraphe :\n    "${firstChapterData.preview.replace(/\n/g, " ")}..."`);
-
-    expect(firstChapterData.count, "1er chapitre doit avoir des paragraphes").toBeGreaterThan(0);
-    expect(firstChapterData.totalChars, "1er chapitre ne doit pas être vide").toBeGreaterThan(100);
-    expect(firstChapterData.statuses).toContain("pending");
+    expect(contentChapter, "au moins un chapitre de contenu (>1000 car) attendu").not.toBeNull();
   });
 });

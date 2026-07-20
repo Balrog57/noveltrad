@@ -1121,13 +1121,26 @@ export class WorkflowEngine {
    */
   private pluginHost?: PluginHost;
 
+  /**
+   * Phase 3 (CLI) : callback optionnel appelé sur chaque event de progrès
+   * (début/fin de step, changement de chapitre en batch). Permet à un
+   * consommateur sans BrowserWindow (CLI, agent IA) de suivre l'avancement.
+   * Le payload est le même que celui envoyé via webContents.send.
+   */
+  private onProgress?: (payload: WorkflowProgress) => void;
+
   constructor(
     private settings: SettingsManager,
     private getMainWindow?: () => BrowserWindow | null,
+    options?: {
+      /** Callback invoqué à chaque event de progrès (en plus de l'IPC). */
+      onProgress?: (payload: WorkflowProgress) => void;
+    },
   ) {
     this.maxConcurrentJobs = this.settings.get("maxConcurrentJobs");
     this.profiler = new PerformanceProfiler();
     this.queue = new PQueue({ concurrency: this.maxConcurrentJobs });
+    this.onProgress = options?.onProgress;
   }
 
   /**
@@ -1145,6 +1158,8 @@ export class WorkflowEngine {
     if (win && !win.isDestroyed()) {
       win.webContents.send("workflow:progress", payload);
     }
+    // Phase 3 (CLI) : informer aussi le consommateur sans fenêtre (CLI/agent IA).
+    this.onProgress?.(payload);
   }
 
   private emitQualityFailed(payload: { jobId: string; score: number; threshold: number; reason?: string; tokensUsed?: number }): void {

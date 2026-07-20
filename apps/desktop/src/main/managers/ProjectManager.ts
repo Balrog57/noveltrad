@@ -33,6 +33,29 @@ const DEFAULT_CHAPTER_PATTERNS = [
   /^CHAPTER\s+\d+/im,
 ];
 
+/**
+ * Séparateur inséré entre les fichiers xhtml consécutifs d'un EPUB lors de
+ * l'extraction (cf. extractEpub). Permet à splitIntoChapters de reconnaître
+ * les frontières entre fichiers du spine — indispensable pour les sammelbände
+ * (recueils de plusieurs romans dans un seul EPUB) qui n'utilisent pas de
+ * pattern "Chapter N" mais où chaque fichier xhtml = 1 section/roman.
+ *
+ * Le token est intentionnellement non-ambigu (peu probable dans du texte
+ * littéraire réel) pour éviter les faux positifs.
+ */
+export const EPUB_FILE_BREAK = "\n\n---EPUB-FILE-BREAK---\n\n";
+
+/**
+ * Taille maximale d'un chapitre (en caractères) avant chunking secondaire.
+ * Si un chapitre dépasse cette limite, il est re-découpé en sous-chapitres
+ * au prochain séparateur de paragraphe (\n\n) avant la limite. Évite d'envoyer
+ * un chapitre gigantesque au LLM (dépassement de fenêtre de contexte).
+ *
+ * ~100 000 caractères ≈ ~25 000 tokens (estimation 4 car/token), safe pour
+ * un modèle local 32k context.
+ */
+export const MAX_CHAPTER_CHARS = 100_000;
+
 /** Seuil de confiance minimal pour la détection de langue (SDD §5.7) */
 const LANGUAGE_CONFIDENCE_THRESHOLD = 0.8;
 
@@ -952,7 +975,9 @@ export class ProjectManager {
       throw new Error("Aucun contenu texte trouve dans le fichier EPUB.");
     }
 
-    return textParts.join("\n\n");
+    // Insérer EPUB_FILE_BREAK entre fichiers du spine pour permettre à
+    // splitIntoChapters de reconnaître les frontières (sammelbände, recueils).
+    return textParts.join(EPUB_FILE_BREAK);
   }
 
   /**
@@ -1184,71 +1209,144 @@ export class ProjectManager {
 
   /**
    * Découpe le texte en chapitres selon des patterns (SDD §5.5).
-   * Si aucun pattern ne correspond, retourne le texte entier comme un seul chapitre.
+   *
+   * Ordre de priorité :
+   *   1. **Séparateur EPUB_FILE_BREAK** (inséré par extractEpub entre fichiers
+   *      xhtml consécutifs). Priorité haute : marqueur explicite et fiable,
+   *      indispensable pour les sammelbände (recueils) sans pattern "Chapter N".
+   *   2. **Patterns configurés + DEFAULT_CHAPTER_PATTERNS** (Chapter N,
+   *      Chapitre N, 第N章). Fallback pour les fichiers TXT/DOCX/EPUB à 1 fichier.
+   *   3. **Texte entier** comme unique chapitre (si rien ne matche).
+   *
+   * Quelle que soit la source du découpage, un **chunking par taille secondaire**
+   * est appliqué : tout chapitre dépassant {@link MAX_CHAPTER_CHARS} est
+   * re-découpé au prochain `\n\n` avant la limite, pour rester dans la fenêtre
+   * de contexte d'un LLM local.
    */
   splitIntoChapters(text: string, projectPath?: string): string[] {
-    // Charger la config du projet si disponible
-    let separatorPattern: string | undefined;
-    if (projectPath) {
-      try {
-        const configPath = path.join(projectPath, "config.json");
-        if (fs.existsSync(configPath)) {
-          const config = JSON.parse(
-            fs.readFileSync(configPath, "utf-8"),
-          ) as Record<string, unknown>;
-          const parser = config.parser as Record<string, unknown> | undefined;
-          separatorPattern = parser?.chapterSeparator as string | undefined;
+    // ── Priorité 1 : séparateur EPUB_FILE_BREAK ──────────────────────────
+    if (text.includes(EPUB_FILE_BREAK)) {
+      const parts = text
+        .split(EPUB_FILE_BREAK)
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+      if (parts.length >= 1) {
+        // Si 1 seul segment (séparateurs en début/fin uniquement), on passe
+        // aux patterns fallback sur le segment nettoyé. Sinon, chaque segment
+        // = 1 chapitre potentiel.
+        if (parts.length > 1) {
+          return chunkLongChapters(parts);
         }
-      } catch {
-        // Config illisible — utiliser les patterns par défaut
+        // parts.length === 1 : reconstituer le texte sans les séparateurs
+        // résiduels pour le soumettre aux patterns fallback.
+        return splitByPatterns(parts[0], projectPath);
       }
     }
 
-    // Construire les patterns à tester
-    const patterns: RegExp[] = [];
-    if (separatorPattern) {
-      try {
-        const flags = separatorPattern.includes("i") ? "im" : "m";
-        const source = separatorPattern.replace(/\/[gimsuy]*/g, "").trim();
-        patterns.push(new RegExp(source, flags));
-      } catch {
-        // Pattern invalide — ignorer
-      }
-    }
-    patterns.push(...DEFAULT_CHAPTER_PATTERNS);
-
-    // Tenter de découper selon les patterns
-    for (const pattern of patterns) {
-      const parts = text.split(pattern);
-      if (parts.length > 1) {
-        // Reconstruire les chapitres avec le séparateur conservé
-        const result: string[] = [];
-        let current = "";
-        const lines = text.split("\n");
-        let matchFound = false;
-
-        for (const line of lines) {
-          if (pattern.test(line)) {
-            if (current.trim()) {
-              result.push(current.trim());
-            }
-            current = line;
-            matchFound = true;
-          } else {
-            current += (current ? "\n" : "") + line;
-          }
-        }
-        if (current.trim()) {
-          result.push(current.trim());
-        }
-
-        if (matchFound && result.length > 1) {
-          return result;
-        }
-      }
-    }
-
-    // Aucun pattern n'a fonctionné — retourner le texte entier
-    return [text];
+    // ── Priorité 2 et 3 : patterns fallback sur le texte original ───────
+    return splitByPatterns(text, projectPath);
   }
+}
+
+/**
+ * Découpe par patterns (config projet + DEFAULT_CHAPTER_PATTERNS). Retourne
+ * `[text]` (chunké) si aucun pattern ne matche.
+ *
+ * @internal — appelé par splitIntoChapters pour les branches fallback.
+ */
+function splitByPatterns(text: string, projectPath?: string): string[] {
+  let separatorPattern: string | undefined;
+  if (projectPath) {
+    try {
+      const configPath = path.join(projectPath, "config.json");
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(
+          fs.readFileSync(configPath, "utf-8"),
+        ) as Record<string, unknown>;
+        const parser = config.parser as Record<string, unknown> | undefined;
+        separatorPattern = parser?.chapterSeparator as string | undefined;
+      }
+    } catch {
+      // Config illisible — utiliser les patterns par défaut
+    }
+  }
+
+  const patterns: RegExp[] = [];
+  if (separatorPattern) {
+    try {
+      const flags = separatorPattern.includes("i") ? "im" : "m";
+      const source = separatorPattern.replace(/\/[gimsuy]*/g, "").trim();
+      patterns.push(new RegExp(source, flags));
+    } catch {
+      // Pattern invalide — ignorer
+    }
+  }
+  patterns.push(...DEFAULT_CHAPTER_PATTERNS);
+
+  for (const pattern of patterns) {
+    const parts = text.split(pattern);
+    if (parts.length > 1) {
+      // Reconstruire les chapitres avec le séparateur conservé
+      const result: string[] = [];
+      let current = "";
+      const lines = text.split("\n");
+      let matchFound = false;
+
+      for (const line of lines) {
+        if (pattern.test(line)) {
+          if (current.trim()) {
+            result.push(current.trim());
+          }
+          current = line;
+          matchFound = true;
+        } else {
+          current += (current ? "\n" : "") + line;
+        }
+      }
+      if (current.trim()) {
+        result.push(current.trim());
+      }
+
+      if (matchFound && result.length > 1) {
+        return chunkLongChapters(result);
+      }
+    }
+  }
+
+  // ── Fallback final : texte entier comme un seul chapitre (+ chunking) ─
+  return chunkLongChapters([text]);
+}
+
+/**
+ * Re-découpe tout chapitre dépassant {@link MAX_CHAPTER_CHARS} en sous-chapitres
+ * au prochain séparateur de paragraphe (`\n\n`) avant la limite. Préserve la
+ * cohérence des paragraphes (ne coupe jamais au milieu d'un paragraphe).
+ *
+ * @internal — appelé par splitIntoChapters sur toutes les branches de résultat.
+ */
+function chunkLongChapters(chapters: string[]): string[] {
+  const result: string[] = [];
+  for (const chapter of chapters) {
+    if (chapter.length <= MAX_CHAPTER_CHARS) {
+      result.push(chapter);
+      continue;
+    }
+    // Découper par paragraphes (\n\n) en accumulant jusqu'à la limite.
+    const paragraphs = chapter.split(/\n\n+/);
+    let current = "";
+    for (const para of paragraphs) {
+      // Si ajouter ce paragraphe dépasse la limite ET qu'on a déjà du contenu,
+      // clôturer le chunk courant et en ouvrir un nouveau.
+      if (current && (current.length + para.length + 2) > MAX_CHAPTER_CHARS) {
+        result.push(current.trim());
+        current = para;
+      } else {
+        current = current ? `${current}\n\n${para}` : para;
+      }
+    }
+    if (current.trim()) {
+      result.push(current.trim());
+    }
+  }
+  return result;
 }

@@ -1,4 +1,3 @@
-import { net } from "electron";
 import pRetry, { AbortError } from "p-retry";
 import type {
   AiProvider,
@@ -9,6 +8,8 @@ import type {
 } from "@shared/types/index.js";
 import { logger } from "../../utils/logger.js";
 import { sleepForRetryAfter, retryable429Error } from "./retry.js";
+// Phase 2 : shim fetch (electron.net sous Electron, globalThis.fetch en CLI).
+import { fetch } from "../../utils/fetch.js";
 
 /**
  * SDD §3.7 : Gestion réactive du HTTP 429 (Too Many Requests).
@@ -42,7 +43,7 @@ export class OllamaProvider implements AiProvider {
   ) {}
 
   async listModels(): Promise<string[]> {
-    const res = await net.fetch(`${this.host}/api/tags`, { signal: AbortSignal.timeout(10_000) });
+    const res = await fetch(`${this.host}/api/tags`, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
     const data = await res.json();
     return data.models.map((m: { name: string }) => m.name);
@@ -68,7 +69,7 @@ export class OllamaProvider implements AiProvider {
     // qui multiplierait les tentatives par 16. Ce provider n'effectue
     // qu'un seul appel ; les erreurs 4xx/5xx remontent à AiRouter qui
     // décide du retry (4xx = AbortError, pas de retry).
-    const res = await net.fetch(`${this.host}/api/chat`, {
+    const res = await fetch(`${this.host}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -125,7 +126,7 @@ export class OllamaProvider implements AiProvider {
     options?: ChatOptions,
   ): AsyncIterable<string> {
     // SDD §7.10 : retry géré au niveau AiRouter (connexion stream uniquement).
-    const res = await net.fetch(`${this.host}/api/chat`, {
+    const res = await fetch(`${this.host}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -176,7 +177,7 @@ export class OllamaProvider implements AiProvider {
   async embeddings(texts: string[]): Promise<number[][]> {
     // T13 : Tentative d'appel batch via /api/embed (Ollama 0.5+)
     try {
-      const res = await net.fetch(`${this.host}/api/embed`, {
+      const res = await fetch(`${this.host}/api/embed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: this.model, input: texts }),
@@ -197,7 +198,7 @@ export class OllamaProvider implements AiProvider {
     for (const text of texts) {
       const embedding = await pRetry(
         async () => {
-          const res = await net.fetch(`${this.host}/api/embeddings`, {
+          const res = await fetch(`${this.host}/api/embeddings`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ model: this.model, prompt: text }),

@@ -5,8 +5,8 @@ const { mockNetFetch } = vi.hoisted(() => ({
   mockNetFetch: vi.fn(),
 }));
 
-vi.mock("electron", () => ({
-  net: { fetch: mockNetFetch },
+vi.mock("../../src/main/utils/fetch.js", () => ({
+  fetch: mockNetFetch,
 }));
 
 vi.mock("electron-log", () => ({

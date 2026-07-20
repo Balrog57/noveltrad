@@ -1,7 +1,8 @@
 import type { SettingsManager } from "./SettingsManager.js";
 import type { OllamaModelInfo } from "@shared/types/index.js";
-import { net } from "electron";
 import { logger } from "../utils/logger.js";
+// Phase 2 : shim fetch (electron.net sous Electron, globalThis.fetch en CLI).
+import { fetch } from "../utils/fetch.js";
 
 /**
  * Résultat du check de disponibilité Ollama.
@@ -65,7 +66,7 @@ export class OllamaManager {
     logger.info(`[Ollama] isAvailable() → ${url}`);
 
     try {
-      const res = await net.fetch(url, { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) {
         const msg = `HTTP ${res.status} ${res.statusText}`;
         logger.warn(`[Ollama] Réponse non-OK depuis ${url} : ${msg}`);
@@ -95,7 +96,7 @@ export class OllamaManager {
 
   async listModels(): Promise<OllamaModelInfo[]> {
     const host = this.getHost();
-    const res = await net.fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) {throw new Error(`HTTP ${res.status}`);}
     const parsed = await res.json();
     return (parsed.models ?? []).map((m: { name: string; size: number; details?: { parameter_size?: string; quantization_level?: string } }) => ({
@@ -116,7 +117,7 @@ export class OllamaManager {
   ): Promise<void> {
     const host = this.getHost();
     const url = `${host}/api/pull`;
-    const res = await net.fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, stream: true }),
@@ -146,7 +147,7 @@ export class OllamaManager {
   async testModel(name: string): Promise<string> {
     const host = this.getHost();
     const url = `${host}/api/chat`;
-    const res = await net.fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
