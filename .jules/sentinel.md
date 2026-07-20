@@ -1,0 +1,4 @@
+## 2024-07-20 - Flawed Path Validation Bypass
+**Vulnerability:** Path traversal validation using `assertWithinProject` was bypassed in `project:open` IPC handler because the target path was validated against its own dynamic parent directory (`path.dirname(targetPath)`) instead of a fixed project boundary or system bounds check.
+**Learning:** Checking if a path is within its own directory is a tautology that always passes, neutralizing the traversal check entirely and allowing arbitrary paths to be processed.
+**Prevention:** When validating arbitrary user paths where a fixed project root doesn't apply (like opening a new project), use `assertSafeProjectPath` to ensure the path doesn't traverse into restricted system directories, instead of misusing `assertWithinProject` with a dynamic base.

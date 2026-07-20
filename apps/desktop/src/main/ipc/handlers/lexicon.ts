@@ -38,7 +38,7 @@ function resolveProjectPath(projectId: string): string {
   const allRecent = (settings.get("recentProjects") as string[] | undefined) ?? [];
   const validBase = allRecent.find((base) => {
     try {
-      assertWithinProject(path.dirname(base), projectPath);
+      assertWithinProject(base, projectPath);
       return true;
     } catch {
       return false;
