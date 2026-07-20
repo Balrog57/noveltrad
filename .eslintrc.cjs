@@ -81,5 +81,63 @@ module.exports = {
         "curly": "off",
       },
     },
+    // ── WS-5 followup : garde-fou anti cross-layer imports ──────────────
+    // Chaque couche ne peut importer que la couche directement inférieure
+    // + packages/shared (le contrat). Les dépendances inverses sont interdites.
+    // Cf. ARCHITECTURE.md pour le diagramme complet.
+    {
+      // RENDERER : ne peut PAS importer du main process (Electron, SQL, IPC handlers).
+      // Le renderer traverse l'IPC uniquement via window.novelTradAPI (preload bridge).
+      files: ["apps/desktop/src/renderer/**/*.{ts,vue}"],
+      rules: {
+        "@typescript-eslint/no-restricted-imports": ["error", {
+          patterns: [
+            {
+              group: ["**/apps/desktop/src/main/**", "../../main/**", "../main/**"],
+              message: "Renderer ne peut pas importer du main process. Utiliser window.novelTradAPI (preload bridge) pour traverser l'IPC.",
+            },
+            {
+              group: ["electron", "node:*"],
+              importNames: ["ipcRenderer", "ipcMain", "BrowserWindow", "app", "dialog", "Menu", "session"],
+              message: "Imports Electron interdits dans le renderer. L'IPC passe par window.novelTradAPI.",
+            },
+          ],
+        }],
+      },
+    },
+    {
+      // DB : ne peut PAS importer des managers ni services (couche supérieure).
+      // La DB est la couche la plus basse (après shared) et ne dépend de rien d'autre.
+      files: ["apps/desktop/src/main/db/**/*.ts"],
+      rules: {
+        "@typescript-eslint/no-restricted-imports": ["error", {
+          patterns: [
+            {
+              group: ["../managers/**", "../services/**", "../ipc/**", "../plugins/**"],
+              message: "La couche DB ne peut pas importer des managers/services/ipc (couche supérieure). Architecture en couches — cf. ARCHITECTURE.md.",
+            },
+          ],
+        }],
+      },
+    },
+    {
+      // IPC HANDLERS : ne peuvent PAS importer du renderer (vue/pinia/router).
+      // Les handlers sont dans le main process et communiquent via IPC uniquement.
+      files: ["apps/desktop/src/main/ipc/**/*.ts"],
+      rules: {
+        "@typescript-eslint/no-restricted-imports": ["error", {
+          patterns: [
+            {
+              group: ["vue", "pinia", "vue-router"],
+              message: "Imports renderer interdits dans les IPC handlers (main process).",
+            },
+            {
+              group: ["**/renderer/**"],
+              message: "Les IPC handlers ne peuvent pas importer du renderer (main process).",
+            },
+          ],
+        }],
+      },
+    },
   ],
 };

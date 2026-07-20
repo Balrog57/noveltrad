@@ -23,24 +23,33 @@ import { logger } from "../utils/logger.js";
  *     enveloppe.
  *
  * `safeHandle` standardise donc le chemin ERREUR uniquement :
- *   1. Validation Zod de l'`event` payload (si un schema est fourni).
+ *   1. Validation Zod du 1er arg (`rawArgs[0]`) si un schema est fourni.
  *   2. try/catch autour du corps métier.
  *   3. En cas d'erreur : log structuré + re-throw d'un `Error` à message
  *      lisible (le store renderer récupère `.message` via le preload).
  *
  * La valeur de retour du handler passe telle quelle (pas d'enveloppe).
  *
- * ## Usage
+ * ## Usage (handler à 1 payload objet)
  *
  * ```ts
- * safeHandle("workflow:pause", { jobId: jobIdSchema }, async ({ jobId }) => {
- *   workflowEngine.pause(jobId);
- *   return { ok: true }; // shape libre, comme avant
+ * // Renderer: invoke("lexicon:list", { projectId })
+ * safeHandle("lexicon:list", lexiconListSchema, async (payload) => {
+ *   return lexiconRepo.listByProject(payload.projectId);
  * });
  * ```
  *
- * Pour les handlers multi-args positionnels (cas legacy fréquent), préférer
- * `safeHandleRaw` qui prend les args `unknown[]` non-zodés.
+ * ## Limites — quand NE PAS utiliser safeHandle
+ *
+ * - **Handlers multi-args positionnels** (ex: `workflow:start(projectPath, chapterId)`) :
+ *   le schema ne connaît pas les noms d'args. Utiliser `safeHandleRaw` à la
+ *   place, ou garder `ipcMain.handle` direct (déjà testé, fonctionne).
+ * - **Handlers avec try/finally sur DB** : safeHandle n'englobe que le handler
+ *   body, pas les ressources. Le try/finally reste nécessaire côté caller.
+ *
+ * L'adoption est progressive et optionnelle — les handlers existants
+ * fonctionnent déjà (Zod + try/catch inline). safeHandle standardise juste
+ * le logging et le formatage des erreurs Zod.
  */
 export function safeHandle<S extends ZodSchema>(
   channel: string,
@@ -51,15 +60,13 @@ export function safeHandle<S extends ZodSchema>(
   ) => Promise<unknown> | unknown,
 ): void {
   ipcMain.handle(channel, async (event, ...rawArgs) => {
+    // safeHandle valide rawArgs[0] (le 1er argument, typiquement un payload
+    // objet passé par le renderer via invoke(channel, payload)). Pour les
+    // handlers multi-args positionnels, utiliser safeHandleRaw.
+    const rawPayload = rawArgs[0];
     let parsed: unknown;
     try {
-      // Les handlers historiques passent souvent des args positionnels
-      // (projectPath, jobId, …). On les regroupe en un objet pour le schema
-      // quand rawArgs.length > 1, sinon on valide rawArgs[0] directement.
-      parsed =
-        rawArgs.length > 1
-          ? schema.parse(rawArgs[0] /* déjà un objet payload */)
-          : schema.parse(rawArgs[0]);
+      parsed = schema.parse(rawPayload);
     } catch (err) {
       const message = formatZodError(err, channel);
       logger.warn(`[IPC ${channel}] validation échouée`, { message });

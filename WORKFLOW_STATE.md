@@ -101,6 +101,96 @@ sans valeur :
 - `npm run build` → non exécuté ce tour (electron-builder lent, risqué sans
   besoin ; type-check + tests + lint suffisent pour valider le refactor)
 
+## Suite — 5 axes followup (2026-07-20, branche `refactor/clean-architecture-followup`)
+
+**Contexte** : après squash-merge du refactor principal vers `main`
+(`d9e19ba`) + bump v2.2.7 (`2d2f027`), exécution des axes followup documentés.
+Approche : un commit par slice, tests verts obligatoires, descopage honnête
+quand le ROI ne vaut pas le risque.
+
+### Progression followup
+- [x] Axe 5 — ESLint cross-layer guardrails (`eee044b`)
+- [x] Axe 4 — safeHandle adopté dans tm.ts + helper corrigé (`205f47d`)
+- [x] Axe 1a — QaBranchPolicy extrait (policy holder immutable) (`e234a66`)
+- [~] Axe 1bcd/2/3 — documentés pour adoption progressive (pas de churn aveugle)
+
+### Axe 5 — détail (`eee044b`)
+- Ajouté 3 overrides dans `.eslintrc.cjs` via
+  `@typescript-eslint/no-restricted-imports` (zéro nouvelle dépendance —
+  alternative à `eslint-plugin-import` qui aurait requis plugin + resolver TS).
+- Renderer interdit d'importer du main / Electron APIs.
+- DB interdit d'importer managers/services/ipc.
+- IPC handlers interdit d'importer vue/pinia/renderer.
+- Audit : 0 violation préexistante (le code respectait déjà les couches).
+  Test du garde-fui : un fichier temporaire avec `import { ipcRenderer } from
+  "electron"` dans le renderer a bien été attrapé, puis supprimé.
+
+### Axe 4 — détail (`205f47d`)
+- Corrigé `safeHandle.ts` : commentaire multi-args trompeur retiré, docs
+  clarifiées (ne s'applique qu'aux handlers à 1 payload objet). Ajouté une
+  section "Limites — quand NE PAS utiliser safeHandle".
+- Adopté dans `tm.ts` (2 handlers) comme démonstration de pattern.
+- **Pas migré les 64 autres handlers** : la plupart sont multi-args
+  positionnels ou ont try/finally DB, le code actuel fonctionne et est testé.
+  Pattern démontré + documenté pour adoption au cas par cas.
+
+### Axe 1a — détail (`e234a66`)
+- Nouveau `managers/workflow/QaBranchPolicy.ts` : fonction pure
+  `decideQaBranch(score, threshold, retryCount, maxRetries) → QaDecision`.
+  Approche **immutable policy holder** (ne mute rien, retourne une décision).
+- `runStep` refactorisé : le bloc QA (~70 LOC inline entrelavées avec
+  mutations DB) devient un `switch(decision.action)` propre sur 3 cas.
+- **Nouveau test dédié** `qa-branch-policy.spec.ts` (18 tests couvrant toutes
+  les branches + edge cases). La politique QA est ENFIN testable isolément —
+  avant, elle n'était couverte que via workflow-branching.spec qui mocke
+  l'engine complet.
+- **Vérif** : type-check 0 erreurs, **1040/1040 tests** (74 files, +18 vs
+  baseline 1022/73), lint 0 erreurs.
+
+### Axes descopés avec justification (honnêteté)
+
+**Axe 1bcd (3 collaborateurs WorkflowRunner restants)** : JobRecorder,
+AgentIoAssembler, RunnerServices. Chacun partagerait du mutable state heavy
+(job, steps, paragraphs, qaRetryCount, jobTokensUsed) avec le runner.
+L'extraction déplacerait le couplage sans le réduire. QaBranchPolicy était
+le seul slice "clean" (la décision QA est pure — pas de mutation). Les 3
+autres restent inline tant que le runner n'a pas grossi davantage.
+
+**Axe 2 (useAsyncAction, 22 sites)** : churn non couvert. Le renderer n'a
+AUCUN test unitaire (vitest.config.ts:21-26 limite la coverage au main
+process). Migrer 22 actions de store sans safety net = risque de régression
+invisible. Prérequis : ajouter des tests Vitest renderer (mock du preload
+bridge) avant toute migration. ~1 commit de setup + 9 commits de migration.
+Laissé pour une session dédiée.
+
+**Axe 3 (6 vues oversized, ~5000 LOC)** : idem — churn non testé.
+Décomposer WorkflowView (993), ChaptersView (1033), LexiconView (919),
+SettingsView (791), HistoryView (760), HomeView (559) en sous-composants sans
+tests UI = haut risque mécanique. Pattern établi (composables + utils existent,
+useStatusLabels adopté dans WorkflowView). Adoption au cas par cas quand une
+vue est touchée pour feature work.
+
+### Décision de scope finale
+**Le travail à haute valeur/risque est fait.** Les 3 axes restants (1bcd, 2, 3)
+sont du churn non testé ou du couplage déplacé. Un senior engineer arrête là
+plutôt que d'ajouter du risque pour de la cosmétique. Les patterns sont en
+place ; l'adoption progressive se fera naturellement quand le code sera touché.
+
+### Vérification followup
+- `npm run type-check` → **0 errors**
+- `npm run test` → **1040/1040 pass** (74 files, +18 nouveaux tests QaBranchPolicy)
+- `npm run lint` → **0 errors**, 19 warnings préexistants (inchangés)
+
+### Handoff pour le prochain agent
+Branche `refactor/clean-architecture-followup` (4 commits) prête pour
+squash-merge vers main. Si l'utilisateur veut pousser les axes restants :
+1. **Axe 2** : commencer par ajouter tests renderer (mock preload bridge),
+   puis migrer useAsyncAction store par store.
+2. **Axe 3** : commencer par HomeView (559 LOC, la plus petite) comme
+   validation du pattern de sous-composants.
+3. **Axe 1bcd** : réévaluer quand WorkflowRunner grossira — pour l'instant
+   l'extraction déplace le couplage sans le réduire.
+
 ### Handoff pour le prochain agent
 Branche `refactor/clean-architecture` prête pour PR vers `main`. 10 commits
 atomiques, chacun vert et mergeable indépendamment. Si l'utilisateur veut

@@ -48,6 +48,8 @@ import { runAgentInWorker } from "../workers/agent-worker.js";
 import type { PluginHost } from "../plugins/PluginHost.js";
 // WS-5 (clean architecture) : collaborateurs extraits du WorkflowRunner.
 import { PauseController } from "./workflow/PauseController.js";
+// Axe 1a : policy holder immutable pour le branching QA.
+import { decideQaBranch, QA_BRANCH_MARGIN } from "./workflow/QaBranchPolicy.js";
 
 const STAGES: WorkflowStage[] = [
   "split",
@@ -661,27 +663,51 @@ class WorkflowRunner {
         }
       }
 
-      // SDD §7.1 : Branching QA — décision après exécution du QA agent
+      // SDD §7.1 : Branching QA — décision après exécution du QA agent.
+      // Axe 1a : la décision est déléguée au policy holder immutable
+      // (QaBranchPolicy.decideQaBranch), testable isolément. Le runner garde
+      // les mutations (pause, retryWeakest, DB updates) mais délègue le choix.
       if (step.stage === "qa" && output) {
         const qualityThreshold = this.settings.get("qualityThreshold") ?? 70;
+        const maxQaRetries = this.settings.get("maxQaRetries") ?? 3;
         const score = output.score ?? 0;
+        const decision = decideQaBranch(
+          score,
+          qualityThreshold,
+          this.qaRetryCount,
+          maxQaRetries,
+        );
 
-        if (score >= qualityThreshold) {
-          // Qualité suffisante → continuer normalement
-          logger.info(`[Workflow] QA score ${score} ≥ seuil ${qualityThreshold}, poursuite`);
-        } else if (score >= qualityThreshold - 20) {
-          // Score intermédiaire → retry du step le plus faible
-          // Guards anti-boucle : borner le nombre de retries QA automatiques
-          // par chapitre (setting maxQaRetries, défaut 3) pour éviter qu'un
-          // chapitre ne boucle indéfiniment sur la passe de révision.
-          const maxQaRetries = this.settings.get("maxQaRetries") ?? 3;
-          this.qaRetryCount += 1;
-          this.job.qaRetryCount = this.qaRetryCount;
-          this.jobRepo.updateJob(this.job);
-
-          if (this.qaRetryCount > maxQaRetries) {
+        switch (decision.action) {
+          case "continue": {
+            logger.info(`[Workflow] QA score ${score} ≥ seuil ${qualityThreshold}, poursuite`);
+            break;
+          }
+          case "retryWeakest": {
+            // Score intermédiaire → retry du step le plus faible.
+            // Guards anti-boucle : le compteur est incrémenté et borné par le
+            // policy (retryCount > maxRetries → branche pause au prochain tour).
+            this.qaRetryCount += 1;
+            this.job.qaRetryCount = this.qaRetryCount;
+            this.jobRepo.updateJob(this.job);
             logger.warn(
-              `[Workflow] QA retry ${this.qaRetryCount} > cap ${maxQaRetries}, pause du workflow (max retries dépassé)`,
+              `[Workflow] QA score ${score} < ${qualityThreshold} mais ≥ ${qualityThreshold - QA_BRANCH_MARGIN}, retry step le plus faible (${this.qaRetryCount}/${maxQaRetries})`,
+            );
+            // Marquer le step comme complété avant retry
+            step.status = "completed";
+            step.score = score;
+            step.outputSnapshot = output as unknown as Record<string, unknown>;
+            step.finishedAt = new Date().toISOString();
+            step.durationMs = Date.now() - startTime;
+            this.jobRepo.updateStep(step);
+            await this.retryWeakestStep();
+            return output;
+          }
+          case "pause": {
+            logger.warn(
+              decision.reason === "max_qa_retries_exceeded"
+                ? `[Workflow] QA retry ${this.qaRetryCount} > cap ${maxQaRetries}, pause du workflow (max retries dépassés)`
+                : `[Workflow] QA score ${score} < ${qualityThreshold - QA_BRANCH_MARGIN}, pause du workflow`,
             );
             step.status = "completed";
             step.score = score;
@@ -694,41 +720,12 @@ class WorkflowRunner {
               jobId: this.job.id,
               score,
               threshold: qualityThreshold,
-              reason: "max_qa_retries_exceeded",
+              ...(decision.reason === "max_qa_retries_exceeded"
+                ? { reason: decision.reason }
+                : {}),
             });
             return output;
           }
-
-          logger.warn(
-            `[Workflow] QA score ${score} < ${qualityThreshold} mais ≥ ${qualityThreshold - 20}, retry step le plus faible (${this.qaRetryCount}/${maxQaRetries})`,
-          );
-          // Marquer le step comme complété avant retry
-          step.status = "completed";
-          step.score = score;
-          step.outputSnapshot = output as unknown as Record<string, unknown>;
-          step.finishedAt = new Date().toISOString();
-          step.durationMs = Date.now() - startTime;
-          this.jobRepo.updateStep(step);
-          await this.retryWeakestStep();
-          return output;
-        } else {
-          // Score trop bas → pause + événement
-          logger.warn(
-            `[Workflow] QA score ${score} < ${qualityThreshold - 20}, pause du workflow`,
-          );
-          step.status = "completed";
-          step.score = score;
-          step.outputSnapshot = output as unknown as Record<string, unknown>;
-          step.finishedAt = new Date().toISOString();
-          step.durationMs = Date.now() - startTime;
-          this.jobRepo.updateStep(step);
-          this.pause();
-          this.emitQualityFailed?.({
-            jobId: this.job.id,
-            score,
-            threshold: qualityThreshold,
-          });
-          return output;
         }
       }
 
