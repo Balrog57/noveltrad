@@ -1,10 +1,19 @@
-import type { Database } from "node-sqlite3-wasm";
 import type { LexiconEntry } from "@shared/types/index.js";
+import type { Database } from "node-sqlite3-wasm";
 import { randomUUID } from "node:crypto";
 import { withTransaction, jsonColumn } from "../utils.js";
+import { BaseRepository } from "../base/BaseRepository.js";
 
-export class LexiconRepository {
-  constructor(private db: Database) {}
+/**
+ * WS-1 (clean architecture) : hérite de `BaseRepository<LexiconEntry>`.
+ * `getById`/`listByProject` gardent leur JOIN sur `lexicon_aliases`
+ * (colonne agrégée `aliases_agg`) — `findById` basique ne ferait pas l'affaire.
+ * `delete` délègue à `deleteById` (cascade aliases en DB).
+ */
+export class LexiconRepository extends BaseRepository<LexiconEntry> {
+  constructor(db: Database) {
+    super(db, "lexicon");
+  }
 
   create(entry: LexiconEntry): void {
     // P0-3 fix : l'INSERT principal et la sync des aliases doivent être
@@ -13,14 +22,12 @@ export class LexiconRepository {
     // désynchronisée (ou inversement). `withTransaction` garantit les deux
     // ou aucun.
     withTransaction(this.db, () => {
-      this.db
-        .prepare(
-          `
+      this.execute(
+        `
         INSERT INTO lexicon (id, project_id, term, translation, category, aliases, locked, forbidden, priority, description, notes, metadata)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-        )
-        .run([
+        [
           entry.id,
           entry.projectId,
           entry.term,
@@ -33,7 +40,8 @@ export class LexiconRepository {
           entry.description ?? null,
           entry.notes ?? null,
           jsonColumn.write(entry.metadata),
-        ]);
+        ],
+      );
 
       // SDD §6.3 : insérer les aliases dans la table séparée
       this.syncAliases(entry.id, entry.aliases);
@@ -41,24 +49,21 @@ export class LexiconRepository {
   }
 
   getById(id: string): LexiconEntry | null {
-    const row = this.db
-      .prepare(
-        `
+    return this.queryOne(
+      `
       SELECT l.*, GROUP_CONCAT(la.alias, '|') AS aliases_agg
       FROM lexicon l
       LEFT JOIN lexicon_aliases la ON la.lexicon_id = l.id
       WHERE l.id = ?
       GROUP BY l.id
     `,
-      )
-      .get([id]) as Record<string, unknown> | undefined;
-    return row ? this.map(row) : null;
+      [id],
+    ) ?? null;
   }
 
   listByProject(projectId: string): LexiconEntry[] {
-    const rows = this.db
-      .prepare(
-        `
+    return this.queryMany(
+      `
       SELECT l.*, GROUP_CONCAT(la.alias, '|') AS aliases_agg
       FROM lexicon l
       LEFT JOIN lexicon_aliases la ON la.lexicon_id = l.id
@@ -66,22 +71,19 @@ export class LexiconRepository {
       GROUP BY l.id
       ORDER BY l.priority DESC, l.term ASC
     `,
-      )
-      .all([projectId]) as Record<string, unknown>[];
-    return rows.map((r) => this.map(r));
+      [projectId],
+    );
   }
 
   update(entry: LexiconEntry): void {
     // P0-3 fix : cf. create() — UPDATE principal + sync aliases atomiques.
     withTransaction(this.db, () => {
-      this.db
-        .prepare(
-          `
+      this.execute(
+        `
         UPDATE lexicon SET term = ?, translation = ?, category = ?, aliases = ?, locked = ?, forbidden = ?, priority = ?, description = ?, notes = ?, metadata = ?
         WHERE id = ?
       `,
-        )
-        .run([
+        [
           entry.term,
           entry.translation,
           entry.category,
@@ -93,7 +95,8 @@ export class LexiconRepository {
           entry.notes ?? null,
           jsonColumn.write(entry.metadata),
           entry.id,
-        ]);
+        ],
+      );
 
       // SDD §6.3 : synchroniser les aliases (supprimer les anciens, insérer les nouveaux)
       this.syncAliases(entry.id, entry.aliases);
@@ -102,7 +105,7 @@ export class LexiconRepository {
 
   delete(id: string): void {
     // Les aliases sont supprimées automatiquement via ON DELETE CASCADE
-    this.db.prepare("DELETE FROM lexicon WHERE id = ?").run([id]);
+    this.deleteById(id);
   }
 
   /**
@@ -191,7 +194,7 @@ export class LexiconRepository {
     }
   }
 
-  private map(row: Record<string, unknown>): LexiconEntry {
+  protected map(row: Record<string, unknown>): LexiconEntry {
     return {
       id: String(row.id),
       projectId: String(row.project_id),

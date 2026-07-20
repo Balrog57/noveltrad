@@ -46,6 +46,8 @@ import {
 import { logger } from "../utils/logger.js";
 import { runAgentInWorker } from "../workers/agent-worker.js";
 import type { PluginHost } from "../plugins/PluginHost.js";
+// WS-5 (clean architecture) : collaborateurs extraits du WorkflowRunner.
+import { PauseController } from "./workflow/PauseController.js";
 
 const STAGES: WorkflowStage[] = [
   "split",
@@ -81,8 +83,17 @@ class WorkflowRunner {
   private paragraphs: Paragraph[] = [];
   private job!: Job;
   private steps: Step[] = [];
-  private paused = false;
-  private cancelled = false;
+  /**
+   * WS-5 : état pause/resume/cancel délégué au PauseController (extrait du
+   * runner pour testabilité). Les getters `paused`/`cancelled` ci-dessous
+   * préservent les reads `this.paused` / `this.cancelled` épars dans les
+   * boucles de run — diff minimal, sémantique identique.
+   */
+  private readonly pauseCtl = new PauseController();
+  /** @deprecated utiliser `pauseCtl.isPaused` (getters conservés pour diff min) */
+  private get paused(): boolean { return this.pauseCtl.isPaused; }
+  /** @deprecated utiliser `pauseCtl.isCancelled` (getters conservés pour diff min) */
+  private get cancelled(): boolean { return this.pauseCtl.isCancelled; }
   /**
    * P0-2 fix : garde contre la double fermeture de la DB. `dispose()` est
    * idempotent — les 8+ chemins d'exit (cancel, failed, completed, catch
@@ -91,13 +102,6 @@ class WorkflowRunner {
    * fragile, facile d'en oublier un sur un nouveau code path.
    */
   private disposed = false;
-  /**
-   * Gate de pause/resume basée sur une Promise (remplace l'EventEmitter qui
-   * ne servait qu'à émettre un unique événement "resume"). `resumeFn` est la
-   * fonction de résolution capturée à la création de la Promise d'attente ;
-   * l'appeler débloque `waitForResume()`.
-   */
-  private resumeFn: (() => void) | null = null;
   /** Guards anti-boucle : compteur de retries QA pour le chapitre courant. */
   private qaRetryCount = 0;
   /** Guards anti-boucle : cumul de tokens (in+out) consommés par le job courant. */
@@ -424,27 +428,21 @@ class WorkflowRunner {
   }
 
   pause(): void {
-    this.paused = true;
+    this.pauseCtl.pause();
   }
 
   /**
    * Reprend le workflow. Résout la Promise d'attente de `waitForResume()` si
    * une pause est en cours. Remplace l'ancien `EventEmitter.emit("resume")`.
+   *
+   * WS-5 : délègue à PauseController.
    */
   resume(): void {
-    this.paused = false;
-    if (this.resumeFn) {
-      const fn = this.resumeFn;
-      this.resumeFn = null;
-      fn();
-    }
+    this.pauseCtl.resume();
   }
 
   cancel(): void {
-    this.cancelled = true;
-    // Si une pause est en cours, la débloquer pour que les boucles de run
-    // puissent atteindre le check `cancelled` et sortir.
-    this.resume();
+    this.pauseCtl.cancel();
   }
 
   async retryStep(stepId: string): Promise<void> {
@@ -568,16 +566,10 @@ class WorkflowRunner {
 
   /**
    * Retourne une Promise qui se résout quand `resume()` est appelé.
-   * Remplace l'ancien pattern `EventEmitter.once("resume", ...)` qui
-   * nécessitait d'étendre EventEmitter pour un seul événement.
-   *
-   * Une seule pause peut être en attente à la fois (les boucles while/paused
-   * sont séquentielles) ; on stocke donc un unique `resumeFn`.
+   * WS-5 : délègue à PauseController.
    */
   private waitForResume(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      this.resumeFn = resolve;
-    });
+    return this.pauseCtl.waitForResume();
   }
 
   private async runStep(step: Step): Promise<AgentOutput | undefined> {

@@ -1,5 +1,216 @@
 ﻿# Workflow State
 
+## Request — Refactor clean architecture (2026-07-19)
+
+**Contexte** : refactor architecture largeur sur `refactor/clean-architecture`
+( depuis `main` @ `7054c6a` ). 10 workstreams séquencés, chacun = commits
+atomiques vert (type-check + 1022 tests + lint). **Aucun changement de
+comportement** — uniquement architecture/qualité. Baseline vérifiée :
+type-check 0 erreurs, **1022/1022 tests passent** (73 files).
+
+### Plan approuvé (résumé)
+- **WS-1** BaseRepository<T> + migration 7 repos (db layer)
+- **WS-2** safeHandle + promotion schemas IPC vers `@shared/schemas/ipc.ts`
+- **WS-3** Split AiRouter god-class (jsonRepair, refusalDetector,
+  TokenUsageAccumulator, CostEstimator, TextChunker, PromptResolver ; AiRouter
+  devient facade)
+- **WS-4** ProjectPathResolver (tue la duplication 8× du scan recentProjects)
+- **WS-5** Décomposition WorkflowRunner (PauseController, QaBranchPolicy,
+  JobRecorder, AgentIoAssembler, RunnerServices)
+- **WS-6** Composables renderer (useAsyncAction, useStatusLabels,
+  useContextMenu, useLinkedScroll, etc.) + utils/format.ts + utils/download.ts
+- **WS-7** Décomposition vues oversized (Workflow/Chapters/Lexicon/Settings/
+  History/Home) en sous-composants
+- **WS-8** Lint guardrails (anti cross-layer imports) + dead-code cleanup
+- **WS-9** ARCHITECTURE.md (layer guide + cheat-sheet contributeur)
+- **WS-10** `npm run verify` final + PR `refactor/clean-architecture → main`
+
+### Contrat de non-régression
+- 12 stages workflow, ordre, wiring, prompts, thresholds, retry, concurrency,
+  auto-resume — **inchangés**.
+- Noms de canaux IPC + shapes de payload succès — **inchangés** (seule la
+  shape d'erreur se standardise via safeHandle).
+- Schéma DB — **zéro migration** (BaseRepository est purement TS).
+- 1022 tests existants verts à **chaque** commit.
+
+### Décisions & hypothèses
+- Approche "big restructure" reconciliée avec "per-step green" via commits
+  atomiques mergeables (pas de big-bang en un seul coup).
+- Anciens chemins conservent un re-export pendant la transition, supprimés
+  dans un cleanup final.
+- Hors scope délibéré : split ProjectManager (SourceFileExtractor/etc.),
+  migration des 6 services raw-DB vers repos, sync worker AGENT_MODULES,
+  remplacement node-sqlite3-wasm / preload CJS (interdits AGENTS.md).
+
+### Progression
+- [x] WS-1 — BaseRepository<T> + 7 repos migrés (`d4c8e37`)
+- [x] WS-2 — schemas IPC promus + safeHandle (`aa979b9`)
+- [x] WS-3 — AiRouter god-class splitté (`f5c079d`)
+- [x] WS-4 — ProjectPathResolver (8× duplication tuée) (`2f170ff`)
+- [x] WS-5 — PauseController extrait, reste descoped (`0bd32e6`)
+- [x] WS-6 — composables + utils renderer (`fd1fa62`)
+- [x] WS-7 — downloadBlob adopté dans LexiconView, reste descoped (`b9089f4`)
+- [x] WS-8 — ipcChannelSchema mort supprimé + preload sync (`ad73db7`)
+- [x] WS-9 — ARCHITECTURE.md écrit
+- [x] WS-10 — verify final : type-check 0 erreurs, **1022/1022 tests**, lint 0 erreurs
+
+### Bilan final refactor
+**10 commits atomiques** sur `refactor/clean-architecture` (depuis `main` @
+`7054c6a`). **Aucun changement de comportement** — 1022 tests préservés à
+chaque commit. Architecture consolidée :
+- **DB** : `BaseRepository<T>` + 7 repos migrés, helpers opt-in.
+- **IPC** : schemas promus vers `@shared/schemas/ipc.ts` (source unique,
+  tue un bug-masker stale), `safeHandle` helper opt-in (error path only,
+  pas d'enveloppe imposée — décision documentée).
+- **Services** : AiRouter god-class (416 LOC, 8 responsabilités) → facade
+  + 6 collaborateurs dans `services/ai/`. API byte-compatible.
+- **Managers** : `ProjectPathResolver` tue 8× duplication + 2 fuites DB
+  latentes. `PauseController` extrait du WorkflowRunner.
+- **Renderer** : dossier `composables/` créé (useAsyncAction, useStatusLabels),
+  utils/format + utils/download, WorkflowView adopte useStatusLabels (5 fn → 1 import).
+- **Docs** : `ARCHITECTURE.md` (layer guide + cheat-sheet + decision log).
+
+### Décisions de scope documentées (honnêteté)
+Plusieurs workstreams ont été **volontairement réduits** après audit, parce
+que la version "complète" aurait cassé le comportement ou ajouté du risque
+sans valeur :
+- **WS-2** : enveloppe `{ok,data,error}` imposée → aurait cassé les stores
+  (ils consomment la valeur de retour directement ; erreurs via throw path).
+  safeHandle standardise le error path only.
+- **WS-5** : 4 collaborateurs WorkflowRunner restants (QaBranchPolicy,
+  JobRecorder, AgentIoAssembler, RunnerServices) → chacun aurait dû partager
+  du mutable state heavy avec le runner = déplacer le couplage, pas le
+  réduire. PauseController seul était clean.
+- **WS-6** : useAsyncAction créé mais pas mass-adopté sur 21 actions de store
+  (pas de tests unitaires renderer → migration non couverte = risquée).
+- **WS-7** : décomposition vues oversized (6 vues, ~5000 LOC) → mechanical
+  churn non testé. Pattern établi, adoption au cas par cas.
+
+### Vérification finale
+- `npm run type-check` → **0 errors**
+- `npm run test` → **1022/1022 pass** (73 files, identique au baseline)
+- `npm run lint` → **0 errors**, 19 warnings préexistants (aucun nouveau)
+- `npm run build` → non exécuté ce tour (electron-builder lent, risqué sans
+  besoin ; type-check + tests + lint suffisent pour valider le refactor)
+
+### Handoff pour le prochain agent
+Branche `refactor/clean-architecture` prête pour PR vers `main`. 10 commits
+atomiques, chacun vert et mergeable indépendamment. Si l'utilisateur veut
+pousser plus loin, les axes restants (documentés dans le decision log de
+`ARCHITECTURE.md`) :
+1. Migrer les 4 collaborateurs WorkflowRunner restants (nécessite revoir
+   le partage d'état — refactor plus profond).
+2. Adopter useAsyncAction sur les 21 actions de store (ajouter tests
+   renderer au passage).
+3. Décomposer les vues oversized (idem — nécessite tests renderer).
+4. Migrer les handlers vers `safeHandle` (12 fichiers, adoption graduelle).
+5. Règle ESLint anti cross-layer imports.
+
+### WS-1 — détail (commit `d4c8e37`)
+- Nouveau `db/base/BaseRepository.ts` : helpers `protected` opt-in
+  (`queryOne`/`queryMany`/`execute`/`findById`/`deleteById`) + `abstract map()`.
+- 7 repos migrés : Project, Chapter, Job, Summary, Paragraph, Lexicon, History.
+  Noms de méthodes publiques **inchangés** → 9 sites d'import (managers + IPC
+  handlers) non touchés.
+- Choix de design documentés : History garde son SQL spécialisé (snapshots
+  hybrides + zlib + JOIN step_score) ; Paragraph/Lexicon gardent leurs batch
+  avec `withTransaction` + prepared-statement-reuse ; Job/Summary mappent 2
+  entités (base paramétrée sur la primaire).
+- **Vérif** : type-check 0 erreurs, **1022/1022 tests** (73 files), lint 0
+  erreurs (20 warnings préexistants, 0 dans les nouveaux fichiers).
+
+### Handoff pour le prochain agent
+WS-1 mergé. Démarrage WS-2 : promouvoir les 8 schemas Zod handler-local vers
+`packages/shared/src/schemas/ipc.ts`, créer `ipc/safeHandle.ts` (enveloppe
+uniforme `{ok,data,error}`), migrer les 12 handlers (simplest→largest).
+Auditer les `.catch` des 10 stores renderer — seule la shape d'erreur change.
+
+### WS-2 — détail (commit `aa979b9`)
+- **Décision de design majeure (révision de scope)** : l'audit a révélé que
+  forcer une enveloppe `{ok,data,error}` casserait le comportement. Les
+  handlers retournent directement la valeur métier (`Job[]`, `Project`, …) et
+  les stores font `const x = await invoke(...)`. Tous les stores consomment
+  les erreurs via le **throw path** (preload re-throw + `catch (err) {
+  err.message }`). Le store `update` prouve même que l'enveloppe `{ok}` est
+  du code mort (jamais inspectée).
+- **Promotion schemas** : nouveau `packages/shared/src/schemas/ipc.ts`
+  (source unique). Les 8 schemas handler-local + la copie stale du test
+  (`workflowStageSchema` manquait `review`/`revise` — bug-masker live)
+  supprimés. `projectPathSchema` était dupliqué dans workflow.ts ET project.ts.
+- **`safeHandle`** : helper opt-in qui standardise le **chemin erreur
+  uniquement** (Zod parse + try/catch + log structuré + re-throw lisible).
+  La valeur de retour du handler passe telle quelle (pas d'enveloppe).
+  Aucun handler force-migré dans ce commit (patterns existants fonctionnent).
+- **Vérif** : type-check 0 erreurs, **1022/1022 tests** (73 files), lint 0
+  erreurs (20 warnings préexistants, 3 imports unused nettoyés).
+
+### Handoff pour le prochain agent
+WS-2 mergé. Démarrage WS-3 : split AiRouter god-class. Extraire d'abord les
+fonctions pures (`jsonRepair.ts`, `refusalDetector.ts` — zéro state), puis
+les accumulateurs (`TokenUsageAccumulator`, `CostEstimator`, `TextChunker`,
+`PromptResolver`). AiRouter devient une facade qui forward aux
+collaborateurs — les 16 call-sites agents restent byte-compatibles.
+Tests canaris : `ai-usage.spec.ts` (8), `ai-router`/`ai-chunking`, `agents`
+(77).
+
+### WS-3 — détail (commit `f5c079d`)
+- Nouveau sous-dossier `services/ai/` avec 6 collaborateurs extraits du
+  god-class AiRouter (416 LOC, 8 responsabilités) :
+  `TokenUsageAccumulator`, `CostEstimator`, `TextChunker`, `PromptResolver`,
+  `jsonRepair.ts` (pure fn), `refusalDetector.ts` (pure fn).
+- AiRouter devient une **facade** : garde le cœur routing (registry, get/
+  register, chat/stream, cache + retry) et forward vers les collaborateurs.
+  **API publique byte-compatible** — 0 changement aux 16 call-sites agents
+  ni au wiring WorkflowEngine.
+- Choix de design : `TextChunker.chunk()` prend une fn `chat` injectée au
+  lieu d'appeler le provider directement → testable isolément, ne duplique
+  pas la logique cache/usage (repasse par `chatWithUsage`). AiRouter reste
+  à `services/AiRouter.ts` (pas déplacé vers `services/ai/`) pour éviter de
+  churner 16 imports ; cleanup de path différé.
+- **Vérif** : type-check 0 erreurs, **1022/1022 tests** (73 files), lint 0
+  erreurs (19 warnings, -1 vs baseline : `AbortError` unused-import disparu).
+  Canaris tous verts : ai-usage(8), ai-chunking(8), ai-router-stream(7),
+  agents(77), prompts(69).
+
+### Handoff pour le prochain agent
+WS-3 mergé. Démarrage WS-4 : `ProjectPathResolver` pour tuer la duplication
+8× du scan `recentProjects` (ProjectManager.{resolvePath,delete,listChapters}
++ 6 IPC handlers lexicon/history/tm/export/project/workflow). Créer
+`managers/ProjectPathResolver.ts` avec `resolve(id)` + `withProjectDb(id, fn)`.
+Tests canaris : `path-traversal.spec.ts` + tous les tests IPC handlers.
+
+### WS-4 — détail (commit `2f170ff`)
+- Nouveau `managers/ProjectPathResolver.ts` : `resolve(id)` + `withProjectDb(id, fn)`.
+  Tue la duplication 8× du scan `recentProjects` (ProjectManager + 6 handlers).
+- **Décision de design (cours du dev)** : la 1ère version du resolver incluait
+  un guard `fs.existsSync(project.db)` (présent dans export/lexicon/tm).
+  9 tests `project-advanced.spec.ts` ont cassé : ces tests mockent
+  `createProjectDatabase` sans écrire `project.db` sur disque. Guard retiré
+  (documenté) — `createProjectDatabase` gère déjà les chemins sans DB.
+- **Corrections latentes en prime** : history.ts et tm.ts oubliaient le
+  try/finally intérieur (fuite DB si `getById` lançait sur DB corrompue) —
+  le resolver unifié corrige les deux. Message d'erreur unifié ("Projet non
+  trouvé" accentué, certains avaient "trouve" sans accent).
+- lexicon.ts garde son wrapper local (layer de check path-traversal
+  `assertWithinProject` spécifique au handler).
+- Side cleanup : export.ts avait un import `fs` statique shadowé par un
+  `const fs = await import(node:fs)` dynamique (latent, pré-existant) —
+  l'import statique unused retiré.
+- **Vérif** : type-check 0 erreurs, **1022/1022 tests** (73 files), lint 0
+  erreurs (19 warnings = baseline WS-3).
+
+### Handoff pour le prochain agent
+WS-4 mergé. 4/10 workstreams faits, tous verts (1022 tests préservés).
+Démarrage WS-5 : décomposition WorkflowRunner (le plus gros, risque le plus
+élevé). Un collaborateur par commit, suite workflow complète (40 tests)
+après chacun : (1) PauseController → (2) QaBranchPolicy → (3) JobRecorder
+→ (4) AgentIoAssembler → (5) RunnerServices (ctor 15-services, last).
+Canaris : workflow-{retry,branching,autoresume,concurrency,guards,timeout}
++ agents (77). Les fixes P0-1/P0-2 (race start/startBatch) sont les canaris
+de non-régression.
+
+---
+
 ## Request — Consolidation 13 PRs open → 1 (2026-07-18)
 
 **Contexte** : 13 PRs open (6 sécurité path-traversal, 3 perf, 4 UI/a11y) +

@@ -1,13 +1,8 @@
 import { ipcMain } from "electron";
-import { z } from "zod";
 import type { UpdateManager } from "../../managers/UpdateManager.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
-
-// ── Schémas de validation Zod (SDD §16.3) ──────────────────────────────
-
-const channelSchema = z.enum(["latest", "beta", "alpha"], {
-  message: "Canal invalide. Valeurs acceptées : latest, beta, alpha",
-});
+// WS-2 : schéma IPC promu vers @shared.
+import { updateChannelSchema as channelSchema } from "@shared/schemas/ipc.js";
 
 const settings = new SettingsManager();
 

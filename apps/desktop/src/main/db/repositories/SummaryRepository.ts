@@ -1,52 +1,55 @@
-import type { Database } from "node-sqlite3-wasm";
 import type { ChapterSummary, NovelSummary } from "@shared/types/index.js";
+import type { Database } from "node-sqlite3-wasm";
 import { randomUUID } from "node:crypto";
+import { BaseRepository } from "../base/BaseRepository.js";
 
 /**
  * Repository pour les résumés produits par le SummarizerAgent (v1.4).
  * SDD §7.13 / §8.12 — cohérence cross-chapitre.
+ *
+ * WS-1 (clean architecture) : hérite de `BaseRepository<ChapterSummary>`.
+ * `NovelSummary` (singleton par projet) est mappée via `mapNovel` privé.
  */
-export class SummaryRepository {
-  constructor(private db: Database) {}
+export class SummaryRepository extends BaseRepository<ChapterSummary> {
+  constructor(db: Database) {
+    super(db, "chapter_summaries");
+  }
 
   // ── Chapter summaries ─────────────────────────────────────────────────
 
   upsertChapterSummary(summary: Omit<ChapterSummary, "id" | "createdAt">): ChapterSummary {
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    this.db
-      .prepare(
-        `INSERT INTO chapter_summaries (id, chapter_id, project_id, summary, token_count, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(chapter_id) DO UPDATE SET
-           summary = excluded.summary,
-           token_count = excluded.token_count`,
-      )
-      .run([
+    this.execute(
+      `INSERT INTO chapter_summaries (id, chapter_id, project_id, summary, token_count, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(chapter_id) DO UPDATE SET
+         summary = excluded.summary,
+         token_count = excluded.token_count`,
+      [
         id,
         summary.chapterId,
         summary.projectId,
         summary.summary,
         summary.tokenCount ?? null,
         createdAt,
-      ]);
+      ],
+    );
     return { ...summary, id, createdAt };
   }
 
   getChapterSummary(chapterId: string): ChapterSummary | null {
-    const row = this.db
-      .prepare("SELECT * FROM chapter_summaries WHERE chapter_id = ?")
-      .get([chapterId]) as Record<string, unknown> | undefined;
-    return row ? this.mapChapter(row) : null;
+    return this.queryOne(
+      "SELECT * FROM chapter_summaries WHERE chapter_id = ?",
+      [chapterId],
+    ) ?? null;
   }
 
   listChapterSummaries(projectId: string): ChapterSummary[] {
-    const rows = this.db
-      .prepare(
-        "SELECT * FROM chapter_summaries WHERE project_id = ? ORDER BY created_at ASC",
-      )
-      .all([projectId]) as Record<string, unknown>[];
-    return rows.map((r) => this.mapChapter(r));
+    return this.queryMany(
+      "SELECT * FROM chapter_summaries WHERE project_id = ? ORDER BY created_at ASC",
+      [projectId],
+    );
   }
 
   // ── Novel summary (singleton par projet) ──────────────────────────────
@@ -68,23 +71,22 @@ export class SummaryRepository {
     // upsertChapterSummary. On récupère ensuite la ligne pour connaître la
     // version finale (version + 1 sur update, 1 sur insert).
     const updatedAt = new Date().toISOString();
-    this.db
-      .prepare(
-        `INSERT INTO novel_summaries (id, project_id, summary, version, updated_at)
-         VALUES (?, ?, ?, 1, ?)
-         ON CONFLICT(project_id) DO UPDATE SET
-           summary = excluded.summary,
-           version = version + 1,
-           updated_at = excluded.updated_at`,
-      )
-      .run([randomUUID(), projectId, summary, updatedAt]);
+    this.execute(
+      `INSERT INTO novel_summaries (id, project_id, summary, version, updated_at)
+       VALUES (?, ?, ?, 1, ?)
+       ON CONFLICT(project_id) DO UPDATE SET
+         summary = excluded.summary,
+         version = version + 1,
+         updated_at = excluded.updated_at`,
+      [randomUUID(), projectId, summary, updatedAt],
+    );
     // Re-lecture pour récupérer l'id stable et la version effective.
     return this.getNovelSummary(projectId)!;
   }
 
   // ── Mapping ───────────────────────────────────────────────────────────
 
-  private mapChapter(row: Record<string, unknown>): ChapterSummary {
+  protected map(row: Record<string, unknown>): ChapterSummary {
     return {
       id: String(row.id),
       chapterId: String(row.chapter_id),

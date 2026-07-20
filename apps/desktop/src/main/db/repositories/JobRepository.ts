@@ -1,18 +1,24 @@
-import type { Database } from "node-sqlite3-wasm";
 import type { Job, Step } from "@shared/types/index.js";
+import type { Database } from "node-sqlite3-wasm";
+import { BaseRepository } from "../base/BaseRepository.js";
 
-export class JobRepository {
-  constructor(private db: Database) {}
+/**
+ * WS-1 (clean architecture) : hérite de `BaseRepository<Job>` (entité primaire).
+ * `Step` est une entité secondaire mappée via `mapStep` privé ; les helpers
+ * `getStep`/`listStepsByJob` font leur propre SELECT/prepare (table `job_steps`).
+ */
+export class JobRepository extends BaseRepository<Job> {
+  constructor(db: Database) {
+    super(db, "jobs");
+  }
 
   createJob(job: Job): void {
-    this.db
-      .prepare(
-        `
+    this.execute(
+      `
       INSERT INTO jobs (id, project_id, chapter_id, type, status, started_at, finished_at, error_message, created_at, chapter_ids, metadata, cost_usd, qa_retry_count)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      )
-      .run([
+      [
         job.id,
         job.projectId,
         job.chapterId ?? null,
@@ -26,41 +32,32 @@ export class JobRepository {
         job.metadata ? JSON.stringify(job.metadata) : null,
         job.costUsd ?? null,
         job.qaRetryCount ?? 0,
-      ]);
+      ],
+    );
   }
 
   getJob(id: string): Job | undefined {
-    const row = this.db.prepare("SELECT * FROM jobs WHERE id = ?").get([id]) as
-      Record<string, unknown> | undefined;
-    if (!row) {return undefined;}
-    return this.mapJob(row);
+    return this.findById(id);
   }
 
   listByProject(projectId: string): Job[] {
-    const rows = this.db
-      .prepare(
-        "SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC",
-      )
-      .all([projectId]) as Record<string, unknown>[];
-    return rows.map((r) => this.mapJob(r));
+    return this.queryMany(
+      "SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC",
+      [projectId],
+    );
   }
 
   /** SDD §7.11 : liste les jobs en cours (running/paused) pour la reprise au démarrage */
   listActive(): Job[] {
-    const rows = this.db
-      .prepare(
-        "SELECT * FROM jobs WHERE status IN ('running', 'paused') ORDER BY created_at DESC",
-      )
-      .all() as Record<string, unknown>[];
-    return rows.map((r) => this.mapJob(r));
+    return this.queryMany(
+      "SELECT * FROM jobs WHERE status IN ('running', 'paused') ORDER BY created_at DESC",
+    );
   }
 
   updateJob(job: Job): void {
-    this.db
-      .prepare(
-        `UPDATE jobs SET status = ?, started_at = ?, finished_at = ?, error_message = ?, chapter_ids = ?, metadata = ?, cost_usd = ?, qa_retry_count = ? WHERE id = ?`,
-      )
-      .run([
+    this.execute(
+      `UPDATE jobs SET status = ?, started_at = ?, finished_at = ?, error_message = ?, chapter_ids = ?, metadata = ?, cost_usd = ?, qa_retry_count = ? WHERE id = ?`,
+      [
         job.status,
         job.startedAt ?? null,
         job.finishedAt ?? null,
@@ -70,18 +67,17 @@ export class JobRepository {
         job.costUsd ?? null,
         job.qaRetryCount ?? 0,
         job.id,
-      ]);
+      ],
+    );
   }
 
   createStep(step: Step): void {
-    this.db
-      .prepare(
-        `
+    this.execute(
+      `
       INSERT INTO job_steps (id, job_id, agent_id, name, stage, order_index, status, input_snapshot, output_snapshot, score, tokens_in, tokens_out, duration_ms, started_at, finished_at, error_message, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      )
-      .run([
+      [
         step.id,
         step.jobId,
         step.agentId,
@@ -99,15 +95,15 @@ export class JobRepository {
         step.finishedAt ?? null,
         step.errorMessage ?? null,
         step.createdAt,
-      ]);
+      ],
+    );
   }
 
   getStep(id: string): Step | undefined {
     const row = this.db
       .prepare("SELECT * FROM job_steps WHERE id = ?")
       .get([id]) as Record<string, unknown> | undefined;
-    if (!row) {return undefined;}
-    return this.mapStep(row);
+    return row ? this.mapStep(row) : undefined;
   }
 
   listStepsByJob(jobId: string): Step[] {
@@ -118,14 +114,12 @@ export class JobRepository {
   }
 
   updateStep(step: Step): void {
-    this.db
-      .prepare(
-        `
+    this.execute(
+      `
       UPDATE job_steps SET status = ?, input_snapshot = ?, output_snapshot = ?, score = ?, tokens_in = ?, tokens_out = ?, duration_ms = ?, started_at = ?, finished_at = ?, error_message = ?
       WHERE id = ?
     `,
-      )
-      .run([
+      [
         step.status,
         step.inputSnapshot ? JSON.stringify(step.inputSnapshot) : null,
         step.outputSnapshot ? JSON.stringify(step.outputSnapshot) : null,
@@ -137,10 +131,11 @@ export class JobRepository {
         step.finishedAt ?? null,
         step.errorMessage ?? null,
         step.id,
-      ]);
+      ],
+    );
   }
 
-  private mapJob(row: Record<string, unknown>): Job {
+  protected map(row: Record<string, unknown>): Job {
     return {
       id: String(row.id),
       projectId: String(row.project_id),

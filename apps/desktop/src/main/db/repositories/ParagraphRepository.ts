@@ -1,9 +1,18 @@
-import type { Database } from "node-sqlite3-wasm";
 import type { Paragraph } from "@shared/types/index.js";
+import type { Database } from "node-sqlite3-wasm";
 import { withTransaction, jsonColumn } from "../utils.js";
+import { BaseRepository } from "../base/BaseRepository.js";
 
-export class ParagraphRepository {
-  constructor(private db: Database) {}
+/**
+ * WS-1 (clean architecture) : hérite de `BaseRepository<Paragraph>` pour le
+ * constructeur et `map`. Les méthodes `createMany`/`updateMany` conservent
+ * leur pattern prepared-statement-reuse + `withTransaction` (optimisation
+ * N-fsyncs → 1, volontairement pas absorbable par la base générique).
+ */
+export class ParagraphRepository extends BaseRepository<Paragraph> {
+  constructor(db: Database) {
+    super(db, "paragraphs");
+  }
 
   createMany(chapterId: string, paragraphs: Paragraph[]): void {
     const insert = this.db.prepare(`
@@ -26,25 +35,22 @@ export class ParagraphRepository {
   }
 
   listByChapter(chapterId: string): Paragraph[] {
-    const rows = this.db
-      .prepare(
-        "SELECT * FROM paragraphs WHERE chapter_id = ? ORDER BY index_in_chapter",
-      )
-      .all([chapterId]) as Record<string, unknown>[];
-    return rows.map((r) => this.map(r));
+    return this.queryMany(
+      "SELECT * FROM paragraphs WHERE chapter_id = ? ORDER BY index_in_chapter",
+      [chapterId],
+    );
   }
 
   update(paragraph: Paragraph): void {
-    this.db
-      .prepare(
-        "UPDATE paragraphs SET translated_text = ?, status = ?, metadata = ? WHERE id = ?",
-      )
-      .run([
+    this.execute(
+      "UPDATE paragraphs SET translated_text = ?, status = ?, metadata = ? WHERE id = ?",
+      [
         paragraph.translatedText ?? null,
         paragraph.status,
         jsonColumn.write(paragraph.metadata),
         paragraph.id,
-      ]);
+      ],
+    );
   }
 
   updateMany(paragraphs: Paragraph[]): void {
@@ -69,7 +75,7 @@ export class ParagraphRepository {
     });
   }
 
-  private map(row: Record<string, unknown>): Paragraph {
+  protected map(row: Record<string, unknown>): Paragraph {
     return {
       id: String(row.id),
       chapterId: String(row.chapter_id),

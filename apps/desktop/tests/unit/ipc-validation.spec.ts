@@ -1,67 +1,25 @@
 /**
  * Tests de validation Zod pour les handlers IPC (SDD §16.3)
  *
- * Teste les schémas de validation directement, en répliquant ceux
- * définis dans les fichiers handlers.
+ * WS-2 : les schémas sont désormais importés depuis @shared/schemas/ipc.ts
+ * (source unique). Auparavant ils étaient répliqués ici, et la copie était
+ * devenue stale (workflowStageSchema manquait `review`/`revise`).
  */
 
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-
-// ── Schémas (répliqués depuis workflow.ts) ─────────────────────────────
-
-const projectPathSchema = z.string().min(1);
-const chapterIdSchema = z.string().min(1).optional();
-const jobIdSchema = z.string().min(1);
-const stepIdSchema = z.string().min(1);
-const chapterIdsSchema = z.array(z.string().min(1)).min(1);
-
-const workflowStageSchema = z.enum([
-  "split",
-  "pre_translate",
-  "translate",
-  "consistency",
-  "lexicon",
-  "grammar",
-  "style",
-  "polish",
-  "qa",
-  "export",
-]);
-
-const jobSchema = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  chapterId: z.string().optional(),
-  chapterIds: z.array(z.string()).optional(),
-  type: z.enum(["single", "batch"]),
-  status: z.enum([
-    "pending",
-    "running",
-    "paused",
-    "completed",
-    "failed",
-    "cancelled",
-  ]),
-  startedAt: z.string().optional(),
-  finishedAt: z.string().optional(),
-  errorMessage: z.string().optional(),
-  options: z.object({}).passthrough().optional(),
-  metadata: z.record(z.unknown()).optional(),
-  createdAt: z.string(),
-});
-
-// ── Schémas (répliqués depuis ollama.ts) ───────────────────────────────
-
-const modelNameSchema = z.string().min(1);
-
-// ── Schémas (répliqués depuis update.ts) ───────────────────────────────
-
-const channelSchema = z.enum(["latest", "beta", "alpha"]);
-
-// ── Schémas (répliqués depuis settings.ts) ─────────────────────────────
-
-const settingsKeySchema = z.string().min(1);
+import {
+  projectPathSchema,
+  chapterIdSchema,
+  jobIdSchema,
+  stepIdSchema,
+  chapterIdsSchema,
+  workflowStageSchema,
+  jobSchema,
+  modelNameSchema,
+  settingsKeySchema,
+  updateChannelSchema as channelSchema,
+} from "@shared/schemas/ipc.js";
 
 // ── Tests Workflow ─────────────────────────────────────────────────────
 

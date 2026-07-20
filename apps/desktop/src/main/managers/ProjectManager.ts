@@ -10,6 +10,7 @@ import type {
   DuplicateInfo,
 } from "@shared/types/index.js";
 import type { SettingsManager } from "./SettingsManager.js";
+import { ProjectPathResolver } from "./ProjectPathResolver.js";
 import { createProjectDatabase, runMigrations } from "../db/connection.js";
 import { ProjectRepository } from "../db/repositories/ProjectRepository.js";
 import { expandHome, assertSafeProjectPath } from "../utils/paths.js";
@@ -36,7 +37,12 @@ const DEFAULT_CHAPTER_PATTERNS = [
 const LANGUAGE_CONFIDENCE_THRESHOLD = 0.8;
 
 export class ProjectManager {
-  constructor(private settings: SettingsManager) {}
+  /** WS-4 : résolution centralisée du chemin projet (tue la duplication 8×). */
+  private readonly pathResolver: ProjectPathResolver;
+
+  constructor(private settings: SettingsManager) {
+    this.pathResolver = new ProjectPathResolver(settings);
+  }
 
   async create(payload: CreateProjectPayload): Promise<Project> {
     const parentPath = expandHome(payload.parentPath);
@@ -836,25 +842,13 @@ export class ProjectManager {
   /**
    * Résout le chemin d'un projet à partir de son ID.
    */
+  /**
+   * WS-4 : résolution déléguée à ProjectPathResolver (source unique).
+   * L'ancienne implémentation locale oubliait le `fs.existsSync(project.db)`
+   * et le try/finally intérieur — la version centralisée corrige les deux.
+   */
   private resolveProjectPath(projectId: string): string {
-    const projectPath = (
-      (this.settings.get("recentProjects")) ?? []
-    ).find((p) => {
-      let db;
-      try {
-        db = createProjectDatabase(p);
-        const found = new ProjectRepository(db).getById(projectId);
-        return found !== undefined;
-      } finally {
-        if (db) {db.close();}
-      }
-    });
-
-    if (!projectPath) {
-      throw new Error(`Projet non trouve : ${projectId}`);
-    }
-
-    return projectPath;
+    return this.pathResolver.resolve(projectId);
   }
 
   /**

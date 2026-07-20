@@ -1,38 +1,29 @@
 import { ipcMain, dialog } from "electron";
 import path from "node:path";
 import fs from "node:fs";
-import { z } from "zod";
 import type { RefreshStrategy } from "@shared/types/index.js";
+// WS-2 : schémas IPC promus vers @shared (createProjectSchema était déjà
+// partagé dans schemas/index.ts — on l'importait pas, on le redéfinissait).
+import { createProjectSchema } from "@shared/schemas/index.js";
+import {
+  projectPathSchema,
+  projectIdSchema,
+  importFilesSchema,
+  chapterImportSchema,
+  refreshSourceSchema,
+  detectDuplicateSchema,
+} from "@shared/schemas/ipc.js";
 import { ProjectManager } from "../../managers/ProjectManager.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
+import { ProjectPathResolver } from "../../managers/ProjectPathResolver.js";
 import { createProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { assertWithinProject } from "../../utils/paths.js";
 
 const settings = new SettingsManager();
 const projectManager = new ProjectManager(settings);
-
-const createProjectSchema = z.object({
-  name: z.string().min(1).max(100),
-  author: z.string().max(100).optional(),
-  sourceLanguage: z.string().length(2),
-  targetLanguage: z.string().length(2),
-  parentPath: z.string().min(1),
-});
-
-const projectPathSchema = z.string().min(1, { message: "projectPath requis" });
-
-const importFilesSchema = z.object({
-  projectId: z.string().uuid(),
-  filePaths: z.array(z.string().min(1)).min(1).max(50),
-});
-
-const projectIdSchema = z.string().uuid();
-
-const chapterImportSchema = z.object({
-  projectId: z.string().uuid(),
-  filePath: z.string().min(1),
-});
+// WS-4 : résolution centralisée du chemin projet (tue la duplication 8×).
+const pathResolver = new ProjectPathResolver(settings);
 
 export function registerProjectHandlers(): void {
   ipcMain.handle("project:create", async (_event, payload) => {
@@ -47,30 +38,11 @@ export function registerProjectHandlers(): void {
   });
 
   ipcMain.handle("project:path", async (_event, projectId: unknown) => {
-    // P2-13 fix : valider projectId + P2-4 fix : try/finally sur la DB
-    // (avant : si getById throw sur une DB corrompue, db.close() était sauté
-    // → fuite de connexion WAL).
+    // P2-13 fix : valider projectId + P2-4 fix : try/finally sur la DB.
+    // WS-4 : résolution déléguée à ProjectPathResolver (source unique — tue
+    // la duplication 8× du scan recentProjects).
     const validatedId = projectIdSchema.parse(projectId);
-    const recent =
-      (settings.get("recentProjects") as string[] | undefined) ?? [];
-    let projectPath: string | undefined;
-    for (const p of recent) {
-      let db: ReturnType<typeof createProjectDatabase> | null = null;
-      try {
-        db = createProjectDatabase(p);
-        const found = new ProjectRepository(db).getById(validatedId);
-        if (found) {
-          projectPath = p;
-          break;
-        }
-      } catch {
-        // DB corrompue ou projet supprimé : ignorer ce candidat.
-      } finally {
-        db?.close();
-      }
-    }
-    if (!projectPath) {throw new Error(`Projet non trouve : ${validatedId}`);}
-    return projectPath;
+    return pathResolver.resolve(validatedId);
   });
 
   ipcMain.handle("project:list-recent", async () => {
@@ -239,12 +211,6 @@ export function registerProjectHandlers(): void {
    * Re-synchronise un chapitre depuis son fichier source (SDD §5.8).
    * Compare les hashes SHA256 et applique la stratégie choisie.
    */
-  const refreshSourceSchema = z.object({
-    projectId: z.string().uuid(),
-    chapterId: z.string().uuid(),
-    strategy: z.enum(["replace", "merge", "new-version"]).optional().default("replace"),
-  });
-
   ipcMain.handle(
     "project:refresh-source",
     async (_event, payload: { projectId: string; chapterId: string; strategy?: RefreshStrategy }) => {
@@ -257,11 +223,6 @@ export function registerProjectHandlers(): void {
    * Détecte les doublons avant import (SDD §5.10).
    * Vérifie le titre et le hash SHA256.
    */
-  const detectDuplicateSchema = z.object({
-    projectId: z.string().uuid(),
-    filePath: z.string().min(1),
-  });
-
   ipcMain.handle(
     "project:detect-duplicate",
     async (_event, payload: { projectId: string; filePath: string }) => {

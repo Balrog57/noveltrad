@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { SettingsManager } from "../../managers/SettingsManager.js";
+import { ProjectPathResolver } from "../../managers/ProjectPathResolver.js";
 import { createProjectDatabase } from "../../db/connection.js";
-import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { LexiconRepository } from "../../db/repositories/LexiconRepository.js";
 import { LexiconEngine } from "../../services/LexiconEngine.js";
 import { AiRouter } from "../../services/AiRouter.js";
@@ -18,25 +18,22 @@ import {
 } from "@shared/schemas/lexicon.js";
 import type { LexiconEntry } from "@shared/types/index.js";
 import path from "node:path";
-import fs from "node:fs";
 import { assertWithinProject } from "../../utils/paths.js";
 
 const settings = new SettingsManager();
 const lexiconEngine = new LexiconEngine();
+// WS-4 : résolution centralisée du chemin projet.
+const pathResolver = new ProjectPathResolver(settings);
 
 /**
- * Résout le chemin du dossier projet à partir de `projectId`.
+ * Résout le chemin du dossier projet à partir de `projectId`, puis vérifie
+ * qu'aucun path traversal n'est tenté (SDD §21.3).
+ *
+ * WS-4 : la résolution est déléguée à ProjectPathResolver ; la vérification
+ * de traversal reste locale car elle est spécifique au handler lexicon.
  */
 function resolveProjectPath(projectId: string): string {
-  const recent = (settings.get("recentProjects") as string[] | undefined) ?? [];
-  const projectPath = recent.find((p) => {
-    if (!fs.existsSync(path.join(p, "project.db"))) {return false;}
-    const db = createProjectDatabase(p);
-    const found = new ProjectRepository(db).getById(projectId);
-    db.close();
-    return found !== undefined;
-  });
-  if (!projectPath) {throw new Error(`Projet non trouvé : ${projectId}`);}
+  const projectPath = pathResolver.resolve(projectId);
   // SDD §21.3 — Vérifier que le chemin projet est dans un répertoire légitime
   const allRecent = (settings.get("recentProjects") as string[] | undefined) ?? [];
   const validBase = allRecent.find((base) => {

@@ -7,6 +7,7 @@ export * from "./history.js";
 export * from "./tmx.js";
 export * from "./plugin.js";
 export * from "./agent-io.js";
+export * from "./ipc.js";
 
 export const projectSchema = z.object({
   id: z.string().uuid(),
@@ -113,33 +114,3 @@ export const appSettingsSchema = z.object({
   // le workflow est mis en pause pour review humaine. 0 = désactivé.
   maxJobTokens: z.number().int().min(0).default(50000),
 });
-
-export const ipcChannelSchema = z.enum([
-  "project:create",
-  "project:open",
-  "project:list-recent",
-  "project:delete",
-  "ollama:list-models",
-  "ollama:pull-model",
-  "ollama:is-available",
-  "settings:get",
-  "settings:set",
-  "workflow:start",
-  "workflow:pause",
-  "workflow:resume",
-  "workflow:retry-step",
-  "lexicon:list",
-  "lexicon:save",
-  "chapter:list",
-  "chapter:import",
-  "export:run",
-  "plugin:list",
-  "plugin:enable",
-  "plugin:disable",
-  "plugin:uninstall",
-  "plugin:install",
-  "plugin:get-config",
-  "plugin:set-config",
-  "plugin:request-permissions",
-  "plugin:confirm-permissions",
-]);

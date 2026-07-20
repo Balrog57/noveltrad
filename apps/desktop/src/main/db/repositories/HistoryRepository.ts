@@ -8,6 +8,7 @@ import type {
   IncrementalPayload,
   SnapshotMetadata,
 } from "@shared/types/index.js";
+import { BaseRepository } from "../base/BaseRepository.js";
 
 /**
  * Seuil de compression : si le JSON du snapshot dépasse 10 Ko,
@@ -18,8 +19,19 @@ const COMPRESSION_THRESHOLD = 10_000;
 /** Intervalle pour les snapshots complets : v1, v5, v10, v15... */
 const FULL_SNAPSHOT_INTERVAL = 5;
 
-export class HistoryRepository {
-  constructor(private db: Database) {}
+/**
+ * WS-1 (clean architecture) : hérite de `BaseRepository<HistorySnapshot>` pour
+ * le constructeur et le handle DB. Toutes les méthodes conservent leur SQL
+ * spécialisé (JOIN `job_steps` pour `step_score`, snapshots hybrides full/
+ * incrémental, compression zlib) — les helpers par défaut de la base ne
+ * couvrent pas ces cas. `map()` satisfait l'abstract en déléguant à `mapRow`
+ * privé (qui accepte un `versionNumber` optionnel non porté par la signature
+ * de la base).
+ */
+export class HistoryRepository extends BaseRepository<HistorySnapshot> {
+  constructor(db: Database) {
+    super(db, "history_snapshots");
+  }
 
   /**
    * Crée un nouveau snapshot d'historique avec support hybride (SDD §14.3).
@@ -495,5 +507,15 @@ export class HistoryRepository {
     } catch {
       return { triggeredBy: "workflow" };
     }
+  }
+
+  /**
+   * Implémentation de l'abstract `map` de BaseRepository.
+   * Délègue à `mapRow` privé (qui porte la logique spécialisée snapshots
+   * hybrides + step_score JOIN). Version par défaut = undefined → mode liste
+   * (paragraphes non chargés).
+   */
+  protected map(row: Record<string, unknown>): HistorySnapshot {
+    return this.mapRow(row);
   }
 }

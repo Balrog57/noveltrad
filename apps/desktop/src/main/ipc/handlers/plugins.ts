@@ -14,31 +14,17 @@
  */
 
 import { ipcMain } from "electron";
-import { z } from "zod";
 import type { PluginHost } from "../../plugins/PluginHost.js";
 import type { SettingsManager } from "../../managers/SettingsManager.js";
 import { logger } from "../../utils/logger.js";
 import type { PluginPermission } from "@shared/types/index.js";
 import { SENSITIVE_PERMISSIONS } from "@shared/types/index.js";
-
-// ── Schémas de validation Zod (SDD §21.3) ──────────────────────────────
-
-/** Validation d'un pluginId (même format que le manifest) */
-const pluginIdSchema = z.string().min(1, { message: "pluginId requis" });
-
-/** Validation pour plugin:set-config */
-const setConfigSchema = z.object({
-  pluginId: pluginIdSchema,
-  config: z.unknown(),
-});
-
-/** Validation pour plugin:confirm-permissions */
-const confirmPermissionsSchema = z.object({
-  approvedIds: z.array(pluginIdSchema, {
-    message: "approvedIds doit être un tableau d'IDs",
-  }),
-  nonce: z.string().min(1, { message: "nonce requis" }),
-});
+// WS-2 : schémas IPC promus vers @shared.
+import {
+  pluginIdSchema,
+  pluginSetConfigSchema as setConfigSchema,
+  pluginConfirmPermissionsSchema as confirmPermissionsSchema,
+} from "@shared/schemas/ipc.js";
 
 // Ces instances seront injectées par le router
 let pluginHost: PluginHost | null = null;

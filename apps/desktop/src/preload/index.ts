@@ -32,6 +32,10 @@ const IPC_CHANNELS = [
   "workflow:progress",
   "workflow:resume-batch",
   "workflow:list-active",
+  // WS-8 : était manquant — le main émet workflow:quality-failed
+  // (WorkflowEngine.ts) mais le preload le rejetterait via validateChannel
+  // si un store renderer s'y abonnait. Latent bug (aucun listener aujourd'hui).
+  "workflow:quality-failed",
   "lexicon:list",
   "lexicon:save",
   "lexicon:delete",

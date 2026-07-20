@@ -3,16 +3,16 @@ import { z } from "zod";
 import { OllamaManager } from "../../managers/OllamaManager.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
 import { logger } from "../../utils/logger.js";
-
-// ── Schémas de validation Zod (SDD §16.3) ──────────────────────────────
-
-const hostSchema = z.string().min(1).optional();
-const modelNameSchema = z.string().min(1, { message: "model name requis" });
+// WS-2 : schémas IPC promus vers @shared.
+import { ollamaHostSchema as hostSchema, modelNameSchema } from "@shared/schemas/ipc.js";
 
 /**
  * Valide la structure retournée par `ollama:is-available` (SDD §16.3).
  * Permet de faire remonter la cause réelle d'un échec à l'UI (ex: ECONNREFUSED,
  * AbortError, HTTP 500…) pour faciliter le diagnostic côté utilisateur.
+ *
+ * Note : c'est un validateur de SORTIE (résultat du manager), pas un payload
+ * IPC entrant — reste local au handler.
  */
 const availabilitySchema = z.object({
   available: z.boolean(),

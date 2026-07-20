@@ -1,54 +1,59 @@
-import type { Database } from "node-sqlite3-wasm";
 import type { Project } from "@shared/types/index.js";
+import { BaseRepository } from "../base/BaseRepository.js";
 
-export class ProjectRepository {
-  constructor(private db: Database) {}
+/**
+ * Repository pour l'entité `Project` (table `projects`).
+ *
+ * WS-1 (clean architecture) : hérite de `BaseRepository<Project>` pour
+ * partager les mécaniques de lecture/écriture. `findById`/`deleteById` de la
+ * base correspondent exactement à l'ancien `getById`/`delete` — on expose
+ * donc des alias publics qui délèguent, afin de préserver l'API call-site.
+ */
+export class ProjectRepository extends BaseRepository<Project> {
+  constructor(db: import("node-sqlite3-wasm").Database) {
+    super(db, "projects");
+  }
 
   create(project: Project): void {
-    const stmt = this.db.prepare(`
+    this.execute(
+      `
       INSERT INTO projects (id, name, author, source_language, target_language, path, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run([
-      project.id,
-      project.name,
-      project.author ?? null,
-      project.sourceLanguage,
-      project.targetLanguage,
-      project.path,
-      project.createdAt,
-      project.updatedAt,
-    ]);
+    `,
+      [
+        project.id,
+        project.name,
+        project.author ?? null,
+        project.sourceLanguage,
+        project.targetLanguage,
+        project.path,
+        project.createdAt,
+        project.updatedAt,
+      ],
+    );
   }
 
   getByPath(projectPath: string): Project | undefined {
-    const row = this.db
-      .prepare("SELECT * FROM projects WHERE path = ?")
-      .get([projectPath]) as Record<string, unknown> | undefined;
-    if (!row) {return undefined;}
-    return this.map(row);
+    return this.queryOne("SELECT * FROM projects WHERE path = ?", [
+      projectPath,
+    ]);
   }
 
   getById(id: string): Project | undefined {
-    const row = this.db
-      .prepare("SELECT * FROM projects WHERE id = ?")
-      .get([id]) as Record<string, unknown> | undefined;
-    if (!row) {return undefined;}
-    return this.map(row);
+    return this.findById(id);
   }
 
   listAll(): Project[] {
-    const rows = this.db
-      .prepare("SELECT * FROM projects ORDER BY updated_at DESC")
-      .all() as Record<string, unknown>[];
-    return rows.map((r) => this.map(r));
+    return this.queryMany(
+      "SELECT * FROM projects ORDER BY updated_at DESC",
+    );
   }
 
   delete(id: string): void {
-    this.db.prepare("DELETE FROM projects WHERE id = ?").run([id]);
+    this.deleteById(id);
   }
 
-  private map(row: Record<string, unknown>): Project {
+  protected map(row: Record<string, unknown>): Project {
     return {
       id: String(row.id),
       name: String(row.name),

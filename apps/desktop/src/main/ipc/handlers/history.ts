@@ -1,10 +1,10 @@
 import { ipcMain } from "electron";
 import type { Database as SqliteDatabase } from "node-sqlite3-wasm";
 import { SettingsManager } from "../../managers/SettingsManager.js";
+import { ProjectPathResolver } from "../../managers/ProjectPathResolver.js";
 import {
   createProjectDatabase,
 } from "../../db/connection.js";
-import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { HistoryRepository } from "../../db/repositories/HistoryRepository.js";
 import { ChapterRepository } from "../../db/repositories/ChapterRepository.js";
 import { ParagraphRepository } from "../../db/repositories/ParagraphRepository.js";
@@ -23,26 +23,17 @@ import type {
   ParagraphChange,
   Paragraph,
 } from "@shared/types/index.js";
-import path from "node:path";
-import fs from "node:fs";
 
 const settings = new SettingsManager();
+// WS-4 : résolution centralisée du chemin projet (tue la duplication 8×).
+const pathResolver = new ProjectPathResolver(settings);
 
 /**
- * Résout le chemin du dossier projet à partir de `projectId`.
+ * @deprecated Utiliser `pathResolver.resolve(projectId)`. Wrapper conservé
+ * pour limiter le diff de cette migration (les 7 call-sites ci-dessous).
  */
 function resolveProjectPath(projectId: string): string {
-  const recent =
-    (settings.get("recentProjects") as string[] | undefined) ?? [];
-  const projectPath = recent.find((p) => {
-    if (!fs.existsSync(path.join(p, "project.db"))) {return false;}
-    const db = createProjectDatabase(p);
-    const found = new ProjectRepository(db).getById(projectId);
-    db.close();
-    return found !== undefined;
-  });
-  if (!projectPath) {throw new Error(`Projet non trouvé : ${projectId}`);}
-  return projectPath;
+  return pathResolver.resolve(projectId);
 }
 
 /**

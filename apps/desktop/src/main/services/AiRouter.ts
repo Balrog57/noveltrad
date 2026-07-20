@@ -1,4 +1,4 @@
-import pRetry, { AbortError } from "p-retry";
+import pRetry from "p-retry";
 import type {
   AiProvider,
   ChatMessage,
@@ -8,21 +8,44 @@ import type {
 import type { AiCache } from "./AiCache.js";
 import type { PromptLoader } from "./prompts/PromptLoader.js";
 import { logger } from "../utils/logger.js";
+// WS-3 (clean architecture) : collaborateurs extraits du god-class.
+import { TokenUsageAccumulator } from "./ai/TokenUsageAccumulator.js";
+import { CostEstimator, type ModelCost } from "./ai/CostEstimator.js";
+import { TextChunker } from "./ai/TextChunker.js";
+import { PromptResolver } from "./ai/PromptResolver.js";
+import { tryParseJson } from "./ai/jsonRepair.js";
+import { isEthicalRefusal } from "./ai/refusalDetector.js";
 
+/**
+ * AiRouter — facade de routage vers les providers IA.
+ *
+ * WS-3 (clean architecture) : la classe original mélangeait 8
+ * responsabilités (routing, coûts, usage tokens, chunking, JSON repair,
+ * détection refus, résolution prompts, retry réseau). Elle est désormais
+ * une FACADE qui délègue aux collaborateurs `services/ai/*` :
+ *   - {@link TokenUsageAccumulator} : accumulateur d'usage step
+ *   - {@link CostEstimator}         : coûts par modèle
+ *   - {@link TextChunker}           : découpage longs chapitres
+ *   - {@link PromptResolver}        : override DB des prompts
+ *   - {@link tryParseJson}          : (pure fn) repair JSON
+ *   - {@link isEthicalRefusal}      : (pure fn) détection refus
+ *
+ * L'API publique est **inchangée** (byte-compatible) — les 16 call-sites
+ * agents et le WorkflowEngine n'ont pas besoin de modification. Le routing
+ * (registry + get/register + chat/stream + retry réseau) reste ici car c'est
+ * le cœur du rôle de "router" et il coordonne plusieurs collaborators
+ * (cache, accumulateur, providers).
+ */
 export class AiRouter {
   private providers: Map<string, AiProvider> = new Map();
   private aiCache?: AiCache;
-  private promptLoader?: PromptLoader;
   /** SDD §15 : callback pour obtenir un provider depuis un plugin */
   private getPluginProviderFn?: (id: string) => AiProvider | undefined;
-  /** SDD §3.8 : coûts par modèle (clé = model id). Vide = pas de suivi. */
-  private modelCosts: Record<string, { costPerInputToken: number; costPerOutputToken: number }> = {};
-  /**
-   * SDD §3.8 : accumulateur d'usage de tokens pour le step courant.
-   * Reset via resetUsage() au début de chaque step, lu via getAndResetUsage()
-   * à la fin pour remplir step.tokensIn/Out.
-   */
-  private usageAccumulator: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+  private readonly usage = new TokenUsageAccumulator();
+  private readonly costs = new CostEstimator();
+  private readonly chunker = new TextChunker();
+  private readonly prompts = new PromptResolver();
 
   register(provider: AiProvider): void {
     this.providers.set(provider.id, provider);
@@ -39,8 +62,8 @@ export class AiRouter {
   }
 
   /** SDD §3.8 : configure les coûts par modèle (lus depuis les settings) */
-  setModelCosts(costs: Record<string, { costPerInputToken: number; costPerOutputToken: number }>): void {
-    this.modelCosts = costs ?? {};
+  setModelCosts(costs: Record<string, ModelCost>): void {
+    this.costs.setModelCosts(costs);
   }
 
   /**
@@ -48,45 +71,20 @@ export class AiRouter {
    * @returns 0 si le modèle n'est pas configuré (local/gratuit) ou si pas de tokens.
    */
   estimateCost(modelId: string, inputTokens: number, outputTokens: number): number {
-    const cost = this.modelCosts[modelId];
-    if (!cost) {return 0;}
-    return (
-      (inputTokens / 1000) * cost.costPerInputToken +
-      (outputTokens / 1000) * cost.costPerOutputToken
-    );
+    return this.costs.estimateCost(modelId, inputTokens, outputTokens);
   }
 
-  /**
-   * SDD §3.8 : réinitialise l'accumulateur d'usage de tokens.
-   * À appeler en début de step (WorkflowEngine.runStep) pour isoler la
-   * consommation de chaque étape.
-   */
+  /** SDD §3.8 : réinitialise l'accumulateur d'usage de tokens (début de step). */
   resetUsage(): void {
-    this.usageAccumulator = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    this.usage.reset();
   }
 
   /**
    * SDD §3.8 : retourne l'usage accumulé depuis le dernier resetUsage() et
-   * le réinitialise. Retourne undefined si aucun appel n'a été fait (tous les
-   * champs à 0), pour rester cohérent avec step.tokensIn/Out optionnels.
+   * le réinitialise. Retourne undefined si aucun appel n'a été fait.
    */
   getAndResetUsage(): TokenUsage | undefined {
-    const u = this.usageAccumulator;
-    const empty = u.promptTokens === 0 && u.completionTokens === 0;
-    this.resetUsage();
-    return empty ? undefined : u;
-  }
-
-  /**
-   * SDD §3.8 : additionne un usage à l'accumulateur courant.
-   * @internal — utilisé par chat() et chatWithChunking() quand un provider
-   * renvoie un usage. Ignore undefined silencieusement.
-   */
-  private accumulateUsage(usage?: TokenUsage): void {
-    if (!usage) {return;}
-    this.usageAccumulator.promptTokens += usage.promptTokens;
-    this.usageAccumulator.completionTokens += usage.completionTokens;
-    this.usageAccumulator.totalTokens += usage.totalTokens;
+    return this.usage.getAndReset();
   }
 
   /**
@@ -95,7 +93,7 @@ export class AiRouter {
    * leurs imports directs ; le loader offre une capacité d'override runtime.
    */
   setPromptLoader(loader: PromptLoader): void {
-    this.promptLoader = loader;
+    this.prompts.setLoader(loader);
   }
 
   /**
@@ -105,23 +103,9 @@ export class AiRouter {
    * constante TS par défaut. Si un PromptLoader est enregistré et qu'une
    * version active existe en DB, elle remplace la constante. Sinon, la
    * constante TS est retournée (comportement inchangé).
-   *
-   * Usage côté agent :
-   *   const prompt = await this.aiRouter.resolvePrompt("translate", TRANSLATE_SYSTEM_PROMPT);
-   *
-   * @param promptId Identifiant du prompt (ex "translate", "qa", "consistency")
-   * @param defaultContent Constante TS de fallback
    */
   async resolvePrompt(promptId: string, defaultContent: string): Promise<string> {
-    if (!this.promptLoader) {
-      return defaultContent;
-    }
-    try {
-      return await this.promptLoader.load(promptId);
-    } catch {
-      // Prompt inconnu du loader → fallback constant TS
-      return defaultContent;
-    }
+    return this.prompts.resolve(promptId, defaultContent);
   }
 
   get(id: string): AiProvider {
@@ -184,13 +168,13 @@ export class AiRouter {
       }
 
       const result = await this.callProviderWithUsage(provider, messages, options);
-      this.accumulateUsage(result.usage);
+      this.usage.add(result.usage);
       this.aiCache.set(cacheKey, result.content);
       return result;
     }
 
     const result = await this.callProviderWithUsage(provider, messages, options);
-    this.accumulateUsage(result.usage);
+    this.usage.add(result.usage);
     return result;
   }
 
@@ -203,7 +187,7 @@ export class AiRouter {
     messages: ChatMessage[],
     options?: ChatOptions,
   ): Promise<{ content: string; usage?: TokenUsage }> {
-    const result = await pRetry(
+    return pRetry(
       async () => {
         if (provider.chatWithUsage) {
           return provider.chatWithUsage(messages, options);
@@ -223,7 +207,6 @@ export class AiRouter {
         },
       },
     );
-    return result;
   }
 
   async *streamChat(
@@ -254,11 +237,9 @@ export class AiRouter {
    * SDD §3.6b : Chat avec découpage automatique si le prompt dépasse 50%
    * de la fenêtre contextuelle du modèle.
    *
-   * 1. Estime les tokens du prompt via gpt-tokenizer
-   * 2. Si > 50% context window → découpe le texte utilisateur en chunks par
-   *    paragraphes (chaque chunk garde les messages système)
-   * 3. Appelle `chat()` par chunk (bénéficie du cache AiCache)
-   * 4. Réassemble les résultats
+   * Délègue au collaborateur {@link TextChunker} en lui passant une fonction
+   * `chat` qui appelle `chatWithUsage` (bénéficie du cache AiCache et accumule
+   * l'usage de chaque chunk).
    *
    * @param contextWindow Taille de la fenêtre contextuelle du modèle (défaut 32768)
    */
@@ -268,149 +249,26 @@ export class AiRouter {
     options?: ChatOptions,
     contextWindow: number = 32768,
   ): Promise<string> {
-    const encode = await this.loadTokenizer();
-
-    const fullText = messages.map((m) => m.content).join("\n");
-    const totalTokens = encode(fullText).length;
-
-    // Si en dessous du seuil, pas de découpage nécessaire
-    if (totalTokens <= contextWindow * 0.5) {
-      const r = await this.chatWithUsage(providerId, messages, options);
-      return r.content;
-    }
-
-    // Séparer les messages système (gardés avec chaque chunk)
-    const systemMessages = messages.filter((m) => m.role === "system");
-    const userTexts = messages
-      .filter((m) => m.role === "user")
-      .map((m) => m.content)
-      .join("\n\n");
-
-    // Découper le texte utilisateur en paragraphes
-    const paragraphs = userTexts.split(/\n\n+/).filter((p) => p.trim().length > 0);
-    if (paragraphs.length === 0) {
-      const r = await this.chatWithUsage(providerId, messages, options);
-      return r.content;
-    }
-
-    const systemTokens = systemMessages.length > 0
-      ? encode(systemMessages.map((m) => m.content).join("\n")).length
-      : 0;
-    const chunkThreshold = Math.floor(contextWindow * 0.45);
-
-    const chunks: string[] = [];
-    let currentBatch: string[] = [];
-    let currentTokens = 0;
-
-    for (const para of paragraphs) {
-      const paraTokens = encode(para).length;
-
-      if (
-        currentTokens + paraTokens + systemTokens > chunkThreshold &&
-        currentBatch.length > 0
-      ) {
-        const chunkText = currentBatch.join("\n\n");
-        // SDD §3.8 : chatWithUsage accumule l'usage de chaque chunk.
-        const chunkResult = await this.chatWithUsage(providerId, [
-          ...systemMessages,
-          { role: "user", content: chunkText },
-        ], options);
-        chunks.push(chunkResult.content);
-
-        currentBatch = [para];
-        currentTokens = paraTokens;
-      } else {
-        currentBatch.push(para);
-        currentTokens += paraTokens;
-      }
-    }
-
-    if (currentBatch.length > 0) {
-      const chunkText = currentBatch.join("\n\n");
-      const chunkResult = await this.chatWithUsage(providerId, [
-        ...systemMessages,
-        { role: "user", content: chunkText },
-      ], options);
-      chunks.push(chunkResult.content);
-    }
-
-    return chunks.join("\n\n");
-  }
-
-  /** Charge paresseusement gpt-tokenizer (import ESM peut échouer en production asar).
-   *  Fallback : estimation 1 token ≈ 4 caractères. */
-  private async loadTokenizer(): Promise<(text: string) => { length: number }> {
-    try {
-      const { encode: gptEncode } = await import("gpt-tokenizer");
-      return gptEncode;
-    } catch {
-      logger.warn("[AiRouter] gpt-tokenizer indisponible, fallback estimation");
-      return (text: string) => ({
-        length: Math.ceil(text.length / 4),
-      });
-    }
+    return this.chunker.chunk(
+      messages,
+      (msgs) => this.chatWithUsage(providerId, msgs, options),
+      contextWindow,
+    );
   }
 
   /**
    * Tente de parser une chaîne brute en JSON avec plusieurs stratégies de fallback.
-   * 1. JSON.parse() direct
-   * 2. Extraction depuis des fences markdown ```json ... ```
-   * 3. Réparation basique (trailing commas, single quotes)
-   * Retourne null si toutes les stratégies échouent.
+   * @see {tryParseJson} (pure fn dans services/ai/jsonRepair.ts)
    */
   tryParseJson(raw: string): unknown {
-    // 1. Essai direct
-    try {
-      return JSON.parse(raw);
-    } catch {
-      // continue
-    }
-
-    // 2. Extraction depuis des fences markdown ```json ... ```
-    const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (fenceMatch) {
-      try {
-        return JSON.parse(fenceMatch[1].trim());
-      } catch {
-        // continue
-      }
-    }
-
-    // 3. Réparation basique des erreurs JSON courantes
-    try {
-      let fixed = raw.trim();
-      // Supprimer les trailing commas avant } ou ]
-      fixed = fixed.replace(/,(\s*[}\]])/g, "$1");
-      // Remplacer les single quotes par des double quotes (approche simple)
-      // Note : ne gère pas les apostrophes à l'intérieur des chaînes
-      fixed = fixed.replace(/'/g, '"');
-      const result = JSON.parse(fixed);
-      logger.warn(
-        "[AiRouter] JSON réparé (fallback single quotes / trailing commas)",
-      );
-      return result;
-    } catch {
-      // continue
-    }
-
-    return null;
+    return tryParseJson(raw);
   }
 
   /**
-   * Détecte si le texte est un refus éthique du LLM
-   * (refus de traduction, contenu inapproprié, etc.)
+   * Détecte si le texte est un refus éthique du LLM.
+   * @see {isEthicalRefusal} (pure fn dans services/ai/refusalDetector.ts)
    */
   isEthicalRefusal(text: string): boolean {
-    const trimmed = text.trim();
-    const refusalPatterns = [
-      /^I cannot/i,
-      /^I('|’)m sorry/i,
-      /^I apologize/i,
-      /^As an AI/i,
-      /^抱歉/,
-      /^无法/,
-      /^我不能/,
-    ];
-    return refusalPatterns.some((pattern) => pattern.test(trimmed));
+    return isEthicalRefusal(text);
   }
 }

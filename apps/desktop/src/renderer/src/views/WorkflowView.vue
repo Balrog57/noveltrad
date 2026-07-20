@@ -4,7 +4,15 @@ import { useRoute } from "vue-router";
 import { useProjectStore } from "../stores/project";
 import { useWorkflowStore } from "../stores/workflow";
 import NtProgressBar from "../components/ui/NtProgressBar.vue";
-import type { Job, Step, WorkflowStage } from "@shared/types/index.js";
+import type { Job, Step } from "@shared/types/index.js";
+// WS-6 : labels de statut centralisés (tue 5 fonctions dupliquées locales).
+import {
+  statusLabel,
+  statusIcon as statusIconFor,
+  stageLabel,
+  stepStatusClass,
+  jobStatusClass,
+} from "../composables/useStatusLabels";
 
 const _route = useRoute();
 const projectStore = useProjectStore();
@@ -85,50 +93,6 @@ function selectStep(step: Step): void {
   selectedStep.value = step;
 }
 
-/** Icône de statut */
-function statusIconFor(status: string): string {
-  switch (status) {
-    case "pending":
-      return "\u23F3"; // ⏳
-    case "running":
-      return "\u{1F504}"; // 🔄
-    case "completed":
-      return "\u2705"; // ✅
-    case "failed":
-      return "\u274C"; // ❌
-    case "skipped":
-      return "\u23ED\uFE0F"; // ⏭️
-    case "paused":
-      return "\u23F8\uFE0F"; // ⏸️
-    case "cancelled":
-      return "\u26D4\uFE0F"; // ⛔
-    default:
-      return "\u23F3";
-  }
-}
-
-/** Label de statut en français */
-function statusLabel(status: string): string {
-  switch (status) {
-    case "pending":
-      return "En attente";
-    case "running":
-      return "En cours";
-    case "completed":
-      return "Terminé";
-    case "failed":
-      return "Échoué";
-    case "skipped":
-      return "Ignoré";
-    case "paused":
-      return "En pause";
-    case "cancelled":
-      return "Annulé";
-    default:
-      return status;
-  }
-}
-
 /** v1.4 : issues du ReviewReport du step sélectionné (stage 'review') */
 const reviewIssues = computed(() => {
   const report = selectedStep.value?.outputSnapshot?.report as
@@ -145,58 +109,8 @@ const reviewSummary = computed(() => {
   return report?.summary ?? "";
 });
 
-/** Label du stage en français */
-function stageLabel(stage: WorkflowStage): string {
-  const labels: Record<WorkflowStage, string> = {
-    split: "D\u00E9coupage",
-    pre_translate: "Pr\u00E9-traduction",
-    translate: "Traduction IA",
-    consistency: "Coh\u00E9rence",
-    lexicon: "Lexique",
-    grammar: "Grammaire",
-    style: "Style",
-    polish: "Polish",
-    review: "R\u00E9viseur",
-    revise: "Correcteur",
-    qa: "QA",
-    export: "Export",
-  };
-  return labels[stage] ?? stage;
-}
-
-/** Classe CSS pour le statut d'une \u00E9tape */
-function stepStatusClass(status: Step["status"]): string {
-  switch (status) {
-    case "completed":
-      return "step--completed";
-    case "running":
-      return "step--running";
-    case "failed":
-      return "step--failed";
-    case "skipped":
-      return "step--skipped";
-    default:
-      return "";
-  }
-}
-
-/** Classe CSS pour le statut d'un job */
-function jobStatusClass(status: Job["status"]): string {
-  switch (status) {
-    case "completed":
-      return "job--completed";
-    case "running":
-      return "job--running";
-    case "failed":
-      return "job--failed";
-    case "cancelled":
-      return "job--cancelled";
-    case "paused":
-      return "job--paused";
-    default:
-      return "";
-  }
-}
+// WS-6 : stageLabel / stepStatusClass / jobStatusClass importés depuis
+// ../composables/useStatusLabels (leurs définitions locales sont supprimées).
 
 /** Formater la dur\u00E9e en ms */
 function formatDuration(ms?: number): string {

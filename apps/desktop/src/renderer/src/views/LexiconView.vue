@@ -7,6 +7,8 @@ import LexiconTable from "../components/lexicon/LexiconTable.vue";
 import LexiconForm from "../components/lexicon/LexiconForm.vue";
 import NtModal from "../components/ui/NtModal.vue";
 import type { LexiconEntry, LexiconSuggestion } from "@shared/types/index.js";
+// WS-6 : helper de téléchargement Blob centralisé.
+import { downloadBlob } from "../utils/download";
 
 const route = useRoute();
 const lexiconStore = useLexiconStore();
@@ -124,15 +126,10 @@ async function doExport(): Promise<void> {
       projectId.value,
       exportFormat.value,
     );
-    // Télécharger en tant que fichier
+    // Télécharger en tant que fichier (WS-6 : helper downloadBlob centralisé)
     const ext = exportFormat.value === "tsv" ? "tsv" : exportFormat.value;
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `lexique-${projectId.value}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `lexique-${projectId.value}.${ext}`);
     showExportModal.value = false;
   } catch {
     // Erreur déjà gérée dans le store

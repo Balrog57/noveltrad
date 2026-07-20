@@ -5,62 +5,17 @@ import { SettingsManager } from "../../managers/SettingsManager.js";
 import { createProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
 import { JobRepository } from "../../db/repositories/JobRepository.js";
-import type { Job, WorkflowStage } from "@shared/types/index.js";
-
-// ── Schémas de validation Zod (SDD §16.3) ──────────────────────────────
-
-const projectPathSchema = z.string().min(1, { message: "projectPath requis" });
-const chapterIdSchema = z.string().min(1).optional();
-const jobIdSchema = z.string().min(1, { message: "jobId requis" });
-const stepIdSchema = z.string().min(1, { message: "stepId requis" });
-const chapterIdsSchema = z
-  .array(z.string().min(1), { message: "chapterIds requis" })
-  .min(1, { message: "Au moins un chapterId requis" });
-
-const workflowStageSchema = z.enum([
-  "split",
-  "pre_translate",
-  "translate",
-  "consistency",
-  "lexicon",
-  "grammar",
-  "style",
-  "polish",
-  "review",
-  "revise",
-  "qa",
-  "export",
-]);
-
-const jobSchema: z.ZodType<Job> = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  chapterId: z.string().optional(),
-  chapterIds: z.array(z.string()).optional(),
-  type: z.enum(["single", "batch"]),
-  status: z.enum([
-    "pending",
-    "running",
-    "paused",
-    "completed",
-    "failed",
-    "cancelled",
-  ]),
-  startedAt: z.string().optional(),
-  finishedAt: z.string().optional(),
-  errorMessage: z.string().optional(),
-  options: z
-    .object({
-      sourceLanguage: z.string().optional(),
-      targetLanguage: z.string().optional(),
-      qualityThreshold: z.number().optional(),
-      parallelAgents: z.number().optional(),
-    })
-    .passthrough()
-    .optional(),
-  metadata: z.record(z.unknown()).optional(),
-  createdAt: z.string(),
-});
+import type { WorkflowStage } from "@shared/types/index.js";
+// WS-2 : schémas IPC promus vers @shared (source unique, plus de copie stale).
+import {
+  projectPathSchema,
+  chapterIdSchema,
+  jobIdSchema,
+  stepIdSchema,
+  chapterIdsSchema,
+  workflowStageSchema,
+  jobSchema,
+} from "@shared/schemas/ipc.js";
 
 // ── Handlers ──────────────────────────────────────────────────────────
 

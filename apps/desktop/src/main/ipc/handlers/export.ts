@@ -1,6 +1,4 @@
 import { ipcMain } from "electron";
-import path from "node:path";
-import fs from "node:fs";
 import { z } from "zod";
 import { ExportEngine } from "../../services/ExportEngine.js";
 import { exportRunSchema, exportBatchSchema } from "@shared/schemas/export.js";
@@ -9,6 +7,7 @@ import type {
   ExportBatchResult,
 } from "@shared/schemas/export.js";
 import { SettingsManager } from "../../managers/SettingsManager.js";
+import { ProjectPathResolver } from "../../managers/ProjectPathResolver.js";
 import { createProjectDatabase } from "../../db/connection.js";
 import type { ProjectDatabase } from "../../db/connection.js";
 import { ProjectRepository } from "../../db/repositories/ProjectRepository.js";
@@ -18,29 +17,17 @@ import { assertSafeProjectPath } from "../../utils/paths.js";
 
 const exportEngine = new ExportEngine();
 const settings = new SettingsManager();
+// WS-4 : résolution centralisée du chemin projet (tue la duplication 8×).
+const pathResolver = new ProjectPathResolver(settings);
 
 /**
  * Résout le chemin du dossier projet à partir de `projectId`
  * pour configurer le traçage des exports (SDD §6.2).
+ *
+ * WS-4 : délègue à ProjectPathResolver (source unique).
  */
 function resolveProjectPath(projectId: string): string {
-  const recent = (settings.get("recentProjects") as string[] | undefined) ?? [];
-  const projectPath = recent.find((p) => {
-    if (!fs.existsSync(path.join(p, "project.db"))) {return false;}
-    // Bug fix : try/finally pour garantir la fermeture de la DB même si
-    // getById lance une exception (DB corrompue / WAL verrouillé).
-    const db = createProjectDatabase(p);
-    try {
-      const found = new ProjectRepository(db).getById(projectId);
-      return found !== undefined;
-    } finally {
-      db.close();
-    }
-  });
-  if (!projectPath) {
-    throw new Error(`Projet non trouvé : ${projectId}`);
-  }
-  return projectPath;
+  return pathResolver.resolve(projectId);
 }
 
 export function registerExportHandlers(): void {

@@ -1,10 +1,8 @@
 import { ipcMain, app } from "electron";
 import { z } from "zod";
 import { SettingsManager } from "../../managers/SettingsManager.js";
-
-// ── Schémas de validation Zod (SDD §16.3) ──────────────────────────────
-
-const settingsKeySchema = z.string().min(1, { message: "settings key requise" });
+// WS-2 : schéma IPC promu vers @shared.
+import { settingsKeySchema } from "@shared/schemas/ipc.js";
 
 const settings = new SettingsManager();
 

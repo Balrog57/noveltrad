@@ -1,18 +1,24 @@
-import type { Database } from "node-sqlite3-wasm";
 import type { Chapter } from "@shared/types/index.js";
+import type { Database } from "node-sqlite3-wasm";
+import { BaseRepository } from "../base/BaseRepository.js";
 
-export class ChapterRepository {
-  constructor(private db: Database) {}
+/**
+ * WS-1 (clean architecture) : hérite de `BaseRepository<Chapter>`.
+ * `findById`/`deleteById` de la base couvrent l'ancien `getById`/`delete`,
+ * mais Chapter est supprimée en cascade via project — pas de `delete` public ici.
+ */
+export class ChapterRepository extends BaseRepository<Chapter> {
+  constructor(db: Database) {
+    super(db, "chapters");
+  }
 
   create(chapter: Chapter): void {
-    this.db
-      .prepare(
-        `
+    this.execute(
+      `
       INSERT INTO chapters (id, project_id, title, source_path, order_index, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      )
-      .run([
+      [
         chapter.id,
         chapter.projectId,
         chapter.title ?? null,
@@ -21,33 +27,29 @@ export class ChapterRepository {
         chapter.status,
         chapter.createdAt,
         chapter.updatedAt,
-      ]);
+      ],
+    );
   }
 
   getById(id: string): Chapter | undefined {
-    const row = this.db
-      .prepare("SELECT * FROM chapters WHERE id = ?")
-      .get([id]) as Record<string, unknown> | undefined;
-    if (!row) {return undefined;}
-    return this.map(row);
+    return this.findById(id);
   }
 
   listByProject(projectId: string): Chapter[] {
-    const rows = this.db
-      .prepare(
-        "SELECT * FROM chapters WHERE project_id = ? ORDER BY order_index",
-      )
-      .all([projectId]) as Record<string, unknown>[];
-    return rows.map((r) => this.map(r));
+    return this.queryMany(
+      "SELECT * FROM chapters WHERE project_id = ? ORDER BY order_index",
+      [projectId],
+    );
   }
 
   updateStatus(id: string, status: Chapter["status"]): void {
-    this.db
-      .prepare("UPDATE chapters SET status = ?, updated_at = ? WHERE id = ?")
-      .run([status, new Date().toISOString(), id]);
+    this.execute(
+      "UPDATE chapters SET status = ?, updated_at = ? WHERE id = ?",
+      [status, new Date().toISOString(), id],
+    );
   }
 
-  private map(row: Record<string, unknown>): Chapter {
+  protected map(row: Record<string, unknown>): Chapter {
     return {
       id: String(row.id),
       projectId: String(row.project_id),
