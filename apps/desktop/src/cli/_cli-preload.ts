@@ -29,8 +29,9 @@ fs.mkdirSync(stubDir, { recursive: true });
 // info/warn/error/debug/transports.file.format/transports.console.format
 // dessus sans crasher.
 const electronLogStubSource = `// Auto-generated stub for CLI mode (electron-log n'est pas disponible hors Electron).
+// Logs vont sur STDERR pour ne pas polluer stdout (réservé au JSON résultat).
 const noop = () => {};
-const consoleFn = (level) => (...args) => console[level]("[noveltrad]", ...args);
+const logFn = (level) => (...args) => console.error("[noveltrad][" + level + "]", ...args);
 const stub = {
   initialize: noop,
   transports: {
@@ -39,10 +40,10 @@ const stub = {
     ipc: noop,
   },
   functions: {},
-  log: consoleFn("log"),
-  info: consoleFn("info"),
-  warn: consoleFn("warn"),
-  error: consoleFn("error"),
+  log: logFn("log"),
+  info: logFn("info"),
+  warn: logFn("warn"),
+  error: logFn("error"),
   debug: noop,
 };
 export default stub;
