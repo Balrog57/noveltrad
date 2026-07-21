@@ -21,12 +21,15 @@ const props = withDefaults(
     options: SelectOption[];
     /** Identifiant accessible (généré si absent) */
     id?: string;
+    /** Indique si le champ est obligatoire */
+    required?: boolean;
   }>(),
   {
     modelValue: "",
     label: undefined,
     disabled: false,
     id: undefined,
+    required: false,
   },
 );
 
@@ -51,15 +54,18 @@ function onChange(event: Event): void {
     class="nt-select-wrapper"
     :class="{ 'nt-select-wrapper--disabled': disabled }"
   >
-    <label v-if="label" class="nt-select-label" :for="selectId">{{
-      label
-    }}</label>
+    <label v-if="label" class="nt-select-label" :for="selectId">
+      {{ label }}
+      <span v-if="required" style="color: var(--error);" aria-hidden="true">*</span>
+    </label>
     <div class="nt-select-field">
       <select
         :id="selectId"
         class="nt-select"
         :value="modelValue"
         :disabled="disabled"
+        :required="required"
+        :aria-required="required ? 'true' : undefined"
         @change="onChange"
       >
         <option v-for="opt in options" :key="opt.value" :value="opt.value">
