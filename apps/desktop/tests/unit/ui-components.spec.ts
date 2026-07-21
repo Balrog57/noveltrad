@@ -81,6 +81,16 @@ describe("NtButton", () => {
 // ---------------------------------------------------------------------------
 
 describe("NtInput", () => {
+
+  it("devrait afficher l'asterisque et ajouter aria-required quand required est true", () => {
+    const wrapper = mount(NtInput, {
+      props: { label: "Nom", required: true, modelValue: "" },
+    });
+    expect(wrapper.text()).toContain("*");
+    expect(wrapper.find("input").attributes("aria-required")).toBe("true");
+    expect(wrapper.find("input").attributes("required")).toBeDefined();
+  });
+
   it("devrait afficher le label", () => {
     const wrapper = mount(NtInput, { props: { label: "Nom du projet" } });
     expect(wrapper.text()).toContain("Nom du projet");
@@ -123,6 +133,16 @@ describe("NtInput", () => {
 // ---------------------------------------------------------------------------
 
 describe("NtSelect", () => {
+
+  it("devrait afficher l'asterisque et ajouter aria-required quand required est true", () => {
+    const wrapper = mount(NtSelect, {
+      props: { label: "Langue", required: true, options: [{value: "fr", label: "Français"}] },
+    });
+    expect(wrapper.text()).toContain("*");
+    expect(wrapper.find("select").attributes("aria-required")).toBe("true");
+    expect(wrapper.find("select").attributes("required")).toBeDefined();
+  });
+
   const options: SelectOption[] = [
     { value: "fr", label: "Français" },
     { value: "en", label: "Anglais" },
@@ -166,6 +186,16 @@ describe("NtSelect", () => {
 // ---------------------------------------------------------------------------
 
 describe("NtTextarea", () => {
+
+  it("devrait afficher l'asterisque et ajouter aria-required quand required est true", () => {
+    const wrapper = mount(NtTextarea, {
+      props: { label: "Notes", required: true, modelValue: "" },
+    });
+    expect(wrapper.text()).toContain("*");
+    expect(wrapper.find("textarea").attributes("aria-required")).toBe("true");
+    expect(wrapper.find("textarea").attributes("required")).toBeDefined();
+  });
+
   it("devrait afficher le label", () => {
     const wrapper = mount(NtTextarea, { props: { label: "Description" } });
     expect(wrapper.text()).toContain("Description");

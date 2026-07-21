@@ -19,6 +19,8 @@ const props = withDefaults(
     type?: string;
     /** Identifiant accessible (généré si absent) */
     id?: string;
+    /** Indique si le champ est obligatoire */
+    required?: boolean;
   }>(),
   {
     modelValue: "",
@@ -29,6 +31,7 @@ const props = withDefaults(
     placeholder: undefined,
     type: "text",
     id: undefined,
+    required: false,
   },
 );
 
@@ -56,9 +59,10 @@ function onInput(event: Event): void {
     class="nt-input-wrapper"
     :class="{ 'nt-input-wrapper--disabled': disabled }"
   >
-    <label v-if="label" class="nt-input-label" :for="inputId">{{
-      label
-    }}</label>
+    <label v-if="label" class="nt-input-label" :for="inputId">
+      {{ label }}
+      <span v-if="required" style="color: var(--error);" aria-hidden="true">*</span>
+    </label>
     <div class="nt-input-field" :class="{ 'nt-input-field--error': hasError }">
       <span v-if="icon" class="nt-input-icon" aria-hidden="true">{{
         icon
@@ -71,6 +75,8 @@ function onInput(event: Event): void {
         :value="modelValue"
         :placeholder="placeholder"
         :disabled="disabled"
+        :required="required"
+        :aria-required="required ? 'true' : undefined"
         :aria-invalid="hasError || undefined"
         :aria-describedby="error ? `${inputId}-error` : undefined"
         @input="onInput"
