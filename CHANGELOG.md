@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.0.1 — Fix: auto-clean stale recentProjects (2026-07-22)
+
+### Fix
+- `ProjectManager.listRecent()` retire désormais automatiquement les chemins
+  devenus inaccessibles (dossier supprimé, déplacé, ou reste d'une install v2)
+  du paramètre `recentProjects`. Auparavant, un chemin stale déclenchait un
+  warning à **chaque lancement** sans jamais être nettoyé. Self-heal : un seul
+  passage suffit à nettoyer les settings.
+
+### Version
+- Bump 3.0.0 → **3.0.1** (bugfix mineur, aucune feature).
+
 ## v3.0.0 — Simplification majeure : pipeline 4 agents + UI tout-en-un (2026-07-22)
 
 > Refonte délibérée : moins de fonctionnalités, mais plus solide. Pilotée par

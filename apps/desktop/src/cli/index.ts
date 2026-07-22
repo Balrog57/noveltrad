@@ -42,7 +42,7 @@ const program = new Command();
 program
   .name("noveltrad")
   .description("Traduction littéraire assistée par IA (CLI pilotable par agent)")
-  .version("3.0.0");
+  .version("3.0.1");
 
 // ── Option globale --json ────────────────────────────────────────────────
 let jsonMode = false;

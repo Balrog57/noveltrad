@@ -200,6 +200,10 @@ export class ProjectManager {
     const recent =
       (this.settings.get("recentProjects") as string[] | undefined) ?? [];
     const projects: Project[] = [];
+    // v3.0.1 : collecter les chemins devenus inaccessibles (dossier supprimé,
+    // déplacé, ou reste d'une install v2) pour les retirer automatiquement du
+    // paramètre recentProjects. Sinon le warning se répète à chaque lancement.
+    const stalePaths: string[] = [];
     for (const projectPath of recent) {
       try {
         const project = await this.open(projectPath);
@@ -209,7 +213,19 @@ export class ProjectManager {
           `Impossible d'ouvrir le projet recent ${projectPath}:`,
           err as Error,
         );
+        stalePaths.push(projectPath);
       }
+    }
+    // Self-heal : ne réécrire que si au moins un chemin est stale (évite un
+    // set inutile quand tout est OK).
+    if (stalePaths.length > 0) {
+      this.settings.set(
+        "recentProjects",
+        recent.filter((p) => !stalePaths.includes(p)),
+      );
+      logger.info(
+        `[listRecent] ${stalePaths.length} projet(s) récent(s) introuvable(s) retiré(s) des settings.`,
+      );
     }
     return projects;
   }
