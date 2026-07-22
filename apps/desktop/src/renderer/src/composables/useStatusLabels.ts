@@ -85,9 +85,14 @@ export function jobStatusClass(status: Job["status"]): string {
 // ── Stages du pipeline ──────────────────────────────────────────────────
 
 const STAGE_LABELS: Record<WorkflowStage, string> = {
+  // v3 stages
+  translate: "Traduction IA",
+  proofread: "Proofreader",
+  glossary: "Lexique",
+  validate: "Validator",
+  // stages historiques (transition v3)
   split: "Découpage",
   pre_translate: "Pré-traduction",
-  translate: "Traduction IA",
   consistency: "Cohérence",
   lexicon: "Lexique",
   grammar: "Grammaire",

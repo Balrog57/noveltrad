@@ -20,11 +20,43 @@ et testé. Pilotée par : bugs/crashes réels + UI trop complexe (12 vues).
 
 ### Plan en 6 phases (voir REFACTOR_PLAN_V3.md pour le détail)
 - [x] Phase 0 — setup `v3`, baseline verte, plan doc, audit migrations
-- [ ] Phase 1 — nouveau pipeline 4-stages (additif, ancien intact)
+- [x] Phase 1 — nouveau pipeline 4-stages (additif, ancien intact)
 - [ ] Phase 2 — simplifier DB & repositories
 - [ ] Phase 3 — supprimer l'ancien code
 - [ ] Phase 4 — renderer 3 vues
 - [ ] Phase 5 — tests + release 3.0.0
+
+### Phase 1 — Pipeline 4-stages (2026-07-22, additif)
+**Objectif** : construire le nouveau runner à côté de l'ancien moteur, sans
+casser les 1054 tests existants.
+
+**Livré** :
+- `services/agents/ProofreaderAgent.ts` — fusionne grammar+style+polish
+  (subclass de TextRefineAgent + `PROOFREAD_SPEC`).
+- `services/agents/ValidatorAgent.ts` — fusionne consistency+qa ; internalise
+  le hand-off du ConsistencyReport (anciennement injecté via options).
+- `services/prompts/proofread.system.ts` (3 prompts → 1, 3 axes éditoriaux).
+- `services/prompts/validate.system.ts` (qa + consistency → 1 éval JSON).
+- `managers/SimpleWorkflowRunner.ts` (~370 LOC) — pipeline séquentiel in-thread,
+  4 stages, events `workflow:progress`, persistance via ParagraphRepository,
+  cancel, batch, Summarizer transverse déclenché après `validate`.
+- `WorkflowStage` (shared types) + `workflowStageSchema` (shared schemas) +
+  `AgentFactory.create` switch : ajout des stages `proofread`/`validate`.
+- Stages historiques conservés dans l'union (ancien moteur intact).
+
+**Tests** :
+- `tests/unit/v3-agents.spec.ts` (13 tests) — Proofreader, Validator, factory.
+- `tests/unit/simple-workflow-runner.spec.ts` (5 tests) — orchestration,
+  progression, persistance, cancel, batch.
+- Vérif : type-check 0 erreurs, **1072/1072 tests passent** (77 files),
+  lint 0 erreurs (+0 warning sur les nouveaux fichiers).
+
+**Décision de scope (honnêteté)** :
+- CalibrationService NON repris dans Validator (supprimé en Phase 3) → scoring
+  brut non calibré. Connu et accepté pour un MVP.
+- QA auto-retry branching (QaBranchPolicy) non repris : le validateur produit
+  un score, l'utilisateur relance si besoin (décision v3).
+- `SummarizerAgent` conservé (transverse) : déclenché après `validate`.
 
 ### Audit schéma DB (pour Phase 2)
 - **Tables gardées** : projects, chapters (+metadata), paragraphs, lexicon
@@ -37,9 +69,14 @@ Branche longue durée `v3` depuis `main`. États intermédiaires pas forcément
 shippables. Merge final `v3 → main` = release 3.0.0.
 
 ### Handoff pour prochaine étape
-Phase 1 : créer `SimpleWorkflowRunner.ts` (additif), ProofreaderAgent (fusion
-Grammar+Style+Polish via TextRefineAgent), ValidatorAgent (fusion Qa+Consistency).
-Garder l'ancien WorkflowEngine intact pour que la tree compile et les 1054 tests restent verts.
+Phase 2 : simplifier DB & repositories. Nouvelles migrations 001-006 (remplacent
+001-018), supprimer JobRepository + HistoryRepository (tables jobs/job_steps/
+snapshots/audit/log/embeddings/exports/prompts/statistics/calibrations/
+review_reports/models). Conserver Project/Chapter/Paragraph/Lexicon/Summary
+repos. Attention : `ProjectManager.importSource` écrit en SQL brut (lignes
+767/771) — à adapter au nouveau schéma. Le `SimpleWorkflowRunner` (Phase 1)
+n'utilise PAS JobRepository (progression in-memory + events), donc sa suppression
+est safe dès que l'ancien WorkflowEngine est retiré (Phase 3).
 
 ---
 

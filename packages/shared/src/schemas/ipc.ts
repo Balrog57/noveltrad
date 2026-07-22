@@ -35,11 +35,16 @@ export const chapterIdsSchema = z
 
 // ── Workflow (SDD §7) ───────────────────────────────────────────────────
 
-/** Les 12 stages du pipeline (SDD §7.1). À garder synchronisé avec WorkflowStage. */
+/** Les stages du pipeline (SDD §7.1). À garder synchronisé avec WorkflowStage. */
 export const workflowStageSchema = z.enum([
+  // v3 : 4 stages du pipeline simplifié
+  "translate",
+  "proofread",
+  "glossary",
+  "validate",
+  // stages historiques (transition v3)
   "split",
   "pre_translate",
-  "translate",
   "consistency",
   "lexicon",
   "grammar",

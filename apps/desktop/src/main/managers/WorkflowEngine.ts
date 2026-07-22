@@ -488,9 +488,14 @@ class WorkflowRunner {
 
   private agentName(stage: WorkflowStage): string {
     const names: Record<WorkflowStage, string> = {
+      // v3 stages
+      translate: "Traduction IA",
+      proofread: "Proofreader",
+      glossary: "Lexique",
+      validate: "Validator",
+      // stages historiques (transition v3)
       split: "Decoupage",
       pre_translate: "Pre-traduction",
-      translate: "Traduction IA",
       consistency: "Coherence",
       lexicon: "Lexique",
       grammar: "Grammaire",

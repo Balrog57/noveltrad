@@ -64,9 +64,14 @@ export interface TranslationMemoryMatch {
 }
 
 export type WorkflowStage =
+  // ── v3 : pipeline simplifié 4-stages (translate → proofread → glossary → validate) ──
+  | "translate"
+  | "proofread"
+  | "glossary"
+  | "validate"
+  // ── stages historiques (conservés pour la transition v3 ; supprimés en Phase 3) ──
   | "split"
   | "pre_translate"
-  | "translate"
   | "consistency"
   | "lexicon"
   | "grammar"

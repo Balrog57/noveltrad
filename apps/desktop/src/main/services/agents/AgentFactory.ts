@@ -14,6 +14,9 @@ import { ReviewAgent } from "./ReviewAgent.js";
 import { ReviseAgent } from "./ReviseAgent.js";
 import { QaAgent } from "./QaAgent.js";
 import { ExportAgent } from "./ExportAgent.js";
+// v3 (Phase 1) : Proofreader + Validator fusionnent les anciens stages.
+import { ProofreaderAgent } from "./ProofreaderAgent.js";
+import { ValidatorAgent } from "./ValidatorAgent.js";
 import { GRAMMAR_SPEC } from "../prompts/grammar.system.js";
 import { STYLE_SPEC } from "../prompts/style.system.js";
 import { POLISH_SPEC } from "../prompts/polish.system.js";
@@ -86,6 +89,18 @@ export class AgentFactory {
         );
       case "export":
         return new ExportAgent(config, this.services.exportEngine);
+      // ── v3 (Phase 1) : pipeline simplifié 4-stages ──────────────────────
+      case "proofread":
+        // Fusionne grammar + style + polish en un seul passage éditorial.
+        return new ProofreaderAgent(config, this.services.aiRouter);
+      case "validate":
+        // Fusionne consistency + qa en une seule évaluation de qualité finale.
+        return new ValidatorAgent(
+          config,
+          this.services.aiRouter,
+          this.services.qualityChecker,
+          this.services.consistencyChecker,
+        );
       default:
         throw new Error(`Stage inconnu : ${stage}`);
     }
