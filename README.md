@@ -86,50 +86,52 @@ npm run docs:build   # Build statique
 
 ```
 noveltrad/
-├── .github/workflows/       # CI (ci.yml) + Release (release.yml) + Pages (pages.yml)
-├── docs/                    # VitePress — 25 volumes SDD + guides
 ├── apps/desktop/
-│   ├── src/main/            # Electron : IPC, managers, services, agents, DB
+│   ├── src/main/            # Electron : IPC (52 canaux), managers, services, agents, DB
 │   ├── src/preload/         # contextBridge (novelTradAPI)
-│   ├── src/renderer/        # Vue 3 : views, stores, components
-│   └── tests/               # Vitest (145) + Playwright E2E
-└── packages/shared/         # Types + schemas Zod
+│   ├── src/renderer/        # Vue 3 : 3 vues, stores, composants Nt*
+│   └── tests/               # Vitest (570) + Playwright E2E
+└── packages/shared/         # Types + schemas Zod (le contrat)
 ```
 
-### Pipeline de traduction
+> Architecture détaillée : voir `ARCHITECTURE.md`.
+
+### Pipeline de traduction (4 stages, in-thread)
 
 ```
-Source → Split → Pré-trad → Traduire → Cohérence → Lexique
-    → Grammaire → Style → Polish → QA → Export EPUB
+Source → [Translate] → [Proofread] → [Glossary] → [Validate] → EPUB
+                                                       │
+                                        Summarizer (cohérence cross-chapitre)
 ```
 
-Chaque étape est :
-- **Persistée** dans SQLite (jobs, steps, snapshots)
-- **Relançable** individuellement (`retryStep`, `retryFrom`)
-- **Observable** en temps réel (progression IPC)
+Chaque stage :
+- **Séquentiel, in-thread** (pas de worker threads — plus simple, pas de freeze)
+- **Persisté** dans SQLite (paragraphes traduits via `upsertMany`)
+- **Observable** en temps réel (events `workflow:progress` → inspecteur d'agents)
 
 ## 🧪 Tests
 
 ```bash
-npm test                                    # 145 tests unitaires (Vitest)
+npm test                                    # 570 tests unitaires (Vitest)
 npm run test:e2e --workspace=apps/desktop   # Playwright + Electron
 npm run type-check --workspace=apps/desktop # vue-tsc --noEmit
+npm run lint                                # ESLint (0 erreurs)
 ```
 
 ## 🚀 Release & Auto-update
 
 ```bash
-# Bump version dans apps/desktop/package.json
-git tag v2.0.2
+# Bump version dans package.json + apps/desktop/package.json
+git tag v3.0.1
 git push --tags
 # GitHub Actions build → publish → auto-update notifie les utilisateurs
 ```
 
 | Canal | Tag pattern | Usage |
 |-------|-------------|-------|
-| `latest` | `v2.0.2` | Stable |
-| `beta` | `v2.1.0-beta` | Pré-release |
-| `alpha` | `v2.1.0-alpha` | Dev |
+| `latest` | `v3.0.1` | Stable |
+| `beta` | `v3.1.0-beta` | Pré-release |
+| `alpha` | `v3.1.0-alpha` | Dev |
 
 ## 📦 Formats supportés
 
