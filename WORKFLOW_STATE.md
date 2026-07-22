@@ -1,5 +1,48 @@
 ﻿# Workflow State
 
+## Request — v3 simplification (2026-07-22, branche `v3`)
+
+**Contexte** : simplification produit délibérée de NovelTrad (ship less, keep it
+solid). Ce n'est PAS un cleanup de code mort — tout service supprimé est vivant
+et testé. Pilotée par : bugs/crashes réels + UI trop complexe (12 vues).
+
+### Décisions verrouillées (clarification utilisateur)
+- **Rewrite v3 réel** — supprimer des features qui marchent (RAG, audit,
+  plugins, calibration, 10→4 agents).
+- **Garder le modèle chapters/paragraphs** (préserve l'EPUB multi-fichier de v2.3.0).
+- **Greenfield** — pas d'utilisateurs, pas de migration de données.
+- Détails dans `REFACTOR_PLAN_V3.md`.
+
+### Baseline capturée (`main` @ `e835160`)
+- `npm run type-check` → **0 errors**
+- `npm run test` → **1054/1054 pass** (75 files)
+- `npm run lint` → **0 errors**
+
+### Plan en 6 phases (voir REFACTOR_PLAN_V3.md pour le détail)
+- [x] Phase 0 — setup `v3`, baseline verte, plan doc, audit migrations
+- [ ] Phase 1 — nouveau pipeline 4-stages (additif, ancien intact)
+- [ ] Phase 2 — simplifier DB & repositories
+- [ ] Phase 3 — supprimer l'ancien code
+- [ ] Phase 4 — renderer 3 vues
+- [ ] Phase 5 — tests + release 3.0.0
+
+### Audit schéma DB (pour Phase 2)
+- **Tables gardées** : projects, chapters (+metadata), paragraphs, lexicon
+  (+aliases/metadata), translation_memory, chapter_summaries, novel_summaries, settings
+- **Tables supprimées** : agents, jobs, job_steps, history_snapshots, audit_log,
+  embeddings, exports, prompts, statistics, model_calibrations, review_reports, models
+
+### Stratégie de branche
+Branche longue durée `v3` depuis `main`. États intermédiaires pas forcément
+shippables. Merge final `v3 → main` = release 3.0.0.
+
+### Handoff pour prochaine étape
+Phase 1 : créer `SimpleWorkflowRunner.ts` (additif), ProofreaderAgent (fusion
+Grammar+Style+Polish via TextRefineAgent), ValidatorAgent (fusion Qa+Consistency).
+Garder l'ancien WorkflowEngine intact pour que la tree compile et les 1054 tests restent verts.
+
+---
+
 ## Request — Refactor clean architecture (2026-07-19)
 
 **Contexte** : refactor architecture largeur sur `refactor/clean-architecture`
