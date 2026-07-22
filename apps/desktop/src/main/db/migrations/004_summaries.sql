@@ -1,11 +1,6 @@
--- 015_summaries : Summarizer transverse v1.4 (SDD §7.13, §8.12)
---
--- Persiste les résumés produits par le SummarizerAgent pour la cohérence
--- cross-chapitre (noms, intrigue, ton) sur l'ensemble d'un roman.
---
--- Inspiration : LaTeXTrans (Summarizer), TransAgents.
--- Le NovelSummary est injecté dans le contexte de translate/style/polish
--- des chapitres suivants → évite la dérive des noms sur 500 chapitres.
+-- v3 (2026-07-22) — Summaries (Summarizer transverse).
+-- Consolidé depuis 015_summaries. Cohérence cross-chapitre : le résumé du roman
+-- est injecté dans le contexte des stages translate/proofread/validate.
 
 CREATE TABLE IF NOT EXISTS chapter_summaries (
   id TEXT PRIMARY KEY,
@@ -27,7 +22,3 @@ CREATE TABLE IF NOT EXISTS novel_summaries (
 
 CREATE INDEX IF NOT EXISTS idx_chapter_summaries_project ON chapter_summaries(project_id);
 CREATE INDEX IF NOT EXISTS idx_chapter_summaries_chapter ON chapter_summaries(chapter_id);
-
--- Enregistrement du Summarizer dans le registre (idempotent).
-INSERT OR IGNORE INTO agents (id, name, stage, enabled, config_schema) VALUES
-  ('summarizer', 'Resume', 'summarizer', 1, '{}');

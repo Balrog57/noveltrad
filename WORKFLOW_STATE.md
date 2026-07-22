@@ -22,9 +22,29 @@ et testé. Pilotée par : bugs/crashes réels + UI trop complexe (12 vues).
 - [x] Phase 0 — setup `v3`, baseline verte, plan doc, audit migrations
 - [x] Phase 1 — nouveau pipeline 4-stages (additif, ancien intact)
 - [x] Phase 3 — supprimer l'ancien code (rewire + delete + prune channels)
-- [ ] Phase 2 — consolider migrations (post-Phase-3, safe de dropper les tables)
+- [x] Phase 2 — consolider migrations (18 → 5, drop tables inutilisées)
 - [ ] Phase 4 — renderer 3 vues
 - [ ] Phase 5 — tests + release 3.0.0
+
+### Phase 2 — Consolidation migrations (2026-07-22)
+**Objectif** : schéma greenfield épuré. Les 18 migrations → 5, droppant les
+tables des features supprimées en Phase 3.
+
+**Nouvelles migrations** :
+- `001_initial.sql` — projects, chapters (+metadata), paragraphs, settings.
+- `002_lexicon.sql` — lexicon (+aliases +metadata).
+- `003_translation_memory.sql` — TM (forme finale : project_id nullable).
+- `004_summaries.sql` — chapter_summaries + novel_summaries.
+- `005_prompts.sql` — prompts (override DB optionnel pour PromptLoader).
+
+**Tables droppées** : jobs, job_steps, agents, history_snapshots, audit_log,
+embeddings, exports, statistics, model_calibrations, review_reports, models.
+
+**Modifs code** : `connection.ts` LEGACY_VERSIONS réduit à v1 (greenfield).
+`db-migrations.spec.ts` réécrit pour le set v3 (5 tests : tables conservées,
+tables droppées, colonnes consolidées, TM nullable, idempotence).
+
+**Vérif** : type-check 0 erreurs, **582/582 tests passent** (49 files), lint 0.
 
 ### Phase 3 — Suppression de l'ancien code (2026-07-22)
 **Objectif** : faire de SimpleWorkflowRunner le moteur unique, supprimer
@@ -106,21 +126,17 @@ Branche longue durée `v3` depuis `main`. États intermédiaires pas forcément
 shippables. Merge final `v3 → main` = release 3.0.0.
 
 ### Handoff pour prochaine étape
-Phase 2 (maintenant safe) : consolider les migrations 001-018 → 001-006.
-L'ancien WorkflowEngine + JobRepository/HistoryRepository sont supprimés, donc
-on peut dropper les tables : jobs, job_steps, history_snapshots, audit_log,
-embeddings, exports, prompts, statistics, model_calibrations, review_reports,
-agents, models. Conserver : projects, chapters, paragraphs, lexicon (+aliases),
-translation_memory, chapter_summaries, novel_summaries, settings.
-NOTE : `PromptLoader` interroge encore la table `prompts` (override DB) — cette
-table est droppée, mais PromptLoader catch l'erreur DB silencieusement (fallback
-TS). Décider : dropper `prompts` (et garder le catch) ou la conserver pour
-l'override utilisateur futur. Recommandation : conserver (override utile).
-
-Ensuite Phase 4 : renderer 3 vues (Dashboard, Project all-in-one, Settings).
-La store `workflow.ts` actuelle a un payload `WorkflowProgressPayload` basé sur
-`Step`/`totalSteps` — à réécrire pour `SimpleProgress` (stage/stageIndex/
-totalStages). Stores à supprimer : plugins, history.
+Phase 4 : renderer 3 vues (Dashboard, Project all-in-one, Settings).
+- La store `workflow.ts` actuelle a un payload `WorkflowProgressPayload` basé
+  sur `Step`/`totalSteps` — à réécrire pour `SimpleProgress` (stage/stageIndex/
+  totalStages/status). Voir `SimpleWorkflowRunner.ts` pour le type exporté.
+- Stores à supprimer : `plugins.ts`, `history.ts`.
+- Vues à supprimer : ChaptersView, ChapterEditorView, WorkflowView, LexiconView
+  (folder dans ProjectView), HistoryView, ConsoleView, PluginsView, HelpView.
+- Router → 3 routes : `/`, `/project/:id`, `/settings`.
+- Réutiliser les composants Nt*, composables (useStatusLabels, useAsyncAction),
+  utils (toPlain, format, download). Pas de tests unitaires renderer — valider
+  via `npm run dev` smoke + Playwright e2e en Phase 5.
 
 ---
 
