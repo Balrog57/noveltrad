@@ -246,51 +246,70 @@ export class LexiconEngine {
     const conflicts: LexiconConflict[] = [];
     const seen = new Set<string>();
 
-    for (let i = 0; i < entries.length; i++) {
-      const a = entries[i];
-      const normA = this.normalizeTerm(a.term);
+    // Grouper par termes normalisés pour réduire les O(N^2)
+    const termMap = new Map<string, LexiconEntry[]>();
+    for (const entry of entries) {
+      const norm = this.normalizeTerm(entry.term);
+      const list = termMap.get(norm) || [];
+      list.push(entry);
+      termMap.set(norm, list);
+    }
 
-      for (let j = i + 1; j < entries.length; j++) {
-        const b = entries[j];
-        const normB = this.normalizeTerm(b.term);
+    const uniqueNorms = Array.from(termMap.keys());
 
-        // Éviter les paires déjà vues
-        const pairKey = `${a.id}:${b.id}`;
-        if (seen.has(pairKey)) {continue;}
-        seen.add(pairKey);
+    // Trier par longueur décroissante pour optimiser les chevauchements
+    uniqueNorms.sort((a, b) => b.length - a.length);
 
-        // 1. Duplicate term : même normalisé
-        if (normA === normB && a.id !== b.id) {
-          conflicts.push({
-            type: "duplicate_term",
-            entryA: a,
-            entryB: b,
-            description: `Terme en double : "${a.term}" et "${b.term}" (normalisé : "${normA}")`,
-            normalized: normA,
-          });
-          continue;
+    for (let i = 0; i < uniqueNorms.length; i++) {
+      const normA = uniqueNorms[i];
+      const entriesA = termMap.get(normA)!;
+
+      // 1. Duplicate term : entrées avec le même terme normalisé
+      if (entriesA.length > 1) {
+        for (let k = 0; k < entriesA.length; k++) {
+          for (let l = k + 1; l < entriesA.length; l++) {
+            const a = entriesA[k];
+            const b = entriesA[l];
+            if (a.id !== b.id) {
+              const pairKey = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+              if (!seen.has(pairKey)) {
+                seen.add(pairKey);
+                conflicts.push({
+                  type: "duplicate_term",
+                  entryA: a,
+                  entryB: b,
+                  description: `Terme en double : "${a.term}" et "${b.term}" (normalisé : "${normA}")`,
+                  normalized: normA,
+                });
+              }
+            }
+          }
         }
+      }
 
-        // 2. Overlap : un terme contient l'autre (non égaux)
-        const aContainsB =
-          normA.includes(normB) && normA !== normB && normB.length > 0;
-        const bContainsA =
-          normB.includes(normA) && normB !== normA && normA.length > 0;
+      // 2. Overlap : un terme contient l'autre (non égaux)
+      for (let j = i + 1; j < uniqueNorms.length; j++) {
+        const normB = uniqueNorms[j];
+        if (normB.length === 0) {continue;}
 
-        if (aContainsB) {
-          conflicts.push({
-            type: "overlap",
-            entryA: a,
-            entryB: b,
-            description: `Chevauchement : "${a.term}" contient "${b.term}"`,
-          });
-        } else if (bContainsA) {
-          conflicts.push({
-            type: "overlap",
-            entryA: a,
-            entryB: b,
-            description: `Chevauchement : "${b.term}" contient "${a.term}"`,
-          });
+        if (normA.includes(normB)) {
+          const entriesB = termMap.get(normB)!;
+          for (const a of entriesA) {
+            for (const b of entriesB) {
+              if (a.id !== b.id) {
+                const pairKey = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+                if (!seen.has(pairKey)) {
+                  seen.add(pairKey);
+                  conflicts.push({
+                    type: "overlap",
+                    entryA: a,
+                    entryB: b,
+                    description: `Chevauchement : "${a.term}" contient "${b.term}"`,
+                  });
+                }
+              }
+            }
+          }
         }
       }
     }
