@@ -24,7 +24,26 @@ et testé. Pilotée par : bugs/crashes réels + UI trop complexe (12 vues).
 - [x] Phase 3 — supprimer l'ancien code (rewire + delete + prune channels)
 - [x] Phase 2 — consolider migrations (18 → 5, drop tables inutilisées)
 - [x] Phase 4 — renderer 3 vues (Dashboard, Project all-in-one, Settings)
-- [ ] Phase 5 — tests + release 3.0.0
+- [x] Phase 5 — release 3.0.0 (bump version, CHANGELOG, README, trinity green)
+
+### Phase 5 — Release 3.0.0 (2026-07-22)
+- Version bump 2.3.0 → **3.0.0** (root + apps/desktop package.json + CLI).
+- CHANGELOG.md : entry v3.0.0 (breaking changes, features supprimées/conservées,
+  architecture, tests).
+- README.md : mis à jour (pipeline 4 agents, badges, workflow, UI 3 vues).
+- **Trinity finale green** : type-check 0 erreurs, **570/570 tests passent**
+  (49 files), lint 0 erreurs (12 warnings préexistants).
+- electron-builder.yml : inchangé (pas de modif requise).
+
+### Bilan v3
+- **Baseline** : 1054 tests / 75 files (v2.3.0) → **570 tests / 49 files** (v3.0.0).
+- **Code** : ~15 000 lignes supprimées (engine 1370 LOC, 10 agents, plugins,
+  RAG, calibration, audit, history, workers, 8 vues, 3 stores).
+- **Pipeline** : 12 stages → 4 (translate → proofread → glossary → validate).
+- **Migrations** : 18 → 5 (greenfield).
+- **IPC** : 79 → 52 canaux.
+- **UI** : 12 vues → 3.
+- Branche `v3` prête pour merge vers `main` + tag `v3.0.0`.
 
 ### Phase 4 — Renderer 3 vues (2026-07-22)
 **Objectif** : collapse 12 vues → 3 (Dashboard, Project all-in-one, Settings).
