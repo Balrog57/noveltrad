@@ -1,30 +1,20 @@
 import type { ProjectDatabase } from "../../db/connection.js";
 import { TRANSLATE_SYSTEM_PROMPT } from "./translate.system.js";
-import { PRE_TRANSLATE_SYSTEM_PROMPT } from "./pre-translate.system.js";
-import { GRAMMAR_SYSTEM_PROMPT } from "./grammar.system.js";
-import { STYLE_SYSTEM_PROMPT } from "./style.system.js";
-import { POLISH_SYSTEM_PROMPT } from "./polish.system.js";
-import { SPLIT_SYSTEM_PROMPT } from "./split.system.js";
-import { CONSISTENCY_SYSTEM_PROMPT } from "./consistency.system.js";
+import { PROOFREAD_SYSTEM_PROMPT } from "./proofread.system.js";
 import { LEXICON_SYSTEM_PROMPT } from "./lexicon.system.js";
-import { QA_SYSTEM_PROMPT } from "./qa.system.js";
-import { EXPORT_SYSTEM_PROMPT } from "./export.system.js";
+import { VALIDATE_SYSTEM_PROMPT } from "./validate.system.js";
 
 /**
  * Map des identifiants de prompts vers leurs constantes TS de fallback.
- * Chaque prompt système a une constante exportée dans les fichiers *.system.ts.
+ * v3 : pipeline 4-stages (translate, proofread, glossary=lexicon, validate).
+ * Les anciens prompts (split/pre_translate/grammar/style/polish/consistency/
+ * qa/export) ont été supprimés avec leurs stages.
  */
 const PROMPT_MAP: Record<string, string> = {
   "translate": TRANSLATE_SYSTEM_PROMPT,
-  "pre-translate": PRE_TRANSLATE_SYSTEM_PROMPT,
-  "grammar": GRAMMAR_SYSTEM_PROMPT,
-  "style": STYLE_SYSTEM_PROMPT,
-  "polish": POLISH_SYSTEM_PROMPT,
-  "split": SPLIT_SYSTEM_PROMPT,
-  "consistency": CONSISTENCY_SYSTEM_PROMPT,
-  "lexicon": LEXICON_SYSTEM_PROMPT,
-  "qa": QA_SYSTEM_PROMPT,
-  "export": EXPORT_SYSTEM_PROMPT,
+  "proofread": PROOFREAD_SYSTEM_PROMPT,
+  "glossary": LEXICON_SYSTEM_PROMPT,
+  "validate": VALIDATE_SYSTEM_PROMPT,
 };
 
 /**

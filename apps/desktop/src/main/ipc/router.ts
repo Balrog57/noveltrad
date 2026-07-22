@@ -29,10 +29,7 @@ export async function registerIpcRouter(): Promise<void> {
     ["paragraph",async () => { const m = await import("./handlers/paragraph.js"); m.registerParagraphHandlers(); }],
     ["lexicon",  async () => { const m = await import("./handlers/lexicon.js"); m.registerLexiconHandlers(); }],
     ["export",   async () => { const m = await import("./handlers/export.js"); m.registerExportHandlers(); }],
-    ["history",  async () => { const m = await import("./handlers/history.js"); m.registerHistoryHandlers(); }],
     ["tm",       async () => { const m = await import("./handlers/tm.js"); m.registerTmHandlers(); }],
-    ["plugins",  async () => { const m = await import("./handlers/plugins.js"); m.registerPluginHandlers(); }],
-    ["ai",       async () => { const m = await import("./handlers/ai.js"); m.registerAiHandlers(); }],
   ];
 
   let loaded = 0, failed = 0;

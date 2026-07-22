@@ -19,13 +19,13 @@ import type { AiRouter } from "../../src/main/services/AiRouter";
 import type { ConsistencyChecker } from "../../src/main/services/ConsistencyChecker";
 import type { QualityChecker } from "../../src/main/services/QualityChecker";
 import type { LexiconEngine } from "../../src/main/services/LexiconEngine";
-import type { ExportEngine } from "../../src/main/services/ExportEngine";
 import type { TranslationMemoryEngine } from "../../src/main/services/TranslationMemoryEngine";
 import type {
   Paragraph,
   QualityReport,
   ConsistencyReport,
 } from "@shared/types/index.js";
+// Note : ExportEngine n'est plus dans AgentFactoryServices en v3.
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -318,7 +318,6 @@ describe("AgentFactory — stages v3", () => {
       tmEngine: {} as TranslationMemoryEngine,
       consistencyChecker: {} as ConsistencyChecker,
       qualityChecker: {} as QualityChecker,
-      exportEngine: {} as ExportEngine,
     });
   }
 
@@ -336,13 +335,11 @@ describe("AgentFactory — stages v3", () => {
     expect(agent.stage).toBe("validate");
   });
 
-  it("devrait toujours créer les agents historiques (transition v3)", () => {
+  it("devrait rejeter les stages supprimés (v3)", () => {
     const factory = makeFactory(makeMockRouter());
-    // grammar/style/polish/qa/consistency toujours disponibles.
-    expect(factory.create("grammar", CONFIG)).toBeDefined();
-    expect(factory.create("style", CONFIG)).toBeDefined();
-    expect(factory.create("polish", CONFIG)).toBeDefined();
-    expect(factory.create("qa", CONFIG)).toBeDefined();
-    expect(factory.create("consistency", CONFIG)).toBeDefined();
+    // Les anciens stages lèvent une erreur explicite en v3.
+    expect(() => factory.create("grammar", CONFIG)).toThrow(/Stage inconnu/);
+    expect(() => factory.create("qa", CONFIG)).toThrow(/Stage inconnu/);
+    expect(() => factory.create("consistency", CONFIG)).toThrow(/Stage inconnu/);
   });
 });

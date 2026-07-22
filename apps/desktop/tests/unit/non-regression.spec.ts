@@ -64,17 +64,8 @@ vi.mock("../../src/main/ipc/handlers/lexicon.js", () => ({
 vi.mock("../../src/main/ipc/handlers/export.js", () => ({
   registerExportHandlers: vi.fn(),
 }));
-vi.mock("../../src/main/ipc/handlers/history.js", () => ({
-  registerHistoryHandlers: vi.fn(),
-}));
 vi.mock("../../src/main/ipc/handlers/tm.js", () => ({
   registerTmHandlers: vi.fn(),
-}));
-vi.mock("../../src/main/ipc/handlers/plugins.js", () => ({
-  registerPluginHandlers: vi.fn(),
-}));
-vi.mock("../../src/main/ipc/handlers/ai.js", () => ({
-  registerAiHandlers: vi.fn(),
 }));
 
 // Mock fs for router.ts debugLog
@@ -107,7 +98,7 @@ describe("IPC Router — Smoke test (Phase 0 non-régression)", () => {
     await expect(registerIpcRouter()).resolves.toBeUndefined();
   });
 
-  it("enregistre 12 handlers (ollama, settings, project, workflow, update, paragraph, lexicon, export, history, tm, plugins, ai)", async () => {
+  it("enregistre 10 handlers v3 (ollama, settings, project, workflow, update, paragraph, lexicon, export, tm)", async () => {
     const { registerIpcRouter } = await import(
       "../../src/main/ipc/router.js"
     );
@@ -145,11 +136,10 @@ describe("IPC Router — Smoke test (Phase 0 non-régression)", () => {
     expect(IPC_CHANNELS).toContain("settings:set");
   });
 
-  it("le canal ai:stream-chat existe", () => {
-    expect(IPC_CHANNELS).toContain("ai:stream-chat");
-    expect(IPC_CHANNELS).toContain("ai:stream-chunk");
-    expect(IPC_CHANNELS).toContain("ai:stream-end");
-    expect(IPC_CHANNELS).toContain("ai:stream-error");
+  it("le canal workflow:cancel existe (v3)", () => {
+    expect(IPC_CHANNELS).toContain("workflow:start");
+    expect(IPC_CHANNELS).toContain("workflow:cancel");
+    expect(IPC_CHANNELS).toContain("workflow:progress");
   });
 
   it("le canal app:get-version existe", () => {

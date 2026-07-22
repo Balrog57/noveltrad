@@ -46,7 +46,6 @@ import { LexiconEngine } from "../services/LexiconEngine.js";
 import { TranslationMemoryEngine } from "../services/TranslationMemoryEngine.js";
 import { ConsistencyChecker } from "../services/ConsistencyChecker.js";
 import { QualityChecker } from "../services/QualityChecker.js";
-import { ExportEngine } from "../services/ExportEngine.js";
 import { SummarizerAgent } from "../services/agents/SummarizerAgent.js";
 import { AiCache } from "../services/AiCache.js";
 import { OllamaProvider } from "../services/providers/OllamaProvider.js";
@@ -146,16 +145,12 @@ export class SimpleWorkflowRunner {
       const tmEngine = new TranslationMemoryEngine();
       tmEngine.setDatabase(this.db);
 
-      const exportEngine = new ExportEngine();
-      exportEngine.setDatabase(this.db);
-
       this.factory = new AgentFactory({
         aiRouter,
         lexiconEngine,
         tmEngine,
         consistencyChecker: new ConsistencyChecker(),
         qualityChecker: new QualityChecker(),
-        exportEngine,
       });
       this.aiRouter = aiRouter;
     } catch (err) {

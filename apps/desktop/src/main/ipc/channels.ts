@@ -1,4 +1,18 @@
+// v3 : canaux IPC épurés (79 → ~45).
+//
+// Supprimés en Phase 3 :
+//   - plugin:* (9) — système de plugins supprimé.
+//   - history:* + audit:* (7) — historique/snapshots/rollback supprimés.
+//   - workflow:pause/resume/retry-step/retry-from/quality-failed/resume-batch/
+//     list-active (7) — le SimpleWorkflowRunner est start/cancel only (pas de
+//     pause persistante, pas de QA auto-retry branching, pas de jobs table).
+//   - ai:stream-* (4) — chat streaming standalone inutilisé en v3
+//     (lexicon:suggest construit son propre AiRouter).
+//
+// Conservés : project CRUD, import/export, workflow start/cancel/progress/
+// list, lexicon, ollama, settings, chapter, tm, update, dialog, app, log.
 export const IPC_CHANNELS = [
+  // project
   "project:create",
   "project:open",
   "project:list-recent",
@@ -8,25 +22,22 @@ export const IPC_CHANNELS = [
   "project:refresh-source",
   "project:detect-duplicate",
   "project:open-dialog",
+  // ollama
   "ollama:list-models",
   "ollama:pull-model",
   "ollama:pull-progress",
   "ollama:is-available",
   "ollama:test-model",
+  // settings
   "settings:get",
   "settings:set",
+  // workflow (v3 : start/start-batch/cancel/progress/list)
   "workflow:start",
   "workflow:start-batch",
-  "workflow:pause",
-  "workflow:resume",
   "workflow:cancel",
-  "workflow:retry-step",
-  "workflow:retry-from",
-  "workflow:list",
   "workflow:progress",
-  "workflow:quality-failed",
-  "workflow:resume-batch",
-  "workflow:list-active",
+  "workflow:list",
+  // lexicon
   "lexicon:list",
   "lexicon:save",
   "lexicon:delete",
@@ -35,15 +46,19 @@ export const IPC_CHANNELS = [
   "lexicon:extract-candidates",
   "lexicon:find-conflicts",
   "lexicon:suggest",
+  // chapter / source / paragraph
   "chapter:list",
   "chapter:import",
   "chapter:get-paragraphs",
   "chapter:save",
   "source:import-files",
+  // export
   "export:run",
   "export:batch",
+  // dialogs
   "dialog:open-file",
   "dialog:save-file",
+  // update (auto-updater)
   "update:check",
   "update:download",
   "update:install",
@@ -54,29 +69,11 @@ export const IPC_CHANNELS = [
   "update:progress",
   "update:downloaded",
   "update:error",
-  "history:list",
-  "history:diff",
-  "history:rollback",
-  "history:create-snapshot",
-  "history:rollback-partial",
-  "history:get-paragraphs",
-  "audit:list",
+  // translation memory
   "tm:import",
   "tm:export",
+  // misc
   "log",
-  "plugin:list",
-  "plugin:enable",
-  "plugin:disable",
-  "plugin:uninstall",
-  "plugin:install",
-  "plugin:get-config",
-  "plugin:set-config",
-  "plugin:request-permissions",
-  "plugin:confirm-permissions",
-  "ai:stream-chat",
-  "ai:stream-chunk",
-  "ai:stream-end",
-  "ai:stream-error",
   "app:get-version",
 ] as const;
 

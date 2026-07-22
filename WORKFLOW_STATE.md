@@ -21,10 +21,47 @@ et testé. Pilotée par : bugs/crashes réels + UI trop complexe (12 vues).
 ### Plan en 6 phases (voir REFACTOR_PLAN_V3.md pour le détail)
 - [x] Phase 0 — setup `v3`, baseline verte, plan doc, audit migrations
 - [x] Phase 1 — nouveau pipeline 4-stages (additif, ancien intact)
-- [ ] Phase 2 — simplifier DB & repositories
-- [ ] Phase 3 — supprimer l'ancien code
+- [x] Phase 3 — supprimer l'ancien code (rewire + delete + prune channels)
+- [ ] Phase 2 — consolider migrations (post-Phase-3, safe de dropper les tables)
 - [ ] Phase 4 — renderer 3 vues
 - [ ] Phase 5 — tests + release 3.0.0
+
+### Phase 3 — Suppression de l'ancien code (2026-07-22)
+**Objectif** : faire de SimpleWorkflowRunner le moteur unique, supprimer
+~30 fichiers morts, écrémer les canaux IPC (79 → 52).
+
+**Rewiring (3a)** :
+- `ipc/handlers/workflow.ts` réécrit : registre de SimpleWorkflowRunner,
+  events `workflow:progress`, jobIds générés, cleanup dispose. Canaux
+  conservés : start, start-batch, cancel, list (retourne les chapitres).
+- `index.ts` : supprimé PluginHost + setPluginHost + resumeActiveJobs.
+- `cli/translate.ts` réécrit : pilote SimpleWorkflowRunner directement (Promise,
+  plus de polling jobs table). `cli/index.ts` `status` → chapitres (plus de jobs).
+- `ipc/router.ts` : retiré history + plugins + ai handlers (10 handlers).
+
+**Suppressions (3b/3c)** :
+- Agents (10) : Review, Revise, Split, PreTranslate, Polish, Grammar, Style,
+  Consistency, Qa, Export + leurs 10 prompts.
+- Services : CalibrationService, RagEngine, AuditService, plugins/* (3 fichiers).
+- Managers/workers : WorkflowEngine.ts (1370 LOC), workflow/QaBranchPolicy,
+  workflow/PauseController, workers/agent-worker.ts + dir workers/.
+- Handlers : history.ts, plugins.ts, ai.ts.
+- Repos : JobRepository, HistoryRepository.
+- AgentFactory simplifié : switch 4 stages only.
+
+**Correction de scope** : QualityChecker + HallucinationDetector **conservés**
+(dépendances du ValidatorAgent v3). Le plan initial les supprimait à tort.
+
+**Canaux IPC (3d)** : 79 → 52. Supprimé plugin:* (9), history:*+audit:* (7),
+workflow:pause/resume/retry-step/retry-from/quality-failed/resume-batch/
+list-active (7), ai:stream-* (4). channels.ts + preload/index.ts synchronisés.
+
+**Tests (3e)** : supprimé 26 fichiers de tests obsolètes (plugins, history,
+audit, rag, quality-advanced, review/revise, qa-branch-policy, worker-threads,
+workflow-branching/concurrency/retry/timeout/guards/view, ai-stream, agents,
+engines, prompts, prompt-loader). Mis à jour non-regression.spec.ts +
+v3-agents.spec.ts. **586/586 tests passent** (49 files), type-check 0 erreurs,
+lint 0 erreurs (9 warnings préexistants).
 
 ### Phase 1 — Pipeline 4-stages (2026-07-22, additif)
 **Objectif** : construire le nouveau runner à côté de l'ancien moteur, sans
@@ -69,14 +106,21 @@ Branche longue durée `v3` depuis `main`. États intermédiaires pas forcément
 shippables. Merge final `v3 → main` = release 3.0.0.
 
 ### Handoff pour prochaine étape
-Phase 2 : simplifier DB & repositories. Nouvelles migrations 001-006 (remplacent
-001-018), supprimer JobRepository + HistoryRepository (tables jobs/job_steps/
-snapshots/audit/log/embeddings/exports/prompts/statistics/calibrations/
-review_reports/models). Conserver Project/Chapter/Paragraph/Lexicon/Summary
-repos. Attention : `ProjectManager.importSource` écrit en SQL brut (lignes
-767/771) — à adapter au nouveau schéma. Le `SimpleWorkflowRunner` (Phase 1)
-n'utilise PAS JobRepository (progression in-memory + events), donc sa suppression
-est safe dès que l'ancien WorkflowEngine est retiré (Phase 3).
+Phase 2 (maintenant safe) : consolider les migrations 001-018 → 001-006.
+L'ancien WorkflowEngine + JobRepository/HistoryRepository sont supprimés, donc
+on peut dropper les tables : jobs, job_steps, history_snapshots, audit_log,
+embeddings, exports, prompts, statistics, model_calibrations, review_reports,
+agents, models. Conserver : projects, chapters, paragraphs, lexicon (+aliases),
+translation_memory, chapter_summaries, novel_summaries, settings.
+NOTE : `PromptLoader` interroge encore la table `prompts` (override DB) — cette
+table est droppée, mais PromptLoader catch l'erreur DB silencieusement (fallback
+TS). Décider : dropper `prompts` (et garder le catch) ou la conserver pour
+l'override utilisateur futur. Recommandation : conserver (override utile).
+
+Ensuite Phase 4 : renderer 3 vues (Dashboard, Project all-in-one, Settings).
+La store `workflow.ts` actuelle a un payload `WorkflowProgressPayload` basé sur
+`Step`/`totalSteps` — à réécrire pour `SimpleProgress` (stage/stageIndex/
+totalStages). Stores à supprimer : plugins, history.
 
 ---
 
