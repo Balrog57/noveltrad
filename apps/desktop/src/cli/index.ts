@@ -27,7 +27,6 @@ import { ProjectManager } from "../main/managers/ProjectManager.js";
 import { ProjectPathResolver } from "../main/managers/ProjectPathResolver.js";
 import { createProjectDatabase } from "../main/db/connection.js";
 import { ChapterRepository } from "../main/db/repositories/ChapterRepository.js";
-import { JobRepository } from "../main/db/repositories/JobRepository.js";
 import { ParagraphRepository } from "../main/db/repositories/ParagraphRepository.js";
 import {
   printResult,
@@ -43,7 +42,7 @@ const program = new Command();
 program
   .name("noveltrad")
   .description("Traduction littéraire assistée par IA (CLI pilotable par agent)")
-  .version("2.3.0");
+  .version("3.0.0");
 
 // ── Option globale --json ────────────────────────────────────────────────
 let jsonMode = false;
@@ -176,33 +175,38 @@ program
   });
 
 // ════════════════════════════════════════════════════════════════════════
-// status — consulter l'état d'un job
+// status — consulter l'état des chapitres d'un projet
 // ════════════════════════════════════════════════════════════════════════
 program
   .command("status <projectId>")
-  .description("Consulte l'état des jobs d'un projet")
-  .option("--job <jobId>", "Job spécifique (sinon: tous les jobs du projet)")
-  .action(async (projectId: string, opts: { job?: string }) => {
+  .description("Consulte l'état de traduction des chapitres d'un projet")
+  .action(async (projectId: string) => {
     await runCommand(async () => {
       const settings = getSettingsManager();
       const resolver = new ProjectPathResolver(settings);
       const projectPath = resolver.resolve(projectId);
       const db = createProjectDatabase(projectPath);
       try {
-        const jobRepo = new JobRepository(db);
-        if (opts.job) {
-          const job = jobRepo.getJob(opts.job);
-          if (!job) {return err("NOT_FOUND", `Job introuvable : ${opts.job}`);}
-          const steps = jobRepo.listStepsByJob(job.id);
-          return ok({
-            job: serializeJob(job),
-            steps: steps.map(serializeStep),
-          });
-        }
-        const jobs = jobRepo.listByProject(projectId);
+        // v3 : plus de jobs table. On rapporte le statut des chapitres
+        // (pending/processing/completed/error) — reflet direct de l'avancement.
+        const chapterRepo = new ChapterRepository(db);
+        const chapters = chapterRepo.listByProject(projectId);
+        const summary = {
+          total: chapters.length,
+          completed: chapters.filter((c) => c.status === "completed").length,
+          pending: chapters.filter((c) => c.status === "pending").length,
+          processing: chapters.filter((c) => c.status === "processing").length,
+          error: chapters.filter((c) => c.status === "error").length,
+        };
         return ok({
           projectId,
-          jobs: jobs.map(serializeJob),
+          summary,
+          chapters: chapters.map((c) => ({
+            id: c.id,
+            title: c.title,
+            orderIndex: c.orderIndex,
+            status: c.status,
+          })),
         });
       } finally {
         db.close();
@@ -315,56 +319,6 @@ async function runCommand(fn: () => Promise<Result<unknown>>): Promise<void> {
     printResult(result, jsonMode);
     process.exitCode = EXIT_CODES.UNKNOWN;
   }
-}
-
-function serializeJob(job: {
-  id: string;
-  status: string;
-  type: string;
-  startedAt?: string;
-  finishedAt?: string;
-  costUsd?: number;
-  tokensIn?: number;
-  tokensOut?: number;
-  qaRetryCount?: number;
-  errorMessage?: string;
-}): Record<string, unknown> {
-  return {
-    id: job.id,
-    status: job.status,
-    type: job.type,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    costUsd: job.costUsd,
-    qaRetryCount: job.qaRetryCount,
-    errorMessage: job.errorMessage,
-  };
-}
-
-function serializeStep(step: {
-  id: string;
-  stage: string;
-  name: string;
-  status: string;
-  orderIndex: number;
-  score?: number;
-  tokensIn?: number;
-  tokensOut?: number;
-  durationMs?: number;
-  errorMessage?: string;
-}): Record<string, unknown> {
-  return {
-    id: step.id,
-    stage: step.stage,
-    name: step.name,
-    orderIndex: step.orderIndex,
-    status: step.status,
-    score: step.score,
-    tokensIn: step.tokensIn,
-    tokensOut: step.tokensOut,
-    durationMs: step.durationMs,
-    errorMessage: step.errorMessage,
-  };
 }
 
 function generateDoctorRecommendations(

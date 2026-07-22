@@ -8,9 +8,6 @@ import NtSelect, {
 } from "../../src/renderer/src/components/ui/NtSelect.vue";
 import NtTextarea from "../../src/renderer/src/components/ui/NtTextarea.vue";
 import NtCard from "../../src/renderer/src/components/ui/NtCard.vue";
-import NtLogViewer, {
-  type LogEntry,
-} from "../../src/renderer/src/components/ui/NtLogViewer.vue";
 
 // ---------------------------------------------------------------------------
 // NtButton
@@ -235,56 +232,5 @@ describe("NtCard", () => {
   it("ne devrait pas afficher d'en-tete sans titre ni slots header/actions", () => {
     const wrapper = mount(NtCard, { slots: { default: "Contenu" } });
     expect(wrapper.find(".nt-card-header").exists()).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// NtLogViewer
-// ---------------------------------------------------------------------------
-
-describe("NtLogViewer", () => {
-  const entries: LogEntry[] = [
-    {
-      level: "info",
-      message: "Démarrage de l'application",
-      timestamp: "10:00",
-    },
-    { level: "warn", message: "Ressource faible", timestamp: "10:01" },
-    { level: "error", message: "Échec de connexion", timestamp: "10:02" },
-    { level: "debug", message: "Variable x=42", timestamp: "10:03" },
-  ];
-
-  it("devrait afficher tous les messages de log", () => {
-    const wrapper = mount(NtLogViewer, { props: { entries } });
-    expect(wrapper.text()).toContain("Démarrage de l'application");
-    expect(wrapper.text()).toContain("Ressource faible");
-    expect(wrapper.text()).toContain("Échec de connexion");
-    expect(wrapper.text()).toContain("Variable x=42");
-  });
-
-  it("devrait appliquer la classe de niveau a chaque entree", () => {
-    const wrapper = mount(NtLogViewer, { props: { entries } });
-    expect(wrapper.find(".nt-log-entry--info").exists()).toBe(true);
-    expect(wrapper.find(".nt-log-entry--warn").exists()).toBe(true);
-    expect(wrapper.find(".nt-log-entry--error").exists()).toBe(true);
-    expect(wrapper.find(".nt-log-entry--debug").exists()).toBe(true);
-  });
-
-  it("devrait afficher un message vide quand aucune entree", () => {
-    const wrapper = mount(NtLogViewer, { props: { entries: [] } });
-    expect(wrapper.find(".nt-log-empty").exists()).toBe(true);
-    expect(wrapper.text()).toContain("Aucun log à afficher.");
-  });
-
-  it("devrait avoir le role log", () => {
-    const wrapper = mount(NtLogViewer, { props: { entries: [] } });
-    expect(wrapper.find('[role="log"]').exists()).toBe(true);
-  });
-
-  it("devrait afficher les horodatages quand fournis", () => {
-    const wrapper = mount(NtLogViewer, { props: { entries } });
-    const times = wrapper.findAll(".nt-log-time");
-    expect(times).toHaveLength(4);
-    expect(times[0].text()).toBe("10:00");
   });
 });

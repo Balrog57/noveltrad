@@ -1,3 +1,15 @@
+-- v3 (2026-07-22) — Schéma consolidé.
+-- Remplace les anciennes migrations 001-018 (pre-v3). Greenfield : aucun
+-- utilisateur à migrer. Seules les tables réellement utilisées par le pipeline
+-- v3 (SimpleWorkflowRunner 4-stages) sont conservées.
+--
+-- Tables conservées : projects, chapters, paragraphs, settings.
+-- (lexicon, translation_memory, summaries, prompts dans les migrations suivantes.)
+--
+-- Tables supprimées (plus référencées en v3) : jobs, job_steps, agents,
+-- history_snapshots, audit_log, embeddings, exports, statistics,
+-- model_calibrations, review_reports, models.
+
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -16,6 +28,7 @@ CREATE TABLE IF NOT EXISTS chapters (
   source_path TEXT,
   order_index INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
+  metadata TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -31,50 +44,9 @@ CREATE TABLE IF NOT EXISTS paragraphs (
   metadata TEXT
 );
 
-CREATE TABLE IF NOT EXISTS lexicon (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  term TEXT NOT NULL,
-  translation TEXT NOT NULL,
-  category TEXT NOT NULL,
-  aliases TEXT,
-  locked INTEGER NOT NULL DEFAULT 0,
-  forbidden TEXT,
-  priority INTEGER NOT NULL DEFAULT 0,
-  description TEXT,
-  notes TEXT
-);
-
-CREATE TABLE IF NOT EXISTS translation_memory (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  source_text TEXT NOT NULL,
-  target_text TEXT NOT NULL,
-  source_language TEXT NOT NULL,
-  target_language TEXT NOT NULL,
-  usage_count INTEGER NOT NULL DEFAULT 1,
-  last_used_at TEXT,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS models (
-  id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL,
-  name TEXT NOT NULL,
-  model TEXT NOT NULL,
-  host TEXT,
-  api_key TEXT,
-  is_default INTEGER NOT NULL DEFAULT 0,
-  is_fallback INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_paragraphs_chapter ON paragraphs(chapter_id);
-CREATE INDEX IF NOT EXISTS idx_lexicon_project ON lexicon(project_id);
-CREATE INDEX IF NOT EXISTS idx_tm_project_text ON translation_memory(project_id, source_text);
-

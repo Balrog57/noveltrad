@@ -97,6 +97,20 @@ export const useProjectStore = defineStore("project", () => {
     }
   }
 
+  /**
+   * v3 : charge les chapitres d'un projet (pour le sélecteur de ProjectView).
+   */
+  async function loadChapters(projectId: string): Promise<void> {
+    try {
+      chapters.value = await window.novelTradAPI.invoke<Chapter[]>(
+        "chapter:list",
+        projectId,
+      );
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors du chargement des chapitres";
+    }
+  }
+
   return {
     recentProjects,
     currentProject,
@@ -108,5 +122,6 @@ export const useProjectStore = defineStore("project", () => {
     create,
     open,
     loadStats,
+    loadChapters,
   };
 });

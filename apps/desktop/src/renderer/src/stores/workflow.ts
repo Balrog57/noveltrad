@@ -1,138 +1,134 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
-import type { Job, Step, WorkflowStage } from "@shared/types/index.js";
-import { toPlain } from "../utils/toPlain";
+import { ref, computed } from "vue";
+import type { WorkflowStage } from "@shared/types/index.js";
 
-export interface WorkflowProgressPayload {
+/**
+ * v3 : payload de progression du SimpleWorkflowRunner.
+ * Remplace l'ancien WorkflowProgressPayload (basé sur Step/totalSteps) —
+ * le runner v3 ne persiste plus de jobs/steps, il émet un payload allégé
+ * par stage.
+ */
+export interface SimpleProgressPayload {
   jobId: string;
   projectId: string;
   chapterId?: string;
-  step: Step;
-  totalSteps: number;
+  stage: WorkflowStage;
+  stageIndex: number;
+  totalStages: number;
   batchChapterIndex?: number;
   batchTotalChapters?: number;
+  status: "running" | "completed" | "failed";
 }
 
+/** Les 4 stages v3, dans l'ordre (pour l'inspecteur d'agents). */
+const PIPELINE_STAGES: WorkflowStage[] = [
+  "translate",
+  "proofread",
+  "glossary",
+  "validate",
+];
+
 export const useWorkflowStore = defineStore("workflow", () => {
-  const activeJobs = ref<Job[]>([]);
-  const progress = ref<WorkflowProgressPayload | null>(null);
-  const loading = ref(false);
+  /** JobId du run courant (null si aucun run actif). */
+  const activeJobId = ref<string | null>(null);
+  /** Dernier event de progression reçu. */
+  const progress = ref<SimpleProgressPayload | null>(null);
+  /** Erreur éventuelle. */
   const error = ref<string | null>(null);
-  /** SDD §7.9 : IDs des chapitres sélectionnés pour le batch */
+  /** Chapitres sélectionnés pour un batch. */
   const selectedChapterIds = ref<string[]>([]);
 
+  // Écoute des events de progression du main process.
   window.novelTradAPI.on("workflow:progress", (payload: unknown) => {
-    const p = payload as WorkflowProgressPayload;
-    progress.value = p;
+    progress.value = payload as SimpleProgressPayload;
   });
 
-  async function start(projectPath: string, chapterId?: string): Promise<Job> {
-    loading.value = true;
+  /**
+   * Lance la traduction d'un chapitre unique.
+   * Retourne le jobId (le run est fire-and-forget côté main).
+   */
+  async function start(projectPath: string, chapterId: string): Promise<string> {
+    error.value = null;
     try {
-      const job = await window.novelTradAPI.invoke<Job>(
+      const job = await window.novelTradAPI.invoke<{ id: string }>(
         "workflow:start",
         projectPath,
         chapterId,
       );
-      activeJobs.value = [job, ...activeJobs.value];
-      return job;
-    } finally {
-      loading.value = false;
+      activeJobId.value = job.id;
+      return job.id;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Erreur lors du démarrage";
+      throw err;
     }
   }
 
-  async function startBatch(
-    projectPath: string,
-    chapterIds: string[],
-  ): Promise<Job> {
-    loading.value = true;
+  /** Lance la traduction d'un batch de chapitres. */
+  async function startBatch(projectPath: string, chapterIds: string[]): Promise<string> {
+    error.value = null;
     try {
-      const job = await window.novelTradAPI.invoke<Job>(
+      const job = await window.novelTradAPI.invoke<{ id: string }>(
         "workflow:start-batch",
         projectPath,
         chapterIds,
       );
-      activeJobs.value = [job, ...activeJobs.value];
-      return job;
-    } finally {
-      loading.value = false;
-    }
-  }
-
-  async function pause(jobId: string): Promise<void> {
-    try {
-      await window.novelTradAPI.invoke("workflow:pause", jobId);
+      activeJobId.value = job.id;
+      return job.id;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "Erreur lors de la pause";
+      error.value = err instanceof Error ? err.message : "Erreur lors du démarrage du batch";
+      throw err;
     }
   }
 
-  async function resume(jobId: string): Promise<void> {
-    try {
-      await window.novelTradAPI.invoke("workflow:resume", jobId);
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Erreur lors de la reprise";
+  /** Annule le run courant. */
+  async function cancel(): Promise<void> {
+    if (!activeJobId.value) {
+      return;
     }
-  }
-
-  async function cancel(jobId: string): Promise<void> {
     try {
-      await window.novelTradAPI.invoke("workflow:cancel", jobId);
+      await window.novelTradAPI.invoke("workflow:cancel", activeJobId.value);
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Erreur lors de l'annulation";
     }
   }
 
-  async function list(projectPath: string): Promise<Job[]> {
-    try {
-      return await window.novelTradAPI.invoke<Job[]>("workflow:list", projectPath);
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Erreur lors du listage";
-      return [];
+  /**
+   * Statut calculé de chaque stage du pipeline (pour l'inspecteur d'agents).
+   * Déduit depuis le dernier event de progression :
+   *   - "completed" si l'event status=completed a été vu pour ce stage.
+   *   - "running" si c'est le stage courant.
+   *   - "pending" sinon.
+   */
+  const stageStatuses = computed<Record<string, "pending" | "running" | "completed" | "failed">>(() => {
+    const result: Record<string, "pending" | "running" | "completed" | "failed"> = {};
+    for (const s of PIPELINE_STAGES) {
+      result[s] = "pending";
     }
-  }
-
-  /** SDD §7.11 : liste les jobs en cours (running/paused) pour la reprise */
-  async function listActive(projectPath: string): Promise<Job[]> {
-    try {
-      return await window.novelTradAPI.invoke<Job[]>(
-        "workflow:list-active",
-        projectPath,
-      );
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Erreur lors du listage actif";
-      return [];
+    if (!progress.value) {
+      return result;
     }
-  }
-
-  /** SDD §7.11 : reprend un job batch interrompu */
-  async function resumeBatch(projectPath: string, job: Job): Promise<void> {
-    try {
-      await window.novelTradAPI.invoke("workflow:resume-batch", projectPath, toPlain(job));
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Erreur lors de la reprise du batch";
+    const p = progress.value;
+    // Les stages avant le courant sont completed ; le courant a son status.
+    for (let i = 0; i < p.stageIndex; i++) {
+      result[PIPELINE_STAGES[i]] = "completed";
     }
-  }
-
-  async function retryStep(jobId: string, stepId: string): Promise<void> {
-    try {
-      await window.novelTradAPI.invoke("workflow:retry-step", jobId, stepId);
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Erreur lors du retry";
+    result[p.stage] = p.status === "running" ? "running" : p.status;
+    if (p.status === "completed" && p.stageIndex === p.totalStages - 1) {
+      // Dernier stage complété → tout est completed.
+      for (const s of PIPELINE_STAGES) {
+        result[s] = "completed";
+      }
     }
-  }
+    return result;
+  });
 
-  async function retryFrom(jobId: string, stage: WorkflowStage): Promise<void> {
-    try {
-      await window.novelTradAPI.invoke("workflow:retry-from", jobId, stage);
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Erreur lors du retryFrom";
-    }
-  }
+  /** True si un run est en cours (stage courant en cours). */
+  const isRunning = computed(() => {
+    return progress.value?.status === "running" && activeJobId.value !== null;
+  });
 
-  // --- SDD §7.9 : gestion de la sélection multiple de chapitres ---
+  // ── Sélection de chapitres (pour le batch) ──
 
-  /** Bascule la sélection d'un chapitre */
   function toggleChapterSelection(chapterId: string): void {
     const idx = selectedChapterIds.value.indexOf(chapterId);
     if (idx >= 0) {
@@ -142,40 +138,38 @@ export const useWorkflowStore = defineStore("workflow", () => {
     }
   }
 
-  /** Sélectionne tous les chapitres donnés */
   function selectAll(chapterIds: string[]): void {
     selectedChapterIds.value = [...chapterIds];
   }
 
-  /** Désélectionne tous les chapitres */
   function clearSelection(): void {
     selectedChapterIds.value = [];
   }
 
-  /** Vérifie si un chapitre est sélectionné */
   function isSelected(chapterId: string): boolean {
     return selectedChapterIds.value.includes(chapterId);
   }
 
+  /** Réinitialise l'état du run (après fin/annulation). */
+  function reset(): void {
+    activeJobId.value = null;
+    progress.value = null;
+  }
+
   return {
-    activeJobs,
+    activeJobId,
     progress,
-    loading,
     error,
     selectedChapterIds,
+    stageStatuses,
+    isRunning,
     start,
     startBatch,
-    pause,
-    resume,
     cancel,
-    list,
-    listActive,
-    resumeBatch,
-    retryStep,
-    retryFrom,
     toggleChapterSelection,
     selectAll,
     clearSelection,
     isSelected,
+    reset,
   };
 });

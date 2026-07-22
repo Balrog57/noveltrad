@@ -1,5 +1,193 @@
 ﻿# Workflow State
 
+## Request — v3 simplification (2026-07-22, branche `v3`)
+
+**Contexte** : simplification produit délibérée de NovelTrad (ship less, keep it
+solid). Ce n'est PAS un cleanup de code mort — tout service supprimé est vivant
+et testé. Pilotée par : bugs/crashes réels + UI trop complexe (12 vues).
+
+### Décisions verrouillées (clarification utilisateur)
+- **Rewrite v3 réel** — supprimer des features qui marchent (RAG, audit,
+  plugins, calibration, 10→4 agents).
+- **Garder le modèle chapters/paragraphs** (préserve l'EPUB multi-fichier de v2.3.0).
+- **Greenfield** — pas d'utilisateurs, pas de migration de données.
+- Détails dans `REFACTOR_PLAN_V3.md`.
+
+### Baseline capturée (`main` @ `e835160`)
+- `npm run type-check` → **0 errors**
+- `npm run test` → **1054/1054 pass** (75 files)
+- `npm run lint` → **0 errors**
+
+### Plan en 6 phases (voir REFACTOR_PLAN_V3.md pour le détail)
+- [x] Phase 0 — setup `v3`, baseline verte, plan doc, audit migrations
+- [x] Phase 1 — nouveau pipeline 4-stages (additif, ancien intact)
+- [x] Phase 3 — supprimer l'ancien code (rewire + delete + prune channels)
+- [x] Phase 2 — consolider migrations (18 → 5, drop tables inutilisées)
+- [x] Phase 4 — renderer 3 vues (Dashboard, Project all-in-one, Settings)
+- [x] Phase 5 — release 3.0.0 (bump version, CHANGELOG, README, trinity green)
+
+### Phase 5 — Release 3.0.0 (2026-07-22)
+- Version bump 2.3.0 → **3.0.0** (root + apps/desktop package.json + CLI).
+- CHANGELOG.md : entry v3.0.0 (breaking changes, features supprimées/conservées,
+  architecture, tests).
+- README.md : mis à jour (pipeline 4 agents, badges, workflow, UI 3 vues).
+- **Trinity finale green** : type-check 0 erreurs, **570/570 tests passent**
+  (49 files), lint 0 erreurs (12 warnings préexistants).
+- electron-builder.yml : inchangé (pas de modif requise).
+
+### Bilan v3
+- **Baseline** : 1054 tests / 75 files (v2.3.0) → **570 tests / 49 files** (v3.0.0).
+- **Code** : ~15 000 lignes supprimées (engine 1370 LOC, 10 agents, plugins,
+  RAG, calibration, audit, history, workers, 8 vues, 3 stores).
+- **Pipeline** : 12 stages → 4 (translate → proofread → glossary → validate).
+- **Migrations** : 18 → 5 (greenfield).
+- **IPC** : 79 → 52 canaux.
+- **UI** : 12 vues → 3.
+- Branche `v3` prête pour merge vers `main` + tag `v3.0.0`.
+
+### Phase 4 — Renderer 3 vues (2026-07-22)
+**Objectif** : collapse 12 vues → 3 (Dashboard, Project all-in-one, Settings).
+
+**Rewrites** :
+- `router/index.ts` : 3 routes (`/`, `/project/:id`, `/settings`).
+- `components/Sidebar.vue` : nav réduite (Accueil + Paramètres). La nav projet
+  se fait dans ProjectView.
+- `stores/workflow.ts` : réécrit pour `SimpleProgressPayload` (stage/stageIndex/
+  totalStages/status) + `stageStatuses` computé (pour l'inspecteur). Start/
+  start-batch/cancel only.
+- `stores/project.ts` : ajout `loadChapters()`.
+- `views/HomeView.vue` : rebranding (suppression "2.0", desc pipeline 4 agents).
+- `views/ProjectView.vue` : **all-in-one** — header + import/export, sélecteur
+  de chapitre, panes source/cible, boutons Traduire (chapitre / tous),
+  inspecteur 4 agents temps réel (stageLabel + stageStatuses).
+
+**Suppressions** :
+- Vues (8) : Chapters, ChapterEditor, Workflow, Lexicon, History, Console,
+  Plugins, Help.
+- Stores (3) : history, plugins, logs.
+- Composants : components/editor/ (NtSplitPane), components/history/
+  (NtDiffViewer), components/lexicon/ (LexiconForm, LexiconTable),
+  NtLogViewer.
+
+**Tests** : `batch.spec.ts` (supprimé block workflow-store old-API),
+`ui-components.spec.ts` (supprimé block NtLogViewer). **570/570 tests passent**
+(49 files), type-check 0 erreurs, lint 0 erreurs (12 warnings préexistants).
+
+**Risque connu** : pas de tests unitaires renderer (documenté ARCHITECTURE.md).
+Valider via `npm run dev` smoke + Playwright e2e (Phase 5).
+
+### Phase 2 — Consolidation migrations (2026-07-22)
+**Objectif** : schéma greenfield épuré. Les 18 migrations → 5, droppant les
+tables des features supprimées en Phase 3.
+
+**Nouvelles migrations** :
+- `001_initial.sql` — projects, chapters (+metadata), paragraphs, settings.
+- `002_lexicon.sql` — lexicon (+aliases +metadata).
+- `003_translation_memory.sql` — TM (forme finale : project_id nullable).
+- `004_summaries.sql` — chapter_summaries + novel_summaries.
+- `005_prompts.sql` — prompts (override DB optionnel pour PromptLoader).
+
+**Tables droppées** : jobs, job_steps, agents, history_snapshots, audit_log,
+embeddings, exports, statistics, model_calibrations, review_reports, models.
+
+**Modifs code** : `connection.ts` LEGACY_VERSIONS réduit à v1 (greenfield).
+`db-migrations.spec.ts` réécrit pour le set v3 (5 tests : tables conservées,
+tables droppées, colonnes consolidées, TM nullable, idempotence).
+
+**Vérif** : type-check 0 erreurs, **582/582 tests passent** (49 files), lint 0.
+
+### Phase 3 — Suppression de l'ancien code (2026-07-22)
+**Objectif** : faire de SimpleWorkflowRunner le moteur unique, supprimer
+~30 fichiers morts, écrémer les canaux IPC (79 → 52).
+
+**Rewiring (3a)** :
+- `ipc/handlers/workflow.ts` réécrit : registre de SimpleWorkflowRunner,
+  events `workflow:progress`, jobIds générés, cleanup dispose. Canaux
+  conservés : start, start-batch, cancel, list (retourne les chapitres).
+- `index.ts` : supprimé PluginHost + setPluginHost + resumeActiveJobs.
+- `cli/translate.ts` réécrit : pilote SimpleWorkflowRunner directement (Promise,
+  plus de polling jobs table). `cli/index.ts` `status` → chapitres (plus de jobs).
+- `ipc/router.ts` : retiré history + plugins + ai handlers (10 handlers).
+
+**Suppressions (3b/3c)** :
+- Agents (10) : Review, Revise, Split, PreTranslate, Polish, Grammar, Style,
+  Consistency, Qa, Export + leurs 10 prompts.
+- Services : CalibrationService, RagEngine, AuditService, plugins/* (3 fichiers).
+- Managers/workers : WorkflowEngine.ts (1370 LOC), workflow/QaBranchPolicy,
+  workflow/PauseController, workers/agent-worker.ts + dir workers/.
+- Handlers : history.ts, plugins.ts, ai.ts.
+- Repos : JobRepository, HistoryRepository.
+- AgentFactory simplifié : switch 4 stages only.
+
+**Correction de scope** : QualityChecker + HallucinationDetector **conservés**
+(dépendances du ValidatorAgent v3). Le plan initial les supprimait à tort.
+
+**Canaux IPC (3d)** : 79 → 52. Supprimé plugin:* (9), history:*+audit:* (7),
+workflow:pause/resume/retry-step/retry-from/quality-failed/resume-batch/
+list-active (7), ai:stream-* (4). channels.ts + preload/index.ts synchronisés.
+
+**Tests (3e)** : supprimé 26 fichiers de tests obsolètes (plugins, history,
+audit, rag, quality-advanced, review/revise, qa-branch-policy, worker-threads,
+workflow-branching/concurrency/retry/timeout/guards/view, ai-stream, agents,
+engines, prompts, prompt-loader). Mis à jour non-regression.spec.ts +
+v3-agents.spec.ts. **586/586 tests passent** (49 files), type-check 0 erreurs,
+lint 0 erreurs (9 warnings préexistants).
+
+### Phase 1 — Pipeline 4-stages (2026-07-22, additif)
+**Objectif** : construire le nouveau runner à côté de l'ancien moteur, sans
+casser les 1054 tests existants.
+
+**Livré** :
+- `services/agents/ProofreaderAgent.ts` — fusionne grammar+style+polish
+  (subclass de TextRefineAgent + `PROOFREAD_SPEC`).
+- `services/agents/ValidatorAgent.ts` — fusionne consistency+qa ; internalise
+  le hand-off du ConsistencyReport (anciennement injecté via options).
+- `services/prompts/proofread.system.ts` (3 prompts → 1, 3 axes éditoriaux).
+- `services/prompts/validate.system.ts` (qa + consistency → 1 éval JSON).
+- `managers/SimpleWorkflowRunner.ts` (~370 LOC) — pipeline séquentiel in-thread,
+  4 stages, events `workflow:progress`, persistance via ParagraphRepository,
+  cancel, batch, Summarizer transverse déclenché après `validate`.
+- `WorkflowStage` (shared types) + `workflowStageSchema` (shared schemas) +
+  `AgentFactory.create` switch : ajout des stages `proofread`/`validate`.
+- Stages historiques conservés dans l'union (ancien moteur intact).
+
+**Tests** :
+- `tests/unit/v3-agents.spec.ts` (13 tests) — Proofreader, Validator, factory.
+- `tests/unit/simple-workflow-runner.spec.ts` (5 tests) — orchestration,
+  progression, persistance, cancel, batch.
+- Vérif : type-check 0 erreurs, **1072/1072 tests passent** (77 files),
+  lint 0 erreurs (+0 warning sur les nouveaux fichiers).
+
+**Décision de scope (honnêteté)** :
+- CalibrationService NON repris dans Validator (supprimé en Phase 3) → scoring
+  brut non calibré. Connu et accepté pour un MVP.
+- QA auto-retry branching (QaBranchPolicy) non repris : le validateur produit
+  un score, l'utilisateur relance si besoin (décision v3).
+- `SummarizerAgent` conservé (transverse) : déclenché après `validate`.
+
+### Audit schéma DB (pour Phase 2)
+- **Tables gardées** : projects, chapters (+metadata), paragraphs, lexicon
+  (+aliases/metadata), translation_memory, chapter_summaries, novel_summaries, settings
+- **Tables supprimées** : agents, jobs, job_steps, history_snapshots, audit_log,
+  embeddings, exports, prompts, statistics, model_calibrations, review_reports, models
+
+### Stratégie de branche
+Branche longue durée `v3` depuis `main`. États intermédiaires pas forcément
+shippables. Merge final `v3 → main` = release 3.0.0.
+
+### Handoff pour prochaine étape
+Phase 5 (release 3.0.0) :
+- Bump version 2.3.0 → 3.0.0 dans root + apps/desktop package.json.
+- Mettre à jour CHANGELOG.md (entry v3.0.0 : pipeline 4 agents, UI simplifiée,
+  suppression plugins/RAG/calibration/audit/history/workers).
+- Mettre à jour README.md (nouvelle architecture).
+- Vérifier electron-builder.yml (pas de changement requis).
+- Optionnel : smoke test `npm run dev` + Playwright e2e (créer projet →
+  importer epub → traduire → exporter) pour valider l'intégration bout-en-bout.
+- Trinity finale green obligatoire avant merge `v3 → main` + tag `v3.0.0`.
+
+---
+
 ## Request — Refactor clean architecture (2026-07-19)
 
 **Contexte** : refactor architecture largeur sur `refactor/clean-architecture`

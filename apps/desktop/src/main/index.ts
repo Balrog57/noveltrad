@@ -6,20 +6,13 @@ import { registerIpcRouter } from "./ipc/router.js";
 import { getSettingsManager } from "./managers/SettingsManager.js";
 import { UpdateManager } from "./managers/UpdateManager.js";
 import { logger } from "./utils/logger.js";
-import { PluginHost } from "./plugins/PluginHost.js";
-import { setPluginHost, setSettingsManager } from "./ipc/handlers/plugins.js";
-import { workflowEngine } from "./ipc/handlers/workflow.js";
 import { setUpdateManager } from "./ipc/handlers/update.js";
-import { AiRouter } from "./services/AiRouter.js";
-import { LexiconEngine } from "./services/LexiconEngine.js";
-import { ExportEngine } from "./services/ExportEngine.js";
 
 // P1-4 fix : singleton process-wide partagé avec tous les handlers IPC
 // (avant, 12+ instances faisaient chacune des fs.readFileSync synchrones).
 const settings = getSettingsManager();
 let mainWindow: BrowserWindow | null = null;
 let updateManager: UpdateManager | null = null;
-let pluginHost: PluginHost | null = null;
 
 function getCrashReportsDir(): string {
   const appData = process.env.APPDATA || path.join(os.homedir(), ".config");
@@ -240,43 +233,6 @@ app.whenReady().then(async () => {
 
   await registerIpcRouter();
   await createWindow();
-
-  // SDD §15 : initialisation du PluginHost
-  const aiRouter = new AiRouter();
-  const lexiconEngine = new LexiconEngine();
-  const exportEngine = new ExportEngine();
-  pluginHost = new PluginHost(
-    {
-      aiRouter,
-      lexiconEngine,
-      logger,
-    },
-    exportEngine,
-  );
-
-  // Connecter le PluginHost aux handlers IPC
-  setPluginHost(pluginHost);
-  setSettingsManager(settings);
-
-  // SDD §15 : Connecter le PluginHost au WorkflowEngine pour activer
-  // l'extensibilité d'agents/providers par plugin (getPluginAgent + resolver)
-  workflowEngine.setPluginHost(pluginHost);
-
-  // Découvrir et charger les plugins activés (flux permissions différé)
-  const enabledPluginIds = settings.get("enabledPlugins");
-  const sensitivePlugins = await pluginHost.init(enabledPluginIds);
-
-  // Si des plugins sensibles sont en attente, demander confirmation à l'utilisateur
-  if (sensitivePlugins.length > 0) {
-    mainWindow?.webContents.once("did-finish-load", async () => {
-      mainWindow?.webContents.send("plugin:request-permissions");
-    });
-  }
-
-  // SDD §7.11 : Reprendre les jobs actifs interrompus au démarrage
-  workflowEngine.resumeActiveJobs().catch((err) => {
-    logger.warn("Auto-resume des jobs actifs échoué", err);
-  });
 
   updateManager = new UpdateManager(
     settings.get("updateChannel"),

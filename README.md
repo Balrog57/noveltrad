@@ -1,38 +1,40 @@
-# 📖 NovelTrad 2.0
+# 📖 NovelTrad
 
 *Le traducteur de romans multi-agent qui parle chinois, pense en IA, et écrit en français.*
 
-[![Version](https://img.shields.io/badge/version-2.0.1-blue?style=flat-square)](https://github.com/Balrog57/noveltrad/releases)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue?style=flat-square)](https://github.com/Balrog57/noveltrad/releases)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-145%20passing-brightgreen?style=flat-square)](https://github.com/Balrog57/noveltrad/actions)
+[![Tests](https://img.shields.io/badge/tests-570%20passing-brightgreen?style=flat-square)](https://github.com/Balrog57/noveltrad/actions)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-339933?style=flat-square&logo=node.js&logoColor=white)]()
 [![Electron](https://img.shields.io/badge/Electron-31-47848F?style=flat-square&logo=electron&logoColor=white)]()
 [![Vue](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vue.js&logoColor=white)]()
 [![Ollama](https://img.shields.io/badge/Ollama-local-blueviolet?style=flat-square)]()
 
-> **TL;DR** — Importez un roman chinois → 10 agents IA le traduisent → exportez un EPUB français. 100% local, aucune donnée dans le cloud.
+> **TL;DR** — Importez un roman → 4 agents IA le traduisent (translate → proofread → glossary → validate) → exportez un EPUB. 100% local, aucune donnée dans le cloud.
 
 ---
 
 ## ✨ Fonctionnalités
 
-- 🤖 **10 agents IA spécialisés** — Split, pré-traduction, traduction, cohérence, lexique, grammaire, style, polish, QA, export. Un pipeline complet, pas une simple traduction mot-à-mot.
-- 🧠 **Translation Memory persistante** — Chaque phrase traduite est réutilisée. La cohérence s'améliore chapitre après chapitre, les coûts IA diminuent.
-- 📚 **Lexique dynamique verrouillé** — Noms de personnages, lieux, techniques. Verrouillez une traduction, elle ne change plus jamais. Alias et termes interdits supportés.
+- 🤖 **Pipeline 4 agents** — Translate (traduction initiale), Proofreader (grammaire + style + polish), Glossary (lexique verrouillé), Validator (fidélité + cohérence). Un pipeline simple et actionnable.
+- 🧠 **Translation Memory persistante** — Chaque phrase traduite est réutilisée. La cohérence s'améliore chapitre après chapitre.
+- 📚 **Lexique verrouillé** — Noms de personnages, lieux, techniques. Verrouillez une traduction, elle ne change plus jamais.
+- 📝 **Summarizer transverse** — Résumé incrémental du roman injecté dans le contexte pour la cohérence cross-chapitre (noms, intrigue, ton).
 - 🏠 **100% local** — Fonctionne avec [Ollama](https://ollama.com). Aucune donnée source ou traduite ne quitte votre machine.
-- 📦 **Export natif** — EPUB, DOCX, Markdown, TXT, HTML. Mode bilingue inclus.
-- 🔄 **Auto-update** — Mises à jour automatiques via GitHub Releases.
+- 📦 **Export natif** — EPUB (multi-chapitre), DOCX, Markdown, TXT. Mode bilingue inclus.
+- 🖥️ **UI simplifiée** — 3 vues : Dashboard projets, ProjectView tout-en-un (source/cible + inspecteur agents temps réel), Settings.
+- 💻 **CLI `noveltrad`** — Pilotable en ligne de commande (create/import/translate/export/status).
 
 ## 🎯 Pourquoi l'utiliser ?
 
 **Le problème** : Traduire un web novel chinois de 500 chapitres avec un LLM, c'est perdre la cohérence des noms au chapitre 10 et obtenir 500 styles différents.
 
-**La solution** : NovelTrad orchestre 10 agents IA qui travaillent ensemble, alimentés par une mémoire de traduction et un lexique verrouillé. Le chapitre 500 a le même style et les mêmes noms que le chapitre 1.
+**La solution** : NovelTrad orchestre un pipeline de 4 agents IA alimenté par une mémoire de traduction, un lexique verrouillé et un résumé transverse du roman. Le chapitre 500 a le même style et les mêmes noms que le chapitre 1.
 
 ```
-Chapitre source → 10 agents IA → EPUB français publiable
-                    ↑                    ↑
-            TM + Lexique           QA score ≥ 90
+Chapitre source → [Translate → Proofread → Glossary → Validate] → EPUB français
+                          ↑              ↑                ↑
+                   TM + Lexique    Summarizer      score qualité
 ```
 
 ## 🛠 Quick Start
@@ -54,10 +56,10 @@ npm run dev                # 🎉 L'app s'ouvre
 
 ### Workflow en 30 secondes
 
-1. **Nouveau projet** → Choisir langue source (zh) / cible (fr)
+1. **Nouveau projet** → Choisir langue source / cible
 2. **Importer** un fichier TXT / DOCX / EPUB
-3. **Cliquer "Traduire"** → Les 10 agents travaillent séquentiellement
-4. **Vérifier** le score QA et le rapport de cohérence
+3. **Cliquer "Traduire"** → Le pipeline 4 agents s'exécute (visible en temps réel dans l'inspecteur)
+4. **Vérifier** le score qualité du Validator
 5. **Exporter** en EPUB
 
 ## 📖 Documentation

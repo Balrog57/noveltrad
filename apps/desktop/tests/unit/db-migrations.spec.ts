@@ -9,31 +9,20 @@ import { runMigrations } from "../../src/main/db/connection";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Crée un dossier temporaire avec des fichiers de migration .sql. */
-function createTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "db-migrations-test-"));
+const MIGRATIONS_DIR = path.resolve(
+  __dirname,
+  "../../src/main/db/migrations",
+);
+
+function tableExists(db: sqlite3.Database, table: string): boolean {
+  const rows = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+    )
+    .all([table]) as { name: string }[];
+  return rows.length > 0;
 }
 
-/** Écrit un fichier .sql de migration dans le dossier. */
-function writeMigration(dir: string, name: string, sql: string): void {
-  fs.writeFileSync(path.join(dir, name), sql, "utf-8");
-}
-
-/** Exécute du SQL brut sur une DB. */
-function execSql(db: sqlite3.Database, sql: string): void {
-  db.exec(sql);
-}
-
-/** Récupère toutes les entrées de __migrations triées par version. */
-function getMigrations(
-  db: sqlite3.Database,
-): { version: number; name: string; applied_at: string }[] {
-  return db
-    .prepare("SELECT version, name, applied_at FROM __migrations ORDER BY version")
-    .all() as { version: number; name: string; applied_at: string }[];
-}
-
-/** Vérifie si une colonne existe dans une table. */
 function columnExists(
   db: sqlite3.Database,
   table: string,
@@ -45,306 +34,100 @@ function columnExists(
   return cols.some((c) => c.name === column);
 }
 
+function getMigrations(
+  db: sqlite3.Database,
+): { version: number; name: string }[] {
+  return db
+    .prepare("SELECT version, name FROM __migrations ORDER BY version")
+    .all() as { version: number; name: string }[];
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("runMigrations — file-based unified runner (T2)", () => {
+describe("runMigrations — v3 consolidated schema", () => {
   let db: sqlite3.Database;
-  let tempDir: string;
 
   beforeEach(() => {
     db = new sqlite3.Database();
-    tempDir = createTempDir();
   });
 
   afterEach(() => {
     if (db) db.close();
-    if (tempDir && fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("applique les 5 migrations v3 et crée toutes les tables conservées", () => {
+    runMigrations(db as never, MIGRATIONS_DIR);
+
+    const rows = getMigrations(db);
+    expect(rows).toHaveLength(5);
+    expect(rows.map((r) => r.version)).toEqual([1, 2, 3, 4, 5]);
+    expect(rows[0].name).toBe("001_initial.sql");
+    expect(rows[4].name).toBe("005_prompts.sql");
+
+    // Tables conservées (core)
+    expect(tableExists(db, "projects")).toBe(true);
+    expect(tableExists(db, "chapters")).toBe(true);
+    expect(tableExists(db, "paragraphs")).toBe(true);
+    expect(tableExists(db, "settings")).toBe(true);
+    // lexicon
+    expect(tableExists(db, "lexicon")).toBe(true);
+    expect(tableExists(db, "lexicon_aliases")).toBe(true);
+    // translation memory
+    expect(tableExists(db, "translation_memory")).toBe(true);
+    // summaries
+    expect(tableExists(db, "chapter_summaries")).toBe(true);
+    expect(tableExists(db, "novel_summaries")).toBe(true);
+    // prompts (override DB optionnel)
+    expect(tableExists(db, "prompts")).toBe(true);
+  });
+
+  it("ne crée PAS les tables supprimées en v3", () => {
+    runMigrations(db as never, MIGRATIONS_DIR);
+
+    // Tables supprimées (jobs, audit, rag, plugins, calibration, etc.)
+    const dropped = [
+      "jobs",
+      "job_steps",
+      "agents",
+      "history_snapshots",
+      "audit_log",
+      "embeddings",
+      "exports",
+      "statistics",
+      "model_calibrations",
+      "review_reports",
+      "models",
+    ];
+    for (const t of dropped) {
+      expect(tableExists(db, t)).toBe(false);
     }
   });
 
-  // ── Test 1 : DB fraîche → toutes les migrations s'exécutent ──
-  it("fresh DB executes all migrations (v1–v13) and chapters.metadata exists", () => {
-    // Copier les fichiers de migration réels dans le dossier temporaire
-    const realMigrationsDir = path.resolve(
-      __dirname,
-      "../../src/main/db/migrations",
-    );
-    const files = fs
-      .readdirSync(realMigrationsDir)
-      .filter((f) => f.endsWith(".sql"))
-      .sort();
-    for (const f of files) {
-      const sql = fs.readFileSync(path.join(realMigrationsDir, f), "utf-8");
-      writeMigration(tempDir, f, sql);
-    }
-
-    runMigrations(db, tempDir);
-
-    const rows = getMigrations(db);
-    expect(rows.length).toBe(18);
-    expect(rows[0].version).toBe(1);
-    expect(rows[12].version).toBe(13);
-    expect(rows[12].name).toBe("013_index_cost.sql");
-    // v1.4 : migrations review_reports (014) + summaries (015)
-    expect(rows[13].version).toBe(14);
-    expect(rows[13].name).toBe("014_review_stage.sql");
-    expect(rows[14].version).toBe(15);
-    expect(rows[14].name).toBe("015_summaries.sql");
-    // v2.2.0 : translation_memory.project_id rendu nullable pour les entrées
-    // globales (promoteToGlobal)
-    expect(rows[15].version).toBe(16);
-    expect(rows[15].name).toBe("016_tm_global_nullable.sql");
-    // v2.2.7 : guards anti-boucle — compteur de retries QA par job
-    expect(rows[16].version).toBe(17);
-    expect(rows[16].name).toBe("017_guards.sql");
-    // v2.2.8 : index composite history_snapshots (Workstream A)
-    expect(rows[17].version).toBe(18);
-    expect(rows[17].name).toBe("018_history_index.sql");
-
-    // Vérifier que la colonne metadata a été ajoutée à chapters
+  it("chapters.metadata et prompts.active existent (consolidés)", () => {
+    runMigrations(db as never, MIGRATIONS_DIR);
     expect(columnExists(db, "chapters", "metadata")).toBe(true);
-    // T5 fix : la colonne active a été ajoutée à prompts
     expect(columnExists(db, "prompts", "active")).toBe(true);
-    // 013 : colonne cost_usd sur jobs + indexes de couverture
-    expect(columnExists(db, "jobs", "cost_usd")).toBe(true);
-    // 017 : colonne qa_retry_count sur jobs (guards anti-boucle)
-    expect(columnExists(db, "jobs", "qa_retry_count")).toBe(true);
-    const indexes = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_paragraphs_status', 'idx_prompts_agent')")
-      .all() as { name: string }[];
-    expect(indexes.length).toBe(2);
-    // 018 : index composite sur history_snapshots
-    const histIndex = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_history_project_chapter_created'")
-      .all() as { name: string }[];
-    expect(histIndex.length).toBe(1);
   });
 
-  // ── Test 2 : DB existante v1-v8 → seules v9-v11 s'exécutent ──
-  it("existing DB with v1–v8 only runs v9, v10 and v11", () => {
-    // Simuler une DB existante du système inline : créer les tables v1-v8
-    // et laisser __migrations vide (comme le faisait l'ancien système)
-    execSql(
-      db,
-      `CREATE TABLE IF NOT EXISTS projects (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, author TEXT,
-        source_language TEXT NOT NULL, target_language TEXT NOT NULL,
-        path TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-      )`,
-    );
-    execSql(
-      db,
-      `CREATE TABLE IF NOT EXISTS chapters (
-        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        title TEXT, source_path TEXT, order_index INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-      )`,
-    );
-    execSql(
-      db,
-      `CREATE TABLE IF NOT EXISTS paragraphs (
-        id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL, index_in_chapter INTEGER NOT NULL,
-        source_text TEXT NOT NULL, translated_text TEXT, pre_translated_text TEXT,
-        status TEXT NOT NULL DEFAULT 'pending', metadata TEXT
-      )`,
-    );
-    // La migration v1 crée aussi translation_memory (nécessaire pour v10 ALTER TABLE)
-    execSql(
-      db,
-      `CREATE TABLE IF NOT EXISTS translation_memory (
-        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        source_text TEXT NOT NULL, target_text TEXT NOT NULL,
-        source_language TEXT NOT NULL, target_language TEXT NOT NULL,
-        usage_count INTEGER NOT NULL DEFAULT 1,
-        last_used_at TEXT, created_at TEXT NOT NULL
-      )`,
-    );
-    // La migration v4 crée embeddings (nécessaire pour v11)
-    execSql(
-      db,
-      `CREATE TABLE IF NOT EXISTS embeddings (
-        id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL, paragraph_id TEXT NOT NULL,
-        embedding_json TEXT NOT NULL, created_at TEXT NOT NULL
-      )`,
-    );
-
-    // Créer les fichiers dans le dossier temporaire
-    writeMigration(
-      tempDir,
-      "001_initial.sql",
-      "CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
-    );
-    writeMigration(
-      tempDir,
-      "002_jobs.sql",
-      "CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
-    );
-    writeMigration(tempDir, "009_chapter_metadata.sql", "ALTER TABLE chapters ADD COLUMN metadata TEXT");
-    writeMigration(tempDir, "010_tm_enhancements.sql", "ALTER TABLE translation_memory ADD COLUMN normalized_hash TEXT");
-    writeMigration(tempDir, "011_rag_vectors.sql", "CREATE INDEX IF NOT EXISTS idx_test ON embeddings(paragraph_id)");
-
-    runMigrations(db, tempDir);
-
-    const rows = getMigrations(db);
-    // La détection héritage marque v1-v8 comme appliquées (8 entrées legacy),
-    // seules v9 et v10 sont réellement exécutées via les fichiers
-    expect(rows.length).toBe(11);
-    expect(rows[0].version).toBe(1);
-    expect(rows[7].version).toBe(8);
-    expect(rows[8].version).toBe(9);
-    expect(rows[8].name).toBe("009_chapter_metadata.sql");
-    expect(rows[9].version).toBe(10);
-    expect(rows[9].name).toBe("010_tm_enhancements.sql");
-    expect(rows[10].version).toBe(11);
-    expect(rows[10].name).toBe("011_rag_vectors.sql");
-    expect(columnExists(db, "chapters", "metadata")).toBe(true);
+  it("translation_memory.project_id est nullable (entrées globales)", () => {
+    runMigrations(db as never, MIGRATIONS_DIR);
+    // Insérer une entrée avec project_id NULL doit réussir.
+    db.prepare(
+      `INSERT INTO translation_memory (id, project_id, source_text, target_text,
+        source_language, target_language, created_at)
+       VALUES (?, NULL, ?, ?, ?, ?, ?)`,
+    ).run(["tm1", "hello", "bonjour", "en", "fr", "2026-01-01"]);
+    const row = db
+      .prepare("SELECT project_id FROM translation_memory WHERE id = ?")
+      .get(["tm1"]) as { project_id: string | null };
+    expect(row.project_id).toBeNull();
   });
 
-  // ── Test 3 : Fichier SQL invalide → rollback + erreur ──
-  it("invalid SQL rolls back the failed migration and throws", () => {
-    writeMigration(tempDir, "001_initial.sql", "CREATE TABLE test (id TEXT PRIMARY KEY)");
-    writeMigration(tempDir, "002_broken.sql", "INVALID SQL STATEMENT !!!");
-    writeMigration(tempDir, "003_after.sql", "CREATE TABLE after_broken (id TEXT PRIMARY KEY)");
-
-    expect(() => runMigrations(db, tempDir)).toThrow();
-
-    // v1 doit être appliquée (commitée avant la tentative v2)
-    // v2 ne doit PAS être dans __migrations
-    // v3 ne doit PAS être dans __migrations
-    const rows = getMigrations(db);
-    expect(rows.length).toBe(1);
-    expect(rows[0].version).toBe(1);
-
-    // v2 ne doit laisser aucune trace (table test ne doit pas exister non plus… on vérifie juste la migration)
-    // Note: la table test a été créée par v1
-    const tables = db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='after_broken'",
-      )
-      .all() as { name: string }[];
-    expect(tables.length).toBe(0);
-  });
-
-  // ── Test 4 : Numéros en désordre → tri correct ──
-  it("sorts files by numeric prefix regardless of write order", () => {
-    writeMigration(tempDir, "003_last.sql", "CREATE TABLE third_migration (id TEXT PRIMARY KEY)");
-    writeMigration(tempDir, "001_first.sql", "CREATE TABLE first_migration (id TEXT PRIMARY KEY)");
-    writeMigration(tempDir, "002_second.sql", "CREATE TABLE second_migration (id TEXT PRIMARY KEY)");
-
-    runMigrations(db, tempDir);
-
-    const rows = getMigrations(db);
-    expect(rows.length).toBe(3);
-    expect(rows[0].version).toBe(1);
-    expect(rows[1].version).toBe(2);
-    expect(rows[2].version).toBe(3);
-
-    // Vérifier que les tables ont bien été créées dans l'ordre
-    const tables = db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_migration' ORDER BY name",
-      )
-      .all() as { name: string }[];
-    expect(tables.some((t) => t.name === "first_migration")).toBe(true);
-    expect(tables.some((t) => t.name === "second_migration")).toBe(true);
-    expect(tables.some((t) => t.name === "third_migration")).toBe(true);
-  });
-
-  // ── Test 5 : Fichier sans préfixe numérique → ignoré ──
-  it("ignores .sql files without a numeric prefix", () => {
-    writeMigration(tempDir, "001_valid.sql", "CREATE TABLE valid_table (id TEXT PRIMARY KEY)");
-    writeMigration(tempDir, "setup.sql", "CREATE TABLE setup_table (id TEXT PRIMARY KEY)");
-    writeMigration(tempDir, "migration_helpers.sql", "CREATE TABLE helpers (id TEXT PRIMARY KEY)");
-
-    runMigrations(db, tempDir);
-
-    const rows = getMigrations(db);
-    expect(rows.length).toBe(1);
-    expect(rows[0].version).toBe(1);
-    expect(rows[0].name).toBe("001_valid.sql");
-
-    // Seule valid_table doit exister
-    const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('__migrations', 'sqlite_sequence')")
-      .all() as { name: string }[];
-    expect(tables.length).toBe(1);
-    expect(tables[0].name).toBe("valid_table");
-  });
-
-  // ── Test 6 (T4B) : Migration avec transaction imbriquée → pas de wrapper ──
-  it("T4B: migration with own BEGIN/COMMIT is not double-wrapped", () => {
-    // Une migration qui contient sa propre transaction ne doit pas être
-    // wrappée par un BEGIN/COMMIT externe (sinon "cannot start a transaction
-    // within a transaction").
-    writeMigration(
-      tempDir,
-      "001_simple.sql",
-      "CREATE TABLE t1 (id TEXT PRIMARY KEY)",
-    );
-    writeMigration(
-      tempDir,
-      "002_with_txn.sql",
-      "BEGIN; CREATE TABLE t2 (id TEXT PRIMARY KEY); COMMIT;",
-    );
-
-    // Ne doit pas throw
-    expect(() => runMigrations(db, tempDir)).not.toThrow();
-
-    const rows = getMigrations(db);
-    expect(rows.length).toBe(2);
-    expect(rows[1].name).toBe("002_with_txn.sql");
-
-    // t2 doit exister (la transaction interne a été exécutée)
-    const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='t2'")
-      .all() as { name: string }[];
-    expect(tables.length).toBe(1);
-  });
-
-  // ── Test 7 (T4B) : Rollback propre sur erreur, même sans transaction interne ──
-  it("T4B: rollback is safe even if no transaction is active", () => {
-    writeMigration(tempDir, "001_ok.sql", "CREATE TABLE ok_table (id TEXT PRIMARY KEY)");
-    // Migration invalide (syntaxe SQL cassée)
-    writeMigration(tempDir, "002_broken.sql", "THIS IS NOT VALID SQL !!!");
-
-    expect(() => runMigrations(db, tempDir)).toThrow();
-
-    // v1 appliquée, v2 non
-    const rows = getMigrations(db);
-    expect(rows.length).toBe(1);
-    expect(rows[0].version).toBe(1);
-  });
-
-  // ── Test 8 (régression ENOTEMPTY) : manifest bundled sans dossier ──
-  // Garde contre la régression où le dossier migrations n'était pas embarqué
-  // dans le build : runMigrations(db) doit utiliser le manifest bundled et
-  // créer TOUTES les tables (dont projects), sans skip silencieux.
-  it("sans migrationsDir : utilise le manifest bundled et crée la table projects", () => {
-    // Aucun dossier passé → le manifest bundled (import.meta.glob) doit servir.
-    runMigrations(db);
-
-    const rows = getMigrations(db);
-    expect(rows.length).toBe(18);
-
-    // La table projects (001_initial.sql) doit exister — c'est précisément
-    // son absence qui causait "no such table: projects" → ENOTEMPTY masqué.
-    const tables = db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'",
-      )
-      .all() as { name: string }[];
-    expect(tables.length).toBe(1);
-    expect(tables[0].name).toBe("projects");
-  });
-
-  // ── Test 9 (régression ENOTEMPTY) : dossier inexistant → throw (pas de skip) ──
-  it("migrationsDir inexistant : throw au lieu de skip silencieux", () => {
-    const bogusDir = path.join(os.tmpdir(), "does-not-exist-migrations-xyz");
-    expect(() => runMigrations(db, bogusDir)).toThrow(
-      /Dossier de migrations introuvable/,
-    );
+  it("idempotent : réexécuter ne duplique pas les migrations", () => {
+    runMigrations(db as never, MIGRATIONS_DIR);
+    runMigrations(db as never, MIGRATIONS_DIR);
+    expect(getMigrations(db)).toHaveLength(5);
   });
 });

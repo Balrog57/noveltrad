@@ -1,23 +1,29 @@
 /**
- * Sous-commande `noveltrad translate` — lance le workflow de traduction.
+ * Sous-commande `noveltrad translate` — lance le workflow de traduction v3.
  *
- * Pilote WorkflowEngine directement (sans IPC, sans BrowserWindow). Le
- * progrès est émis sur stderr via le callback onProgress hook (Phase 3.1).
+ * Pilote SimpleWorkflowRunner directement (sans IPC, sans BrowserWindow). Le
+ * progrès est émis sur stderr via le callback onProgress.
+ *
+ * v3 : le runner retourne une Promise qui se résout à la fin du pipeline —
+ * plus de polling de la jobs table (supprimée). Si --no-wait, on rend la main
+ * immédiatement après le démarrage (fire-and-forget via un détachement).
  *
  * Contraintes CLI :
  *   - useWorkerThreads forcés à false (les workers réimportent electron).
- *   - pluginHost non connecté (la CLI ne gère pas les plugins).
+ *     Non pertinent en v3 (SimpleWorkflowRunner est in-thread de toute façon).
  *   - Si Ollama n'est pas accessible → exit code 2 (OLLAMA_DOWN).
  */
 
 import { getSettingsManager } from "../main/managers/SettingsManager.js";
 import { ProjectPathResolver } from "../main/managers/ProjectPathResolver.js";
-import { WorkflowEngine, type WorkflowProgress } from "../main/managers/WorkflowEngine.js";
+import {
+  SimpleWorkflowRunner,
+  type SimpleProgress,
+} from "../main/managers/SimpleWorkflowRunner.js";
 import { createProjectDatabase } from "../main/db/connection.js";
 import { ChapterRepository } from "../main/db/repositories/ChapterRepository.js";
-import { JobRepository } from "../main/db/repositories/JobRepository.js";
 import { OllamaManager } from "../main/managers/OllamaManager.js";
-import { ok, err, printProgress, type Result } from "./output.js";
+import { ok, err, type Result } from "./output.js";
 
 export interface TranslateOptions {
   chapterId?: string;
@@ -47,12 +53,6 @@ export async function runTranslate(
   const resolver = new ProjectPathResolver(settings);
   const projectPath = resolver.resolve(projectId);
 
-  // Forcer useWorkerThreads=false en CLI (les workers réimportent electron).
-  // On override ponctuellement sans persister — SettingsManager.set persisterait.
-  // Solution : sous-classer ou wrapper. Ici on utilise un proxy qui intercepte
-  // le get pour useWorkerThreads.
-  const cliSettings = wrapSettingsForCli(settings);
-
   // ── 3. Lister les chapitres à traduire ──────────────────────────────
   const db = createProjectDatabase(projectPath);
   let chapterIds: string[];
@@ -75,99 +75,34 @@ export async function runTranslate(
     return err("INVALID_ARGS", "Aucun chapitre à traduire — importez d'abord un fichier.");
   }
 
-  // ── 4. Démarrer le workflow ─────────────────────────────────────────
-  const engine = new WorkflowEngine(cliSettings, undefined, {
-    onProgress: (p: WorkflowProgress) => printProgress(p),
+  // ── 4. Démarrer le workflow v3 ──────────────────────────────────────
+  const jobId = `cli-${Date.now()}`;
+  const runner = new SimpleWorkflowRunner(projectPath, settings, (p: SimpleProgress) => {
+    const label = `[${p.batchChapterIndex !== undefined ? `${p.batchChapterIndex + 1}/${p.batchTotalChapters} ` : ""}${p.stageIndex + 1}/${p.totalStages}]`;
+    process.stderr.write(`${label} ${p.stage} — ${p.status}\n`);
   });
 
-  let jobId: string;
-  if (opts.chapterId) {
-    const job = await engine.start(projectPath, opts.chapterId);
-    jobId = job.id;
-  } else {
-    const job = await engine.startBatch(projectPath, chapterIds);
-    jobId = job.id;
-  }
-
-  // ── 5. Attendre la fin (sauf --no-wait) ─────────────────────────────
-  if (!opts.wait) {
-    return ok({ jobId, status: "started", message: "Workflow démarré — utilisez 'status' pour suivre." });
-  }
-
-  // Polling du job jusqu'à fin (running/paused → wait, sinon done).
-  const finalJob = await waitForJobCompletion(projectPath, projectId, jobId);
-  return ok({
-    jobId,
-    status: finalJob.status,
-    type: finalJob.type,
-    startedAt: finalJob.startedAt,
-    finishedAt: finalJob.finishedAt,
-    costUsd: finalJob.costUsd,
-    qaRetryCount: finalJob.qaRetryCount,
-    errorMessage: finalJob.errorMessage,
-  });
-}
-
-/**
- * Wrap un SettingsManager pour forcer useWorkerThreads=false en CLI.
- * Les workers réimportent du code couplé à Electron — inutilisables en CLI.
- * Toutes les autres valeurs passent through au SettingsManager réel.
- */
-function wrapSettingsForCli(real: ReturnType<typeof getSettingsManager>): ReturnType<typeof getSettingsManager> {
-  return new Proxy(real, {
-    get(target, prop: string) {
-      if (prop === "get") {
-        return (key: string) => {
-          if (key === "useWorkerThreads") {return false;}
-          return target.get(key as never);
-        };
-      }
-      return Reflect.get(target, prop);
-    },
-  });
-}
-
-/** Attend la fin d'un job en pollant la DB. */
-async function waitForJobCompletion(
-  projectPath: string,
-  _projectId: string,
-  jobId: string,
-): Promise<{
-  id: string;
-  status: string;
-  type: string;
-  startedAt?: string;
-  finishedAt?: string;
-  costUsd?: number;
-  qaRetryCount?: number;
-  errorMessage?: string;
-}> {
-  // On garde une DB ouverte pour le polling (fermée à la fin).
-  const db = createProjectDatabase(projectPath);
-  const jobRepo = new JobRepository(db);
   try {
-    const terminalStates = ["completed", "failed", "cancelled"];
-    // Timeout de sécurité : 30 min par chapitre, max 6h.
-    const maxWaitMs = Math.min(6 * 60 * 60 * 1000, 30 * 60 * 1000);
-    const deadline = Date.now() + maxWaitMs;
-    while (Date.now() < deadline) {
-      const job = jobRepo.getJob(jobId);
-      if (!job) {
-        throw new Error(`Job disparu : ${jobId}`);
+    if (opts.chapterId) {
+      // --no-wait : on rend la main avant la fin (le process CLI reste vivant
+      // car le runner tourne ; dans un shell pipe c'est acceptable pour un MVP).
+      const done = runner.runChapter(jobId, chapterIds[0]!);
+      if (!opts.wait) {
+        return ok({ jobId, status: "started", message: "Workflow démarré." });
       }
-      if (terminalStates.includes(job.status)) {
-        return job;
+      await done;
+    } else {
+      const done = runner.runBatch(jobId, chapterIds);
+      if (!opts.wait) {
+        return ok({ jobId, status: "started", message: "Workflow démarré." });
       }
-      // paused = intervention humaine requise (QA trop bas). On retourne l'état.
-      if (job.status === "paused") {
-        return job;
-      }
-      // Attendre 2s entre chaque poll (le workflow émet des events sur stderr).
-      await new Promise((r) => setTimeout(r, 2000));
+      await done;
     }
-    throw new Error(`Timeout: job ${jobId} non terminé après ${maxWaitMs / 1000}s`);
+    return ok({ jobId, status: "completed" });
+  } catch (e) {
+    return err("WORKFLOW_FAILED", (e as Error).message);
   } finally {
-    db.close();
+    runner.dispose();
   }
 }
 

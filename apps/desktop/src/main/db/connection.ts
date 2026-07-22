@@ -53,16 +53,18 @@ export function createProjectDatabase(projectPath: string): Database {
   return db;
 }
 
-/** Internal: versions devant être marquées comme appliquées quand on détecte une DB existante du système inline (pre-v9). */
+/**
+ * Internal: versions devant être marquées comme appliquées quand on détecte une
+ * DB existante du système inline (pre-v9).
+ *
+ * v3 (2026-07-22) : les migrations ont été consolidées (18 → 5). Il n'existe
+ * aucune DB pré-v3 à migrer (greenfield), donc ce mécanisme legacy n'a plus de
+ * DB réelle à détecter. Conservé pour les tests isolés qui créent des tables
+ * à la main sans passer par runMigrations — il marque alors v1 comme appliquée
+ * pour éviter une réapplication sur une base déjà schemée.
+ */
 const LEGACY_VERSIONS = [
   { version: 1, name: "001_initial.sql" },
-  { version: 2, name: "002_jobs.sql" },
-  { version: 3, name: "003_lexicon_metadata.sql" },
-  { version: 4, name: "004_rag.sql" },
-  { version: 5, name: "005_alias_export_prompts_stats.sql" },
-  { version: 6, name: "006_batch_state.sql" },
-  { version: 7, name: "007_quality.sql" },
-  { version: 8, name: "008_audit.sql" },
 ] as const;
 
 export function runMigrations(db: Database, migrationsDir?: string): void {

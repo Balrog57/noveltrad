@@ -1,34 +1,15 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
-import { useProjectStore } from "../stores/project";
-import {
-  Home,
-  Terminal,
-  Puzzle,
-  Settings,
-  BookOpen,
-  Workflow,
-  BookMarked,
-  Clock,
-} from "@lucide/vue";
+import { Home, Settings } from "@lucide/vue";
 
 const router = useRouter();
 const route = useRoute();
-const projectStore = useProjectStore();
 
+// v3 : navigation réduite (Dashboard + Settings). La navigation projet se fait
+// à l'intérieur de ProjectView (all-in-one : chapitres, traduction, lexique).
 const links = [
   { name: "home", label: "Accueil", icon: Home },
-  { name: "console", label: "Console", icon: Terminal },
-  { name: "plugins", label: "Plugins", icon: Puzzle },
   { name: "settings", label: "Paramètres", icon: Settings },
-];
-
-/** Liens visibles seulement quand un projet est ouvert */
-const projectLinks = [
-  { name: "chapters", label: "Chapitres", icon: BookOpen },
-  { name: "workflow", label: "Workflow", icon: Workflow },
-  { name: "lexicon", label: "Lexique", icon: BookMarked },
-  { name: "history", label: "Historique", icon: Clock },
 ];
 
 function isActive(name: string) {
@@ -53,27 +34,6 @@ function isActive(name: string) {
         <component :is="link.icon" class="icon" :size="18" aria-hidden="true" />
         <span>{{ link.label }}</span>
       </button>
-
-      <!-- Liens projet (visibles seulement si un projet est ouvert) -->
-      <template v-if="projectStore.currentProject">
-        <div class="nav-section-label">Projet</div>
-        <button
-          v-for="link in projectLinks"
-          :key="link.name"
-          class="nav-item"
-          :class="{ active: isActive(link.name) }"
-          :aria-current="isActive(link.name) ? 'page' : undefined"
-          @click="
-            router.push({
-              name: link.name,
-              params: { projectId: projectStore.currentProject.id },
-            })
-          "
-        >
-          <component :is="link.icon" class="icon" :size="18" aria-hidden="true" />
-          <span>{{ link.label }}</span>
-        </button>
-      </template>
     </nav>
   </aside>
 </template>
@@ -141,14 +101,5 @@ function isActive(name: string) {
 
 .icon {
   font-size: 18px;
-}
-
-.nav-section-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  opacity: 0.6;
-  padding: 12px 12px 4px;
-  letter-spacing: 1px;
 }
 </style>

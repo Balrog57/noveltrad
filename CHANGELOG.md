@@ -1,5 +1,62 @@
 # Changelog
 
+## v3.0.0 — Simplification majeure : pipeline 4 agents + UI tout-en-un (2026-07-22)
+
+> Refonte délibérée : moins de fonctionnalités, mais plus solide. Pilotée par
+> les bugs/crashes réels et la complexité excessive de l'UI (12 vues).
+
+### Breaking changes
+- **Pipeline 12 → 4 stages** : `translate → proofread → glossary → validate`.
+  Les stages split, pre_translate, consistency, grammar, style, polish, review,
+  revise, qa, export sont supprimés (fusionnés dans les 4 nouveaux).
+- **Schéma DB greenfield** : 18 migrations → 5. Les tables jobs, job_steps,
+  history_snapshots, audit_log, embeddings, exports, prompts (override),
+  statistics, model_calibrations, review_reports, agents, models sont supprimées.
+  **Pas de migration de données** (aucun utilisateur en production).
+- **Canaux IPC 79 → 52** : supprimé plugins, history, audit, workflow pause/
+  resume/retry/quality-failed/resume-batch/list-active, ai:stream.
+
+### Supprimé (features délibérément retirées)
+- **Plugins** : PluginHost, PluginContext, système d'extensibilité complet.
+- **RAG** : RagEngine, embeddings, recherche vectorielle.
+- **Calibration** : CalibrationService (scoring calibré par modèle).
+- **Audit / Historique** : AuditService, snapshots, diff, rollback.
+- **Worker threads** : exécution désormais in-thread (plus simple, pas de freeze).
+- **Boucle de révision pro** : ReviewAgent/ReviseAgent (v1.4).
+- **QA auto-retry branching** : le validateur produit un score, l'utilisateur
+  décide de relancer.
+
+### Conservé (features utiles, non over-engineered)
+- **EPUB multi-file splitting** (v2.3.0) — modèle chapters/paragraphs intact.
+- **Translation Memory (TMX)** + **Lexique/Glossaire**.
+- **Summarizer transverse** (cohérence cross-chapitre, déclenché après validate).
+- **CLI `noveltrad`** (create/list/import/chapters/translate/export/status/doctor).
+- **Auto-update** + **Settings** (Ollama, modèles, langues).
+
+### UI (12 vues → 3)
+- **Dashboard** (HomeView) : cartes projet + création/ouverture/suppression.
+- **ProjectView tout-en-un** : sélecteur de chapitre, panes source/cible,
+  bouton Traduire, inspecteur 4 agents temps réel, import/export.
+- **Settings** : Ollama URL, modèle, langues, ton (inchangé).
+
+### Architecture
+- `SimpleWorkflowRunner` (~370 LOC) remplace `WorkflowEngine` (1370 LOC) +
+  `WorkflowRunner` + `PauseController` + `QaBranchPolicy` + `agent-worker`.
+- `ProofreaderAgent` (fusion grammar+style+polish via TextRefineAgent).
+- `ValidatorAgent` (fusion consistency+qa ; internalise le ConsistencyReport).
+- `AgentFactory` simplifié : switch 4 stages only.
+- `QualityChecker` + `HallucinationDetector` conservés (dépendances Validator).
+
+### Tests
+- 570 tests (49 fichiers) — baseline v2.3.0 était 1054 (75 fichiers).
+- Supprimé : tests des features retirées (plugins, RAG, calibration, audit,
+  history, worker-threads, review/revise, qa-branch-policy, workflow-*).
+- Ajouté : `v3-agents.spec.ts` (13), `simple-workflow-runner.spec.ts` (5),
+  `db-migrations.spec.ts` réécrit (5).
+
+### Version
+- Bump 2.3.0 → **3.0.0** (breaking changes majeurs : pipeline, schéma, UI).
+
 ## v2.3.0 — EPUB multi-file splitting + CLI pilotable par agent IA (2026-07-20)
 
 ### Features

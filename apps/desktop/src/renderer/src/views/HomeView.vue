@@ -133,8 +133,8 @@ async function confirmDelete(): Promise<void> {
 <template>
   <div class="home">
     <header class="hero">
-      <h1>NovelTrad 2.0</h1>
-      <p>Moteur de traduction de romans assiste par IA multi-agent.</p>
+      <h1>NovelTrad</h1>
+      <p>Moteur de traduction de romans assiste par IA — pipeline 4 agents.</p>
       <div class="ollama-status" :class="{ ok: ollamaStore.available }">
         <span>{{
           ollamaStore.available
