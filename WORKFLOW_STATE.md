@@ -23,8 +23,39 @@ et testé. Pilotée par : bugs/crashes réels + UI trop complexe (12 vues).
 - [x] Phase 1 — nouveau pipeline 4-stages (additif, ancien intact)
 - [x] Phase 3 — supprimer l'ancien code (rewire + delete + prune channels)
 - [x] Phase 2 — consolider migrations (18 → 5, drop tables inutilisées)
-- [ ] Phase 4 — renderer 3 vues
+- [x] Phase 4 — renderer 3 vues (Dashboard, Project all-in-one, Settings)
 - [ ] Phase 5 — tests + release 3.0.0
+
+### Phase 4 — Renderer 3 vues (2026-07-22)
+**Objectif** : collapse 12 vues → 3 (Dashboard, Project all-in-one, Settings).
+
+**Rewrites** :
+- `router/index.ts` : 3 routes (`/`, `/project/:id`, `/settings`).
+- `components/Sidebar.vue` : nav réduite (Accueil + Paramètres). La nav projet
+  se fait dans ProjectView.
+- `stores/workflow.ts` : réécrit pour `SimpleProgressPayload` (stage/stageIndex/
+  totalStages/status) + `stageStatuses` computé (pour l'inspecteur). Start/
+  start-batch/cancel only.
+- `stores/project.ts` : ajout `loadChapters()`.
+- `views/HomeView.vue` : rebranding (suppression "2.0", desc pipeline 4 agents).
+- `views/ProjectView.vue` : **all-in-one** — header + import/export, sélecteur
+  de chapitre, panes source/cible, boutons Traduire (chapitre / tous),
+  inspecteur 4 agents temps réel (stageLabel + stageStatuses).
+
+**Suppressions** :
+- Vues (8) : Chapters, ChapterEditor, Workflow, Lexicon, History, Console,
+  Plugins, Help.
+- Stores (3) : history, plugins, logs.
+- Composants : components/editor/ (NtSplitPane), components/history/
+  (NtDiffViewer), components/lexicon/ (LexiconForm, LexiconTable),
+  NtLogViewer.
+
+**Tests** : `batch.spec.ts` (supprimé block workflow-store old-API),
+`ui-components.spec.ts` (supprimé block NtLogViewer). **570/570 tests passent**
+(49 files), type-check 0 erreurs, lint 0 erreurs (12 warnings préexistants).
+
+**Risque connu** : pas de tests unitaires renderer (documenté ARCHITECTURE.md).
+Valider via `npm run dev` smoke + Playwright e2e (Phase 5).
 
 ### Phase 2 — Consolidation migrations (2026-07-22)
 **Objectif** : schéma greenfield épuré. Les 18 migrations → 5, droppant les
@@ -126,17 +157,15 @@ Branche longue durée `v3` depuis `main`. États intermédiaires pas forcément
 shippables. Merge final `v3 → main` = release 3.0.0.
 
 ### Handoff pour prochaine étape
-Phase 4 : renderer 3 vues (Dashboard, Project all-in-one, Settings).
-- La store `workflow.ts` actuelle a un payload `WorkflowProgressPayload` basé
-  sur `Step`/`totalSteps` — à réécrire pour `SimpleProgress` (stage/stageIndex/
-  totalStages/status). Voir `SimpleWorkflowRunner.ts` pour le type exporté.
-- Stores à supprimer : `plugins.ts`, `history.ts`.
-- Vues à supprimer : ChaptersView, ChapterEditorView, WorkflowView, LexiconView
-  (folder dans ProjectView), HistoryView, ConsoleView, PluginsView, HelpView.
-- Router → 3 routes : `/`, `/project/:id`, `/settings`.
-- Réutiliser les composants Nt*, composables (useStatusLabels, useAsyncAction),
-  utils (toPlain, format, download). Pas de tests unitaires renderer — valider
-  via `npm run dev` smoke + Playwright e2e en Phase 5.
+Phase 5 (release 3.0.0) :
+- Bump version 2.3.0 → 3.0.0 dans root + apps/desktop package.json.
+- Mettre à jour CHANGELOG.md (entry v3.0.0 : pipeline 4 agents, UI simplifiée,
+  suppression plugins/RAG/calibration/audit/history/workers).
+- Mettre à jour README.md (nouvelle architecture).
+- Vérifier electron-builder.yml (pas de changement requis).
+- Optionnel : smoke test `npm run dev` + Playwright e2e (créer projet →
+  importer epub → traduire → exporter) pour valider l'intégration bout-en-bout.
+- Trinity finale green obligatoire avant merge `v3 → main` + tag `v3.0.0`.
 
 ---
 
