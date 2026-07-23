@@ -31,6 +31,7 @@ DEFAULTS: dict[str, Any] = {
     "tone": "Professional",
     "expert_mode": True,  # True = 4 agents, False = Mode Rapide (1 agent)
     "history_enabled": True,
+    "check_updates_on_startup": True,
 }
 
 

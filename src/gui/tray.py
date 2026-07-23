@@ -38,6 +38,10 @@ class TrayIcon(QSystemTrayIcon):
         translate_action.triggered.connect(self._trigger_overlay)
         menu.addAction(translate_action)
 
+        update_action = QAction("Vérifier les mises à jour…", menu)
+        update_action.triggered.connect(self._check_updates)
+        menu.addAction(update_action)
+
         menu.addSeparator()
         quit_action = QAction("Quitter", menu)
         quit_action.triggered.connect(self._quit)
@@ -60,6 +64,12 @@ class TrayIcon(QSystemTrayIcon):
         overlay = getattr(self.window, "_overlay", None)
         if overlay is not None:
             overlay.translate_selection()
+
+    def _check_updates(self) -> None:
+        # Hook set by app.UpdateController (check_updates callable), if any.
+        checker = getattr(self, "check_updates", None)
+        if callable(checker):
+            checker()
 
     def _quit(self) -> None:
         self.window._force_quit = True  # type: ignore[attr-defined]

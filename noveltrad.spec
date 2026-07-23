@@ -37,6 +37,14 @@ for pkg in ("langchain_ollama", "langchain_openai", "langchain_core", "langgraph
     datas += d
     hiddenimports += h
 
+# Auto-update: bundle the package metadata so importlib.metadata.version()
+# works inside the frozen app, and ensure the updater deps are collected.
+from PyInstaller.utils.hooks import copy_metadata  # noqa: E402
+
+datas += copy_metadata("noveltrad")
+datas += copy_metadata("packaging")
+hiddenimports += ["importlib.metadata", "packaging", "requests"]
+
 a = Analysis(
     ["src/app.py"],
     pathex=["."],
