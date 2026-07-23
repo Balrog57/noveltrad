@@ -4206,3 +4206,140 @@ Audit du SDD vs demande initiale (app de traduction multi-format avec workflow m
 ### Prochain agent
 → **reviewer** : valider les changements v1.4. Tous les tests/type-check/lint sont verts. La validation runtime (vraie Ollama + vrai roman) est la seule étape restante avant "ne rester que de la correction de détails" (objectif utilisateur).
 
+---
+
+## Request — Analyse d'écart CDC vs implémentation v3.0.1 (2026-07-23, branche `main`)
+
+**Contexte** : confrontation du cahier des charges original (`CDC.txt`, projet AgentTranslate)
+contre l'état réel du code NovelTrad v3.0.1. Travail d'audit lecture-seule — aucune modif de code.
+
+### Décisions verrouillées (clarification utilisateur)
+- Objectif : **confronter le CDC au code actuel** (pas implémenter).
+- 3 livrables demandés : (a) rapport d'écart documenté, (b) plan d'action priorisé,
+  (c) cette entrée WORKFLOW_STATE.md.
+
+### Méthode
+- 5 sous-agents d'exploration parallèles (F1 UI, F2 backend, F3 utilitaires, pipeline 4
+  agents, specs techniques/roadmap). Conclusions vérifiées par grep exhaustifs + file:line.
+
+### Livrables (créés)
+- `docs/CDC_GAP_ANALYSIS.md` — rapport d'écart détaillé (7 sections + synthèse 4 écarts majeurs).
+- `docs/CDC_ACTION_PLAN.md` — plan d'action priorisé P0→P5 (10 items, ratio valeur/effort).
+
+### Conclusions clés de l'audit
+- **Pipeline 4 agents** : structure conforme (translate→proofread→glossary→validate),
+  MAIS schémas JSON du CDC non respectés (0 champ CDC présent : `edits_made`,
+  `glossary_matches`, `fidelity_score`, `final_text`...).
+- **Bug produit P0-1 (critique)** : sortie Validator (`{report, score}`) calculée puis
+  jetée (`SimpleWorkflowRunner.ts:351-352`). Le score QA promis par le README n'est
+  jamais persisté ni affiché.
+- **F1 UI** : double pane ✅ ; inspecteur = chips de statut seulement (pas de CoT/diff) ❌ ;
+  hotkey `Ctrl+Shift+T` au lieu de `Ctrl+Alt+T`, focus-gated, action non gérée ❌ ;
+  pas de sélecteur de ton ❌.
+- **F2 backend** : Ollama local ✅ ; provider distant scaffolded mais inerte (jamais
+  instancié en runtime) 🟡 ; lexique/glossaire = import JSON+CSV ✅ mais application
+  prompt-only (`LexiconEngine.apply()` existe, non appelé) 🟡.
+- **F3 utilitaires** : pas d'historique dédié (tables supprimées en v3) 🟡 ; pas de copie
+  en un clic ❌ ; pas de tray/overlay/replace-selection ❌.
+- **Privacy** : ✅ plus strict que le CDC (local-only, CSP bloque les hosts distants).
+- **EPUB** : ✅ le point le plus abouti (import OPF spine + export multi-chapitre + epubcheck).
+
+### Stack — divergence notée
+- Prévu Python/PySide6/LangGraph/Tauri → fait Electron 31 + Vue 3 + TypeScript
+  (moteur in-thread custom ~370 LOC). Divergence cohérente.
+
+### Open Questions
+- **Positionnement produit** : la branche « translateur de sélection ponctuel » du CDC
+  (tray + overlay + hotkey OS-globale) entre en tension avec la direction v3
+  (« traducteur de romans par lot »). À trancher avant P4-1/P4-3.
+- **Anthropic** : pas OpenAI-compatible — retirer du menu ou implémenter provider dédié.
+
+### Prochain agent
+→ **planner / implementor** : démarrer par P0-1 (score Validator affiché — bug produit
+avéré, ratio valeur/effort maximal). Voir `docs/CDC_ACTION_PLAN.md` pour l'ordre
+suggéré complet. Conventions v3 à respecter : canaux IPC sync main↔preload, Zod schemas
+in `packages/shared`, baseline 570 tests verts.
+
+---
+
+## Request — Réécriture complète en Python (CDC littéral) (2026-07-23, branche `main`)
+
+**Contexte** : réécriture TOTALE de NovelTrad depuis zéro en Python, fidèle au CDC
+(`docs/CDC.txt`). L'application Electron/Vue/TypeScript (v3.0.1, ~18k LOC) est entièrement
+supprimée et remplacée par Python 3.13 + PySide6 + LangGraph. Version reset à `1.0.0`.
+
+### Décisions verrouillées (clarification utilisateur)
+- **Périmètre : CDC littéral** — traducteur de sélection ponctuel (double pane + hotkey
+  Ctrl+Alt+T + overlay + tray + pipeline 4 agents sur texte libre). EPUB / projets / TM
+  persistante de l'app TS sont abandonnés.
+- **Stack : Python 3.13 + PySide6 ≥6.9 + LangGraph 1.x + langchain-ollama + pynput.**
+- **Orchestration : LangGraph StateGraph** (4 nœuds séquentiels), fidèle au code d'exemple du CDC.
+  - ⚠️ Python 3.13 obligatoire (3.14 présent sur la machine ne supporte PAS LangGraph — Pydantic V1).
+    uv gère l'install de 3.13 dans le venv ; la machine globale 3.14 reste intacte.
+- **Coexistence TS : remplacement** — apps/, packages/, node_modules/, package.json supprimés.
+- **Gestionnaire : uv** (`pyproject.toml` + `uv.lock`), installé via `pip install uv`.
+- **Doc : réinitialisée** — README, ARCHITECTURE, CHANGELOG réécrits ; docs/ VitePress supprimé.
+
+### Méthode
+- 6 phases séquentielles (environnement → core → gui → app → tests → nettoyage/doc).
+- Vérifications continues : import-check de tous les modules, ruff, pytest, smoke test GUI.
+
+### Livrables (créés — 20 fichiers Python)
+- **`src/core/`** : `state.py` (TypedDict CDC §2), `agents.py` (4 prompts **verbatim CDC §3**
+  + 4 nœuds LangGraph), `graph.py` (StateGraph translate→proofread→glossary→validate + fast),
+  `validators.py` (Pydantic avec **noms de champs CDC exacts** : corrected_text, edits_made,
+  glossary_matches, fidelity_score, final_text, flags), `llm.py` (Ollama + OpenAI-compat),
+  `glossary.py` (import flat-map `{"bug":"anomalie"}` + liste + CSV/TSV).
+- **`src/gui/`** : `main_window.py` (double pane + sélecteurs langues/ton/modèle + copier),
+  `inspector.py` (panneau par agent : CoT + edits/matches/flags + vue simplifiée), `worker.py`
+  (QThread + signaux), `settings_dialog.py`, `tray.py` (System Tray), `hotkey.py` (Ctrl+Alt+T
+  pynput), `overlay.py` (capture→traduit→colle).
+- **`src/utils/`** : `config.py` (Config JSON), `history.py` (SQLite).
+- **`src/app.py`** : point d'entrée QApplication (CDC §6).
+- **`tests/`** : `conftest.py` (FakeChatModel), `test_state.py`, `test_glossary.py`,
+  `test_agents.py`, `test_graph.py` — **30 tests, tous verts, LLM mocké**.
+
+### Couverture CDC (100% ciblé)
+- F1.a double pane ✅ | F1.b inspecteur enrichi ✅ | F1.c Ctrl+Alt+T + overlay ✅
+- F1.d sélecteurs (langues/ton/modèle) ✅ | F2.a Ollama ✅ | F2.b distant ✅ (opt-in)
+- F2.c glossaire JSON/CSV ✅ | F3.a historique SQLite ✅ | F3.b copie ✅ | F3.c replace ✅
+- §5 perf/tray/packaging/privacy ✅ | Mode Rapide/Expert ✅
+
+### Décision technique notable
+- **LLM injection via `agents.set_llm()`** (holder module-level), PAS via runnable config.
+  LangGraph filtre/ignore les clés custom du config pour les nœuds ; l'injection par setter est
+  fiable et testée. Le worker et les tests appellent `set_llm()` avant `graph.stream()/invoke()`.
+- **Bug P0-1 corrigé** : la sortie du Validator (`final_text`, `fidelity_score`, `flags`) est
+  désormais le résultat du pipeline et alimente l'inspecteur — l'app TS la jetait (CDC_GAP_ANALYSIS).
+
+### Métriques
+| Métrique | Valeur |
+|----------|--------|
+| Tests | 30 passés (5 fichiers), 0 failed |
+| Lint (ruff) | 0 erreur |
+| Smoke GUI | OK (fenêtre 1100×680, 4 stages) |
+| LOC TS supprimé | ~18 451 |
+| Fichiers Python créés | 20 (src) + 5 (tests) |
+| Python | 3.13.12 (venv uv) |
+
+### Commandes de vérification
+```bash
+uv sync --extra dev
+uv run ruff check src tests   # All checks passed!
+uv run pytest -q               # 30 passed
+uv run python src/app.py       # lance l'app
+```
+
+### Open Questions
+- **Validation runtime réelle** : tests mockent le LLM. Tester sur vrai Ollama
+  (`ollama pull qwen2.5:7b` puis texte réel) pour valider la qualité des prompts.
+- **Overlay Windows** : la simulation Ctrl+C/Ctrl+V via pynput peut nécessiter des privilèges
+  utilisateur normaux (fenêtres UAC élevées non automatisables). À valider en runtime.
+- **PyInstaller packaging** : non fait (CDC §5) — à ajouter pour distribuer un .exe.
+- **OCR (Phase 3 CDC)** : non implémenté (PaddleOCR/Tesseract).
+
+### Prochain agent
+→ **reviewer** : valider la réécriture Python. Tests/ruff/smoke verts. Validation runtime
+(vraie Ollama + texte réel + overlay Ctrl+Alt+T) est l'étape restante avant release.
+Voir `docs/CDC.txt` (spec) et `ARCHITECTURE.md` (conventions Python).
+

@@ -1,15 +1,46 @@
-node_modules/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
 dist/
-out/
-*.log
-.DS_Store
+*.spec.bak
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# uv
+# uv.lock IS committed (reproducible installs)
+
+# Environment / secrets
 .env
 .env.local
+*.pem
+
+# Tests / coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 coverage/
 test-results/
-playwright-report/
-.idea/
-.vscode/
+htmlcov/
+.coverage
+
+# OS / editors
+.DS_Store
 *.swp
 *.swo
+.idea/
+.vscode/
+
+# Build artifacts
+*.exe
+*.msi
+
+# Misc
+*.log
 .zcode/
