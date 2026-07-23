@@ -1,6 +1,6 @@
 [project]
 name = "noveltrad"
-version = "1.0.0"
+version = "1.1.0"
 description = "AgentTranslate — Multi-Agent Desktop Translation (PySide6 + LangGraph)"
 readme = "README.md"
 license = { text = "MIT" }

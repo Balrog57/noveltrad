@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.1.0] — 2026-07-23
+
+### Ajouté
+- **Auto-update depuis GitHub Releases** (canal latest) — au démarrage et via le
+  menu tray « Vérifier les mises à jour… ». Si une version plus récente existe :
+  notification + popup (notes de version) → téléchargement → remplacement via
+  `updater.bat` externe → relance. Pattern standard pour remplacer un exe Windows
+  verrouillé. Désactivé en mode dev (`uv run`).
+- **Workflow `release.yml`** — build automatique du `.exe` Windows + upload du
+  zip sur les releases au push de tag `v*`.
+- `__version__` lisible au runtime (`importlib.metadata`).
+
+### Technique
+- `requests` + `packaging` ajoutés en dépendances explicites.
+- `noveltrad.spec` : `copy_metadata` pour que la version soit lisible dans le bundle.
+
 ## [1.0.0] — 2026-07-23
 
 ### Réécriture complète en Python (fidèle au CDC)
