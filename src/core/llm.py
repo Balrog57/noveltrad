@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import requests
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_ollama import ChatOllama
 
@@ -30,6 +31,28 @@ REMOTE_PRESETS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
     "lmstudio": "http://localhost:1234/v1",
 }
+
+_MODELS_TIMEOUT = 8  # seconds for the /api/tags probe
+
+
+def list_ollama_models(host: str = "http://localhost:11434") -> list[str]:
+    """List the models available on the local Ollama server (CDC Phase 1).
+
+    Hits GET {host}/api/tags. Returns model names (e.g. ["qwen2.5:7b", ...]).
+    Raises ConnectionError with a helpful message if the server is unreachable.
+    """
+    url = host.rstrip("/") + "/api/tags"
+    try:
+        resp = requests.get(url, timeout=_MODELS_TIMEOUT)
+    except requests.RequestException as exc:
+        raise ConnectionError(
+            f"Impossible de joindre Ollama à {host}. "
+            "Vérifiez qu'il tourne (ollama serve)."
+        ) from exc
+    if resp.status_code != 200:
+        raise ConnectionError(f"Ollama /api/tags a renvoyé HTTP {resp.status_code}.")
+    models = [m.get("name", "") for m in resp.json().get("models", [])]
+    return [m for m in models if m]
 
 
 def get_llm(

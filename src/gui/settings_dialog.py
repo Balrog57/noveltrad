@@ -65,9 +65,6 @@ class SettingsDialog(QDialog):
         )
         form.addRow(self.check_expert)
 
-        self.check_history = QCheckBox("Historiser les traductions (SQLite local)")
-        form.addRow(self.check_history)
-
         layout.addLayout(form)
 
         hint = QLabel(
@@ -91,7 +88,6 @@ class SettingsDialog(QDialog):
         self.edit_remote_url.setText(self.config.get("remote_base_url", ""))
         self.edit_api_key.setText(self.config.get("api_key", ""))
         self.check_expert.setChecked(self.config.get("expert_mode", True))
-        self.check_history.setChecked(self.config.get("history_enabled", True))
         self._on_provider_changed(self.combo_provider.currentText())
 
     def _on_provider_changed(self, provider: str) -> None:
@@ -117,7 +113,6 @@ class SettingsDialog(QDialog):
             remote_base_url=self.edit_remote_url.text().strip(),
             api_key=self.edit_api_key.text().strip(),
             expert_mode=self.check_expert.isChecked(),
-            history_enabled=self.check_history.isChecked(),
         )
         self.config.save()
         self.accept()

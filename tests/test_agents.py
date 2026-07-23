@@ -36,22 +36,29 @@ def test_translator_prompt_formats_with_cdc_placeholders() -> None:
     out = TRANSLATOR_SYSTEM.format(
         source_lang="Anglais",
         target_lang="Français",
-        tone="Professional",
+        profile_name="Général",
+        profile_tone_word="neutral, natural",
+        profile_instruction="Natural general translation.",
         source_text="Hello world.",
     )
     assert "Anglais" in out and "Français" in out
     assert "Hello world." in out
+    assert "Général" in out
+    assert "Natural general translation." in out
     # JSON example braces survived literal (doubled in source).
     assert "{" not in out  # translator has no JSON block
 
 
 def test_proofreader_prompt_keeps_json_block_literal() -> None:
     out = PROOFREADER_SYSTEM.format(
-        source_lang="Anglais", target_lang="Français", tone="Professional",
+        source_lang="Anglais", target_lang="Français",
+        profile_name="Technique", profile_tone_word="technical",
+        profile_instruction="Precise technical terminology.",
         source_text="Hello", draft_translation="Bonjour",
     )
     assert '"corrected_text"' in out
     assert '"edits_made"' in out
+    assert "Technique" in out
 
 
 def test_validator_prompt_keeps_json_block_literal() -> None:

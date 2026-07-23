@@ -121,7 +121,7 @@ class SelectionTranslator:
                 source_text=source,
                 source_lang=self.config.get("source_lang", "Anglais"),
                 target_lang=self.config.get("target_lang", "Français"),
-                tone=self.config.get("tone", "Professional"),
+                profile=self.config.get("profile", "Général"),
             )
             final = graph.invoke(state, config={"recursion_limit": 25})
             result["text"] = (

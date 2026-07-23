@@ -28,9 +28,8 @@ DEFAULTS: dict[str, Any] = {
     "api_key": "",
     "source_lang": "Anglais",
     "target_lang": "Français",
-    "tone": "Professional",
+    "profile": "Général",
     "expert_mode": True,  # True = 4 agents, False = Mode Rapide (1 agent)
-    "history_enabled": True,
     "check_updates_on_startup": True,
 }
 

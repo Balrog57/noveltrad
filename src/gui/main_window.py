@@ -7,7 +7,7 @@ inspector 20%).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -25,11 +25,11 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.glossary import GlossaryError, load_glossary
+from src.core.profiles import PROFILE_NAMES
 from src.core.state import make_initial_state
 from src.gui.inspector import InspectorPanel
-from src.gui.settings_dialog import LANGUAGES, TONES, SettingsDialog
+from src.gui.settings_dialog import LANGUAGES, SettingsDialog
 from src.gui.worker import TranslationWorker
-from src.utils import history as history_db
 from src.utils.config import Config
 
 
@@ -62,15 +62,21 @@ class MainWindow(QMainWindow):
         self.combo_target.addItems(LANGUAGES)
         bar.addWidget(self.combo_target)
 
-        bar.addWidget(QLabel("Ton :"))
-        self.combo_tone = QComboBox()
-        self.combo_tone.addItems(TONES)
-        bar.addWidget(self.combo_tone)
+        bar.addWidget(QLabel("Profil :"))
+        self.combo_profile = QComboBox()
+        self.combo_profile.addItems(PROFILE_NAMES)
+        bar.addWidget(self.combo_profile)
 
         bar.addWidget(QLabel("Modèle :"))
         self.combo_model = QComboBox()
         self.combo_model.setEditable(True)
         bar.addWidget(self.combo_model, 1)
+
+        self.btn_refresh_models = QPushButton("🔄")
+        self.btn_refresh_models.setToolTip("Rafraîchir la liste des modèles Ollama")
+        self.btn_refresh_models.setFixedWidth(34)
+        self.btn_refresh_models.clicked.connect(self.refresh_models)
+        bar.addWidget(self.btn_refresh_models)
 
         self.check_fast = QCheckBox("Mode Rapide")
         self.check_fast.setToolTip("Agent unique (< 3s) au lieu du pipeline 4 agents.")
@@ -135,12 +141,48 @@ class MainWindow(QMainWindow):
     def _load_selector_values(self) -> None:
         self.combo_source.setCurrentText(self.config.get("source_lang", "Anglais"))
         self.combo_target.setCurrentText(self.config.get("target_lang", "Français"))
-        self.combo_tone.setCurrentText(self.config.get("tone", "Professional"))
+        self.combo_profile.setCurrentText(self.config.get("profile", "Général"))
         model = self.config.get("model", "qwen2.5:7b")
         self.combo_model.addItem(model)
         self.combo_model.setCurrentText(model)
         # Mode Rapide = inverse of expert_mode.
         self.check_fast.setChecked(not self.config.get("expert_mode", True))
+        # Fetch the available Ollama models in the background (non-blocking).
+        QTimer.singleShot(500, self.refresh_models)
+
+    def refresh_models(self) -> None:
+        """Populate the model dropdown from the local Ollama server (Phase 1)."""
+        host = self.config.get("ollama_host", "http://localhost:11434")
+
+        def _work() -> tuple[list[str], str | None]:
+            try:
+                from src.core.llm import list_ollama_models
+                return list_ollama_models(host), None
+            except ConnectionError as exc:
+                return [], str(exc)
+            except Exception as exc:  # noqa: BLE001
+                return [], str(exc)
+
+        def _on_done(result: tuple[list[str], str | None]) -> None:
+            models, err = result
+            if err is not None:
+                self.combo_model.setToolTip(f"⚠ Ollama : {err} (saisie manuelle possible)")
+                return
+            current = self.combo_model.currentText()
+            self.combo_model.clear()
+            self.combo_model.addItems(models)
+            self.combo_model.setToolTip("")
+            if current:
+                # Keep the user's choice if still available, else keep it editable.
+                if current in models:
+                    self.combo_model.setCurrentText(current)
+                else:
+                    self.combo_model.addItem(current)
+                    self.combo_model.setCurrentText(current)
+            elif models:
+                self.combo_model.setCurrentText(models[0])
+
+        run_async(_work, _on_done)
 
     def _on_fast_toggle(self, fast: bool) -> None:
         self.config.set("expert_mode", not fast)
@@ -230,7 +272,7 @@ class MainWindow(QMainWindow):
             source_text=source_text,
             source_lang=self.combo_source.currentText(),
             target_lang=self.combo_target.currentText(),
-            tone=self.combo_tone.currentText(),
+            profile=self.combo_profile.currentText(),
             glossary=dict(self.glossary),
         )
 
@@ -264,21 +306,6 @@ class MainWindow(QMainWindow):
             self.inspector.append_log(f"Score de fidélité : {score}/100")
         self.btn_translate.setEnabled(True)
 
-        # F3.a: persist to local history if enabled.
-        if self.config.get("history_enabled", True):
-            try:
-                history_db.add_entry(
-                    source_lang=self.combo_source.currentText(),
-                    target_lang=self.combo_target.currentText(),
-                    tone=self.combo_tone.currentText(),
-                    source_text=final_state.get("source_text", ""),
-                    final_text=final_text,
-                    fidelity=score,
-                    status=final_state.get("status"),
-                )
-            except Exception:  # noqa: BLE001 - history is best-effort
-                pass
-
     def _on_error(self, err_msg: str) -> None:
         self.inspector.append_log(f"❌ Erreur : {err_msg}")
         QMessageBox.critical(
@@ -295,7 +322,7 @@ class MainWindow(QMainWindow):
         self.config.update(
             source_lang=self.combo_source.currentText(),
             target_lang=self.combo_target.currentText(),
-            tone=self.combo_tone.currentText(),
+            profile=self.combo_profile.currentText(),
         )
         self.config.save()
         # If a tray icon is attached, prefer hiding instead of quitting.
@@ -309,3 +336,27 @@ class MainWindow(QMainWindow):
             )
             return
         super().closeEvent(event)
+
+
+class _AsyncRunner(QThread):
+    """Runs a no-arg callable off the UI thread, then emits its result."""
+
+    done = Signal(object)
+
+    def __init__(self, work, on_done) -> None:
+        super().__init__()
+        self._work = work
+        self.done.connect(on_done)
+
+    def run(self) -> None:  # noqa: C901
+        try:
+            self.done.emit(self._work())
+        except Exception as exc:  # noqa: BLE001 - emit error as a tuple
+            self.done.emit(([], str(exc)))
+
+
+def run_async(work, on_done) -> None:
+    """Run ``work()`` off the UI thread; call ``on_done(result)`` on the UI thread."""
+    runner = _AsyncRunner(work, on_done)
+    runner.start()
+

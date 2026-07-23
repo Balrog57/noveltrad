@@ -8,13 +8,13 @@ def test_make_initial_state_has_required_cdc_fields() -> None:
         source_text="Hello world.",
         source_lang="Anglais",
         target_lang="Français",
-        tone="Professional",
+        profile="Général",
     )
     # CDC §2 inputs
     assert state["source_text"] == "Hello world."
     assert state["source_lang"] == "Anglais"
     assert state["target_lang"] == "Français"
-    assert state["tone"] == "Professional"
+    assert state["profile"] == "Général"
     assert state["glossary"] == {}
 
     # CDC §2 intermediate outputs (start None)
