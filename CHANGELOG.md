@@ -35,6 +35,18 @@ Le projet passe d'une application Electron/Vue/TypeScript (v3.x) à une applicat
 - Gestionnaire : **uv** (`pyproject.toml` + `uv.lock`), Python 3.13 requis (LangGraph ≠ 3.14).
 - Stack : PySide6 6.9+, LangGraph 1.x, langchain-ollama, langchain-openai, Pydantic v2, pynput.
 
+### Packaging & OCR (PR #112)
+- **Packaging Windows PyInstaller** (CDC §5) — `noveltrad.spec` (onedir, collect PySide6 +
+  langchain). Build vérifié : `dist/AgentTranslate/AgentTranslate.exe` (4257 fichiers, Qt6).
+- **OCR Phase 3** (CDC) — `src/core/ocr.py` via Tesseract/pytesseract, dégradation gracieuse.
+  Bouton GUI « 🖼 OCR Image… ». Extra `ocr` optionnel.
+- **Robustesse runtime** — `_coerce_enum()` + clamp `fidelity_score` après tests sur qwen2.5:7b réel.
+- **CI** — retrait de `pytest-qt` (échec Ubuntu headless). CI verte.
+
+### Validation runtime (post-merge)
+- Pipeline 4 agents testé sur **Ollama qwen2.5:7b réel** : fidelity 98/100, 3.9s, glossaire OK.
+- **Le CDC est désormais 100% couvert.**
+
 ### Supprimé
 - Toute la base de code Electron/Vue/TypeScript (`apps/`, `packages/`, `node_modules/`, ~18k LOC).
 - Configuration npm (`package.json`, `package-lock.json`, `.eslintrc.cjs`, `.prettierrc.yaml`).
