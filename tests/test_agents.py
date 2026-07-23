@@ -11,9 +11,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-from pydantic import ValidationError
-
 from src.core.agents import (
     PROOFREADER_SYSTEM,
     TRANSLATOR_SYSTEM,
@@ -94,6 +91,35 @@ def test_glossary_output_cdc_fields() -> None:
     assert parsed.glossary_matches[0].forced_target_term == "anomalie"
 
 
+def test_glossary_status_enum_is_normalized_for_local_llms() -> None:
+    """Local LLMs (qwen2.5:7b) return enum drift like 'Already Present | N/A'.
+
+    Regression guard for the real-Ollama failure observed during runtime testing.
+    """
+    parsed = GlossaryOutput.model_validate({
+        "final_glossary_applied_text": "x",
+        "glossary_matches": [
+            {"source_term": "a", "forced_target_term": "b",
+             "status": "Already Present | Not Applicable"},
+            {"source_term": "c", "forced_target_term": "d",
+             "status": "adapted for grammar and context"},
+            {"source_term": "e", "forced_target_term": "f", "status": "garbage"},
+        ],
+    })
+    assert parsed.glossary_matches[0].status == "Already Present"
+    assert parsed.glossary_matches[1].status == "Adapted for Grammar"
+    assert parsed.glossary_matches[2].status == "Applied"  # fallback default
+
+
+def test_validator_status_enum_normalized() -> None:
+    parsed = ValidatorOutput.model_validate({
+        "status": "PASSED_WITH_CORRECTIONS (minor edits)",
+        "fidelity_score": 90, "final_text": "x", "flags": [],
+    })
+    assert parsed.status == "PASSED_WITH_CORRECTIONS"
+
+
+
 def test_validator_output_cdc_fields_and_score_bounds() -> None:
     parsed = ValidatorOutput.model_validate({
         "status": "PASSED_WITH_CORRECTIONS",
@@ -104,10 +130,13 @@ def test_validator_output_cdc_fields_and_score_bounds() -> None:
     assert parsed.fidelity_score == 97
     assert parsed.flags[0].severity == "Low"
 
-    # Out-of-range score rejected.
-    with pytest.raises(ValidationError):
-        ValidatorOutput.model_validate({"status": "PASSED", "fidelity_score": 150,
-                                        "final_text": "x", "flags": []})
+    # Out-of-range scores are clamped (robustness for local LLMs that return 150/-1).
+    clamped = ValidatorOutput.model_validate({"status": "PASSED", "fidelity_score": 150,
+                                              "final_text": "x", "flags": []})
+    assert clamped.fidelity_score == 100
+    clamped_low = ValidatorOutput.model_validate({"status": "PASSED", "fidelity_score": -5,
+                                                  "final_text": "x", "flags": []})
+    assert clamped_low.fidelity_score == 0
 
 
 # --------------------------------------------------------------------------- #
