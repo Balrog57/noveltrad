@@ -41,7 +41,7 @@ Implémentation fidèle du **Cahier des Charges** (`docs/CDC.txt`).
 | Raccourcis globaux | pynput |
 | Historique | sqlite3 (stdlib) |
 | Packaging | uv + (PyInstaller) |
-| Tests | pytest + pytest-qt |
+| Tests | pytest |
 | Lint | ruff + mypy |
 
 ## 🚀 Quick Start
