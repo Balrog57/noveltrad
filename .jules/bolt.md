@@ -9,3 +9,7 @@
 ## 2024-07-10 - SQLite Mass Inserts Missing Transactions (RagEngine)
 **Learning:** The missing `BEGIN TRANSACTION` issue in `node-sqlite3-wasm` for mass inserts also applies to the RagEngine's `storeEmbeddings` method. Because SQLite commits each query independently by default, inserting massive arrays of vector embeddings one by one without an explicit transaction wrapper causes severe O(N) I/O bottleneck overhead, increasing embedding indexing times significantly.
 **Action:** We wrapped the loop inside `storeEmbeddings` with explicit `this.db.exec('BEGIN TRANSACTION')` and `this.db.exec('COMMIT')` commands, which resolved the latency. When doing so, it is critical to also mock the `exec` method in the `MockDatabase` object within the test files (e.g. `rag-engine.spec.ts`) to prevent test suite failures with `TypeError: this.db.exec is not a function`.
+
+## 2024-05-18 - Optimize nested loops with regex-heavy normalization
+**Learning:** `findConflicts` in `LexiconEngine` checks for conflicts using an O(N²) nested loop. Initially, the string normalization function (which uses multiple regex replacements) was called twice per iteration, making the O(N²) loop extremely slow for large datasets.
+**Action:** Always pre-compute normalizations into an array (or Map) in O(N) time before entering an O(N²) comparison loop. This transforms the heavy O(N²) component into a simple O(N²) string equality/contains check, leaving the regex component as O(N).

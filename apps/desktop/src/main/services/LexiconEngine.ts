@@ -26,16 +26,11 @@ export class LexiconEngine {
     const substitutions: Substitution[] = [];
     const sorted = entries
       ? [...entries].sort((a, b) => b.term.length - a.term.length)
-      : Array.from(this.entries.values()).sort(
-          (a, b) => b.term.length - a.term.length,
-        );
+      : Array.from(this.entries.values()).sort((a, b) => b.term.length - a.term.length);
 
     let result = text;
     for (const entry of sorted) {
-      const pattern = new RegExp(
-        `\\b${this.escapeRegExp(entry.term)}\\b`,
-        "gi",
-      );
+      const pattern = new RegExp(`\\b${this.escapeRegExp(entry.term)}\\b`, "gi");
       result = result.replace(pattern, (match) => {
         substitutions.push({
           before: match,
@@ -63,16 +58,15 @@ export class LexiconEngine {
 
     if (isChinese) {
       // Nettoyer : retirer ponctuation et espaces
-      const cleaned = text.replace(
-        /[\s，。！？；：""''「」『』、….,?!;:"'!\s]+/g,
-        "",
-      );
+      const cleaned = text.replace(/[\s，。！？；：""''「」『』、….,?!;:"'!\s]+/g, "");
       // Extraire groupes de 2-6 caractères chinois
       for (let len = 2; len <= 6; len++) {
         for (let i = 0; i <= cleaned.length - len; i++) {
           const gram = cleaned.slice(i, i + len);
           // Ignorer si contient des caractères non-chinois
-          if (!/^[\u4e00-\u9fff]+$/.test(gram)) {continue;}
+          if (!/^[\u4e00-\u9fff]+$/.test(gram)) {
+            continue;
+          }
           frequency.set(gram, (frequency.get(gram) ?? 0) + 1);
         }
       }
@@ -113,33 +107,35 @@ export class LexiconEngine {
   private guessCategory(term: string, language: string): string {
     // Catégories basées sur des patterns communs
     if (language === "zh") {
-      if (/[姓名称号]/.test(term)) {return "personnage";}
-      if (/[国城山湖海河州府镇村]/.test(term)) {return "lieu";}
-      if (/[功法术技招式]/.test(term)) {return "technique";}
-      if (/[剑刀枪弓棍斧锤鞭]/.test(term)) {return "arme";}
-      if (/[丹丹药草花]/.test(term)) {return "objet";}
+      if (/[姓名称号]/.test(term)) {
+        return "personnage";
+      }
+      if (/[国城山湖海河州府镇村]/.test(term)) {
+        return "lieu";
+      }
+      if (/[功法术技招式]/.test(term)) {
+        return "technique";
+      }
+      if (/[剑刀枪弓棍斧锤鞭]/.test(term)) {
+        return "arme";
+      }
+      if (/[丹丹药草花]/.test(term)) {
+        return "objet";
+      }
     } else {
       const lower = term.toLowerCase();
-      if (
-        /\b(king|queen|prince|princess|lord|lady|emperor|master|disciple|sect)\b/.test(
-          lower,
-        )
-      )
-        {return "personnage";}
-      if (
-        /\b(city|village|kingdom|mountain|river|palace|temple|cave|forest)\b/.test(
-          lower,
-        )
-      )
-        {return "lieu";}
-      if (/\b(sword|blade|spear|bow|staff|dagger|axe|hammer)\b/.test(lower))
-        {return "arme";}
-      if (
-        /\b(skill|technique|art|spell|magic|formation|pill|elixir)\b/.test(
-          lower,
-        )
-      )
-        {return "technique";}
+      if (/\b(king|queen|prince|princess|lord|lady|emperor|master|disciple|sect)\b/.test(lower)) {
+        return "personnage";
+      }
+      if (/\b(city|village|kingdom|mountain|river|palace|temple|cave|forest)\b/.test(lower)) {
+        return "lieu";
+      }
+      if (/\b(sword|blade|spear|bow|staff|dagger|axe|hammer)\b/.test(lower)) {
+        return "arme";
+      }
+      if (/\b(skill|technique|art|spell|magic|formation|pill|elixir)\b/.test(lower)) {
+        return "technique";
+      }
     }
     return "general";
   }
@@ -148,10 +144,7 @@ export class LexiconEngine {
    * Exporte les entrées du lexique dans le format spécifié.
    * Formats supportés : csv, json, tsv.
    */
-  exportEntries(
-    entries: LexiconEntry[],
-    format: "csv" | "json" | "tsv",
-  ): string {
+  exportEntries(entries: LexiconEntry[], format: "csv" | "json" | "tsv"): string {
     switch (format) {
       case "json":
         return JSON.stringify(
@@ -210,11 +203,7 @@ export class LexiconEngine {
 
   /** Échappe une valeur pour CSV/TSV */
   private escapeCsv(value: string, separator: string): string {
-    if (
-      value.includes(separator) ||
-      value.includes('"') ||
-      value.includes("\n")
-    ) {
+    if (value.includes(separator) || value.includes('"') || value.includes("\n")) {
       return `"${value.replace(/"/g, '""')}"`;
     }
     return value;
@@ -226,16 +215,18 @@ export class LexiconEngine {
    * suppression des caractères non pertinents, normalisation des espaces.
    */
   private normalizeTerm(term: string): string {
-    return term
-      .toLowerCase()
-      .trim()
-      // Remplacer les séparateurs par des espaces (tirets, underscores, etc.)
-      .replace(/[-_'/\\.]+/g, " ")
-      // Supprimer les caractères non pertinents (ponctuation, symboles)
-      .replace(/[^a-z0-9\u00e0-\u024f\u4e00-\u9fff\s]/g, "")
-      // Normaliser les espaces
-      .replace(/\s+/g, " ")
-      .trim();
+    return (
+      term
+        .toLowerCase()
+        .trim()
+        // Remplacer les séparateurs par des espaces (tirets, underscores, etc.)
+        .replace(/[-_'/\\.]+/g, " ")
+        // Supprimer les caractères non pertinents (ponctuation, symboles)
+        .replace(/[^a-z0-9\u00e0-\u024f\u4e00-\u9fff\s]/g, "")
+        // Normaliser les espaces
+        .replace(/\s+/g, " ")
+        .trim()
+    );
   }
 
   /**
@@ -246,17 +237,22 @@ export class LexiconEngine {
     const conflicts: LexiconConflict[] = [];
     const seen = new Set<string>();
 
+    // Performance optimization: Pre-normalize all terms (O(N) instead of O(N^2))
+    const norms = entries.map((e) => this.normalizeTerm(e.term));
+
     for (let i = 0; i < entries.length; i++) {
       const a = entries[i];
-      const normA = this.normalizeTerm(a.term);
+      const normA = norms[i];
 
       for (let j = i + 1; j < entries.length; j++) {
         const b = entries[j];
-        const normB = this.normalizeTerm(b.term);
+        const normB = norms[j];
 
         // Éviter les paires déjà vues
         const pairKey = `${a.id}:${b.id}`;
-        if (seen.has(pairKey)) {continue;}
+        if (seen.has(pairKey)) {
+          continue;
+        }
         seen.add(pairKey);
 
         // 1. Duplicate term : même normalisé
@@ -272,10 +268,8 @@ export class LexiconEngine {
         }
 
         // 2. Overlap : un terme contient l'autre (non égaux)
-        const aContainsB =
-          normA.includes(normB) && normA !== normB && normB.length > 0;
-        const bContainsA =
-          normB.includes(normA) && normB !== normA && normA.length > 0;
+        const aContainsB = normA.includes(normB) && normA !== normB && normB.length > 0;
+        const bContainsA = normB.includes(normA) && normB !== normA && normA.length > 0;
 
         if (aContainsB) {
           conflicts.push({
