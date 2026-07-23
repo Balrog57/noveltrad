@@ -27,6 +27,8 @@ Implémentation fidèle du **Cahier des Charges** (`docs/CDC.txt`).
 - 📋 **Copie en un clic**, 📖 **glossaire JSON/CSV**, 🗂 **System Tray**, 📜 **historique SQLite**.
 - ⚡ **Mode Rapide** (1 agent, < 3s) / **Mode Expert** (4 agents).
 - 🏠 **100% local par défaut** — Ollama. APIs distantes (Groq/OpenRouter/DeepSeek) optionnelles.
+- 🖼 **OCR (Phase 3)** — extrait le texte d'une image (Tesseract) puis le traduit.
+- 📦 **Packagé en .exe** — build Windows natif via PyInstaller.
 
 ## 🛠 Stack
 
@@ -65,6 +67,24 @@ uv run python src/app.py # 🎉 l'app s'ouvre
 
 1. **Mode fenêtre** : collez du texte à gauche → « Traduire » → inspectez les 4 agents → copiez.
 2. **Mode sélection** : dans n'importe quelle app, sélectionnez du texte → **Ctrl+Alt+T** → c'est traduit et remplacé.
+3. **OCR** : bouton « 🖼 OCR Image… » → sélectionnez une image → le texte est extrait puis traduit (requiert Tesseract, voir ci-dessous).
+
+### 📦 Packaging Windows (.exe)
+
+```bash
+uv run --extra dev pyinstaller noveltrad.spec --clean --noconfirm
+# → dist/AgentTranslate/AgentTranslate.exe (onedir, ~15 MB exe + Qt6 DLLs)
+```
+
+### 🖼 OCR (CDC Phase 3 — optionnel)
+
+L'OCR utilise Tesseract. Pour l'activer :
+
+1. Installez [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) (build UB Mannheim sur Windows).
+2. Installez les dépendances Python : `uv sync --extra ocr`
+3. Si le chemin n'est pas auto-détecté, définissez la variable `TESSERACT_CMD` ou le champ `tesseract_cmd` dans `~/.noveltrad/config.json`.
+
+En l'absence de Tesseract, le bouton OCR est désactivé et affiche les instructions d'installation.
 
 ## 📖 Documentation
 

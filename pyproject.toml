@@ -23,6 +23,12 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
     "mypy>=1.10",
+    "pyinstaller>=6.0",
+    "pillow>=10.0",
+]
+ocr = [
+    "pytesseract>=0.3.10",
+    "pillow>=10.0",
 ]
 
 [build-system]

@@ -95,6 +95,19 @@ class MainWindow(QMainWindow):
         self.btn_glossary.clicked.connect(self.load_glossary_file)
         actions.addWidget(self.btn_glossary)
 
+        self.btn_ocr = QPushButton("🖼 OCR Image…")
+        self.btn_ocr.setToolTip(
+            "Extraire le texte d'une image puis le traduire (CDC Phase 3)"
+        )
+        self.btn_ocr.clicked.connect(self.import_image_ocr)
+        # The OCR button is enabled only when Tesseract is available.
+        from src.core import ocr as ocr_mod
+
+        self.btn_ocr.setEnabled(ocr_mod.is_available())
+        if not ocr_mod.is_available():
+            self.btn_ocr.setToolTip(ocr_mod.install_hint())
+        actions.addWidget(self.btn_ocr)
+
         self.btn_settings = QPushButton("⚙ Configuration")
         self.btn_settings.clicked.connect(self.open_settings)
         actions.addWidget(self.btn_settings)
@@ -166,6 +179,37 @@ class MainWindow(QMainWindow):
             self.lbl_glossary.setText(f"Glossaire : {n} terme(s) chargé(s)")
         except GlossaryError as exc:
             QMessageBox.warning(self, "Glossaire invalide", str(exc))
+
+    def import_image_ocr(self) -> None:
+        """CDC Phase 3: extract text from an image via OCR, then translate it."""
+        from src.core import ocr as ocr_mod
+
+        if not ocr_mod.is_available():
+            QMessageBox.information(self, "OCR indisponible", ocr_mod.install_hint())
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Importer une image pour OCR",
+            "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;Tous les fichiers (*)",
+        )
+        if not path:
+            return
+        try:
+            extracted = ocr_mod.extract_text(path)
+        except ocr_mod.OcrUnavailable as exc:
+            QMessageBox.warning(self, "OCR indisponible", str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Échec OCR", f"Impossible de lire l'image :\n{exc}")
+            return
+        if not extracted:
+            QMessageBox.information(self, "OCR", "Aucun texte détecté dans l'image.")
+            return
+        self.txt_source.setPlainText(extracted)
+        self.inspector.append_log(f"[ocr] {len(extracted)} caractères extraits de l'image")
+        # Auto-trigger the translation pipeline on the extracted text.
+        self.start_translation()
 
     def copy_result(self) -> None:
         text = self.txt_target.toPlainText()
