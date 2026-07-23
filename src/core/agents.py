@@ -22,6 +22,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
+from src.core.profiles import get_profile
 from src.core.state import TranslationState
 from src.core.validators import (
     GlossaryOutput,
@@ -46,11 +47,12 @@ Translate the provided SOURCE TEXT from {source_lang} to {target_lang}.
 2. STRUCTURE: Maintain the original formatting (paragraphs, line breaks, bullet points, Markdown taggings).
 3. NEUTRALITY: Do not attempt to over-polish or hyper-stylize the output at this stage. Aim for a accurate, natural baseline translation.
 4. ISOLATION: Output ONLY the translated text. Do not add introductory phrases, notes, or explanations.
+5. PROFILE: {profile_instruction}
 
 ### INPUT
 - Source Language: {source_lang}
 - Target Language: {target_lang}
-- Desired Tone/Register: {tone}
+- Desired Profile: {profile_name} ({profile_tone_word})
 - Source Text:
 {source_text}
 
@@ -67,12 +69,12 @@ Review and refine the draft translation ({draft_translation}) from {source_lang}
 ### CRITICAL RULES
 1. LINGUISTIC ACCURACY: Fix all grammatical errors, typos, awkward sentence structures, and improper punctuation.
 2. NATURAL FLUENCY: Adjust phrases so they sound like native {target_lang}, adapting idioms and expressions appropriately.
-3. TONAL ALIGNMENT: Ensure the register strictly respects the requested tone ({tone}) (e.g., formal/informal address, technical jargon level).
+3. PROFILE ALIGNMENT: Ensure the register strictly respects the requested profile: {profile_instruction} (register guidance: {profile_tone_word}).
 4. NO LOSS OF MEANING: Do not alter the core message or structural layout of the draft text.
 
 ### INPUT DATA
 - Target Language: {target_lang}
-- Desired Tone: {tone}
+- Desired Profile: {profile_name}
 - Source Text (Reference): {source_text}
 - Draft Translation: {draft_translation}
 
@@ -214,10 +216,13 @@ def _extract_json(raw: str) -> dict[str, Any]:
 def draft_translator_node(state: TranslationState, config: RunnableConfig) -> dict[str, Any]:
     """Agent 1 — Draft Translator. Output: raw translated text only (CDC)."""
     llm = _llm_from_config(config)
+    profile = get_profile(state.get("profile"))
     prompt = TRANSLATOR_SYSTEM.format(
         source_lang=state["source_lang"],
         target_lang=state["target_lang"],
-        tone=state.get("tone", "Professional"),
+        profile_name=profile["name"],
+        profile_tone_word=profile["tone_word"],
+        profile_instruction=profile["instruction"],
         source_text=state["source_text"],
     )
     draft = _invoke(llm, prompt, "Translate the text above. Output ONLY the translation.")
@@ -232,10 +237,13 @@ def proofreader_node(state: TranslationState, config: RunnableConfig) -> dict[st
     """Agent 2 — Grammar & Style Editor. Output JSON {corrected_text, edits_made}."""
     llm = _json_llm(_llm_from_config(config))
     draft = state.get("draft_translation") or ""
+    profile = get_profile(state.get("profile"))
     prompt = PROOFREADER_SYSTEM.format(
         source_lang=state["source_lang"],
         target_lang=state["target_lang"],
-        tone=state.get("tone", "Professional"),
+        profile_name=profile["name"],
+        profile_tone_word=profile["tone_word"],
+        profile_instruction=profile["instruction"],
         source_text=state["source_text"],
         draft_translation=draft,
     )

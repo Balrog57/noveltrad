@@ -14,7 +14,7 @@ class TranslationState(TypedDict, total=False):
     source_text: str
     source_lang: str
     target_lang: str
-    tone: str
+    profile: str
     glossary: dict[str, str]
 
     # Sorties intermédiaires des agents
@@ -38,7 +38,7 @@ def make_initial_state(
     source_text: str,
     source_lang: str,
     target_lang: str,
-    tone: str = "Professional",
+    profile: str = "Général",
     glossary: dict[str, str] | None = None,
 ) -> TranslationState:
     """Build a fresh TranslationState ready to be streamed through the graph."""
@@ -46,7 +46,7 @@ def make_initial_state(
         source_text=source_text,
         source_lang=source_lang,
         target_lang=target_lang,
-        tone=tone,
+        profile=profile,
         glossary=glossary or {},
         draft_translation=None,
         corrected_text=None,
