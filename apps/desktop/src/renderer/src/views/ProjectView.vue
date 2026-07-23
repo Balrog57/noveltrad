@@ -145,7 +145,14 @@ async function cancelRun() {
     <!-- En-tête -->
     <header class="project-header">
       <div class="header-left">
-        <button class="btn-back" @click="router.push({ name: 'home' })">←</button>
+        <button
+          class="btn-back"
+          aria-label="Retour à l'accueil"
+          title="Retour à l'accueil"
+          @click="router.push({ name: 'home' })"
+        >
+          ←
+        </button>
         <div>
           <h1>{{ project.name }}</h1>
           <p class="project-meta">
