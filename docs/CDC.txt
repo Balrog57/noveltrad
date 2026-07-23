@@ -1,0 +1,421 @@
+Cahier des Charges : Application de Traduction Multi-Agent (Windows)1. Vision & ObjectifsNom de code temporaire : AgentTranslate (ou PolyGlotAgent)Plateforme cible : Windows 10/11 (64-bit)Licence : Open-Source (MIT ou Apache 2.0)Proposition de valeur : Aller au-delà de la traduction mot à mot en exécutant un workflow multi-agent (traduction, correction grammaticale, analyse contextuelle/tonalité, vérification de cohérence globale).2. Briques Open-Source à Réutiliser (Leverage Stack)Pour éviter de réinventer la roue, le projet s'articulera autour de composants éprouvés :ComposantTechnologie retenueUtilité / RôleInterface Graphique (GUI)PySide6 (Qt) ou Tauri + Svelte/ReactPySide6 permet une intégration Python native ultra simple. Tauri offre une empreinte mémoire minimale sous Windows.Moteur d'exécution LLM localOllama ou Llama.cppExécution des modèles légers (Gemma 2, Mistral, Llama 3, Qwen) en local via API REST/gRPC.Orchestration Multi-AgentLangGraph (Python) ou CrewAIGestion des états, des boucles de validation et des dépendances entre agents.Traduction NMT classique (Optionnelle)CTranslate2 / OPUS-MTPour une traduction de premier jet ultra-rapide (fallback hors LLM ou pre-pass).Capture d'écran / OCR (Optionnel)PaddleOCR ou TesseractRéutilisation des scripts de capture/OCR existants (ex: inspirations de Crow Translate).3. Architecture du Pipeline Multi-AgentLe pipeline ne fait pas qu'envoyer un prompt à un LLM ; il applique un processus séquentiel et itératif :[Texte Source]
+      │
+      ▼
+┌────────────────────────────────────────┐
+│ 1. Agent Traducteur (Initial Pass)     │ ──> Génère T0 (traduction brute)
+└────────────────────────────────────────┘
+      │
+      ▼
+┌────────────────────────────────────────┐
+│ 2. Agent Relecteur & Grammaire         │ ──> Corrige la syntaxe et la fluidité
+└────────────────────────────────────────┘
+      │
+      ▼
+┌────────────────────────────────────────┐
+│ 3. Agent Contrôleur de Cohérence/Style │ ──> Vérifie le ton, le glossaire et le contexte
+└────────────────────────────────────────┘
+      │
+      ▼
+┌────────────────────────────────────────┐
+│ 4. Agent Validateur / Arbitre          │ ──> Compare T0 et la version finale, valide les écarts
+└────────────────────────────────────────┘
+      │
+      ▼
+[Texte Final Traduit]
+Rôle détaillé des AgentsAgent Traducteur (Drafting) : Réalise la traduction initiale en préservant la structure du texte et le sens premier.Agent Relecteur (Grammar & Syntax) : Repère les tournures lourdes, les fautes de grammaire, d'orthographe ou de ponctuation spécifiques à la langue cible.Agent de Cohérence & Glossaire (Context & Tone) : S'assure du respect du registre de langue (vouvoiement/tutoiement, jargon technique, contraintes d'un glossaire utilisateur fourni).Agent Validateur (Hallucination & Fidelity Check) : S'assure que le pipeline de relecture n'a pas dénaturé le sens original ni ajouté/omis des informations.4. Spécifications FonctionnellesF1. Gestion de l'Interface Utilisateur (UI)Mode Fenêtre Double Pane : Zone de texte source à gauche, texte traduit à droite.Panneau d'Inspection Multi-Agent (Accordéon ou Onglets) :Affichage en temps réel des étapes de pensée (CoT) et des propositions de chaque agent.Possibilité de masquer ce panneau pour une vue "simplifiée".Raccourci Général (Global Hotkey) : Ctrl + Alt + T pour traduire la sélection courante à l'écran via un popup overlay.Sélection du modèle et du registre : Sélecteurs rapides pour la langue source, la langue cible, le ton (Professionnel, Familiar, Technique) et le modèle LLM utilisé.F2. Configuration du Backend AISupport Hybride (Local & API) :Local : Connexion directe à un serveur Ollama local (http://localhost:11434).Distant (Optionnel) : Support des clés API compatibles OpenAI (Groq, OpenRouter, DeepSeek, Anthropic) pour ceux qui manquent de VRAM localement.Gestion du Glossaire Personnalisé : Possibilité pour l'utilisateur de charger un fichier JSON/CSV de termes spécifiques (ex: {"bug": "anomalie"}) imposé aux agents.F3. Fonctionnalités UtilitairesHistorique local des traductions (base SQLite SQLite3/DuckDB).Copie rapide du texte en un clic.Remplacement automatique de la sélection (via envoi de séquences de touches Ctrl+C -> Traduction -> Ctrl+V).5. Spécifications Techniques & Non-FonctionnellesPerformances :Temps de réponse cible : $< 3$ secondes pour un paragraphe avec des modèles quantifiés légers (ex: Qwen 2.5 7B Q4 ou Gemma 2 9B) sur GPU grand public.Option "Mode Rapide" (Agent unique) / "Mode Expert" (Pipeline 4 agents).Empreinte Système :Packaging Windows via PyInstaller ou Briefcase (si Python/PySide) ou binaire natif Tauri.Exécution possible en tâche de fond (System Tray icon).Confidentialité (Privacy First) :Traitement 100% local par défaut (aucune donnée envoyée vers des tiers sans accord).6. Feuille de Route de Développement (MVP & Évolutions)Phase 1 : MVP (Minimum Viable Product)[ ] Setup du projet UI (PySide6) avec layout 2 colonnes + System Tray.[ ] Intégration de la connexion Ollama API pour lister et exécuter un modèle local.[ ] Implémentation du pipeline à 2 agents (Traducteur -> Relecteur).[ ] Gestion des raccourcis clavier globaux sous Windows (pynput ou keyboard).Phase 2 : Enrichissement Multi-Agent & Personnalisation[ ] Ajout de l'Agent de Cohérence (Glossaire utilisateur) et du Validateur.[ ] Panneau UI visualisant les étapes et modifications apportées par chaque agent (diff-viewer).[ ] Support des profils de traduction (Technique, Littéraire, Courrier pro).Phase 3 : Fonctionnalités Avancées[ ] Intégration OCR pour traduire du texte dans les images/captures d'écran.[ ] Support d'APIs distantes (Groq, OpenRouter) en cas de PC sans GPU dédié.
+
+Voici les prompts système conçus spécifiquement pour être intégrés dans un framework d'orchestration (type LangGraph ou CrewAI).
+
+Pour maximiser l'efficacité des LLMs (y compris des modèles locaux légers comme Llama 3, Qwen 2.5 ou Gemma 2), ces prompts sont en anglais et utilisent un formatage strict en JSON / Markdown structure afin de faciliter le parsing entre les étapes du pipeline.
+
+1. Agent 1 : Draft Translator (The Direct Interpreter)
+Rôle : Produire une traduction brute fidèle, sans sur-interprétation ni omission.
+
+Plaintext
+You are the First-Pass Translator in an advanced multi-agent translation pipeline.
+
+### CORE TASK
+Translate the provided SOURCE TEXT from {source_lang} to {target_lang}.
+
+### CRITICAL RULES
+1. FIDELITY: Preserve the exact meaning, intent, and factual information of the source text. Do not summarize, add, or omit details.
+2. STRUCTURE: Maintain the original formatting (paragraphs, line breaks, bullet points, Markdown taggings).
+3. NEUTRALITY: Do not attempt to over-polish or hyper-stylize the output at this stage. Aim for a accurate, natural baseline translation.
+4. ISOLATION: Output ONLY the translated text. Do not add introductory phrases, notes, or explanations.
+
+### INPUT
+- Source Language: {source_lang}
+- Target Language: {target_lang}
+- Desired Tone/Register: {tone_setting}
+- Source Text:
+{source_text}
+
+### OUTPUT FORMAT
+Provide only the raw translated text in {target_lang}.
+2. Agent 2 : Grammar & Style Editor (The Polish Specialist)
+Rôle : Sublimer la fluidité dans la langue cible, corriger la syntaxe, la grammaire et l'orthographe.
+
+Plaintext
+You are the Expert Proofreader and Linguist in a multi-agent translation pipeline.
+
+### CORE TASK
+Review and refine the draft translation ({draft_translation}) from {source_lang} into {target_lang}, ensuring flawless grammar, idiomatic phrasing, and high readability.
+
+### CRITICAL RULES
+1. LINGUISTIC ACCURACY: Fix all grammatical errors, typos, awkward sentence structures, and improper punctuation.
+2. NATURAL FLUENCY: Adjust phrases so they sound like native {target_lang}, adapting idioms and expressions appropriately.
+3. TONAL ALIGNMENT: Ensure the register strictly respects the requested tone ({tone_setting}) (e.g., formal/informal address, technical jargon level).
+4. NO LOSS OF MEANING: Do not alter the core message or structural layout of the draft text.
+
+### INPUT DATA
+- Target Language: {target_lang}
+- Desired Tone: {tone_setting}
+- Source Text (Reference): {source_text}
+- Draft Translation: {draft_translation}
+
+### OUTPUT FORMAT
+Return a valid JSON object with the following structure:
+{
+  "corrected_text": "The fully polished and grammatically flawless translated text.",
+  "edits_made": [
+    {
+      "type": "Grammar | Fluency | Style",
+      "original_phrase": "phrase from draft",
+      "revised_phrase": "corrected phrase",
+      "reason": "Brief explanation of the change"
+    }
+  ]
+}
+3. Agent 3 : Context & Glossary Controller (The Terminology Guardian)
+Rôle : Imposer le respect strict des paires de termes / glossaires configurés et vérifier la cohérence contextuelle.
+
+Plaintext
+You are the Terminology & Consistency Specialist in a multi-agent translation pipeline.
+
+### CORE TASK
+Enforce the strict application of the provided GLOSSARY and ensure terminology, key concepts, and formatting remain consistent throughout the text.
+
+### CRITICAL RULES
+1. GLOSSARY OVERRIDE: If a term in the source text matches an entry in the user glossary, its specified target translation MUST be used verbatim in the final text.
+2. CONSISTENCY CHECK: Ensure named entities, product terms, technical words, and recurring phrases are translated identically across the entire text.
+3. CONTEXT INTEGRATION: Ensure glossary terms fit naturally into the surrounding sentence syntax without breaking target language grammar.
+
+### INPUT DATA
+- Target Language: {target_lang}
+- Current Revised Text: {revised_text}
+- User Glossary (JSON mapping):
+{glossary_json}
+
+### OUTPUT FORMAT
+Return a valid JSON object with the following structure:
+{
+  "final_glossary_applied_text": "The text with all glossary terms accurately and naturally integrated.",
+  "glossary_matches": [
+    {
+      "source_term": "term in source",
+      "forced_target_term": "term required by glossary",
+      "status": "Applied | Already Present | Adapted for Grammar"
+    }
+  ]
+}
+4. Agent 4 : Validator & Arbitrator (The Quality Assurance Agent)
+Rôle : Détecter d'éventuelles hallucinations, vérifier qu'aucun morceau de texte n'a été perdu et certifier la version finale.
+
+Plaintext
+You are the Final Quality Assurance (QA) Arbitrator in a multi-agent translation pipeline.
+
+### CORE TASK
+Perform a final audit comparing the original SOURCE TEXT against the POLISHED TRANSLATION. Detect hallucinations, omitted content, or accidental shifts in original meaning introduced during earlier refinement steps.
+
+### CRITICAL RULES
+1. HALLUCINATION & OMISSION DETECTION: Compare line-by-line. Ensure every piece of information in the source exists in the translation, and no fabricated information was added.
+2. FIDELITY AUDIT: Confirm that the refinement agents did not alter critical facts, figures, dates, or negation logic (e.g., turning "not allowed" into "allowed").
+3. FINAL DECISION: If minor issues exist, fix them directly in the final output. If major corruption occurred, flag it.
+
+### INPUT DATA
+- Source Language: {source_lang}
+- Target Language: {target_lang}
+- Original Source Text: {source_text}
+- Candidate Translation: {candidate_text}
+
+### OUTPUT FORMAT
+Return a valid JSON object with the following structure:
+{
+  "status": "PASSED | PASSED_WITH_CORRECTIONS",
+  "fidelity_score": 98, // Integer 0-100 evaluating meaning preservation
+  "final_text": "The final, verified, production-ready translation text.",
+  "flags": [
+    {
+      "severity": "Low | Medium | High",
+      "issue": "Description of hallucination, omission, or logic drift caught",
+      "resolution": "How it was corrected in final_text"
+    }
+  ]
+}
+ASTUCE D'INTÉGRATION
+Dans ton code (ex: avec LangGraph ou CrewAI) :
+
+Transmets le champ final_text du dernier agent à l'utilisateur comme résultat principal.
+
+Utilise les tableaux edits_made, glossary_matches et flags des agents 2, 3 et 4 pour alimenter le panneau d'inspection / diff-viewer dans ton interface utilisateur (PySide6 / Tauri). Cela permettra à l'utilisateur de comprendre pourquoi et comment le pipeline a retravaillé sa traduction !
+
+Voici une proposition d'architecture de projet propre, modulaire et prête pour le développement du MVP avec PySide6 pour l'interface graphique et LangGraph pour le pipeline multi-agent.
+
+1. Arborescence du Projet
+Plaintext
+agent-translate/
+├── assets/                  # Icônes, styles (QSS/CSS), images
+│   └── icon.ico
+├── src/
+│   ├── app.py               # Point d'entrée principal (QApplication)
+│   ├── core/                # Logique métier du pipeline AI
+│   │   ├── __init__.py
+│   │   ├── agents.py        # Prompts et définition des nœuds LangGraph
+│   │   ├── graph.py         # Construction du StateGraph LangGraph
+│   │   ├── llm.py           # Configuration de la connexion Ollama/API
+│   │   └── state.py         # Modèle Pydantic / TypedDict du State
+│   ├── gui/                 # Composants d'interface PySide6
+│   │   ├── __init__.py
+│   │   ├── main_window.py   # Fenêtre principale (Layout double pane)
+│   │   ├── worker.py        # QThread pour exécuter le graph sans bloquer l'UI
+│   │   └── widgets/         # Composants UI réutilisables
+│   │       ├── inspector.py # Panneau d'inspection (CoT, logs des agents)
+│   │       └── settings.py  # Dialog de config (Modèles, API keys)
+│   └── utils/               # Helpers (Raccourcis globaux, config locale)
+│       ├── config.py        # Gestionnaire de configuration (JSON/YAML)
+│       └── hotkey.py        # Listener de raccourci clavier Windows (pynput)
+├── tests/                   # Tests unitaires du graph et de l'UI
+├── config.json              # Configuration utilisateur (derniers modèles, glossaire)
+├── requirements.txt         # Dépendances Python
+└── README.md
+2. Code de Base pour le MVP
+1. requirements.txt
+Plaintext
+pyside6>=6.6.0
+langgraph>=0.1.0
+langchain-community>=0.2.0
+langchain-core>=0.2.0
+pydantic>=2.0.0
+pynput>=1.7.6
+2. src/core/state.py (Le State du Pipeline)
+Python
+from typing import TypedDict, List, Dict, Any, Optional
+
+class TranslationState(TypedDict):
+    # Entrées
+    source_text: str
+    source_lang: str
+    target_lang: str
+    tone: str
+    glossary: Dict[str, str]
+    
+    # Sorties intermédiaires des agents
+    draft_translation: Optional[str]
+    corrected_text: Optional[str]
+    edits_made: Optional[List[Dict[str, Any]]]
+    glossary_applied_text: Optional[str]
+    
+    # Sortie finale & validation
+    final_text: Optional[str]
+    status: Optional[str]
+    logs: List[str]  # Utilisé pour alimenter l'inspecteur UI
+3. src/core/graph.py (Construction du Graph LangGraph)
+Python
+from langgraph.graph import StateGraph, END
+from src.core.state import TranslationState
+from src.core.agents import draft_translator_node, proofreader_node, final_validator_node
+
+def build_translation_graph():
+    workflow = StateGraph(TranslationState)
+
+    # Ajout des nœuds (Agents)
+    workflow.add_node("translator", draft_translator_node)
+    workflow.add_node("proofreader", proofreader_node)
+    workflow.add_node("validator", final_validator_node)
+
+    # Définition des dépendances (Séquentiel pour le MVP)
+    workflow.set_entry_point("translator")
+    workflow.add_edge("translator", "proofreader")
+    workflow.add_edge("proofreader", "validator")
+    workflow.add_edge("validator", END)
+
+    return workflow.compile()
+4. src/gui/worker.py (QThread pour ne pas geler l'UI)
+L'exécution d'un LLM prend plusieurs secondes. Il est essentiel d'exécuter LangGraph dans un thread séparé avec PySide6 pour conserver une UI fluide et mettre à jour le panneau d'inspection en temps réel.
+
+Python
+from PySide6.QtCore import QThread, Signal
+from src.core.graph import build_translation_graph
+from src.core.state import TranslationState
+
+class TranslationWorker(QThread):
+    # Signaux pour communiquer avec la fenêtre principale
+    step_completed = Signal(str, str)  # (Nom de l'agent, contenu/log)
+    translation_finished = Signal(dict) # Résultat final
+    error_occurred = Signal(str)
+
+    def __init__(self, initial_state: TranslationState):
+        super().__init__()
+        self.state = initial_state
+        self.graph = build_translation_graph()
+
+    def run(self):
+        try:
+            # Mode streaming de LangGraph pour capter la fin de chaque agent
+            for event in self.graph.stream(self.state):
+                for node_name, node_output in event.items():
+                    log_msg = f"Agent {node_name} terminé."
+                    self.step_completed.emit(node_name, log_msg)
+                    
+            # Récupération de l'état final
+            final_state = self.graph.invoke(self.state)
+            self.translation_finished.emit(final_state)
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+5. src/gui/main_window.py (Fenêtre Principale PySide6)
+Python
+import sys
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, 
+    QTextEdit, QPushButton, QComboBox, QLabel, QSplitter
+)
+from PySide6.QtCore import Qt
+from src.gui.worker import TranslationWorker
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("AgentTranslate - Multi-Agent Desktop Translation")
+        self.resize(1000, 600)
+        self.setup_ui()
+
+    def setup_ui(self):
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        main_layout = QVBoxLayout(main_widget)
+
+        # Barres d'outils / Options de langue
+        top_bar = QHBoxLayout()
+        self.combo_source = QComboBox()
+        self.combo_source.addItems(["Français", "Anglais", "Espagnol", "Allemand"])
+        
+        self.combo_target = QComboBox()
+        self.combo_target.addItems(["Anglais", "Français", "Espagnol", "Allemand"])
+        self.combo_target.setCurrentIndex(1)
+
+        self.btn_translate = QPushButton("Traduire (Pipeline Multi-Agent)")
+        self.btn_translate.clicked.connect(self.start_translation)
+
+        top_bar.addWidget(QLabel("De :"))
+        top_bar.addWidget(self.combo_source)
+        top_bar.addWidget(QLabel("Vers :"))
+        top_bar.addWidget(self.combo_target)
+        top_bar.addWidget(self.btn_translate)
+        main_layout.addLayout(top_bar)
+
+        # Splitter principal (Zone d'édition / Inspecteur)
+        splitter = QSplitter(Qt.Horizontal)
+
+        # Zone Texte Source
+        self.txt_source = QTextEdit()
+        self.txt_source.setPlaceholderText("Entrez le texte à traduire...")
+        
+        # Zone Texte Cible (Résultat)
+        self.txt_target = QTextEdit()
+        self.txt_target.setReadOnly(True)
+        self.txt_target.setPlaceholderText("La traduction apparaîtra ici...")
+
+        # Panneau d'inspection (Logs des agents)
+        self.txt_inspector = QTextEdit()
+        self.txt_inspector.setReadOnly(True)
+        self.txt_inspector.setPlaceholderText("Étapes du pipeline multi-agent...")
+
+        splitter.addWidget(self.txt_source)
+        splitter.addWidget(self.txt_target)
+        splitter.addWidget(self.txt_inspector)
+        
+        # Proportions des fenêtres (40% Source, 40% Cible, 20% Inspecteur)
+        splitter.setSizes([400, 400, 200])
+
+        main_layout.addWidget(splitter)
+
+    def start_translation(self):
+        source_text = self.txt_source.toPlainText().strip()
+        if not source_text:
+            return
+
+        self.btn_translate.setEnabled(False)
+        self.txt_inspector.append("=== Lancement du pipeline ===")
+
+        initial_state = {
+            "source_text": source_text,
+            "source_lang": self.combo_source.currentText(),
+            "target_lang": self.combo_target.currentText(),
+            "tone": "Professionnel",
+            "glossary": {},
+            "logs": []
+        }
+
+        # Démarrage du Worker Thread
+        self.worker = TranslationWorker(initial_state)
+        self.worker.step_completed.connect(self.on_step_completed)
+        self.worker.translation_finished.connect(self.on_translation_finished)
+        self.worker.error_occurred.connect(self.on_error)
+        self.worker.start()
+
+    def on_step_completed(self, node_name, log_msg):
+        self.txt_inspector.append(f"✓ [{node_name}] terminé")
+
+    def on_translation_finished(self, final_state):
+        self.txt_target.setText(final_state.get("final_text", ""))
+        self.txt_inspector.append("=== Traduction terminée avec succès ===")
+        self.btn_translate.setEnabled(True)
+
+    def on_error(self, err_msg):
+        self.txt_inspector.append(f"❌ Erreur : {err_msg}")
+        self.btn_translate.setEnabled(True)
+6. src/app.py (Point d'entrée)
+Python
+import sys
+from PySide6.QtWidgets import QApplication
+from src.gui.main_window import MainWindow
+
+def main():
+    app = QApplication(sys.argv)
+    
+    # Application du style global Windows/Sombre optionnel
+    app.setStyle("Fusion")
+    
+    window = MainWindow()
+    window.show()
+    
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
+3. Prochaines étapes suggérées pour démarrer
+Cloner / créer la structure ci-dessus dans ton environnement virtuel Python local.
+
+Implémenter les fonctions des nœuds dans src/core/agents.py en appelant Ollama via langchain_community.chat_models.ChatOllama.
+
+Lancer python src/app.py pour valider l'UI et la réactivité du QThread.
+
+Pour ton projet d'application de traduction avec pipeline multi-agent, la meilleure option à choisir est l'Option 1 : Keep chapters/paragraphs.
+
+Voici pourquoi selon ton cas d'usage :
+
+Pourquoi l'Option 1 est le meilleur choix
+Incompatibilité de la fenêtre de contexte des LLM :
+Si tu traduis un roman ou un long document (EPUB), un LLM ne peut pas traiter tout le texte d'un coup de manière fiable. Le pipeline à 4 agents doit impérativement s'exécuter par paragraphes ou par chunks (lots).
+
+Suivi de progression et reprise sur erreur :
+Si une API plante ou qu'Ollama s'arrête à 80% de la traduction d'un chapitre, l'Option 1 te permet de reprendre exactement au paragraphe où ça a coupé. Avec l'Option 2 ou 3, tu perdrais tout le travail du chapitre en cours.
+
+Incapacité des options 2 et 3 :
+
+Option 2 (Single projects table) : À bannir. Elle détruit la fonctionnalité EPUB et rend le traitement de longs textes quasiment impossible avec des agents LLM.
+
+Option 3 (Hybrid) : Trop rigide pour un pipeline multi-agent, car tu perds l'historique des modifications par agent/étape (per-step audit trail).
+
+Récapitulatif
+Recommandation : Sélectionne l'Option 1 (Keep chapters/paragraphs). C'est le modèle de données idéal pour supporter le découpage EPUB, la granularité du pipeline multi-agent et le suivi de progression en base de données.

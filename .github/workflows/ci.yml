@@ -2,73 +2,29 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 jobs:
-  checks:
-    name: Type check + Lint + Tests
-    runs-on: windows-latest
-
+  test:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          node-version: "22"
-          cache: npm
+          enable-cache: true
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13 && uv python pin 3.13
 
       - name: Install dependencies
-        run: npm ci
+        run: uv sync --extra dev
 
-      - name: Type check
-        run: npm run type-check --workspace=apps/desktop
+      - name: Lint (ruff)
+        run: uv run ruff check src tests
 
-      - name: Lint
-        run: npm run lint --workspace=apps/desktop
-        continue-on-error: true
-
-      - name: Unit tests
-        run: npm run test --workspace=apps/desktop
-
-      - name: Coverage
-        run: npm run test:coverage --workspace=apps/desktop
-        continue-on-error: true
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: apps/desktop/coverage/
-
-  e2e-tests:
-    name: E2E Tests (Playwright)
-    runs-on: windows-latest
-    continue-on-error: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: Build Electron
-        run: npx electron-vite build
-        working-directory: apps/desktop
-
-      - name: Run E2E tests
-        run: npm run test:e2e --workspace=apps/desktop
-        continue-on-error: true
+      - name: Test (pytest)
+        run: uv run pytest -q

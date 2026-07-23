@@ -1,183 +1,103 @@
-# 📖 NovelTrad
+# 🤖 AgentTranslate (NovelTrad)
 
-*Le traducteur de romans multi-agent qui parle chinois, pense en IA, et écrit en français.*
+*Multi-Agent Desktop Translation — pipeline à 4 agents IA, 100% local, pilote par raccourci global.*
 
-[![Version](https://img.shields.io/badge/version-3.0.0-blue?style=flat-square)](https://github.com/Balrog57/noveltrad/releases)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-570%20passing-brightgreen?style=flat-square)](https://github.com/Balrog57/noveltrad/actions)
-[![Node](https://img.shields.io/badge/node-%3E%3D22-339933?style=flat-square&logo=node.js&logoColor=white)]()
-[![Electron](https://img.shields.io/badge/Electron-31-47848F?style=flat-square&logo=electron&logoColor=white)]()
-[![Vue](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vue.js&logoColor=white)]()
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)]()
+[![PySide6](https://img.shields.io/badge/PySide6-6.9+-41CD52?style=flat-square&logo=qt&logoColor=white)]()
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.x-1C3C3C?style=flat-square)]()
 [![Ollama](https://img.shields.io/badge/Ollama-local-blueviolet?style=flat-square)]()
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-> **TL;DR** — Importez un roman → 4 agents IA le traduisent (translate → proofread → glossary → validate) → exportez un EPUB. 100% local, aucune donnée dans le cloud.
+> **TL;DR** — Sélectionnez du texte dans n'importe quelle app, pressez **Ctrl+Alt+T**, un
+> pipeline de 4 agents IA le traduit et le remplace. Pipeline :
+> Translate → Proofread → Glossary → Validate. 100% local (Ollama) par défaut.
+
+Implémentation fidèle du **Cahier des Charges** (`docs/CDC.txt`).
 
 ---
 
-## ✨ Fonctionnalités
+## ✨ Fonctionnalités (CDC)
 
-- 🤖 **Pipeline 4 agents** — Translate (traduction initiale), Proofreader (grammaire + style + polish), Glossary (lexique verrouillé), Validator (fidélité + cohérence). Un pipeline simple et actionnable.
-- 🧠 **Translation Memory persistante** — Chaque phrase traduite est réutilisée. La cohérence s'améliore chapitre après chapitre.
-- 📚 **Lexique verrouillé** — Noms de personnages, lieux, techniques. Verrouillez une traduction, elle ne change plus jamais.
-- 📝 **Summarizer transverse** — Résumé incrémental du roman injecté dans le contexte pour la cohérence cross-chapitre (noms, intrigue, ton).
-- 🏠 **100% local** — Fonctionne avec [Ollama](https://ollama.com). Aucune donnée source ou traduite ne quitte votre machine.
-- 📦 **Export natif** — EPUB (multi-chapitre), DOCX, Markdown, TXT. Mode bilingue inclus.
-- 🖥️ **UI simplifiée** — 3 vues : Dashboard projets, ProjectView tout-en-un (source/cible + inspecteur agents temps réel), Settings.
-- 💻 **CLI `noveltrad`** — Pilotable en ligne de commande (create/import/translate/export/status).
+- 🤖 **Pipeline 4 agents** (LangGraph) — Translate, Proofread (grammaire+style), Glossary
+  (terminologie), Validator (fidélité). Prompts verbatim du CDC, sorties JSON validées Pydantic.
+- 🪟 **UI double-pane** (PySide6) — source à gauche, traduction à droite, inspecteur des agents à droite.
+- 🔍 **Panneau d'inspection** — CoT, `edits_made`, `glossary_matches`, `flags` par agent, repliable (vue simplifiée).
+- ⌨️ **Raccourci global `Ctrl+Alt+T`** — traduit la sélection courante de n'importe quelle app via un overlay.
+- 🔁 **Remplacement auto** — capture (Ctrl+C) → traduit → colle (Ctrl+V).
+- 📋 **Copie en un clic**, 📖 **glossaire JSON/CSV**, 🗂 **System Tray**, 📜 **historique SQLite**.
+- ⚡ **Mode Rapide** (1 agent, < 3s) / **Mode Expert** (4 agents).
+- 🏠 **100% local par défaut** — Ollama. APIs distantes (Groq/OpenRouter/DeepSeek) optionnelles.
 
-## 🎯 Pourquoi l'utiliser ?
+## 🛠 Stack
 
-**Le problème** : Traduire un web novel chinois de 500 chapitres avec un LLM, c'est perdre la cohérence des noms au chapitre 10 et obtenir 500 styles différents.
+| Domaine | Choix |
+|---|---|
+| Langage | Python 3.13 |
+| GUI | PySide6 (Qt 6) |
+| Orchestration | LangGraph (StateGraph) |
+| LLM local | Ollama (via `langchain-ollama`) |
+| LLM distant | OpenAI-compatible (`langchain-openai`) |
+| Validation | Pydantic v2 |
+| Raccourcis globaux | pynput |
+| Historique | sqlite3 (stdlib) |
+| Packaging | uv + (PyInstaller) |
+| Tests | pytest |
+| Lint | ruff + mypy |
 
-**La solution** : NovelTrad orchestre un pipeline de 4 agents IA alimenté par une mémoire de traduction, un lexique verrouillé et un résumé transverse du roman. Le chapitre 500 a le même style et les mêmes noms que le chapitre 1.
-
-```
-Chapitre source → [Translate → Proofread → Glossary → Validate] → EPUB français
-                          ↑              ↑                ↑
-                   TM + Lexique    Summarizer      score qualité
-```
-
-## 🛠 Quick Start
+## 🚀 Quick Start
 
 ### Prérequis
-
-- **Node.js** ≥ 22
-- **[Ollama](https://ollama.com)** en cours d'exécution (`ollama serve`)
+- **Python 3.13** (LangGraph ne supporte pas 3.14 — Pydantic V1). uv l'installe pour vous.
+- **[Ollama](https://ollama.com)** en cours d'exécution (`ollama serve`).
+- **[uv](https://docs.astral.sh/uv/)** : `pip install uv`
 
 ### Installation
 
 ```bash
 git clone https://github.com/Balrog57/noveltrad.git
 cd noveltrad
-npm install
-ollama pull qwen3.5:9b    # Modèle recommandé
-npm run dev                # 🎉 L'app s'ouvre
+uv sync                  # crée le venv Python 3.13 + installe les dépendances
+uv run ollama pull qwen2.5:7b   # modèle recommandé
+uv run python src/app.py # 🎉 l'app s'ouvre
 ```
 
-### Workflow en 30 secondes
+### Utilisation
 
-1. **Nouveau projet** → Choisir langue source / cible
-2. **Importer** un fichier TXT / DOCX / EPUB
-3. **Cliquer "Traduire"** → Le pipeline 4 agents s'exécute (visible en temps réel dans l'inspecteur)
-4. **Vérifier** le score qualité du Validator
-5. **Exporter** en EPUB
+1. **Mode fenêtre** : collez du texte à gauche → « Traduire » → inspectez les 4 agents → copiez.
+2. **Mode sélection** : dans n'importe quelle app, sélectionnez du texte → **Ctrl+Alt+T** → c'est traduit et remplacé.
 
 ## 📖 Documentation
 
-La documentation complète (25 volumes SDD, guides, inspirations) est disponible sur GitHub Pages :
-
-➡️ **[https://balrog57.github.io/noveltrad/](https://balrog57.github.io/noveltrad/)**
-
-```bash
-npm run docs:dev     # Serveur local (port 5174)
-npm run docs:build   # Build statique
-```
-
-### Contenu de la doc
-
-| Section | Contenu |
-|---------|---------|
-| **25 volumes** | Vision, architecture, UI, DB, workflow, agents, TM, lexique, export, sécurité, CI/CD... |
-| **Guide développeur** | Ajouter un agent, brancher un provider, modifier le pipeline |
-| **Cas d'usage** | Web novels, fan-fictions, batch EPUB, mode local, QA assistée |
-| **Inspirations** | Comparatif avec OmegaT, Sugoi, honya, TransAgents, NovelTrans... |
-
-## 🏗 Architecture
-
-```
-noveltrad/
-├── apps/desktop/
-│   ├── src/main/            # Electron : IPC (52 canaux), managers, services, agents, DB
-│   ├── src/preload/         # contextBridge (novelTradAPI)
-│   ├── src/renderer/        # Vue 3 : 3 vues, stores, composants Nt*
-│   └── tests/               # Vitest (570) + Playwright E2E
-└── packages/shared/         # Types + schemas Zod (le contrat)
-```
-
-> Architecture détaillée : voir `ARCHITECTURE.md`.
-
-### Pipeline de traduction (4 stages, in-thread)
-
-```
-Source → [Translate] → [Proofread] → [Glossary] → [Validate] → EPUB
-                                                       │
-                                        Summarizer (cohérence cross-chapitre)
-```
-
-Chaque stage :
-- **Séquentiel, in-thread** (pas de worker threads — plus simple, pas de freeze)
-- **Persisté** dans SQLite (paragraphes traduits via `upsertMany`)
-- **Observable** en temps réel (events `workflow:progress` → inspecteur d'agents)
+- **Cahier des Charges** : [`docs/CDC.txt`](docs/CDC.txt) (référence originale)
+- **Analyse d'écart** (vs ancienne version TS) : [`docs/CDC_GAP_ANALYSIS.md`](docs/CDC_GAP_ANALYSIS.md)
+- **Architecture** : [`ARCHITECTURE.md`](ARCHITECTURE.md)
 
 ## 🧪 Tests
 
 ```bash
-npm test                                    # 570 tests unitaires (Vitest)
-npm run test:e2e --workspace=apps/desktop   # Playwright + Electron
-npm run type-check --workspace=apps/desktop # vue-tsc --noEmit
-npm run lint                                # ESLint (0 erreurs)
+uv run --extra dev pytest         # 30 tests (Vitest-like, LLM mocké)
+uv run --extra dev ruff check     # linting (0 erreur)
 ```
 
-## 🚀 Release & Auto-update
+## 🗂 Structure
 
-```bash
-# Bump version dans package.json + apps/desktop/package.json
-git tag v3.0.1
-git push --tags
-# GitHub Actions build → publish → auto-update notifie les utilisateurs
 ```
-
-| Canal | Tag pattern | Usage |
-|-------|-------------|-------|
-| `latest` | `v3.0.1` | Stable |
-| `beta` | `v3.1.0-beta` | Pré-release |
-| `alpha` | `v3.1.0-alpha` | Dev |
-
-## 📦 Formats supportés
-
-| Direction | Formats |
-|-----------|---------|
-| **Import** | TXT, Markdown, DOCX, EPUB, TMX |
-| **Export** | EPUB, DOCX, Markdown, TXT, HTML (mode bilingue) |
-| **Lexique** | CSV, JSON, TSV |
-
-## 🛡 Stack technique
-
-| Domaine | Choix |
-|---------|-------|
-| Desktop | Electron 31 + electron-builder + electron-updater |
-| UI | Vue 3 (Composition API) + Pinia + Vue Router |
-| Bundler | electron-vite (Vite 5) |
-| Langage | TypeScript strict |
-| Validation | Zod |
-| Base de données | node-sqlite3-wasm (WAL mode, migrations inline) |
-| IA | Ollama (local), AiRouter multi-provider |
-| Tests | Vitest + Playwright |
-| CI/CD | GitHub Actions |
-| Docs | VitePress + GitHub Pages |
-
-## 🤝 Contribuer
-
-Les PR sont les bienvenues !
-
-1. Fork le projet
-2. Crée une branche (`git checkout -b feature/ma-feature`)
-3. Vérifie : `npm test && npm run type-check --workspace=apps/desktop`
-4. Ouvre une PR
-
-Le [guide développeur](https://balrog57.github.io/noveltrad/developer-guide) détaille comment ajouter un agent, brancher un provider IA, ou modifier le pipeline.
-
-## 🗺 Roadmap
-
-- [ ] Agent Summarizer (cohérence long-terme)
-- [ ] Mode bilingue côte-à-côte dans l'éditeur
-- [ ] Fine-tuning local via la Translation Memory
-- [ ] File d'attente QA pour les paragraphes suspects
+noveltrad/
+├── src/
+│   ├── app.py               # Point d'entrée QApplication
+│   ├── core/                # Pipeline LangGraph + prompts CDC verbatim
+│   │   ├── agents.py        # 4 nœuds + 4 prompts système (CDC §3)
+│   │   ├── graph.py         # StateGraph translator→proofread→glossary→validate
+│   │   ├── state.py         # TranslationState TypedDict (CDC §2)
+│   │   ├── validators.py    # Pydantic I/O (noms de champs CDC exacts)
+│   │   ├── llm.py           # Ollama local + OpenAI-compatible distant
+│   │   └── glossary.py      # Import JSON/CSV (flat-map {"bug":"anomalie"})
+│   ├── gui/                 # PySide6 : fenêtre, inspecteur, tray, overlay, hotkey
+│   └── utils/               # config JSON, historique SQLite
+├── tests/                   # 30 tests pytest
+└── docs/                    # CDC + analyse d'écart
+```
 
 ## 📜 Licence
 
 MIT © Balrog57
-
----
-
-> Si ce projet vous aide, n'hésitez pas à mettre une ⭐ — ça motive pour la suite !
