@@ -3,6 +3,35 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.0] — 2026-07-24
+
+### Ajouté
+- **F1.b — Affichage du CoT (chain-of-thought)** : l'inspecteur montre désormais le
+  raisonnement des modèles "thinking" (qwen3, deepseek-r1) en parsant les balises
+  `<think>…</think>`, qui sont strippées du contenu. Zone repliable, masquée si le
+  modèle n'émet pas de raisonnement.
+- **Profils de traduction** (CDC Phase 2) : le sélecteur « Ton » est remplacé par un
+  sélecteur « Profil » (Général / Technique / Littéraire / Courrier pro), chacun
+  injectant un bloc d'instructions spécifique dans les prompts.
+- **Liste dynamique des modèles Ollama** (CDC Phase 1) : le sélecteur de modèle est
+  peuplé depuis `/api/tags` (bouton 🔄 de rafraîchissement), plus saisie manuelle.
+
+### Corrigé (9 bugs)
+- **Crash overlay** : les widgets n'étaient plus touchés depuis un thread non-UI
+  (pynput / QThread) — marshaling via signaux Qt.
+- **GC du QThread de rafraîchissement** modèle (référence forte gardée).
+- **Shutdown propre** : annulation + attente du worker de traduction au quit.
+- **Race sur le LLM global** : verrou `threading.Lock` + reset entre les runs.
+- **Auto-update** : un build ARM ne peut plus être sélectionné sur x64.
+- **JSON noyé dans du prose** : récupération (modèles locaux bavards).
+- **Glossaire** : un terme nommé "source"/"key" n'est plus traité comme un en-tête.
+- **Draft vide** : lève une erreur claire au lieu d'un "succès" vide.
+- **Shutdown du hotkey** : join du thread pynput (libération du hook clavier).
+
+### Supprimé
+- **Historique SQLite** : supprimé (privacy-first cohérent avec le CDC §5). La
+  persistance silencieuse sans UI de consultation n'avait pas de valeur utilisateur.
+
 ## [1.1.0] — 2026-07-23
 
 ### Ajouté
