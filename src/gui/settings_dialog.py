@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.llm import REMOTE_PRESETS
+from src.gui.a11y import configure
 from src.utils.config import Config
 
 LANGUAGES = ["Français", "Anglais", "Espagnol", "Allemand", "Italien", "Chinois", "Japonais"]
@@ -40,26 +41,55 @@ class SettingsDialog(QDialog):
 
         # --- Backend AI ---
         self.combo_provider = QComboBox()
+        configure(
+            self.combo_provider,
+            accessible_name="Fournisseur d'intelligence artificielle",
+            tooltip="Choisir le fournisseur d'intelligence artificielle",
+        )
         self.combo_provider.addItems(["ollama"] + list(REMOTE_PRESETS.keys()))
         self.combo_provider.currentTextChanged.connect(self._on_provider_changed)
         form.addRow("Provider :", self.combo_provider)
 
         self.edit_model = QLineEdit()
+        configure(
+            self.edit_model,
+            accessible_name="Nom du modèle",
+            tooltip="Nom du modèle",
+        )
         form.addRow("Modèle :", self.edit_model)
 
         self.edit_ollama_host = QLineEdit()
+        configure(
+            self.edit_ollama_host,
+            accessible_name="Hôte Ollama",
+            tooltip="URL de l'hôte Ollama",
+        )
         form.addRow("Hôte Ollama :", self.edit_ollama_host)
 
         self.edit_remote_url = QLineEdit()
+        configure(
+            self.edit_remote_url,
+            accessible_name="URL API distante",
+            tooltip="URL de l'API distante",
+        )
         self.edit_remote_url.setPlaceholderText("https://api.groq.com/openai/v1")
         form.addRow("URL API distante :", self.edit_remote_url)
 
         self.edit_api_key = QLineEdit()
+        configure(
+            self.edit_api_key,
+            accessible_name="Clé API",
+            tooltip="Clé API",
+        )
         self.edit_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("Clé API :", self.edit_api_key)
 
         # --- Pipeline ---
         self.check_expert = QCheckBox("Mode Expert (pipeline 4 agents)")
+        configure(
+            self.check_expert,
+            accessible_name="Activer le mode expert",
+        )
         self.check_expert.setToolTip(
             "Décoché = Mode Rapide (agent unique, < 3s par paragraphe)."
         )
