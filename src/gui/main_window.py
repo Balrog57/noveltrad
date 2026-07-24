@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config
         self.worker: TranslationWorker | None = None
+        self._runners: list = []  # keep QThread refs alive (anti-GC) — A2
         self.glossary: dict[str, str] = {}
         self.setWindowTitle("AgentTranslate — Multi-Agent Desktop Translation")
         self.resize(1100, 680)
@@ -182,7 +183,28 @@ class MainWindow(QMainWindow):
             elif models:
                 self.combo_model.setCurrentText(models[0])
 
-        run_async(_work, _on_done)
+        self._run_async(_work, _on_done)
+
+    def _run_async(self, work, on_done) -> None:
+        """Run work() off the UI thread; call on_done(result) on the UI thread.
+
+        Keeps a strong reference to the QThread so it isn't GC'd mid-run (A2),
+        and removes it once finished.
+        """
+
+        def _wrapped(result):
+            on_done(result)
+
+        runner = _AsyncRunner(work, _wrapped)
+        self._runners.append(runner)
+        runner.finished.connect(self._discard_runner)
+        runner.start()
+
+    def _discard_runner(self) -> None:
+        """Drop the finished async runner that emitted the signal (anti-leak)."""
+        sender = self.sender()
+        if sender in self._runners:
+            self._runners.remove(sender)
 
     def _on_fast_toggle(self, fast: bool) -> None:
         self.config.set("expert_mode", not fast)
@@ -226,6 +248,12 @@ class MainWindow(QMainWindow):
         """CDC Phase 3: extract text from an image via OCR, then translate it."""
         from src.core import ocr as ocr_mod
 
+        if self.worker is not None and self.worker.isRunning():
+            QMessageBox.information(
+                self, "Traduction en cours",
+                "Une traduction est déjà en cours. Attendez la fin avant d'importer une image.",
+            )
+            return
         if not ocr_mod.is_available():
             QMessageBox.information(self, "OCR indisponible", ocr_mod.install_hint())
             return
@@ -335,7 +363,14 @@ class MainWindow(QMainWindow):
                 "L'application continue en arrière-plan. Cliquez sur l'icône pour revenir.",
             )
             return
+        self.stop_worker()
         super().closeEvent(event)
+
+    def stop_worker(self) -> None:
+        """Cooperatively cancel + wait the translation worker (clean shutdown, A3)."""
+        if self.worker is not None and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.wait(3000)
 
 
 class _AsyncRunner(QThread):
@@ -353,10 +388,4 @@ class _AsyncRunner(QThread):
             self.done.emit(self._work())
         except Exception as exc:  # noqa: BLE001 - emit error as a tuple
             self.done.emit(([], str(exc)))
-
-
-def run_async(work, on_done) -> None:
-    """Run ``work()`` off the UI thread; call ``on_done(result)`` on the UI thread."""
-    runner = _AsyncRunner(work, on_done)
-    runner.start()
 

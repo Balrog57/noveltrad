@@ -91,9 +91,17 @@ def _parse_delimited(text: str, delimiter: str) -> dict[str, str]:
         return {}
 
     out: dict[str, str] = {}
-    # Detect header: first cell (lowercased) in {term, source, key}
+    # Detect header: treat as header ONLY if BOTH first and second cells look
+    # like header names. Otherwise a legitimate term named "source"/"key"/"term"
+    # in the first row would be wrongly skipped.
     first = rows[0]
-    header_like = first[0].strip().lower() in {"term", "source", "key", "source_term"}
+    term_headers = {"term", "source", "key", "source_term"}
+    trans_headers = {"translation", "target", "value", "target_term"}
+    header_like = (
+        len(first) >= 2
+        and first[0].strip().lower() in term_headers
+        and first[1].strip().lower() in trans_headers
+    )
     start = 1 if header_like else 0
     for row in rows[start:]:
         if len(row) < 2:

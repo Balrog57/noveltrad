@@ -84,18 +84,27 @@ def select_windows_asset(assets: list[dict]) -> dict | None:
     """Pick the Windows x64 .zip asset from a release's asset list.
 
     Heuristic: name contains 'windows' (case-insensitive), ends with '.zip',
-    preferring one that also mentions 'x64'. Returns None if no match.
+    and is NOT an ARM build. Prefers one mentioning x64/amd64/x86_64.
+    Returns None if no match.
     """
-    candidates = [
-        a for a in assets
-        if str(a.get("name", "")).lower().endswith(".zip")
-        and "windows" in str(a.get("name", "")).lower()
-    ]
+    x64_tokens = ("x64", "amd64", "x86_64")
+    arm_tokens = ("arm", "aarch64", "arm64")
+    candidates = []
+    for a in assets:
+        name = str(a.get("name", "")).lower()
+        if not name.endswith(".zip"):
+            continue
+        if "windows" not in name:
+            continue
+        if any(tok in name for tok in arm_tokens):
+            continue  # never auto-pick an ARM build on an x64 host
+        candidates.append(a)
     if not candidates:
         return None
-    # Prefer x64-among-the-windows ones.
+    # Prefer an asset explicitly tagged x64/amd64/x86_64.
     for a in candidates:
-        if "x64" in str(a.get("name", "")).lower():
+        name = str(a.get("name", "")).lower()
+        if any(tok in name for tok in x64_tokens):
             return a
     return candidates[0]
 

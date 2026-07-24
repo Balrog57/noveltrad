@@ -11,10 +11,15 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from src.core.agents import (
     PROOFREADER_SYSTEM,
     TRANSLATOR_SYSTEM,
     VALIDATOR_SYSTEM,
+    TranslationError,
+    _extract_json,
+    _split_thinking,
     draft_translator_node,
     glossary_node,
     proofreader_node,
@@ -124,6 +129,67 @@ def test_validator_status_enum_normalized() -> None:
         "fidelity_score": 90, "final_text": "x", "flags": [],
     })
     assert parsed.status == "PASSED_WITH_CORRECTIONS"
+
+
+# --------------------------------------------------------------------------- #
+# JSON extraction robustness (B6) + CoT splitting (D10)
+# --------------------------------------------------------------------------- #
+
+
+def test_extract_json_direct() -> None:
+    assert _extract_json('{"a": 1}') == {"a": 1}
+
+
+def test_extract_json_in_prose_preamble() -> None:
+    """Local small models wrap JSON in conversational prose (B6)."""
+    raw = (
+        'Sure! Here is the result:\n'
+        '{"corrected_text": "Bonjour", "edits_made": []}\n'
+        'Hope this helps!'
+    )
+    parsed = _extract_json(raw)
+    assert parsed["corrected_text"] == "Bonjour"
+
+
+def test_extract_json_in_code_fence_with_prose() -> None:
+    raw = 'Here you go:\n```json\n{"x": 42}\n```\n'
+    assert _extract_json(raw) == {"x": 42}
+
+
+def test_extract_json_raises_on_no_json() -> None:
+    with pytest.raises(ValueError, match="invalid JSON"):
+        _extract_json("just prose, no json at all")
+
+
+def test_split_thinking_extracts_and_strips_cot() -> None:
+    """Thinking models emit <think>…</think> inline (D10)."""
+    content = "<think>I should translate hello to bonjour.</think>Bonjour"
+    clean, reasoning = _split_thinking(content)
+    assert "Bonjour" in clean
+    assert "<think>" not in clean
+    assert "bonjour" in reasoning.lower()
+
+
+def test_split_thinking_no_tags_returns_empty_reasoning() -> None:
+    clean, reasoning = _split_thinking("plain translation, no thinking")
+    assert clean == "plain translation, no thinking"
+    assert reasoning == ""
+
+
+def test_translator_empty_draft_raises(fake_llm_factory) -> None:
+    """An empty draft must surface a clear error, not a silent empty 'success' (B8)."""
+    fake_llm_factory(["   "])  # whitespace-only
+    state = make_initial_state("Hello", "Anglais", "Français")
+    with pytest.raises(TranslationError):
+        draft_translator_node(state, {"recursion_limit": 25})
+
+
+def test_translator_strips_think_tags_from_draft(fake_llm_factory) -> None:
+    fake_llm_factory(["<think>reasoning here</think>Bonjour le monde."])
+    state = make_initial_state("Hello world.", "Anglais", "Français")
+    out = draft_translator_node(state, {"recursion_limit": 25})
+    assert out["draft_translation"] == "Bonjour le monde."
+    assert out["reasoning"] == "reasoning here"
 
 
 

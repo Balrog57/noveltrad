@@ -63,4 +63,8 @@ class GlobalHotkey:
         if self._listener is not None:
             self._listener.stop()
             self._listener = None
+        # Join the listener thread so the native keyboard hook is fully
+        # released before the process tears down (avoids shutdown hangs).
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=2)
         self._thread = None
