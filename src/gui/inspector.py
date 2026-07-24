@@ -82,6 +82,18 @@ class StageWidget(QFrame):
         self.preview.setPlaceholderText("Texte produit par cet agent…")
         layout.addWidget(self.preview)
 
+        # Chain-of-thought (CoT) area — shown only when a thinking model emits
+        # <think> reasoning (F1.b). Hidden by default.
+        self.cot_label = QLabel("Raisonnement (CoT) :")
+        self.cot_view = QTextEdit()
+        self.cot_view.setReadOnly(True)
+        self.cot_view.setMaximumHeight(120)
+        self.cot_view.setPlaceholderText("Raisonnement (CoT) de l'agent…")
+        self.cot_label.setVisible(False)
+        self.cot_view.setVisible(False)
+        layout.addWidget(self.cot_label)
+        layout.addWidget(self.cot_view)
+
         self._detail_visible = True
 
     def set_status(self, status: str) -> None:
@@ -96,6 +108,13 @@ class StageWidget(QFrame):
         text = payload.get("text")
         if text:
             self.preview.setPlainText(text)
+
+        # CoT (F1.b): show reasoning when the thinking model emitted <think>.
+        reasoning = payload.get("reasoning") or ""
+        if reasoning.strip():
+            self.cot_view.setPlainText(reasoning.strip())
+            self.cot_label.setVisible(True)
+            self.cot_view.setVisible(self.expand_btn.isChecked())
 
         items = payload.get("items") or []
         col_map = {
@@ -136,6 +155,10 @@ class StageWidget(QFrame):
         self.expand_btn.setText("▾" if checked else "▸")
         self.table.setVisible(checked)
         self.preview.setVisible(checked)
+        # CoT follows the same expanded/collapsed state (only if it has content).
+        has_cot = bool(self.cot_view.toPlainText().strip())
+        self.cot_label.setVisible(has_cot and checked)
+        self.cot_view.setVisible(has_cot and checked)
 
 
 class InspectorPanel(QWidget):
@@ -177,6 +200,9 @@ class InspectorPanel(QWidget):
             self.stages[sid].set_status("pending")
             self.stages[sid].table.setRowCount(0)
             self.stages[sid].preview.clear()
+            self.stages[sid].cot_view.clear()
+            self.stages[sid].cot_label.setVisible(False)
+            self.stages[sid].cot_view.setVisible(False)
 
     def mark_running(self, stage_id: str) -> None:
         if stage_id in self.stages:
@@ -198,5 +224,8 @@ class InspectorPanel(QWidget):
         for sw in self.stages.values():
             sw.table.setVisible(not simple)
             sw.preview.setVisible(not simple)
+            if simple:
+                sw.cot_label.setVisible(False)
+                sw.cot_view.setVisible(False)
         self.log_view.setVisible(not simple)
         self.simple_btn.setText("Vue détaillée" if simple else "Vue simplifiée")

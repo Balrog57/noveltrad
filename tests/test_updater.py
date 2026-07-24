@@ -58,6 +58,30 @@ def test_select_windows_asset_without_x64_still_picks_windows() -> None:
     assert "windows" in picked["name"]
 
 
+def test_select_windows_asset_never_returns_arm_on_x64() -> None:
+    """An ARM build must never be picked on an x64 host (A5)."""
+    assets = [
+        {"name": "AgentTranslate-v1.1.0-windows-arm64.zip"},
+        {"name": "AgentTranslate-v1.1.0-windows-x64.zip"},
+    ]
+    picked = updater.select_windows_asset(assets)
+    assert picked is not None
+    assert "arm" not in picked["name"].lower()
+    assert "x64" in picked["name"].lower()
+
+
+def test_select_windows_asset_prefers_amd64_synonym() -> None:
+    """amd64 / x86_64 are valid synonyms for x64."""
+    assets = [{"name": "noveltrad-windows-amd64.zip"}]
+    picked = updater.select_windows_asset(assets)
+    assert picked is not None
+
+
+def test_select_windows_asset_returns_none_if_only_arm() -> None:
+    assets = [{"name": "noveltrad-windows-arm64.zip"}]
+    assert updater.select_windows_asset(assets) is None
+
+
 def test_select_windows_asset_none_when_absent() -> None:
     assert updater.select_windows_asset([{"name": "linux.zip"}, {"name": "mac.zip"}]) is None
     assert updater.select_windows_asset([]) is None

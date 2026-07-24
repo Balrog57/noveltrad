@@ -61,6 +61,18 @@ def test_parse_csv_without_header() -> None:
     assert g == {"bug": "anomalie", "deploy": "déploiement"}
 
 
+def test_parse_csv_term_named_like_header_not_skipped() -> None:
+    """A term literally named 'source' must NOT be treated as a header row (B7)."""
+    g = parse_glossary_text("source,la source\ndeploy,déploiement\n", "csv")
+    assert g == {"source": "la source", "deploy": "déploiement"}
+
+
+def test_parse_csv_with_real_header_still_skipped() -> None:
+    """But a real 'term,translation' header IS skipped."""
+    g = parse_glossary_text("term,translation\nsource,la source\n", "csv")
+    assert g == {"source": "la source"}
+
+
 def test_parse_tsv() -> None:
     g = parse_glossary_text("bug\tanomalie\ndeploy\tdéploiement\n", "tsv")
     assert g == {"bug": "anomalie", "deploy": "déploiement"}

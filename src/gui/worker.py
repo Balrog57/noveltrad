@@ -36,6 +36,11 @@ class TranslationWorker(QThread):
         self.config = config
         expert = config.get("expert_mode", True)
         self.graph = build_translation_graph() if expert else build_fast_graph()
+        self._cancel = False
+
+    def cancel(self) -> None:
+        """Request the pipeline to stop after the current agent (cooperative)."""
+        self._cancel = True
 
     def run(self) -> None:  # noqa: C901 - straightforward stream loop
         try:
@@ -55,6 +60,8 @@ class TranslationWorker(QThread):
             final_state: dict[str, Any] = dict(self.state)
             # Mode streaming de LangGraph pour capter la fin de chaque agent.
             for event in self.graph.stream(self.state, config={"recursion_limit": 25}):
+                if self._cancel:
+                    break
                 # Each event is {node_name: {updated_state_keys...}}
                 for node_name, node_output in event.items():
                     if not isinstance(node_output, dict):
@@ -65,23 +72,31 @@ class TranslationWorker(QThread):
                     self.step_completed.emit(node_name, log_msg)
                     self._emit_stage_output(node_name, node_output)
 
-            self.translation_finished.emit(final_state)
+            if not self._cancel:
+                self.translation_finished.emit(final_state)
         except Exception as exc:  # noqa: BLE001 - surface any error to the UI
-            self.error_occurred.emit(str(exc))
+            if not self._cancel:
+                self.error_occurred.emit(str(exc))
+        finally:
+            # Reset the shared LLM so a later run re-resolves it from config.
+            set_llm(None)
 
     def _emit_stage_output(self, node_name: str, node_output: dict[str, Any]) -> None:
-        """Forward the structured payload of agents 2/3/4 to the inspector."""
+        """Forward each agent's structured payload (+ CoT) to the inspector."""
         stage_map = {
+            "translator": ("draft_translation", None),
             "proofreader": ("corrected_text", "edits_made"),
             "glossary": ("glossary_applied_text", "glossary_matches"),
             "validator": ("final_text", "flags"),
         }
         if node_name in stage_map:
             text_key, list_key = stage_map[node_name]
-            payload = {
+            payload: dict[str, Any] = {
                 "text": node_output.get(text_key),
-                "items": node_output.get(list_key) or [],
+                "reasoning": node_output.get("reasoning") or "",
             }
+            if list_key:
+                payload["items"] = node_output.get(list_key) or []
             # Validator also carries the score & status.
             if node_name == "validator":
                 payload["fidelity_score"] = node_output.get("fidelity_score")

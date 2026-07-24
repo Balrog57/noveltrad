@@ -16,6 +16,8 @@ Each node:
 from __future__ import annotations
 
 import json
+import re
+import threading
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -177,16 +179,43 @@ def _llm_from_config(config: RunnableConfig | None) -> BaseChatModel:
     return _default_llm()
 
 
-def _invoke(llm: BaseChatModel, system: str, user: str) -> str:
-    """Invoke the LLM with a system + user message, return raw text content."""
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _invoke(llm: BaseChatModel, system: str, user: str) -> tuple[str, str]:
+    """Invoke the LLM; return (content, reasoning).
+
+    Reasoning (chain-of-thought) is extracted from <think>...</think> tags that
+    thinking models (qwen3, deepseek-r1) emit inline. The tags are STRIPPED from
+    the returned content so they never pollute the draft or JSON output. Models
+    without <think> tags get reasoning="" (no CoT to show — expected).
+    """
     resp = llm.invoke([SystemMessage(system), HumanMessage(user)])
-    return resp.content if isinstance(resp.content, str) else str(resp.content)
+    content = resp.content if isinstance(resp.content, str) else str(resp.content)
+    return _split_thinking(content)
+
+
+def _split_thinking(content: str) -> tuple[str, str]:
+    """Separate <think> reasoning from the actual content. Returns (clean, reasoning)."""
+    matches = _THINK_RE.findall(content)
+    reasoning = "\n".join(m.strip() for m in matches if m.strip())
+    clean = _THINK_RE.sub("", content).strip()
+    return clean, reasoning
+
+
+class TranslationError(RuntimeError):
+    """Raised when a pipeline node cannot produce a usable result."""
 
 
 def _extract_json(raw: str) -> dict[str, Any]:
-    """Parse a JSON object from an LLM response, tolerating ```json fences.
+    """Parse a JSON object from an LLM response.
 
-    Mirrors the jsonRepair strategy: direct parse -> strip code fences -> parse.
+    Tolerates, in order:
+      1. direct parse,
+      2. ```json fenced blocks,
+      3. JSON embedded in prose ("Here is the result: {...}") — finds the first
+         '{' and last '}' and retries on that slice. Local small models
+         frequently wrap JSON in conversational prose.
     """
     text = raw.strip()
     try:
@@ -194,17 +223,27 @@ def _extract_json(raw: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         pass
     # Strip ```json ... ``` or ``` ... ``` fences.
-    if text.startswith("```"):
-        lines = text.splitlines()
+    fence = text
+    if fence.startswith("```"):
+        lines = fence.splitlines()
         if lines and lines[0].startswith("```"):
             lines = lines[1:]
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
-        text = "\n".join(lines).strip()
+        fence = "\n".join(lines).strip()
         try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Agent returned invalid JSON: {exc}\n--- raw ---\n{raw}") from exc
+            return json.loads(fence)
+        except json.JSONDecodeError:
+            pass
+    # Fallback: JSON embedded in prose — extract the maximal {...} substring.
+    first = text.find("{")
+    last = text.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        candidate = text[first:last + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
     raise ValueError(f"Agent returned invalid JSON.\n--- raw ---\n{raw}")
 
 
@@ -225,10 +264,16 @@ def draft_translator_node(state: TranslationState, config: RunnableConfig) -> di
         profile_instruction=profile["instruction"],
         source_text=state["source_text"],
     )
-    draft = _invoke(llm, prompt, "Translate the text above. Output ONLY the translation.")
+    draft, reasoning = _invoke(llm, prompt, "Translate the text above. Output ONLY the translation.")
+    if not draft.strip():
+        raise TranslationError(
+            "L'agent traducteur a renvoyé un texte vide. "
+            "Vérifiez le modèle / le texte source."
+        )
     log = f"[translator] draft produced ({len(draft)} chars)"
     return {
         "draft_translation": draft,
+        "reasoning": reasoning,
         "logs": state.get("logs", []) + [log],
     }
 
@@ -247,12 +292,13 @@ def proofreader_node(state: TranslationState, config: RunnableConfig) -> dict[st
         source_text=state["source_text"],
         draft_translation=draft,
     )
-    raw = _invoke(llm, prompt, "Return the JSON object described above.")
+    raw, reasoning = _invoke(llm, prompt, "Return the JSON object described above.")
     parsed = ProofreadOutput.model_validate(_extract_json(raw))
     log = f"[proofreader] {len(parsed.edits_made)} edits applied"
     return {
         "corrected_text": parsed.corrected_text,
         "edits_made": [e.model_dump() for e in parsed.edits_made],
+        "reasoning": reasoning,
         "logs": state.get("logs", []) + [log],
     }
 
@@ -267,12 +313,13 @@ def glossary_node(state: TranslationState, config: RunnableConfig) -> dict[str, 
         revised_text=revised,
         glossary_json=json.dumps(glossary, ensure_ascii=False, indent=2),
     )
-    raw = _invoke(llm, prompt, "Return the JSON object described above.")
+    raw, reasoning = _invoke(llm, prompt, "Return the JSON object described above.")
     parsed = GlossaryOutput.model_validate(_extract_json(raw))
     log = f"[glossary] {len(parsed.glossary_matches)} glossary terms resolved"
     return {
         "glossary_applied_text": parsed.final_glossary_applied_text,
         "glossary_matches": [m.model_dump() for m in parsed.glossary_matches],
+        "reasoning": reasoning,
         "logs": state.get("logs", []) + [log],
     }
 
@@ -297,7 +344,7 @@ def validator_node(state: TranslationState, config: RunnableConfig) -> dict[str,
         source_text=state["source_text"],
         candidate_text=candidate,
     )
-    raw = _invoke(llm, prompt, "Return the JSON object described above.")
+    raw, reasoning = _invoke(llm, prompt, "Return the JSON object described above.")
     parsed = ValidatorOutput.model_validate(_extract_json(raw))
     log = f"[validator] {parsed.status} (fidelity={parsed.fidelity_score}, {len(parsed.flags)} flags)"
     return {
@@ -305,6 +352,7 @@ def validator_node(state: TranslationState, config: RunnableConfig) -> dict[str,
         "fidelity_score": parsed.fidelity_score,
         "status": parsed.status,
         "flags": [f.model_dump() for f in parsed.flags],
+        "reasoning": reasoning,
         "logs": state.get("logs", []) + [log],
     }
 
@@ -320,23 +368,30 @@ def validator_node(state: TranslationState, config: RunnableConfig) -> dict[str,
 # simple and reliable.
 
 _active_llm: BaseChatModel | None = None
+_llm_lock = threading.Lock()
 
 
 def set_llm(llm: BaseChatModel | None) -> None:
-    """Inject the LLM the pipeline should use (called by the worker / tests)."""
+    """Inject the LLM the pipeline should use (called by the worker / tests).
+
+    Guarded by a lock so concurrent pipelines (main window + overlay) cannot
+    swap the provider mid-run.
+    """
     global _active_llm
-    _active_llm = llm
+    with _llm_lock:
+        _active_llm = llm
 
 
 def get_active_llm() -> BaseChatModel:
     """Return the injected LLM, or lazily build the default local Ollama one."""
     global _active_llm
-    if _active_llm is not None:
-        return _active_llm
-    from src.core.llm import get_llm
+    with _llm_lock:
+        if _active_llm is not None:
+            return _active_llm
+        from src.core.llm import get_llm
 
-    _active_llm = get_llm(provider="ollama", model="qwen2.5:7b")
-    return _active_llm
+        _active_llm = get_llm(provider="ollama", model="qwen2.5:7b")
+        return _active_llm
 
 
 def _llm_from_config(config: RunnableConfig | None) -> BaseChatModel:

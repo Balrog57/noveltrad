@@ -131,8 +131,12 @@ def main() -> int:
     hotkey = GlobalHotkey(translator.translate_selection)
     hotkey.start()
 
+    # Ensure a running translation is stopped cleanly on quit (A3).
+    app.aboutToQuit.connect(window.stop_worker)
+
     exit_code = app.exec()
 
+    window.stop_worker()
     hotkey.stop()
     return exit_code
 
