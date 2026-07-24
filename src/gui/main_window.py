@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from src.core.glossary import GlossaryError, load_glossary
 from src.core.profiles import PROFILE_NAMES
 from src.core.state import make_initial_state
+from src.gui.a11y import configure
 from src.gui.inspector import InspectorPanel
 from src.gui.settings_dialog import LANGUAGES, SettingsDialog
 from src.gui.worker import TranslationWorker
@@ -55,30 +56,59 @@ class MainWindow(QMainWindow):
         bar.addWidget(QLabel("De :"))
         self.combo_source = QComboBox()
         self.combo_source.addItems(LANGUAGES)
+        configure(
+            self.combo_source,
+            accessible_name="Langue d'origine",
+            tooltip="Choisir la langue d'origine",
+        )
         bar.addWidget(self.combo_source)
 
         bar.addWidget(QLabel("Vers :"))
         self.combo_target = QComboBox()
         self.combo_target.addItems(LANGUAGES)
+        configure(
+            self.combo_target,
+            accessible_name="Langue cible",
+            tooltip="Choisir la langue cible",
+        )
         bar.addWidget(self.combo_target)
 
         bar.addWidget(QLabel("Profil :"))
         self.combo_profile = QComboBox()
         self.combo_profile.addItems(PROFILE_NAMES)
+        configure(
+            self.combo_profile,
+            accessible_name="Profil de traduction",
+            tooltip="Choisir le profil de traduction",
+        )
         bar.addWidget(self.combo_profile)
 
         bar.addWidget(QLabel("Modèle :"))
         self.combo_model = QComboBox()
         self.combo_model.setEditable(True)
+        configure(
+            self.combo_model,
+            accessible_name="Modèle d'intelligence artificielle",
+            tooltip="Choisir le modèle d'intelligence artificielle",
+        )
         bar.addWidget(self.combo_model, 1)
 
         self.btn_refresh_models = QPushButton("🔄")
         self.btn_refresh_models.setToolTip("Rafraîchir la liste des modèles Ollama")
         self.btn_refresh_models.setFixedWidth(34)
         self.btn_refresh_models.clicked.connect(self.refresh_models)
+        configure(
+            self.btn_refresh_models,
+            accessible_name="Rafraîchir la liste des modèles Ollama",
+            tooltip="Rafraîchir la liste des modèles Ollama",
+        )
         bar.addWidget(self.btn_refresh_models)
 
         self.check_fast = QCheckBox("Mode Rapide")
+        configure(
+            self.check_fast,
+            accessible_name="Activer le mode rapide",
+        )
         self.check_fast.setToolTip("Agent unique (< 3s) au lieu du pipeline 4 agents.")
         self.check_fast.toggled.connect(self._on_fast_toggle)
         bar.addWidget(self.check_fast)
@@ -88,20 +118,40 @@ class MainWindow(QMainWindow):
         # --- Action bar ---
         actions = QHBoxLayout()
         self.btn_translate = QPushButton("▶  Traduire (Pipeline Multi-Agent)")
+        configure(
+            self.btn_translate,
+            accessible_name="Traduire",
+            tooltip="Lancer la traduction",
+        )
         self.btn_translate.clicked.connect(self.start_translation)
         actions.addWidget(self.btn_translate)
 
         self.btn_copy = QPushButton("📋 Copier")
+        configure(
+            self.btn_copy,
+            accessible_name="Copier la traduction",
+            tooltip="Copier la traduction dans le presse-papier",
+        )
         self.btn_copy.setToolTip("Copier la traduction dans le presse-papier (F3.b)")
         self.btn_copy.clicked.connect(self.copy_result)
         actions.addWidget(self.btn_copy)
 
         self.btn_glossary = QPushButton("📖 Glossaire…")
+        configure(
+            self.btn_glossary,
+            accessible_name="Charger un glossaire",
+            tooltip="Ouvrir une boîte de dialogue pour charger un glossaire",
+        )
         self.btn_glossary.setToolTip("Charger un glossaire JSON/CSV (F2.c)")
         self.btn_glossary.clicked.connect(self.load_glossary_file)
         actions.addWidget(self.btn_glossary)
 
         self.btn_ocr = QPushButton("🖼 OCR Image…")
+        configure(
+            self.btn_ocr,
+            accessible_name="Extraire le texte d'une image",
+            tooltip="Extraire le texte d'une image avec l'OCR",
+        )
         self.btn_ocr.setToolTip(
             "Extraire le texte d'une image puis le traduire (CDC Phase 3)"
         )
@@ -115,6 +165,11 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.btn_ocr)
 
         self.btn_settings = QPushButton("⚙ Configuration")
+        configure(
+            self.btn_settings,
+            accessible_name="Ouvrir la configuration",
+            tooltip="Ouvrir la fenêtre de configuration",
+        )
         self.btn_settings.clicked.connect(self.open_settings)
         actions.addWidget(self.btn_settings)
 
@@ -127,8 +182,18 @@ class MainWindow(QMainWindow):
         # --- Splitter (40 / 40 / 20) per CDC §5 ---
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.txt_source = QTextEdit()
+        configure(
+            self.txt_source,
+            accessible_name="Texte d'origine",
+            tooltip="Zone de saisie pour le texte à traduire",
+        )
         self.txt_source.setPlaceholderText("Entrez le texte à traduire…")
         self.txt_target = QTextEdit()
+        configure(
+            self.txt_target,
+            accessible_name="Texte traduit",
+            tooltip="Zone d'affichage pour la traduction",
+        )
         self.txt_target.setReadOnly(True)
         self.txt_target.setPlaceholderText("La traduction apparaîtra ici…")
         self.inspector = InspectorPanel()

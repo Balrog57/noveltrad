@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.a11y import configure
+
 # Pipeline stages in order, with display labels.
 STAGES: list[tuple[str, str]] = [
     ("translator", "1. Traducteur"),
@@ -61,6 +63,11 @@ class StageWidget(QFrame):
         self.expand_btn.setCheckable(True)
         self.expand_btn.setChecked(True)
         self.expand_btn.toggled.connect(self._on_toggle)
+        configure(
+            self.expand_btn,
+            accessible_name=f"Afficher les détails de l'étape {label}",
+            tooltip=f"Afficher les détails de l'étape {label}",
+        )
 
         header.addWidget(self.expand_btn)
         header.addWidget(self.title, 1)
@@ -70,6 +77,11 @@ class StageWidget(QFrame):
         # Detail table.
         cols = STAGE_COLUMNS.get(stage_id, ["—"])
         self.table = QTableWidget(0, len(cols))
+        configure(
+            self.table,
+            accessible_name=f"Détails de l'étape {label}",
+            tooltip=f"Détails des modifications apportées par l'étape {label}",
+        )
         self.table.setHorizontalHeaderLabels(cols)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -77,6 +89,11 @@ class StageWidget(QFrame):
 
         # Text preview (translator produces text, others show a preview too).
         self.preview = QTextEdit()
+        configure(
+            self.preview,
+            accessible_name=f"Aperçu du texte pour l'étape {label}",
+            tooltip=f"Aperçu du texte produit par l'étape {label}",
+        )
         self.preview.setReadOnly(True)
         self.preview.setMaximumHeight(90)
         self.preview.setPlaceholderText("Texte produit par cet agent…")
@@ -152,6 +169,11 @@ class InspectorPanel(QWidget):
         self.simple_btn = QPushButton("Vue simplifiée")
         self.simple_btn.setCheckable(True)
         self.simple_btn.toggled.connect(self.toggle_simple)
+        configure(
+            self.simple_btn,
+            accessible_name="Vue simplifiée (masquer les détails)",
+            tooltip="Masquer les détails pour afficher uniquement l'état des étapes",
+        )
         top.addWidget(self.simple_btn)
         layout.addLayout(top)
 
@@ -164,6 +186,11 @@ class InspectorPanel(QWidget):
         # Global log area.
         layout.addWidget(QLabel("Journal"))
         self.log_view = QTextEdit()
+        configure(
+            self.log_view,
+            accessible_name="Journal d'exécution",
+            tooltip="Afficher les étapes du pipeline",
+        )
         self.log_view.setReadOnly(True)
         self.log_view.setPlaceholderText("Étapes du pipeline multi-agent…")
         layout.addWidget(self.log_view, 1)

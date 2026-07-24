@@ -9,3 +9,7 @@
 ## 2024-07-13 - State Toggle Button Accessibility
 **Learning:** Adding an `aria-label` to a state-toggling button that already contains dynamic, informative text (e.g., `{{ currentMode === 'A' ? 'A' : 'B' }}`) is an accessibility anti-pattern. The `aria-label` completely overrides the visible text for screen readers, hiding the crucial state context.
 **Action:** When improving state toggle buttons, do not use `aria-label` if it overrides useful dynamic text. Instead, use a `title` attribute for a visual tooltip and `:aria-pressed="condition"` to expose the toggle state programmatically to screen readers.
+
+## 2024-07-23 - Custom PySide6 Accessible Names and Tooltips
+**Learning:** PySide6/PyQt6 widgets need explicit configuration for accessibility, particularly when they don't have text directly associated with them (like QLineEdit or QComboBox used within forms, or buttons with icons only). We need to explicitly call `setAccessibleName` and `setToolTip` to ensure context is available to screen readers and sighted users respectively.
+**Action:** Use the project's custom `src.gui.a11y.configure` utility function to concisely apply ARIA-like labels (`accessible_name`) and tooltips (`tooltip`) directly when instantiating new UI widgets, standardizing accessibility application.
