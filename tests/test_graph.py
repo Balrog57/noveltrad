@@ -38,7 +38,7 @@ def _expert_responses():
 def test_expert_graph_invoke_produces_final_text(fake_llm_factory) -> None:
     fake_llm_factory(_expert_responses())
     graph = build_translation_graph()
-    state = make_initial_state("Hello world.", "Anglais", "Français")
+    state = make_initial_state("Hello world.", "Anglais", "Français", glossary={"world": "monde"})
     result = graph.invoke(state, config=_config())
 
     assert result["final_text"] == "Bonjour le monde."
@@ -53,7 +53,7 @@ def test_expert_graph_invoke_produces_final_text(fake_llm_factory) -> None:
 def test_expert_graph_logs_accumulate_per_agent(fake_llm_factory) -> None:
     fake_llm_factory(_expert_responses())
     graph = build_translation_graph()
-    state = make_initial_state("Hello world.", "Anglais", "Français")
+    state = make_initial_state("Hello world.", "Anglais", "Français", glossary={"world": "monde"})
     result = graph.invoke(state, config=_config())
 
     logs = result["logs"]
@@ -67,7 +67,7 @@ def test_expert_graph_logs_accumulate_per_agent(fake_llm_factory) -> None:
 def test_expert_graph_stream_emits_one_event_per_node(fake_llm_factory) -> None:
     fake_llm_factory(_expert_responses())
     graph = build_translation_graph()
-    state = make_initial_state("Hello world.", "Anglais", "Français")
+    state = make_initial_state("Hello world.", "Anglais", "Français", glossary={"world": "monde"})
 
     events = list(graph.stream(state, config=_config()))
     node_names = [next(iter(e)) for e in events]

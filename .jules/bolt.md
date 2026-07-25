@@ -9,3 +9,7 @@
 ## 2024-07-10 - SQLite Mass Inserts Missing Transactions (RagEngine)
 **Learning:** The missing `BEGIN TRANSACTION` issue in `node-sqlite3-wasm` for mass inserts also applies to the RagEngine's `storeEmbeddings` method. Because SQLite commits each query independently by default, inserting massive arrays of vector embeddings one by one without an explicit transaction wrapper causes severe O(N) I/O bottleneck overhead, increasing embedding indexing times significantly.
 **Action:** We wrapped the loop inside `storeEmbeddings` with explicit `this.db.exec('BEGIN TRANSACTION')` and `this.db.exec('COMMIT')` commands, which resolved the latency. When doing so, it is critical to also mock the `exec` method in the `MockDatabase` object within the test files (e.g. `rag-engine.spec.ts`) to prevent test suite failures with `TypeError: this.db.exec is not a function`.
+
+## 2024-11-20 - Skip Glossary LLM Call When Glossary is Empty
+**Learning:** In the 4-agent translation pipeline, calling the `glossary_node` LLM when `glossary` is empty incurs significant unnecessary delay, as there are no terms for the agent to check. This bottleneck severely impacts the speed of translation when a user hasn't defined any terms.
+**Action:** Implemented an early return in `glossary_node` to bypass the costly LLM invocation when `glossary` is empty. The agent now returns the previous state's text (`revised`) instantly and reports a skipped log, dramatically improving performance for users without glossaries.

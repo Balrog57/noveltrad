@@ -305,9 +305,18 @@ def proofreader_node(state: TranslationState, config: RunnableConfig) -> dict[st
 
 def glossary_node(state: TranslationState, config: RunnableConfig) -> dict[str, Any]:
     """Agent 3 — Context & Glossary Controller. Output JSON {final_text, matches}."""
-    llm = _json_llm(_llm_from_config(config))
     revised = state.get("corrected_text") or state.get("draft_translation") or ""
     glossary = state.get("glossary") or {}
+
+    if not glossary:
+        return {
+            "glossary_applied_text": revised,
+            "glossary_matches": [],
+            "reasoning": "Skipped LLM call (glossary is empty).",
+            "logs": state.get("logs", []) + ["[glossary] skipped (empty glossary)"],
+        }
+
+    llm = _json_llm(_llm_from_config(config))
     prompt = GLOSSARY_SYSTEM.format(
         target_lang=state["target_lang"],
         revised_text=revised,
