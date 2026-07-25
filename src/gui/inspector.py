@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.a11y import configure
+
 # Pipeline stages in order, with display labels.
 STAGES: list[tuple[str, str]] = [
     ("translator", "1. Traducteur"),
@@ -57,6 +59,11 @@ class StageWidget(QFrame):
         self.status_chip = QLabel("○")
         self.status_chip.setStyleSheet("color: gray; font-weight: bold;")
         self.expand_btn = QPushButton("▾")
+        configure(
+            self.expand_btn,
+            accessible_name="Développer les détails",
+            tooltip="Développer les détails",
+        )
         self.expand_btn.setFixedWidth(24)
         self.expand_btn.setCheckable(True)
         self.expand_btn.setChecked(True)
