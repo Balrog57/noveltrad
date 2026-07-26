@@ -1,0 +1,4 @@
+## 2025-02-14 - Predictable Temporary File Creation on Windows
+**Vulnerability:** A batch file for application update (`noveltrad_updater.bat`) was being created in `tempfile.gettempdir()` with a hardcoded, predictable name.
+**Learning:** This exposes the application to TOCTOU and temporary file hijacking attacks. An attacker on a multi-user system could pre-create or modify this file to achieve local privilege escalation or arbitrary code execution, especially since the application might be running with elevated permissions to perform an update.
+**Prevention:** Always use `tempfile.mkstemp()` (e.g., `tempfile.mkstemp(prefix="...", suffix=".bat")`) to generate unguessable temporary file paths with restricted permissions. Combine this with `os.fdopen()` to securely write the file contents directly using the file descriptor.
