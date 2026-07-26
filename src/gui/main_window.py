@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from src.core.glossary import GlossaryError, load_glossary
 from src.core.profiles import PROFILE_NAMES
 from src.core.state import make_initial_state
+from src.gui import a11y
 from src.gui.inspector import InspectorPanel
 from src.gui.settings_dialog import LANGUAGES, SettingsDialog
 from src.gui.worker import TranslationWorker
@@ -74,7 +75,11 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.combo_model, 1)
 
         self.btn_refresh_models = QPushButton("🔄")
-        self.btn_refresh_models.setToolTip("Rafraîchir la liste des modèles Ollama")
+        a11y.configure(
+            self.btn_refresh_models,
+            accessible_name="Rafraîchir la liste des modèles Ollama",
+            tooltip="Rafraîchir la liste des modèles Ollama"
+        )
         self.btn_refresh_models.setFixedWidth(34)
         self.btn_refresh_models.clicked.connect(self.refresh_models)
         bar.addWidget(self.btn_refresh_models)
