@@ -1,0 +1,4 @@
+## 2024-05-18 - Insecure Temporary File Creation via `tempfile.gettempdir()`
+**Vulnerability:** In `src/utils/updater.py`, the batch script `noveltrad_updater.bat` used for updating the application on Windows was created using `Path(tempfile.gettempdir()) / "noveltrad_updater.bat"`.
+**Learning:** Using predictable file paths in a temporary directory (`tempfile.gettempdir()`) opens up the application to Time-of-Check to Time-of-Use (TOCTOU) and arbitrary file overwrite / execution hijacking attacks. If a malicious local user or process creates a symlink (or just places a file) at that exact path before the updater runs, it can execute arbitrary code with the privileges of the application.
+**Prevention:** Always use `tempfile.mkstemp()` combined with `os.fdopen()` to securely generate a temporary file with a randomized name and restricted file permissions (e.g., owner read/write only).
