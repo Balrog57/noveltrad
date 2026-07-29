@@ -9,3 +9,7 @@
 ## 2024-07-10 - SQLite Mass Inserts Missing Transactions (RagEngine)
 **Learning:** The missing `BEGIN TRANSACTION` issue in `node-sqlite3-wasm` for mass inserts also applies to the RagEngine's `storeEmbeddings` method. Because SQLite commits each query independently by default, inserting massive arrays of vector embeddings one by one without an explicit transaction wrapper causes severe O(N) I/O bottleneck overhead, increasing embedding indexing times significantly.
 **Action:** We wrapped the loop inside `storeEmbeddings` with explicit `this.db.exec('BEGIN TRANSACTION')` and `this.db.exec('COMMIT')` commands, which resolved the latency. When doing so, it is critical to also mock the `exec` method in the `MockDatabase` object within the test files (e.g. `rag-engine.spec.ts`) to prevent test suite failures with `TypeError: this.db.exec is not a function`.
+
+## 2026-07-29 - CSV Parsing Memory Bottleneck
+**Learning:** When parsing unbounded or massive CSV/TSV files, loading all rows into a list comprehension `[row for row in reader]` can cause severe O(N) memory bottlenecks and CPU delays due to bulk allocations. This is highly detrimental when importing large glossaries.
+**Action:** Avoid loading large CSV files entirely into memory. Instead, use a single-pass iterator generator (e.g., `(row for row in reader)` combined with `next()`) to parse rows iteratively, preserving O(1) memory overhead regardless of file size.
