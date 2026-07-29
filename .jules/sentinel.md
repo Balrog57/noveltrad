@@ -1,0 +1,4 @@
+## 2025-02-18 - Fix Predictable Temporary File Execution
+**Vulnerability:** The application's auto-updater created a batch script at a hardcoded, predictable location (`Path(tempfile.gettempdir()) / "noveltrad_updater.bat"`) before executing it.
+**Learning:** Hardcoded names in shared temporary directories are susceptible to Time-of-Check to Time-of-Use (TOCTOU) and hijacking attacks. An attacker could pre-create this file or monitor for it, modifying its contents between creation and execution, leading to local privilege escalation when the application (which may be running with elevated privileges) executes it.
+**Prevention:** Always use `tempfile.mkstemp` combined with `os.fdopen` to create temporary files, especially those intended for execution. This guarantees a randomized, unpredictable file name and ensures the file is created with restricted permissions, preventing unauthorized access or modification.
