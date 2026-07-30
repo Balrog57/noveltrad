@@ -1,0 +1,4 @@
+## 2025-02-15 - Predictable Temporary File Path in Updater
+**Vulnerability:** The auto-updater script (`src/utils/updater.py`) used a predictable file path in the global temporary directory (`tempfile.gettempdir() / "noveltrad_updater.bat"`) for writing a batch script.
+**Learning:** This exposes the application to a Time-Of-Check to Time-Of-Use (TOCTOU) vulnerability where a local attacker could potentially predict the filename and replace or modify the batch file before it is executed, leading to privilege escalation or arbitrary code execution when the main process restarts.
+**Prevention:** Always use `tempfile.mkstemp()` combined with `os.fdopen()` when generating temporary executable files or scripts. This ensures a randomized, unpredictable filename and restricts file permissions upon creation.
