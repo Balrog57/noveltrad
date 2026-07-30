@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.a11y import configure
+
 # Pipeline stages in order, with display labels.
 STAGES: list[tuple[str, str]] = [
     ("translator", "1. Traducteur"),
@@ -60,6 +62,12 @@ class StageWidget(QFrame):
         self.expand_btn.setFixedWidth(24)
         self.expand_btn.setCheckable(True)
         self.expand_btn.setChecked(True)
+        title_text = self.title.text().replace("<b>", "").replace("</b>", "")
+        configure(
+            self.expand_btn,
+            accessible_name=f"Collapse {title_text}",
+            tooltip=f"Collapse {title_text}",
+        )
         self.expand_btn.toggled.connect(self._on_toggle)
 
         header.addWidget(self.expand_btn)
@@ -97,8 +105,12 @@ class StageWidget(QFrame):
         self._detail_visible = True
 
     def set_status(self, status: str) -> None:
-        glyphs = {"pending": ("○", "gray"), "running": ("⏳", "#cc8800"), "done": ("✓", "green"),
-                  "error": ("✗", "red")}
+        glyphs = {
+            "pending": ("○", "gray"),
+            "running": ("⏳", "#cc8800"),
+            "done": ("✓", "green"),
+            "error": ("✗", "red"),
+        }
         glyph, color = glyphs.get(status, ("○", "gray"))
         self.status_chip.setText(glyph)
         self.status_chip.setStyleSheet(f"color: {color}; font-weight: bold;")
@@ -118,12 +130,22 @@ class StageWidget(QFrame):
 
         items = payload.get("items") or []
         col_map = {
-            "proofreader": lambda it: [it.get("type", ""), it.get("original_phrase", ""),
-                                       it.get("revised_phrase", ""), it.get("reason", "")],
-            "glossary": lambda it: [it.get("source_term", ""),
-                                    it.get("forced_target_term", ""), it.get("status", "")],
-            "validator": lambda it: [it.get("severity", ""), it.get("issue", ""),
-                                     it.get("resolution", "")],
+            "proofreader": lambda it: [
+                it.get("type", ""),
+                it.get("original_phrase", ""),
+                it.get("revised_phrase", ""),
+                it.get("reason", ""),
+            ],
+            "glossary": lambda it: [
+                it.get("source_term", ""),
+                it.get("forced_target_term", ""),
+                it.get("status", ""),
+            ],
+            "validator": lambda it: [
+                it.get("severity", ""),
+                it.get("issue", ""),
+                it.get("resolution", ""),
+            ],
             "translator": lambda it: [],
         }
         mapper = col_map.get(self.stage_id)
@@ -153,6 +175,19 @@ class StageWidget(QFrame):
 
     def _on_toggle(self, checked: bool) -> None:
         self.expand_btn.setText("▾" if checked else "▸")
+        title_text = self.title.text().replace("<b>", "").replace("</b>", "")
+        if checked:
+            configure(
+                self.expand_btn,
+                accessible_name=f"Collapse {title_text}",
+                tooltip=f"Collapse {title_text}",
+            )
+        else:
+            configure(
+                self.expand_btn,
+                accessible_name=f"Expand {title_text}",
+                tooltip=f"Expand {title_text}",
+            )
         self.table.setVisible(checked)
         self.preview.setVisible(checked)
         # CoT follows the same expanded/collapsed state (only if it has content).
