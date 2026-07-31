@@ -47,6 +47,7 @@ class StageWidget(QFrame):
     def __init__(self, stage_id: str, label: str) -> None:
         super().__init__()
         self.stage_id = stage_id
+        self.label_text = label
         self.setFrameShape(QFrame.Shape.Box)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -61,6 +62,13 @@ class StageWidget(QFrame):
         self.expand_btn.setCheckable(True)
         self.expand_btn.setChecked(True)
         self.expand_btn.toggled.connect(self._on_toggle)
+
+        from src.gui.a11y import configure
+        configure(
+            self.expand_btn,
+            accessible_name=f"Réduire {self.label_text}",
+            tooltip=f"Réduire {self.label_text}"
+        )
 
         header.addWidget(self.expand_btn)
         header.addWidget(self.title, 1)
@@ -153,6 +161,15 @@ class StageWidget(QFrame):
 
     def _on_toggle(self, checked: bool) -> None:
         self.expand_btn.setText("▾" if checked else "▸")
+
+        from src.gui.a11y import configure
+        action = "Réduire" if checked else "Développer"
+        configure(
+            self.expand_btn,
+            accessible_name=f"{action} {self.label_text}",
+            tooltip=f"{action} {self.label_text}"
+        )
+
         self.table.setVisible(checked)
         self.preview.setVisible(checked)
         # CoT follows the same expanded/collapsed state (only if it has content).
@@ -175,6 +192,14 @@ class InspectorPanel(QWidget):
         self.simple_btn = QPushButton("Vue simplifiée")
         self.simple_btn.setCheckable(True)
         self.simple_btn.toggled.connect(self.toggle_simple)
+
+        from src.gui.a11y import configure
+        configure(
+            self.simple_btn,
+            accessible_name="Basculer vers la vue simplifiée",
+            tooltip="Basculer vers la vue simplifiée"
+        )
+
         top.addWidget(self.simple_btn)
         layout.addLayout(top)
 
@@ -221,6 +246,13 @@ class InspectorPanel(QWidget):
 
     def toggle_simple(self, simple: bool) -> None:
         """F1.b: hide detail tables for a 'simplified' view (status chips only)."""
+        from src.gui.a11y import configure
+        action = "détaillée" if simple else "simplifiée"
+        configure(
+            self.simple_btn,
+            accessible_name=f"Basculer vers la vue {action}",
+            tooltip=f"Basculer vers la vue {action}"
+        )
         for sw in self.stages.values():
             sw.table.setVisible(not simple)
             sw.preview.setVisible(not simple)
