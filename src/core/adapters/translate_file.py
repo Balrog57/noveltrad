@@ -22,6 +22,39 @@ from .exceptions import UnsupportedFormatError
 from src.utils.file_detector import detect_file_type, detect_file_type_by_content
 
 
+def _ensure_checkpoint_job(
+    checkpoint_manager: Any,
+    translation_id: Optional[str],
+    file_type: str,
+    config: Dict[str, Any],
+    input_file_path: str
+) -> None:
+    """
+    Guarantee a job row exists before the legacy EPUB/DOCX pipelines run.
+
+    Those pipelines write checkpoint chunks but never create the parent job:
+    the web path relies on the API handler having created it first. The CLI
+    calls translate_file() directly, so nothing created it there and every
+    chunk row was silently orphaned. Foreign-key enforcement now rejects such
+    writes outright, so the row has to exist before the first chunk is saved.
+    """
+    if not (checkpoint_manager and translation_id):
+        return
+
+    try:
+        if checkpoint_manager.db.get_job(translation_id) is not None:
+            return
+        checkpoint_manager.start_job(
+            translation_id=translation_id,
+            file_type=file_type,
+            config=config,
+            input_file_path=input_file_path
+        )
+    except Exception as e:
+        # Checkpointing is best effort; never block a translation over it.
+        print(f"Could not create checkpoint job {translation_id}: {e}")
+
+
 async def translate_file(
     input_filepath: str,
     output_filepath: str,
@@ -160,6 +193,25 @@ async def translate_file(
     # The generic adapter pattern doesn't work well with EPUB's complex XHTML processing
     # that requires HTML chunking, tag preservation, technical content protection, etc.
     # TODO: Refactor EPUB translation to properly work with the adapter pattern
+    # The legacy EPUB/DOCX pipelines below save checkpoint chunks without ever
+    # creating the parent job row, which only worked because the web handler
+    # creates it beforehand. Make the invariant hold on every entry point.
+    if detected_type in ('epub', 'docx'):
+        _ensure_checkpoint_job(
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            file_type=detected_type,
+            config={
+                'input_file_path': input_filepath,
+                'output_file_path': output_filepath,
+                'source_language': source_language,
+                'target_language': target_language,
+                'model_name': model_name,
+                'llm_provider': llm_provider,
+            },
+            input_file_path=input_filepath
+        )
+
     if detected_type == 'epub':
         from src.core.epub.translator import translate_epub_file
         await translate_epub_file(
