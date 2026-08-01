@@ -1,7 +1,9 @@
 """Accessibility utilities for PySide6 widgets."""
 
 from typing import Any
+
 from PySide6.QtCore import Qt
+
 
 def configure(
     widget: Any,
