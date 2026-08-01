@@ -30,6 +30,7 @@ from ..post_processor import clean_residual_tag_placeholders
 from ..context_optimizer import AdaptiveContextManager, INITIAL_CONTEXT_SIZE, CONTEXT_STEP, MAX_CONTEXT_SIZE
 from .rtl_support import apply_rtl_to_epub_directory, is_rtl_language
 from .lang_support import apply_target_language_to_xhtml_directory, get_language_code
+from src.utils.security import safe_extract_zip
 
 
 async def translate_epub_file(
@@ -329,7 +330,7 @@ def _extract_epub(input_filepath: str, temp_dir: str, log_callback: Optional[Cal
         log_callback("epub_extract_start", "Extracting EPUB...")
 
     with zipfile.ZipFile(input_filepath, 'r') as zip_ref:
-        zip_ref.extractall(temp_dir)
+        safe_extract_zip(zip_ref, temp_dir)
 
 
 def _find_opf_file(temp_dir: str) -> Optional[str]:

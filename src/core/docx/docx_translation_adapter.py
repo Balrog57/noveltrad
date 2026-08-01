@@ -279,7 +279,26 @@ class DocxTranslationAdapter(TranslationAdapter[str, bytes]):
                 stats_callback=stats_callback,
                 check_interruption_callback=check_interruption_callback,
                 parallel_workers=parallel_workers,
+                file_href=file_href,
+                checkpoint_manager=checkpoint_manager,
+                translation_id=translation_id,
+                max_retries=max_retries,
+                resume_state=resume_state,
             )
+
+        # A Plain Text Mode checkpoint carries no tag map and an empty
+        # placeholder format, so replaying it here would restore a prefix under
+        # a placeholder scheme that never produced it. Mirror of the guard the
+        # plain pipeline applies: each mode resumes only its own state.
+        from src.core.common.plain_text_checkpoint import is_plain_text_state
+        if is_plain_text_state(resume_state):
+            if log_callback:
+                log_callback(
+                    "docx_resume_ignored",
+                    "⚠️ Checkpoint was written in Plain Text Mode; restarting "
+                    "this file with placeholder translation"
+                )
+            resume_state = None
 
         # === RESUME FROM PARTIAL STATE ===
         if resume_state:
@@ -410,6 +429,11 @@ class DocxTranslationAdapter(TranslationAdapter[str, bytes]):
         stats_callback: Optional[Callable],
         check_interruption_callback: Optional[Callable],
         parallel_workers: int = 1,
+        file_href: Optional[str] = None,
+        checkpoint_manager: Optional[Any] = None,
+        translation_id: Optional[str] = None,
+        max_retries: int = 1,
+        resume_state: Optional[Any] = None,
     ) -> Tuple[bytes, Any]:
         """
         Plain-text-mode DOCX translation: skip mammoth + placeholders.
@@ -417,12 +441,23 @@ class DocxTranslationAdapter(TranslationAdapter[str, bytes]):
         Read paragraphs via python-docx, translate as plain text, rebuild
         a fresh Document with the same page setup. Images are reattached
         right after their original paragraph (separate image-only paragraph).
+
+        Segment-level checkpointing reuses the XHTML partial-state machinery:
+        a rate limit or an interruption leaves a resumable checkpoint behind,
+        and `resume_state` restarts at the first unattempted segment. Unlike
+        EPUB there is no post-save seam to clean up after us, so the state is
+        deleted here once the document has been rebuilt.
         """
         import os
         import tempfile
 
         from .plain_extractor import extract_plain_paragraphs, build_minimal_docx
         from src.core.common.plain_text_pipeline import translate_paragraphs_plain
+        from src.core.common.plain_text_checkpoint import (
+            build_plain_checkpoint_hook,
+            delete_plain_checkpoint,
+            resume_plain_segments,
+        )
         from ..epub.translation_metrics import TranslationMetrics
 
         bilingual_flag = bool(prompt_options.get('bilingual')) if prompt_options else False
@@ -441,6 +476,24 @@ class DocxTranslationAdapter(TranslationAdapter[str, bytes]):
                 log_callback("plain_text_empty_docx", "⚠️ No paragraphs found in DOCX")
             return b'', TranslationMetrics()
 
+        paragraph_count = len(content.paragraphs_text)
+        resume_segments, resume_translated = resume_plain_segments(
+            resume_state, paragraph_count, log_callback
+        )
+        checkpoint_hook = build_plain_checkpoint_hook(
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            file_href=file_href,
+            source_language=source_language,
+            target_language=target_language,
+            model_name=model_name,
+            max_tokens_per_chunk=max_tokens_per_chunk,
+            max_retries=max_retries,
+            paragraph_count=paragraph_count,
+            prompt_options=prompt_options,
+            bilingual=bilingual_flag,
+        )
+
         translated, stats, was_interrupted = await translate_paragraphs_plain(
             paragraphs=content.paragraphs_text,
             source_language=source_language,
@@ -454,6 +507,9 @@ class DocxTranslationAdapter(TranslationAdapter[str, bytes]):
             check_interruption_callback=check_interruption_callback,
             prompt_options=prompt_options,
             parallel_workers=parallel_workers,
+            resume_segments=resume_segments,
+            resume_translated=resume_translated,
+            checkpoint_hook=checkpoint_hook,
         )
 
         if was_interrupted:
@@ -482,5 +538,9 @@ class DocxTranslationAdapter(TranslationAdapter[str, bytes]):
 
         if log_callback:
             log_callback("docx_plain_text_rebuilt", f"📄 Plain-text DOCX rebuilt ({len(docx_bytes)} bytes)")
+
+        # The document is complete: drop the segment checkpoint so a later
+        # resume of the same job does not replay a stale state.
+        delete_plain_checkpoint(checkpoint_manager, translation_id, file_href, log_callback)
 
         return docx_bytes, stats

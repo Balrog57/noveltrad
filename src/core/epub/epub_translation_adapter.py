@@ -253,6 +253,10 @@ class EpubTranslationAdapter(TranslationAdapter[etree._Element, bool]):
                 bilingual_flag=bilingual_flag,
                 file_href=file_href,
                 parallel_workers=parallel_workers,
+                checkpoint_manager=checkpoint_manager,
+                translation_id=translation_id,
+                max_retries=max_retries,
+                resume_state=resume_state,
             )
 
         success, stats = await translate_xhtml_simplified(
@@ -297,6 +301,10 @@ class EpubTranslationAdapter(TranslationAdapter[etree._Element, bool]):
         bilingual_flag: bool,
         file_href: Optional[str],
         parallel_workers: int = 1,
+        checkpoint_manager: Optional[Any] = None,
+        translation_id: Optional[str] = None,
+        max_retries: int = 1,
+        resume_state: Optional[Any] = None,
     ) -> Tuple[bool, Any]:
         """
         Plain-text-mode translation path: skip placeholders entirely.
@@ -305,10 +313,19 @@ class EpubTranslationAdapter(TranslationAdapter[etree._Element, bool]):
         them via the common plain-text pipeline, then rewrite body with a flat
         structure (block tags preserved, images reattached after their parent
         paragraph, inline formatting dropped).
+
+        Segment-level checkpointing reuses the XHTML partial-state machinery:
+        a rate limit or an interruption leaves a resumable checkpoint behind,
+        and `resume_state` restarts at the first unattempted segment. The state
+        is deleted by the EPUB translator once the file has been saved.
         """
         from .plain_extractor import extract_plain_paragraphs, replace_body_with_paragraphs
         from .translation_metrics import TranslationMetrics
         from src.core.common.plain_text_pipeline import translate_paragraphs_plain
+        from src.core.common.plain_text_checkpoint import (
+            build_plain_checkpoint_hook,
+            resume_plain_segments,
+        )
 
         body = doc_root.find('.//{http://www.w3.org/1999/xhtml}body')
         if body is None:
@@ -328,6 +345,23 @@ class EpubTranslationAdapter(TranslationAdapter[etree._Element, bool]):
                 f"{sum(len(v) for v in images_by_paragraph.values())} images anchored"
             )
 
+        resume_segments, resume_translated = resume_plain_segments(
+            resume_state, len(paragraphs_text), log_callback
+        )
+        checkpoint_hook = build_plain_checkpoint_hook(
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            file_href=file_href,
+            source_language=source_language,
+            target_language=target_language,
+            model_name=model_name,
+            max_tokens_per_chunk=max_tokens_per_chunk,
+            max_retries=max_retries,
+            paragraph_count=len(paragraphs_text),
+            prompt_options=prompt_options,
+            bilingual=bilingual_flag,
+        )
+
         translated, stats, was_interrupted = await translate_paragraphs_plain(
             paragraphs=paragraphs_text,
             source_language=source_language,
@@ -341,6 +375,9 @@ class EpubTranslationAdapter(TranslationAdapter[etree._Element, bool]):
             check_interruption_callback=check_interruption_callback,
             prompt_options=prompt_options,
             parallel_workers=parallel_workers,
+            resume_segments=resume_segments,
+            resume_translated=resume_translated,
+            checkpoint_hook=checkpoint_hook,
         )
 
         if was_interrupted:

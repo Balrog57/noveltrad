@@ -7,7 +7,9 @@ import copy
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 
+import src.config as _config
 from src.api.services.path_validator import PathValidator
+from src.api.services.endpoint_validator import EndpointValidator
 from src.config import (
     REQUEST_TIMEOUT,
     OLLAMA_NUM_CTX,
@@ -16,7 +18,11 @@ from src.config import (
     MAX_PARALLEL_TRANSLATIONS,
 )
 from src.tts.tts_config import TTSConfig
-from src.api.api_keys import resolve_api_key as _resolve_api_key
+from src.api.api_keys import (
+    resolve_api_key as _resolve_api_key,
+    provider_env_var as _provider_env_var,
+    USE_ENV_SENTINEL,
+)
 
 
 def _clamp_parallel_workers(value):
@@ -41,6 +47,91 @@ _KEY_PROVIDERS = ('gemini', 'openai', 'openrouter', 'mistral', 'deepseek', 'poe'
 
 # Providers that talk to a user-supplied endpoint; the others use a built-in one.
 _ENDPOINT_PROVIDERS = ('ollama', 'openai')
+
+# Providers whose client actually reads config['llm_api_endpoint'].
+# Source: src/core/llm/factory.py:87 (ollama), :93 (openai), :170 (nim).
+# The others use a constant or a .env endpoint and ignore the request field,
+# so an endpoint sent alongside them is inert and must not be treated as an
+# override — the frontend sends llm_api_endpoint unconditionally.
+_ENDPOINT_CONSUMING_PROVIDERS = ('ollama', 'openai', 'nim')
+
+
+def _server_default_endpoint(provider):
+    """Return the .env-configured endpoint for an endpoint-consuming provider.
+
+    Read from src.config at call time so reload_config() is honoured.
+    """
+    provider = (provider or '').lower()
+    if provider == 'ollama':
+        return _config.API_ENDPOINT
+    if provider == 'openai':
+        return _config.OPENAI_API_ENDPOINT
+    if provider == 'nim':
+        return _config.NIM_API_ENDPOINT
+    return ''
+
+
+def _normalize_endpoint(value):
+    """Normalize an endpoint for comparison (trim whitespace and trailing '/')."""
+    return (value or '').strip().rstrip('/')
+
+
+def _is_endpoint_override(config, requested_endpoint):
+    """True when the request chose an endpoint the selected provider actually
+    reads and that differs from the server default.
+
+    Providers outside _ENDPOINT_CONSUMING_PROVIDERS ignore the request field
+    entirely, so an endpoint sent with them is never an override.
+    """
+    provider = (config.get('llm_provider') or 'ollama').lower()
+    if provider not in _ENDPOINT_CONSUMING_PROVIDERS:
+        return False
+    normalized = _normalize_endpoint(requested_endpoint)
+    return bool(normalized) and normalized != _normalize_endpoint(
+        _server_default_endpoint(provider)
+    )
+
+
+def _validate_endpoint_and_key_pairing(config, requested_endpoint, request_key=None):
+    """Reject a disallowed endpoint, and refuse to pair an overridden endpoint
+    with the server's stored key.
+
+    A request that chooses its own host must also bring its own credential:
+    otherwise the server would forward a .env key to a destination the client
+    picked. Providers that ignore the request's endpoint are exempt, and
+    'ollama' has no key to leak so it needs none.
+
+    Args:
+        config: The job config being built or resumed.
+        requested_endpoint: The endpoint the request supplied, if any.
+        request_key: The raw key the request supplied for the selected provider
+            (may be the '__USE_ENV__' sentinel, empty, or absent).
+
+    Returns a Flask (response, status) tuple to abort with, or None when the
+    request is acceptable.
+    """
+    ok, err = EndpointValidator.validate(requested_endpoint)
+    if not ok:
+        return jsonify({"error": "Endpoint not allowed", "message": err}), 400
+
+    if not _is_endpoint_override(config, requested_endpoint):
+        return None
+
+    provider = (config.get('llm_provider') or 'ollama').lower()
+    if provider in _KEY_PROVIDERS and (not request_key or request_key == USE_ENV_SENTINEL):
+        # Only refuse when a stored key actually exists, i.e. when there is
+        # something to leak. 'openai' also covers keyless local servers
+        # (LM Studio, llama.cpp, vLLM) — same carve-out as
+        # _validate_provider_credentials, and it keeps that path working.
+        if os.getenv(_provider_env_var(provider) or ''):
+            return jsonify({
+                "error": "Endpoint override requires its own API key",
+                "message": (f"A custom '{provider}' endpoint was supplied, so the server's "
+                            "stored key will not be used. Send the key with the request or "
+                            "restore the default endpoint."),
+            }), 400
+
+    return None
 
 
 def _strip_api_keys(config):
@@ -107,6 +198,8 @@ def _apply_resume_overrides(config, overrides):
     Returns a Flask (response, status) tuple to abort with on validation failure,
     or None on success.
     """
+    raw_key = None
+
     if isinstance(overrides, dict) and overrides:
         if overrides.get('model'):
             config['model'] = overrides['model']
@@ -127,6 +220,23 @@ def _apply_resume_overrides(config, overrides):
         if provider in _KEY_PROVIDERS and raw_key not in (None, ''):
             env_var = f"{provider.upper()}_API_KEY"
             config[f"{provider}_api_key"] = _resolve_api_key(raw_key, env_var)
+
+    # A resume can point the job at a different host, either through the
+    # override body or through the endpoint stored in the checkpoint. The same
+    # pairing rule as the start endpoint applies, so the .env key never
+    # follows a non-default endpoint.
+    requested_endpoint = config.get('llm_api_endpoint')
+    pairing_error = _validate_endpoint_and_key_pairing(
+        config, requested_endpoint, request_key=raw_key
+    )
+    if pairing_error is not None:
+        return pairing_error
+
+    provider = (config.get('llm_provider') or 'ollama').lower()
+    if provider in _KEY_PROVIDERS and _is_endpoint_override(config, requested_endpoint):
+        config[f"{provider}_api_key"] = _resolve_api_key(
+            raw_key, _provider_env_var(provider), allow_env_fallback=False
+        )
 
     return _validate_provider_credentials(config)
 
@@ -216,6 +326,26 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
         else:
             config['text'] = data['text']
             config['file_type'] = data.get('file_type', 'txt')
+
+        # A request-chosen endpoint must be allowlisted, and must carry its own
+        # key: the server's .env key never travels to a host the client picked.
+        requested_endpoint = data.get('llm_api_endpoint')
+        provider = (config.get('llm_provider') or 'ollama').lower()
+        pairing_error = _validate_endpoint_and_key_pairing(
+            config, requested_endpoint, request_key=data.get(f'{provider}_api_key')
+        )
+        if pairing_error is not None:
+            return pairing_error
+
+        if provider in _KEY_PROVIDERS and _is_endpoint_override(config, requested_endpoint):
+            # Belt and braces: re-resolve without the .env fallback so the
+            # invariant "no stored key with an overridden endpoint" is local
+            # and testable. The guard above already ensured a real key is present.
+            config[f'{provider}_api_key'] = _resolve_api_key(
+                data.get(f'{provider}_api_key'),
+                _provider_env_var(provider),
+                allow_env_fallback=False,
+            )
 
         # Create translation in state manager
         state_manager.create_translation(translation_id, config)

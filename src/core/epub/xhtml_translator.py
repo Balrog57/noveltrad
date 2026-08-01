@@ -1628,6 +1628,20 @@ async def translate_xhtml_simplified(
         from src.config import MAX_TOKENS_PER_CHUNK
         max_tokens_per_chunk = MAX_TOKENS_PER_CHUNK
 
+    # A Plain Text Mode checkpoint carries no tag map and an empty placeholder
+    # format, so replaying it here would restore a prefix under a placeholder
+    # scheme that never produced it. This is the mirror of the guard the plain
+    # pipeline applies to placeholder states: each mode resumes only its own.
+    from src.core.common.plain_text_checkpoint import is_plain_text_state
+    if is_plain_text_state(resume_state):
+        if log_callback:
+            log_callback(
+                "xhtml_resume_ignored",
+                "⚠️ Checkpoint was written in Plain Text Mode; restarting this "
+                "file with placeholder translation"
+            )
+        resume_state = None
+
     # === RESUME FROM PARTIAL STATE ===
     if resume_state:
         if log_callback:

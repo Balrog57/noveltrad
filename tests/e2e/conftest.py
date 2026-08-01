@@ -6,7 +6,7 @@ browser, one set of input fixtures. Individual tests get a fresh page.
 Requirements, all checked at collection time so a missing one skips instead of
 failing:
   - playwright installed, with its Chromium downloaded (`playwright install chromium`)
-  - a Gemini API key in the environment (E2E runs cost real tokens)
+  - an API key for the selected provider (E2E runs cost real tokens)
 """
 import os
 import socket
@@ -19,9 +19,31 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PORT = int(os.environ.get("E2E_PORT", "5099"))
-# Overridable so the suite can be pointed at a cheaper or newer model.
-E2E_MODEL = os.environ.get("E2E_MODEL", "gemini-2.5-flash")
-E2E_PROVIDER = "gemini"
+# Overridable so the suite can be pointed at a cheaper or newer backend. The
+# model default follows the provider, because a Gemini model name is
+# meaningless to Poe and vice versa; E2E_MODEL still wins when set explicitly.
+_DEFAULT_MODELS = {
+    "gemini": "gemini-2.5-flash",
+    "poe": "Claude-Sonnet-4",
+    "openai": "gpt-4o-mini",
+}
+E2E_PROVIDER = os.environ.get("E2E_PROVIDER", "gemini").strip().lower()
+E2E_MODEL = os.environ.get("E2E_MODEL") or _DEFAULT_MODELS.get(
+    E2E_PROVIDER, "gemini-2.5-flash"
+)
+
+# The API-key field name the /api/translate payload must carry for this
+# provider, and the endpoint that goes with it. Both follow the provider so a
+# run against Poe does not send a Gemini key field or a Gemini host.
+E2E_KEY_FIELD = f"{E2E_PROVIDER}_api_key"
+_DEFAULT_ENDPOINTS = {
+    "gemini": "https://generativelanguage.googleapis.com",
+    "poe": "https://api.poe.com/v1/chat/completions",
+    "openai": "https://api.openai.com/v1/chat/completions",
+}
+E2E_ENDPOINT = os.environ.get("E2E_ENDPOINT") or _DEFAULT_ENDPOINTS.get(
+    E2E_PROVIDER, ""
+)
 
 pytest.importorskip("requests", reason="e2e tests drive the HTTP API")
 sync_playwright = pytest.importorskip(
@@ -31,16 +53,26 @@ sync_playwright = pytest.importorskip(
 import requests  # noqa: E402  (after importorskip)
 
 
-def _has_gemini_key():
-    """True when a Gemini key is reachable, from the environment or .env."""
-    if (os.environ.get("GEMINI_API_KEY") or "").strip():
+def _provider_key_var():
+    """Env var holding the selected provider's key, via the shared mapping."""
+    from src.api.api_keys import provider_env_var
+
+    return provider_env_var(E2E_PROVIDER)
+
+
+def _has_provider_key():
+    """True when the selected provider's key is reachable, from env or .env."""
+    var = _provider_key_var()
+    if not var:
+        return False
+    if (os.environ.get(var) or "").strip():
         return True
     env_file = REPO_ROOT / ".env"
     if not env_file.exists():
         return False
     for line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
         name, _, value = line.partition("=")
-        if name.strip() == "GEMINI_API_KEY" and value.split("#")[0].strip():
+        if name.strip() == var and value.split("#")[0].strip():
             return True
     return False
 
@@ -53,8 +85,11 @@ def _port_is_free(port):
 @pytest.fixture(scope="session")
 def live_server(tmp_path_factory):
     """Start the web server on a private port; yield (base_url, api_token)."""
-    if not _has_gemini_key():
-        pytest.skip("GEMINI_API_KEY is not configured; e2e runs need a real LLM")
+    if not _has_provider_key():
+        pytest.skip(
+            f"{_provider_key_var() or E2E_PROVIDER} is not configured; "
+            "e2e runs need a real LLM"
+        )
     if not _port_is_free(DEFAULT_PORT):
         pytest.skip(f"port {DEFAULT_PORT} is already in use; set E2E_PORT to a free one")
 

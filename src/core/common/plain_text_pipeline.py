@@ -180,6 +180,11 @@ async def translate_paragraphs_plain(
     check_interruption_callback: Optional[Callable] = None,
     prompt_options: Optional[Dict] = None,
     parallel_workers: int = 1,
+    *,
+    resume_segments: Optional[List[Dict[str, Any]]] = None,
+    resume_translated: Optional[List[str]] = None,
+    checkpoint_hook: Optional[Callable[[List[Dict[str, Any]], List[str], int, Dict[str, Any]], None]] = None,
+    checkpoint_every: int = 5,
 ) -> Tuple[List[str], TranslationMetrics, bool]:
     """
     Translate a list of plain-text paragraphs without placeholder preservation.
@@ -200,6 +205,19 @@ async def translate_paragraphs_plain(
             resolved against the provider by the caller). When 1, behavior is
             identical to the legacy sequential loop, including previous-chunk
             context chaining; > 1 drops that chaining.
+        resume_segments: segment list from a previous run's checkpoint, replayed
+            verbatim instead of re-deriving it from `paragraphs`. Storing the
+            segmentation rather than rebuilding it makes resume immune to a
+            token-budget change between the pause and the resume.
+        resume_translated: translations already produced for the first
+            len(resume_translated) segments. Those segments are never retried,
+            including ones that fell back to source text after a failure.
+        checkpoint_hook: called as
+            hook(segments, prefix, next_index, stats_dict) whenever the
+            contiguous translated prefix advances far enough to be worth
+            persisting. `prefix` is always exactly `next_index` items long and
+            contains no None. A hook that raises is logged and ignored.
+        checkpoint_every: how many segments between periodic hook calls.
 
     Returns:
         (translated_paragraphs, stats, was_interrupted)
@@ -212,7 +230,25 @@ async def translate_paragraphs_plain(
             stats_callback(stats.to_dict())
         return source, stats, False
 
-    segments = build_plain_segments(source, max_tokens_per_chunk)
+    # === RESUME ===
+    # build_plain_segments is deterministic for a given (paragraphs, budget),
+    # but the stored segmentation always wins so a budget change between pause
+    # and resume cannot shift the indices the prefix was written against.
+    prefix: List[str] = list(resume_translated or [])
+    segments = (
+        list(resume_segments) if resume_segments is not None
+        else build_plain_segments(source, max_tokens_per_chunk)
+    )
+    if prefix and (resume_segments is None or len(prefix) > len(segments)):
+        # More translated segments than segments to translate means the source
+        # changed under the checkpoint; nothing about the prefix can be trusted.
+        if log_callback:
+            log_callback(
+                "plain_text_resume_discarded",
+                "⚠️ Plain-text checkpoint does not match the source, restarting this file"
+            )
+        prefix = []
+        segments = build_plain_segments(source, max_tokens_per_chunk)
 
     # Chunk dicts mirror split_text_into_chunks() output; context comes from
     # the neighboring segments.
@@ -233,8 +269,6 @@ async def translate_paragraphs_plain(
         })
 
     stats.total_chunks = len(chunks)
-    if stats_callback:
-        stats_callback(stats.to_dict())
 
     workers = max(1, int(parallel_workers))
     sequential = workers == 1
@@ -243,6 +277,14 @@ async def translate_paragraphs_plain(
     # source order.
     translated_parts: List[Optional[str]] = [None] * len(chunks)
     previous_translation_context = ""
+
+    # Restored work counts as processed so the progress bar does not rewind.
+    for k, done in enumerate(prefix):
+        translated_parts[k] = done
+        stats.record_processed()
+
+    if stats_callback:
+        stats_callback(stats.to_dict())
 
     async def _translate_chunk(i):
         """Translate one chunk. Reads previous_translation_context only in
@@ -272,9 +314,29 @@ async def translate_paragraphs_plain(
             if translated_parts[j] is None:
                 translated_parts[j] = chunks[j].get('main_content', '')
 
-    pending = list(range(len(chunks)))
+    def _run_checkpoint_hook(next_index):
+        """Hand the contiguous prefix [0, next_index) to the caller's hook.
+
+        A failing hook degrades persistence, not the translation, so every call
+        is isolated.
+        """
+        if checkpoint_hook is None:
+            return
+        try:
+            checkpoint_hook(
+                segments, list(translated_parts[:next_index]), next_index, stats.to_dict()
+            )
+        except Exception as exc:  # noqa: BLE001 - checkpointing is best-effort
+            if log_callback:
+                log_callback(
+                    "plain_text_checkpoint_failed",
+                    f"⚠️ Plain-text checkpoint failed at segment {next_index}/{len(chunks)}: {exc}"
+                )
+
+    checkpoint_step = max(1, int(checkpoint_every))
+    pending = list(range(len(prefix), len(chunks)))
     rate_limit_error = None
-    processed = 0
+    processed = len(prefix)
 
     # Continuous concurrency with in-order delivery (see iter_ordered_concurrent).
     async for i, result in iter_ordered_concurrent(
@@ -324,10 +386,25 @@ async def translate_paragraphs_plain(
             stats_callback(stats.to_dict())
         processed += 1
 
+        # === CONTIGUITY INVARIANT ===
+        # iter_ordered_concurrent yields indices strictly in ascending order and
+        # every branch above assigns translated_parts[i] (success, empty, None
+        # result, or exception -> source fallback). Therefore, once index i has
+        # been handled, slots 0..i are all non-None and i + 1 is a gap-free
+        # resume point. Every hook call below relies on this: the prefix handed
+        # to the checkpoint is never sparse.
+        next_index = i + 1
+        if next_index % checkpoint_step == 0 or next_index == len(chunks):
+            _run_checkpoint_hook(next_index)
+
     if rate_limit_error is not None:
-        # Keep source text for everything not yet translated, then propagate to
-        # trigger the caller's pause/resume handling.
+        # Persist the contiguous prefix translated before the limit, then keep
+        # source text for everything else and propagate: the caller's auto-pause
+        # depends on the exception reaching it.
+        _run_checkpoint_hook(processed)
         _fill_remaining_with_source()
+        safe_parts = [p if p is not None else "" for p in translated_parts]
+        rate_limit_error.partial_result = _reassemble(segments, safe_parts, source)
         raise rate_limit_error
 
     # Interruption: the scheduler stopped launching new chunks; keep source text
@@ -338,6 +415,7 @@ async def translate_paragraphs_plain(
                 "plain_text_translation_interrupted",
                 f"⏸️ Plain-text translation interrupted at chunk {processed + 1}/{len(chunks)}"
             )
+        _run_checkpoint_hook(processed)
         _fill_remaining_with_source()
         safe_parts = [p if p is not None else "" for p in translated_parts]
         return _reassemble(segments, safe_parts, source), stats, True

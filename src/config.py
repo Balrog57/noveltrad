@@ -143,6 +143,13 @@ OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', '4096'))
 # high values counter-productive.
 MAX_PARALLEL_TRANSLATIONS = int(os.getenv('MAX_PARALLEL_TRANSLATIONS', '16'))
 
+# Extra hostnames the LLM endpoint validator accepts, comma-separated.
+# Deliberately not exposed through /api/settings: widening the allowlist from
+# the browser would reopen the credential-exfiltration path this guard closes.
+LLM_ENDPOINT_ALLOWLIST = tuple(
+    h.strip().lower() for h in os.getenv('LLM_ENDPOINT_ALLOWLIST', '').split(',') if h.strip()
+)
+
 # Providers that run on the user's own machine and serialize requests through a
 # single model instance. Parallel dispatch gives them no speedup and can
 # saturate the GPU, so the concurrency control is disabled for them.

@@ -95,6 +95,18 @@ def sample_html():
 
 
 @pytest.fixture
+def structured_html():
+    """HTML exercising blockquote, nested list, nested table and mixed cells."""
+    return """<html><body>
+<p>Intro paragraph.</p>
+<blockquote><p>Quoted line one.</p><p>Quoted line two.</p></blockquote>
+<ul><li>Outer A<ul><li>Inner A1</li><li>Inner A2</li></ul></li><li>Outer B</li></ul>
+<table><tr><th>H1</th><td>D1</td><th>H2</th></tr>
+<tr><td>Nested<table><tr><td>N1</td></tr></table></td><td>D2</td><td>D3</td></tr></table>
+</body></html>"""
+
+
+@pytest.fixture
 def sample_metadata():
     """Sample metadata for testing."""
     return {

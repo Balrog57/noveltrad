@@ -61,6 +61,11 @@ class Database:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
+            # SQLite scopes foreign_keys per connection, not per database, so it
+            # must be enabled here (on every connection we hand out) rather than
+            # once in _initialize_schema. Without it, the ON DELETE CASCADE
+            # declared on checkpoint_chunks is silently ignored.
+            conn.execute("PRAGMA foreign_keys = ON")
             self._local.connection = conn
         return self._local.connection
 
@@ -119,6 +124,17 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_chunks_translation
                 ON checkpoint_chunks(translation_id)
             """)
+
+            # Reclaim chunk rows orphaned by deletions performed while foreign
+            # key enforcement was off. Idempotent by construction: on a clean
+            # database it deletes zero rows, so it can run on every startup and
+            # needs no schema-version table.
+            cursor.execute("""
+                DELETE FROM checkpoint_chunks
+                WHERE translation_id NOT IN (SELECT translation_id FROM translation_jobs)
+            """)
+            if cursor.rowcount > 0:
+                print(f"Reclaimed {cursor.rowcount} orphaned checkpoint chunk row(s)")
 
             conn.commit()
 
@@ -506,7 +522,17 @@ class Database:
                 if not job_ids:
                     return 0
 
-                # Delete old jobs (chunks deleted via CASCADE)
+                # Delete the chunks explicitly (defence in depth: the ON DELETE
+                # CASCADE only fires while PRAGMA foreign_keys is on). The
+                # placeholder string is built from len(job_ids); the values
+                # themselves are always bound as parameters.
+                placeholders = ','.join('?' * len(job_ids))
+                cursor.execute(
+                    f"DELETE FROM checkpoint_chunks WHERE translation_id IN ({placeholders})",
+                    job_ids
+                )
+
+                # Delete old jobs (chunks already deleted explicitly above)
                 cursor.execute("""
                     DELETE FROM translation_jobs
                     WHERE status IN ('paused', 'interrupted', 'error', 'partial', 'completed')
@@ -605,6 +631,13 @@ class Database:
             try:
                 conn = self._get_connection()
                 cursor = conn.cursor()
+
+                # Defence in depth: the ON DELETE CASCADE below only fires while
+                # PRAGMA foreign_keys is on for this connection.
+                cursor.execute(
+                    "DELETE FROM checkpoint_chunks WHERE translation_id = ?",
+                    (translation_id,)
+                )
 
                 cursor.execute(
                     "DELETE FROM translation_jobs WHERE translation_id = ?",
