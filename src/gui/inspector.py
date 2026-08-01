@@ -62,6 +62,14 @@ class StageWidget(QFrame):
         self.expand_btn.setChecked(True)
         self.expand_btn.toggled.connect(self._on_toggle)
 
+        self._clean_label = label
+        from src.gui.a11y import configure
+        configure(
+            self.expand_btn,
+            accessible_name=f"Réduire {self._clean_label}",
+            tooltip=f"Réduire {self._clean_label}"
+        )
+
         header.addWidget(self.expand_btn)
         header.addWidget(self.title, 1)
         header.addWidget(self.status_chip)
@@ -153,6 +161,13 @@ class StageWidget(QFrame):
 
     def _on_toggle(self, checked: bool) -> None:
         self.expand_btn.setText("▾" if checked else "▸")
+        from src.gui.a11y import configure
+        action = "Réduire" if checked else "Développer"
+        configure(
+            self.expand_btn,
+            accessible_name=f"{action} {self._clean_label}",
+            tooltip=f"{action} {self._clean_label}"
+        )
         self.table.setVisible(checked)
         self.preview.setVisible(checked)
         # CoT follows the same expanded/collapsed state (only if it has content).
