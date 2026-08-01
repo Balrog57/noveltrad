@@ -16,7 +16,7 @@ import mammoth
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, Set
 from lxml import etree
 
 
@@ -40,6 +40,14 @@ _EQ_MARKER_REGEX = re.compile(
 # text markers before the HTML->DOCX rebuild so _restore_equations can splice
 # the original OMML back in.
 _EQ_TAG_REGEX = re.compile(r'<eq id="(\d+)"\s*/>')
+
+# Tags that start a new paragraph when found inside a <blockquote>.
+_BLOCKQUOTE_BLOCK_TAGS = frozenset(
+    {'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'}
+)
+# Blockquote children that are rebuilt by the generic dispatch instead of
+# being folded into a quoted paragraph.
+_BLOCKQUOTE_DELEGATED_TAGS = frozenset({'ul', 'ol', 'table'})
 
 _OMML_XPATH = etree.XPath(
     './/m:oMathPara | .//m:oMath[not(ancestor::m:oMathPara)]',
@@ -385,6 +393,8 @@ class DocxHtmlConverter:
             doc.add_paragraph()  # Empty paragraph for line break
         elif tag == 'img':
             self._add_image_run(doc.add_paragraph(), element)
+        elif tag == 'blockquote':
+            self._convert_blockquote(doc, element, metadata)
         # Skip other tags (div, span handled within paragraphs)
 
     def _convert_paragraph(
@@ -409,18 +419,124 @@ class DocxHtmlConverter:
         text = self._get_text_content(element)
         doc.add_heading(text, level=level)
 
-    def _convert_list(
+    def _convert_blockquote(
         self,
         doc: Document,
         element: etree._Element,
         metadata: Dict[str, Any]
+    ) -> None:
+        """
+        Convert HTML <blockquote> to one or more quoted DOCX paragraphs.
+
+        Each block-level child (<p>, <h1>-<h6>) becomes its own paragraph so
+        multi-paragraph quotes are not collapsed; a nested <blockquote>
+        recurses. Lists and tables inside the quote are handed back to the
+        generic dispatch so they are not silently dropped.
+        """
+        style_name = self._quote_style_name(doc)
+        block_children = [
+            child for child in element
+            if child.tag in _BLOCKQUOTE_BLOCK_TAGS
+        ]
+
+        if block_children:
+            for child in block_children:
+                if child.tag == 'blockquote':
+                    self._convert_blockquote(doc, child, metadata)
+                    continue
+                paragraph = doc.add_paragraph()
+                self._add_runs_from_element(paragraph, child, metadata)
+                self._apply_quote_format(paragraph, style_name)
+        elif self._get_block_text(element, exclude=_BLOCKQUOTE_DELEGATED_TAGS).strip():
+            # Bare quote text with no <p> wrapper. The delegated children are
+            # emitted by the loop below, so they are skipped here rather than
+            # flattened into this paragraph a second time.
+            paragraph = doc.add_paragraph()
+            self._add_runs_from_element(
+                paragraph, element, metadata, skip_tags=_BLOCKQUOTE_DELEGATED_TAGS
+            )
+            self._apply_quote_format(paragraph, style_name)
+
+        for child in element:
+            if child.tag in _BLOCKQUOTE_DELEGATED_TAGS:
+                self._convert_html_element_to_docx(doc, child, metadata)
+
+    def _quote_style_name(self, doc: Document) -> Optional[str]:
+        """
+        Return the quote style available in the document, or None.
+
+        python-docx raises KeyError for a style name the template does not
+        define, so each candidate is probed before use.
+        """
+        for name in ('Quote', 'Intense Quote'):
+            try:
+                doc.styles[name]
+            except KeyError:
+                continue
+            return name
+        return None
+
+    def _apply_quote_format(self, paragraph, style_name: Optional[str]) -> None:
+        """Mark a paragraph as quoted, falling back to a left indent."""
+        if style_name:
+            paragraph.style = style_name
+        else:
+            paragraph.paragraph_format.left_indent = Inches(0.5)
+
+    def _convert_list(
+        self,
+        doc: Document,
+        element: etree._Element,
+        metadata: Dict[str, Any],
+        level: int = 1
     ):
-        """Convert HTML list to DOCX list."""
+        """
+        Convert an HTML list to DOCX list paragraphs.
+
+        Only direct <li> children are consumed, in document order; nested
+        <ul>/<ol> recurse with an incremented level. Using `.//li` here would
+        emit every descendant item twice, once for the outer list and once
+        for the nested one.
+        """
         is_ordered = element.tag == 'ol'
 
-        for li in element.findall('.//li'):
-            text = self._get_text_content(li)
-            p = doc.add_paragraph(text, style='List Number' if is_ordered else 'List Bullet')
+        for li in [child for child in element if child.tag == 'li']:
+            text = self._get_block_text(li, exclude={'ul', 'ol'})
+            if text.strip():
+                self._add_list_paragraph(doc, text, is_ordered, level)
+
+            for child in li:
+                if child.tag in ('ul', 'ol'):
+                    self._convert_list(doc, child, metadata, level + 1)
+
+    def _list_style(self, is_ordered: bool, level: int) -> str:
+        """Return the list style name for a nesting level (1-based)."""
+        base = 'List Number' if is_ordered else 'List Bullet'
+        if level >= 2:
+            return f'{base} {min(level, 3)}'
+        return base
+
+    def _add_list_paragraph(
+        self,
+        doc: Document,
+        text: str,
+        is_ordered: bool,
+        level: int
+    ):
+        """
+        Add a list paragraph, falling back to the base style if needed.
+
+        The style is applied after the paragraph is created: add_paragraph()
+        appends the paragraph before applying the style, so catching the
+        KeyError around the whole call would leave an unstyled duplicate
+        behind.
+        """
+        paragraph = doc.add_paragraph(text)
+        try:
+            paragraph.style = self._list_style(is_ordered, level)
+        except KeyError:
+            paragraph.style = self._list_style(is_ordered, 1)
+        return paragraph
 
     def _convert_table(
         self,
@@ -428,40 +544,73 @@ class DocxHtmlConverter:
         element: etree._Element,
         metadata: Dict[str, Any]
     ):
-        """Convert HTML table to DOCX table."""
-        rows = element.findall('.//tr')
+        """
+        Convert HTML <table> to a DOCX table.
+
+        Rows and cells are collected from direct children only, so the rows
+        of a table nested inside a cell never leak into the parent table.
+        A nested table's text is flattened into its parent cell, appearing
+        exactly once; real nested DOCX tables are out of scope.
+        """
+        rows = self._collect_table_rows(element)
         if not rows:
             return
 
-        # Count columns from first row
-        first_row = rows[0]
-        cols = len(first_row.findall('.//td')) + len(first_row.findall('.//th'))
+        # Direct children in document order, so a <th> after a <td> keeps
+        # its position instead of being pushed to the end of the row.
+        row_cells = [
+            [child for child in tr if child.tag in ('td', 'th')]
+            for tr in rows
+        ]
 
+        # The widest row defines the column count; a narrow header row must
+        # not truncate the rows below it.
+        cols = max(len(cells) for cells in row_cells)
         if cols == 0:
             return
 
-        # Create table
         table = doc.add_table(rows=len(rows), cols=cols)
         table.style = 'Table Grid'
 
-        # Fill cells
-        for row_idx, tr in enumerate(rows):
-            cells = tr.findall('.//td') + tr.findall('.//th')
+        for row_idx, cells in enumerate(row_cells):
             for col_idx, cell in enumerate(cells):
                 if col_idx < cols:
                     text = self._get_text_content(cell)
                     table.rows[row_idx].cells[col_idx].text = text
 
+    def _collect_table_rows(self, element: etree._Element) -> list:
+        """
+        Collect the <tr> belonging to this table, in document order.
+
+        Direct-child <tr> keep their position, and <thead>/<tbody>/<tfoot>
+        sections contribute their own direct-child <tr>.
+        """
+        rows = []
+        for child in element:
+            if child.tag == 'tr':
+                rows.append(child)
+            elif child.tag in ('thead', 'tbody', 'tfoot'):
+                rows.extend(
+                    grandchild for grandchild in child
+                    if grandchild.tag == 'tr'
+                )
+        return rows
+
     def _add_runs_from_element(
         self,
         paragraph,
         element: etree._Element,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
+        skip_tags: Set[str] = frozenset()
     ):
         """
         Add runs to paragraph from HTML element, preserving inline formatting.
 
         Handles <strong>, <em>, <b>, <i>, etc.
+
+        Children whose tag is in ``skip_tags`` contribute no run, but their
+        tail text is kept. Callers use this when the skipped subtree is
+        emitted separately, so its text is not written twice.
         """
         # Handle direct text
         if element.text:
@@ -469,6 +618,12 @@ class DocxHtmlConverter:
 
         # Handle child elements
         for child in element:
+            if child.tag in skip_tags:
+                # Emitted separately by the caller; only the tail belongs here.
+                if child.tail:
+                    paragraph.add_run(child.tail)
+                continue
+
             if child.tag == 'strong' or child.tag == 'b':
                 text = self._get_text_content(child)
                 run = paragraph.add_run(text)
@@ -531,3 +686,23 @@ class DocxHtmlConverter:
     def _get_text_content(self, element: etree._Element) -> str:
         """Extract all text content from an element and its children."""
         return ''.join(element.itertext())
+
+    def _get_block_text(
+        self,
+        element: etree._Element,
+        exclude: Set[str] = frozenset()
+    ) -> str:
+        """
+        Extract text content, skipping the subtrees of excluded children.
+
+        The tail text of an excluded child is kept, so `<li>A<ul>…</ul>B</li>`
+        with exclude={'ul'} yields "AB" rather than dropping the trailing
+        text. Unlike _get_text_content, this is meant for block containers
+        whose nested blocks are rebuilt separately.
+        """
+        parts = [element.text or '']
+        for child in element:
+            if child.tag not in exclude:
+                parts.append(''.join(child.itertext()))
+            parts.append(child.tail or '')
+        return ''.join(parts)

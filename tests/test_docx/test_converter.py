@@ -7,6 +7,7 @@ Tests DOCX ↔ HTML conversion functionality.
 import os
 import pytest
 from docx import Document
+from docx.shared import Inches
 from lxml import etree
 
 from src.core.docx.converter import DocxHtmlConverter
@@ -278,3 +279,155 @@ class TestDocxHtmlConverter:
 
         # lxml should handle it gracefully
         assert os.path.exists(output_path)
+
+
+def _paragraphs_containing(doc, needle):
+    """Return the paragraphs of a document whose text contains `needle`."""
+    return [p for p in doc.paragraphs if needle in p.text]
+
+
+def _single_paragraph_containing(doc, needle):
+    """Return the one paragraph containing `needle`, failing otherwise."""
+    matches = _paragraphs_containing(doc, needle)
+    assert len(matches) == 1, (
+        f"expected exactly one paragraph containing {needle!r}, "
+        f"got {[p.text for p in matches]}"
+    )
+    return matches[0]
+
+
+def _is_quoted(paragraph):
+    """A paragraph is quoted if it carries a Quote style or a 0.5in indent."""
+    style_name = paragraph.style.name if paragraph.style is not None else None
+    if style_name in ('Quote', 'Intense Quote'):
+        return True
+    return paragraph.paragraph_format.left_indent == Inches(0.5)
+
+
+class TestStructuredRebuild:
+    """
+    Structural fidelity of the HTML -> DOCX rebuild.
+
+    Each test re-opens the produced file so it asserts on the real rebuilt
+    document, not on intermediate converter state.
+    """
+
+    @pytest.fixture
+    def rebuilt_doc(self, temp_dir, structured_html):
+        """Rebuild the structured HTML fixture and re-open the DOCX."""
+        out_path = os.path.join(temp_dir, 'structured.docx')
+        DocxHtmlConverter().from_html(structured_html, {}, out_path)
+        assert os.path.exists(out_path)
+        return Document(out_path)
+
+    def test_blockquote_paragraphs_kept_once(self, rebuilt_doc):
+        """Both quoted lines survive, each in exactly one paragraph."""
+        all_text = '\n'.join(p.text for p in rebuilt_doc.paragraphs)
+
+        assert all_text.count('Quoted line one.') == 1
+        assert all_text.count('Quoted line two.') == 1
+        assert len(_paragraphs_containing(rebuilt_doc, 'Quoted line one.')) == 1
+        assert len(_paragraphs_containing(rebuilt_doc, 'Quoted line two.')) == 1
+
+    def test_blockquote_paragraphs_are_marked_as_quotes(self, rebuilt_doc):
+        """Quoted paragraphs use a Quote style, or fall back to an indent."""
+        for needle in ('Quoted line one.', 'Quoted line two.'):
+            paragraph = _single_paragraph_containing(rebuilt_doc, needle)
+            assert _is_quoted(paragraph), (
+                f"paragraph {needle!r} is neither Quote-styled nor indented "
+                f"(style={paragraph.style.name!r}, "
+                f"indent={paragraph.paragraph_format.left_indent!r})"
+            )
+
+    def test_nested_list_items_are_not_duplicated(self, rebuilt_doc):
+        """A nested <ul> is emitted once and not folded into its parent item."""
+        inner = _paragraphs_containing(rebuilt_doc, 'Inner A1')
+        assert len(inner) == 1
+
+        outer = [
+            p for p in rebuilt_doc.paragraphs if p.text.startswith('Outer A')
+        ]
+        assert len(outer) == 1
+        assert 'Inner A1' not in outer[0].text
+        assert 'Inner A2' not in outer[0].text
+
+    def test_nested_list_uses_a_deeper_style(self, rebuilt_doc):
+        """Level 2 items get their own style, unless the template lacks it."""
+        inner = _single_paragraph_containing(rebuilt_doc, 'Inner A1')
+        outer = _single_paragraph_containing(rebuilt_doc, 'Outer A')
+
+        inner_style = inner.style.name
+        outer_style = outer.style.name
+
+        # Either the level-2 style resolved (styles differ), or it was
+        # unavailable and both fell back to the base bullet style.
+        assert inner_style != outer_style or (
+            inner_style == outer_style == 'List Bullet'
+        )
+
+    def test_nested_table_does_not_add_a_top_level_row(self, rebuilt_doc):
+        """The nested table's row stays inside its cell."""
+        assert len(rebuilt_doc.tables) == 1
+        assert len(rebuilt_doc.tables[0].rows) == 2
+
+    def test_mixed_header_cells_keep_document_order(self, rebuilt_doc):
+        """A <th> after a <td> is not pushed to the end of the row."""
+        row = rebuilt_doc.tables[0].rows[0]
+        assert [cell.text for cell in row.cells] == ['H1', 'D1', 'H2']
+
+    def test_nested_table_text_is_flattened_once(self, rebuilt_doc):
+        """Nested table text appears once, in its parent cell only."""
+        table = rebuilt_doc.tables[0]
+        host_cell = table.rows[1].cells[0]
+
+        assert host_cell.text.count('N1') == 1
+
+        other_cells = [
+            cell
+            for row_idx, row in enumerate(table.rows)
+            for col_idx, cell in enumerate(row.cells)
+            if (row_idx, col_idx) != (1, 0)
+        ]
+        assert all('N1' not in cell.text for cell in other_cells)
+
+    def test_column_count_comes_from_the_widest_row(self, rebuilt_doc):
+        """Column count is the max row width, so no cell is truncated."""
+        assert len(rebuilt_doc.tables[0].columns) == 3
+
+    def test_unwrapped_quote_does_not_duplicate_its_list(self, temp_dir):
+        """
+        A blockquote whose text has no <p> wrapper still emits that text once
+        and its list once: the list is delegated to the list converter, so it
+        must not also be flattened into the quoted paragraph.
+        """
+        html = (
+            '<html><body><blockquote>Bare quote text.'
+            '<ul><li>Quoted item</li></ul></blockquote></body></html>'
+        )
+        out_path = os.path.join(temp_dir, 'bare_quote.docx')
+        DocxHtmlConverter().from_html(html, {}, out_path)
+
+        doc = Document(out_path)
+        all_text = '\n'.join(p.text for p in doc.paragraphs)
+
+        assert all_text.count('Bare quote text.') == 1
+        assert all_text.count('Quoted item') == 1
+
+        quote_paragraph = _single_paragraph_containing(doc, 'Bare quote text.')
+        assert 'Quoted item' not in quote_paragraph.text
+        assert _is_quoted(quote_paragraph)
+
+    def test_quote_containing_only_a_list_emits_no_empty_paragraph(self, temp_dir):
+        """A blockquote with no own text must not add a blank quoted paragraph."""
+        html = (
+            '<html><body><blockquote><ul><li>Only item</li></ul>'
+            '</blockquote></body></html>'
+        )
+        out_path = os.path.join(temp_dir, 'list_only_quote.docx')
+        DocxHtmlConverter().from_html(html, {}, out_path)
+
+        doc = Document(out_path)
+        texts = [p.text for p in doc.paragraphs if p.text.strip()]
+
+        assert texts == ['Only item']
+        assert not any(_is_quoted(p) and not p.text.strip() for p in doc.paragraphs)
