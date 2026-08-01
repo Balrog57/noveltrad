@@ -832,6 +832,10 @@ async def refine_chunks(
                 # Add remaining unrefined chunks as-is
                 for remaining in translated_chunks[i:]:
                     refined_parts.append(remaining)
+                # Invariant: len(refined_parts) == len(translated_chunks) here —
+                # the list is complete, chunks at index >= i are the unrefined
+                # drafts. Hand it to the caller so the partial pass can be saved.
+                e.partial_result = list(refined_parts)
                 raise  # Re-raise to handlers.py
 
             # Record success in context manager

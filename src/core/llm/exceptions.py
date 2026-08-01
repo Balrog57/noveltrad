@@ -4,6 +4,8 @@ LLM-specific exceptions.
 This module defines all custom exceptions used in the LLM provider system.
 """
 
+from typing import Any
+
 
 class ContextOverflowError(Exception):
     """
@@ -38,9 +40,16 @@ class RateLimitError(Exception):
         retry_after: Suggested wait time in seconds (from Retry-After header),
                      or None if not provided by the API.
         provider: Name of the LLM provider that was rate-limited.
+        partial_result: Best-effort, already-reassembled payload carrying the
+                        work completed before the rate limit hit, so the caller
+                        can persist it instead of discarding it. Its type is
+                        defined by whoever raises (or re-raises) the error;
+                        None when the raiser has nothing to hand over.
     """
 
-    def __init__(self, message: str, retry_after: int = None, provider: str = None):
+    def __init__(self, message: str, retry_after: int = None, provider: str = None,
+                 partial_result: Any = None):
         super().__init__(message)
         self.retry_after = retry_after
         self.provider = provider
+        self.partial_result = partial_result
