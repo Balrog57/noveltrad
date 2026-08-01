@@ -208,8 +208,13 @@ def perform_replace_and_relaunch(new_dir: Path, install_dir: Path | None = None)
     exe_path = Path(sys.executable)
     install_dir = install_dir or exe_path.parent
     exe_name = exe_path.name  # e.g. AgentTranslate.exe
-    bat_path = Path(tempfile.gettempdir()) / "noveltrad_updater.bat"
-    bat_path.write_text(_build_updater_bat(install_dir, new_dir, exe_name), encoding="utf-8")
+
+    # Securely create the batch file using mkstemp to avoid predictable paths and TOCTOU
+    fd, path = tempfile.mkstemp(prefix="noveltrad_updater_", suffix=".bat")
+    bat_path = Path(path)
+    with os.fdopen(fd, 'w', encoding="utf-8") as f:
+        f.write(_build_updater_bat(install_dir, new_dir, exe_name))
+
     # Detached launch via cmd; DETACHED_PROCESS = 0x00000008.
     subprocess.Popen(
         ["cmd", "/c", str(bat_path)],
