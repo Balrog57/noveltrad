@@ -21,6 +21,7 @@ from lxml import etree
 from .format_adapter import FormatAdapter
 from .translation_unit import TranslationUnit
 from src.config import NAMESPACES
+from src.utils.security import safe_extract_zip
 
 
 class EpubAdapter(FormatAdapter):
@@ -73,7 +74,7 @@ class EpubAdapter(FormatAdapter):
 
             # Extract EPUB
             with zipfile.ZipFile(self.input_file_path, 'r') as zip_ref:
-                zip_ref.extractall(self.work_dir)
+                safe_extract_zip(zip_ref, self.work_dir)
 
             # Find OPF file
             self.opf_path = self._find_opf_file()
