@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from .conftest import E2E_MODEL, E2E_PROVIDER
+from .conftest import E2E_ENDPOINT, E2E_KEY_FIELD, E2E_MODEL, E2E_PROVIDER
 
 pytestmark = pytest.mark.e2e
 
@@ -33,8 +33,8 @@ def _start(api, file_path, file_type, output_filename, model=None):
         "target_language": "French",
         "model": model or E2E_MODEL,
         "llm_provider": E2E_PROVIDER,
-        "gemini_api_key": "__USE_ENV__",
-        "llm_api_endpoint": "https://generativelanguage.googleapis.com",
+        E2E_KEY_FIELD: "__USE_ENV__",
+        "llm_api_endpoint": E2E_ENDPOINT,
         "output_filename": output_filename,
         "parallel_workers": 2,
     }

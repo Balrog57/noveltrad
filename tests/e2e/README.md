@@ -30,7 +30,7 @@ pytest tests/e2e/test_completion_classification.py -m e2e
 | Requirement | Effect when missing |
 | --- | --- |
 | `playwright` + its Chromium | the whole directory skips |
-| `GEMINI_API_KEY` (env or `.env`) | the whole directory skips |
+| the selected provider's key (env or `.env`) | the whole directory skips |
 | a free port (default `5099`) | the whole directory skips |
 
 Nothing here fails for a missing prerequisite — it skips, so a normal
@@ -41,8 +41,19 @@ Nothing here fails for a missing prerequisite — it skips, so a normal
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `E2E_PORT` | `5099` | port the test server binds to |
-| `E2E_MODEL` | `gemini-2.5-flash` | model used for every run |
+| `E2E_PROVIDER` | `gemini` | LLM provider driven by the run |
+| `E2E_MODEL` | follows the provider | model used for every run |
+| `E2E_ENDPOINT` | follows the provider | endpoint sent with each job |
 | `E2E_HEADED` | unset | set to `1` to watch the browser |
+
+`E2E_MODEL` and `E2E_ENDPOINT` default per provider, because a Gemini model
+name means nothing to Poe. The key field in the `/api/translate` payload
+follows `E2E_PROVIDER` too, so the suite never sends one provider's key field
+with another provider's job. To run against Poe:
+
+```bash
+E2E_PROVIDER=poe pytest tests/e2e -m e2e
+```
 
 ## What each file covers
 
