@@ -95,6 +95,14 @@ _LTR_NAME_TO_CODE: Dict[str, str] = {
     "tagalog": "tl",
 }
 
+# Regional language variants that map to BCP47 tags with region subtags.
+# Kept separate from LANGUAGE_NAME_TO_CODE so the BCP47 conformance test
+# (which validates primary subtags only) is not affected.
+_REGIONAL_NAME_TO_CODE: Dict[str, str] = {
+    "portuguese (brazil)": "pt-BR",
+    "portuguese (portugal)": "pt-PT",
+}
+
 # Merge RTL entries first so any conflict is resolved by LTR keys (none expected).
 LANGUAGE_NAME_TO_CODE: Dict[str, str] = {**_RTL_NAME_TO_CODE, **_LTR_NAME_TO_CODE}
 
@@ -108,9 +116,15 @@ XML_LANG_ATTR = f"{{{XML_NAMESPACE}}}lang"
 def get_language_code(language: Optional[str]) -> Optional[str]:
     """Resolve a language name or locale to an ISO 639-1 code.
 
+    For regional variants like "Portuguese (Brazil)" / "Portuguese (Portugal)",
+    returns the full BCP47 tag with region subtag ("pt-BR" / "pt-PT") so
+    e-readers apply the correct hyphenation and TTS.
+
     Examples:
         get_language_code("English")  -> "en"
         get_language_code("Spanish")  -> "es"
+        get_language_code("Portuguese (Brazil)")  -> "pt-BR"
+        get_language_code("Portuguese (Portugal)") -> "pt-PT"
         get_language_code("en-US")    -> "en"
         get_language_code("fr")       -> "fr"
         get_language_code("Klingon")  -> None
@@ -121,6 +135,10 @@ def get_language_code(language: Optional[str]) -> Optional[str]:
     lang_lower = language.lower().strip()
     if not lang_lower:
         return None
+
+    # Check regional variants first (e.g. "portuguese (brazil)" -> "pt-BR")
+    if lang_lower in _REGIONAL_NAME_TO_CODE:
+        return _REGIONAL_NAME_TO_CODE[lang_lower]
 
     if lang_lower in LANGUAGE_NAME_TO_CODE:
         return LANGUAGE_NAME_TO_CODE[lang_lower]

@@ -41,7 +41,8 @@ DEFAULT_RATIO = (0.95, 1.30)
 def get_output_ratio(src_lang: str, tgt_lang: str) -> tuple[float, float]:
     if not src_lang or not tgt_lang:
         return DEFAULT_RATIO
-    key = (src_lang.lower().strip(), tgt_lang.lower().strip())
+    from src.utils.lang_normalize import normalize_lang_key
+    key = (normalize_lang_key(src_lang), normalize_lang_key(tgt_lang))
     return LANGUAGE_RATIOS.get(key, DEFAULT_RATIO)
 
 

@@ -129,7 +129,8 @@ def estimate_tokens_with_margin(
             pass
 
     # Method 2: Character-based estimation with language factors
-    lang_lower = language.lower()
+    from src.utils.lang_normalize import normalize_lang_key
+    lang_lower = normalize_lang_key(language)
     ratio = CHAR_TO_TOKEN_RATIOS.get(lang_lower, 4.0)  # Default to English
 
     base_tokens = prompt_length / ratio
