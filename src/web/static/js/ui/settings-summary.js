@@ -25,16 +25,23 @@ const PROVIDER_LABELS = {
     nim: 'NVIDIA NIM',
 };
 
-// Each chip carries its own tint. Background uses rgba so it stays readable
-// on both light and dark themes; the text uses the same hue at full saturation.
-const OPTION_STYLES = {
-    bilingual:    { bg: 'rgba(59, 130, 246, 0.18)', fg: '#2563eb', border: 'rgba(59, 130, 246, 0.45)' },
-    plainText:    { bg: 'rgba(245, 158, 11, 0.20)', fg: '#d97706', border: 'rgba(245, 158, 11, 0.45)' },
-    ocr:          { bg: 'rgba(168, 85, 247, 0.18)', fg: '#9333ea', border: 'rgba(168, 85, 247, 0.45)' },
-    noPause:      { bg: 'rgba(239, 68, 68, 0.18)',  fg: '#dc2626', border: 'rgba(239, 68, 68, 0.45)' },
-    glossary:     { bg: 'rgba(99, 102, 241, 0.18)', fg: '#4f46e5', border: 'rgba(99, 102, 241, 0.45)' },
-    instructions: { bg: 'rgba(20, 184, 166, 0.20)', fg: '#0d9488', border: 'rgba(20, 184, 166, 0.45)' },
-    refineOnly:   { bg: 'rgba(34, 197, 94, 0.20)',  fg: '#16a34a', border: 'rgba(34, 197, 94, 0.55)' },
+// Every active option renders the same way: the chips all say "this run uses
+// X", so hue carried no information and only added noise. They borrow
+// .btn-primary's look (white on solid blue) at chip size. The colours live in
+// style.css (--option-chip-*) with the rest of the theme, so they follow the
+// active theme's primary without a dark-mode branch here.
+const OPTION_STYLE = {
+    bg: 'var(--option-chip-bg)',
+    fg: 'var(--option-chip-fg)',
+    border: 'var(--option-chip-border)',
+};
+
+// Provider / model / languages. Same chip, inked instead of blue: what the run
+// *is* stays visually ahead of what the run *uses*.
+const LLM_STYLE = {
+    bg: 'var(--llm-chip-bg)',
+    fg: 'var(--llm-chip-fg)',
+    border: 'var(--llm-chip-bg)',
 };
 
 // Maps a summary item key to the tab + collapsible section it should reveal.
@@ -164,19 +171,11 @@ function buildChips() {
     return chips;
 }
 
-function renderLlmPart({ key, label }) {
-    const style = [
-        'cursor: pointer',
-        'border-radius: 6px',
-        'padding: 1px 4px',
-        'transition: background 0.15s ease, color 0.15s ease',
-    ].join('; ');
-    return `<span class="summary-llm-part" data-summary-action="${key}" style="${style}">${DomHelpers.escapeHtml(label)}</span>`;
-}
-
-function renderChip({ key, label, prominent }) {
-    const s = OPTION_STYLES[key] || OPTION_STYLES.bilingual;
-    const style = [
+// Both rows are the same object at the same size, only the palette changes,
+// so the geometry is written once. `prominent` (the refine-only chip) is the
+// single deviation, and it deviates by size, never by colour.
+function chipStyle({ bg, fg, border }, prominent = false) {
+    return [
         'display: inline-flex',
         'align-items: center',
         prominent ? 'padding: 6px 18px' : 'padding: 2px 10px',
@@ -184,13 +183,25 @@ function renderChip({ key, label, prominent }) {
         prominent ? 'font-size: 0.8125rem' : 'font-size: 0.75rem',
         'font-weight: 600',
         'line-height: 1.6',
-        `background: ${s.bg}`,
-        `color: ${s.fg}`,
-        `border: ${prominent ? '1.5px' : '1px'} solid ${s.border}`,
+        `background: ${bg}`,
+        `color: ${fg}`,
+        `border: ${prominent ? '1.5px' : '1px'} solid ${border}`,
         'cursor: pointer',
-        'transition: transform 0.1s ease, filter 0.15s ease',
+        'transition: transform 0.1s ease, opacity 0.15s ease',
     ].join('; ');
-    return `<span class="summary-chip" data-summary-action="${key}" style="${style}">${DomHelpers.escapeHtml(label)}</span>`;
+}
+
+// One row of chips, laid out like the other one.
+function chipRow(html, marginTop) {
+    return `<div style="margin-top: ${marginTop}; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;">${html}</div>`;
+}
+
+function renderLlmPart({ key, label }) {
+    return `<span class="summary-llm-part" data-summary-action="${key}" style="${chipStyle(LLM_STYLE)}">${DomHelpers.escapeHtml(label)}</span>`;
+}
+
+function renderChip({ key, label, prominent }) {
+    return `<span class="summary-chip" data-summary-action="${key}" style="${chipStyle(OPTION_STYLE, prominent)}">${DomHelpers.escapeHtml(label)}</span>`;
 }
 
 function render() {
@@ -200,16 +211,13 @@ function render() {
     const llmParts = buildLlmLine();
     const chips = buildChips();
 
-    const sep = '<span style="opacity: 0.5; margin: 0 6px;">·</span>';
-    const llmLine = llmParts.map(renderLlmPart).join(sep);
+    // Provider, model and languages are three separate targets, each opening a
+    // different setting, so they are three separate chips. The interpunct that
+    // used to join them made them read as one sentence.
+    const llmRow = chipRow(llmParts.map(renderLlmPart).join(''), '0');
+    const chipsRow = chips.length ? chipRow(chips.map(renderChip).join(''), '8px') : '';
 
-    const chipsHtml = chips.length
-        ? `<div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;">
-               ${chips.map(renderChip).join('')}
-           </div>`
-        : '';
-
-    container.innerHTML = `<div>${llmLine}</div>${chipsHtml}`;
+    container.innerHTML = `${llmRow}${chipsRow}`;
 }
 
 function setSectionOpen(sectionKey, open) {
@@ -295,13 +303,12 @@ function injectStyles() {
     const style = document.createElement('style');
     style.id = 'settings-summary-styles';
     style.textContent = `
+        /* One hover for both rows. Opacity rather than brightness(): a
+           multiplicative filter leaves a black chip black. */
+        #settingsSummary .summary-chip:hover,
         #settingsSummary .summary-llm-part:hover {
-            background: rgba(0, 0, 0, 0.06);
-            color: var(--text-dark);
-        }
-        #settingsSummary .summary-chip:hover {
             transform: translateY(-1px);
-            filter: brightness(0.95);
+            opacity: 0.85;
         }
         #settingsSummary [data-summary-action]:focus-visible {
             outline: 2px solid var(--primary-light, #3b82f6);

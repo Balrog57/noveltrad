@@ -34,6 +34,36 @@
     --shadow-dark: #d8dbdf;
     --shadow-light: #ffffff;
 
+    /* Active-option chips in the pre-flight summary (settings-summary.js).
+       A single treatment for all of them: every chip says "this run uses X",
+       they are not seven different kinds of thing, so hue carried no
+       information and only added noise under the Start button. They now wear
+       .btn-primary's clothes (white on solid primary), at chip size.
+       Written against --primary-light rather than a literal, so the dark
+       theme's lighter blue applies with no separate override. */
+    --option-chip-bg: var(--primary-light);
+    --option-chip-fg: #ffffff;
+    --option-chip-border: var(--primary-light);
+
+    /* Provider / model / languages chips, same row. Ink instead of blue so
+       what the run *is* stays ahead of what the run *uses*. A slate charcoal
+       rather than a flat black: it carries the same blue cast as --text-dark
+       (#1f2a3a), so the row belongs to the palette instead of punching a hole
+       in it. */
+    --llm-chip-bg: #2e353f;
+    --llm-chip-fg: #ffffff;
+
+    /* Typography.
+       --font-text  reading face, inherited by the whole page.
+       --font-ui    interface chrome (labels, buttons, tabs, badges).
+       Both point at Spectral today. Setting --font-ui to var(--font-sans)
+       switches the app to the hybrid setup in one line: serif for what is
+       read, Inter for what is operated. */
+    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-serif: "Spectral", Georgia, 'Times New Roman', serif;
+    --font-text: var(--font-serif);
+    --font-ui: var(--font-serif);
+
     /* Translation preview height (based on MAX_TOKENS_PER_CHUNK) */
     /* Default: 300px for 450 tokens. Formula: (tokens / 450) * 300 */
     /* Min: 120px, Max: 400px */
@@ -72,6 +102,13 @@ html.dark {
     /* Neumorphic shadows for dark mode */
     --shadow-dark: #1a1a1a;
     --shadow-light: #3a3a3a;
+
+    /* No --option-chip-* override here on purpose: the chips are defined in
+       terms of --primary-light, which this block already re-points.
+       The LLM chip does need one: the light-theme charcoal is a hair darker
+       than the #2a2a2a card it would sit on, so it would read as a hole
+       rather than as a chip. Lifted just above the card instead. */
+    --llm-chip-bg: #3b434f;
 }
 
 html.dark .neu-inset-light {
@@ -158,7 +195,7 @@ html.dark .log-entry.log-summary-detailed {
 body {
     background-color: var(--background-outer);
     color: var(--text-dark);
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-text);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -549,7 +586,7 @@ body {
     border-radius: 1rem;
     color: #1a1a1a;
     font-size: 1rem;
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-text);
     line-height: 2.75rem;
     transition: all 0.3s;
     font-weight: 600;
@@ -4452,5 +4489,306 @@ html.dark .file-test-btn { color: #a5b4fc; }
     border-radius: 50%;
     vertical-align: middle;
     animation: spin 0.8s linear infinite;
+}
+
+/* ========================================
+   Square UI — global corner reset
+
+   Single source of truth for corner shape: every rounded corner in
+   the app is flattened here instead of being edited at ~180 call
+   sites. The rules live in a cascade layer on purpose — for
+   `!important` declarations the layer order is inverted, so a
+   layered `!important` beats every unlayered one whatever its
+   specificity. That covers the `!important` radii in this file, the
+   inline <style> block in translation_interface.html, and the
+   `style="border-radius: …"` strings injected by the JS modules,
+   without touching any of them.
+
+   To bring the rounded look back, delete this block — nothing else
+   depends on it.
+   ======================================== */
+@layer square-ui {
+    *,
+    *::before,
+    *::after {
+        border-radius: 0 !important;
+    }
+
+    /* SVG rects carry their radius as a geometry attribute, which the
+       rule above cannot reach. */
+    svg rect {
+        rx: 0 !important;
+        ry: 0 !important;
+    }
+
+    /* Range thumbs live in the native shadow tree, which `*` does not
+       reach either. Kept in separate rules: an unknown vendor
+       pseudo-element invalidates a whole selector list. */
+    input[type="range"]::-webkit-slider-thumb {
+        border-radius: 0 !important;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+        border-radius: 0 !important;
+    }
+
+    /* Only exception: a rotating square ring reads as a rendering bug,
+       not as a design choice. */
+    .quick-test-spinner {
+        border-radius: 50% !important;
+    }
+}
+
+/* ========================================
+   Compact density — global vertical rhythm
+
+   One knob: --ui-density-y. Every value below is the element's
+   original vertical measurement multiplied by that factor, so the
+   proportions of the design are preserved and re-tuning the whole
+   UI is a single number (1 = original spacing, 0.7 = current).
+
+   Only the vertical axis is touched — horizontal padding is left
+   alone so labels and buttons keep their breathing room.
+
+   Click targets are floored with max(): turning the knob further
+   down keeps shrinking the paddings but never takes an input,
+   a dropdown row or the progress bar below a usable height.
+
+   Same cascade-layer trick as the block above: for `!important`
+   declarations the layer order is inverted, so these win over the
+   inline <style> block of translation_interface.html (which loads
+   after this file) without having to edit it.
+
+   To restore the roomy layout, set --ui-density-y to 1 — or delete
+   the block, nothing else depends on it.
+   ======================================== */
+@layer compact-ui {
+    :root {
+        --ui-density-y: 0.7;
+        /* Height of a single-line control, derived from the knob. Exposed as
+           a token because the box height and the line-height that centres
+           its text must never drift apart. */
+        --ui-control-h: max(1.9rem, calc(2.75rem * var(--ui-density-y)));
+    }
+
+    /* --- Page shell --- */
+    body {
+        padding-top: calc(20px * var(--ui-density-y)) !important;
+        padding-bottom: calc(20px * var(--ui-density-y)) !important;
+    }
+
+    .header {
+        padding-top: calc(1.5rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(1.5rem * var(--ui-density-y)) !important;
+        margin-bottom: calc(3rem * var(--ui-density-y)) !important;
+    }
+
+    /* --- Tabs --- */
+    .tab-nav .tab-btn {
+        padding-top: calc(0.6rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(0.6rem * var(--ui-density-y)) !important;
+    }
+
+    /* --- Cards --- */
+    .main-card {
+        margin-bottom: calc(2rem * var(--ui-density-y)) !important;
+    }
+
+    .card-header {
+        padding-top: calc(2rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(2rem * var(--ui-density-y)) !important;
+    }
+
+    .card-body {
+        padding-top: calc(2rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(2rem * var(--ui-density-y)) !important;
+    }
+
+    /* --- Form rows --- */
+    .form-group {
+        gap: calc(0.5rem * var(--ui-density-y)) !important;
+    }
+
+    .option-item {
+        margin-bottom: calc(15px * var(--ui-density-y)) !important;
+    }
+
+    /* Single-line controls fake their vertical centring with
+       `line-height: <height>` (see .form-control above), so the two must
+       be resized together — shrinking the box alone drops the text to the
+       bottom. Both read the same token. Textareas are excluded: they are
+       multi-line and keep their original geometry. */
+    .form-control:not(textarea) {
+        height: var(--ui-control-h) !important;
+        min-height: var(--ui-control-h) !important;
+        max-height: var(--ui-control-h) !important;
+        line-height: var(--ui-control-h) !important;
+    }
+
+    /* .btn-sm and the glossary toolbar buttons are already compact and
+       carry their own padding; leave them where they are. */
+    .btn:not(.btn-sm):not(.glossary-toolbar-btn) {
+        padding-top: calc(0.75rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(0.75rem * var(--ui-density-y)) !important;
+    }
+
+    /* --- Dropdowns (searchable-select) --- */
+    .searchable-select-display {
+        padding-top: calc(0.75rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(0.75rem * var(--ui-density-y)) !important;
+        /* Same token as the native controls: the custom dropdown and a
+           <select> sitting side by side must line up. */
+        min-height: var(--ui-control-h) !important;
+    }
+
+    .searchable-select-search {
+        padding-top: calc(0.75rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(0.75rem * var(--ui-density-y)) !important;
+    }
+
+    .searchable-select-options {
+        padding-top: calc(0.5rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(0.5rem * var(--ui-density-y)) !important;
+    }
+
+    .searchable-select-option {
+        padding-top: max(0.3rem, calc(0.625rem * var(--ui-density-y))) !important;
+        padding-bottom: max(0.3rem, calc(0.625rem * var(--ui-density-y))) !important;
+    }
+
+    .searchable-select-group {
+        padding-top: calc(0.625rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(0.375rem * var(--ui-density-y)) !important;
+    }
+
+    .searchable-select-no-results {
+        padding-top: calc(1.5rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(1.5rem * var(--ui-density-y)) !important;
+    }
+
+    /* --- Progress block --- */
+    .progress-section {
+        margin-top: calc(2rem * var(--ui-density-y)) !important;
+        padding-top: calc(2rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(2rem * var(--ui-density-y)) !important;
+    }
+
+    .progress-bar-container {
+        height: max(1.5rem, calc(2.5rem * var(--ui-density-y))) !important;
+        margin-top: calc(1.5rem * var(--ui-density-y)) !important;
+        margin-bottom: calc(1.5rem * var(--ui-density-y)) !important;
+    }
+
+    .stats-grid {
+        margin-top: calc(1.5rem * var(--ui-density-y)) !important;
+        margin-bottom: calc(1.5rem * var(--ui-density-y)) !important;
+    }
+
+    /* --- Drop zone: the biggest single block of empty space --- */
+    .file-upload {
+        padding-top: calc(4rem * var(--ui-density-y)) !important;
+        padding-bottom: calc(4rem * var(--ui-density-y)) !important;
+        margin-top: calc(2rem * var(--ui-density-y)) !important;
+        margin-bottom: calc(2rem * var(--ui-density-y)) !important;
+    }
+}
+
+/* ========================================
+   Bold budget — weight reserved for buttons
+
+   Bold is the affordance marker for "this is clickable". Fields and
+   dropdowns display data, so they run at normal weight.
+
+   Written as a subtree reset rather than as edits to the dozen
+   scattered `font-weight` declarations that feed these widgets
+   (.form-control, .searchable-select-group, the selected option
+   label, the trigger badge, …): one rule per widget family, and any
+   markup added later inherits the rule for free.
+
+   Buttons are simply not in the selector list, so .btn, .btn-sm and
+   .glossary-toolbar-btn keep their own weights — nothing is
+   re-asserted here, which means their styling stays the single
+   source of truth for button weight.
+
+   Layered for the usual reason: `!important` in a layer outranks
+   every unlayered declaration, including the inline
+   `style="font-weight: 600"` strings the JS modules inject.
+   ======================================== */
+@layer input-weight {
+    /* Native fields. Submit/button/reset inputs are real buttons and
+       are left out. */
+    input:not([type="submit"]):not([type="button"]):not([type="reset"]),
+    textarea,
+    select,
+    select option,
+    .form-control {
+        font-weight: 400 !important;
+    }
+
+    /* Custom dropdowns: the trigger, and the panel — which is portalled
+       to <body>, so it is not a descendant of .searchable-select and
+       needs its own selector. */
+    .searchable-select,
+    .searchable-select *,
+    .searchable-select-dropdown,
+    .searchable-select-dropdown * {
+        font-weight: 400 !important;
+    }
+}
+
+/* ========================================
+   Flat outer frames
+
+   The neumorphic elevation is one declaration holding two halves —
+   a dark drop shadow plus a light halo on the opposite side:
+
+       5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light)
+
+   Both halves come from the same property, so `none` removes shadow
+   and halo at once. In dark mode the halo was the visible offender
+   (--shadow-light is #3a3a3a against a #2a2a2a card); in light mode
+   the drop shadow goes too, so the frame reads the same way in both
+   themes.
+
+   Scoped to .main-card only — the outer frames. Every card sits at
+   `.container > [id^=tab-] > .main-card`, none is nested, so inner
+   surfaces (stat cards, progress section, drop zone, buttons,
+   insets, job cards) are untouched and keep their relief. The frames
+   stay separated from the background by their 1px border.
+
+   No !important and no cascade layer here, unlike the blocks above:
+   nothing else styles the shadow of .main-card, so specificity alone
+   already wins. Minimum force, so a future hover state can still
+   override it normally.
+   ======================================== */
+.main-card {
+    box-shadow: none;
+}
+
+/* ========================================
+   Interface chrome typeface
+
+   Everything on the page inherits --font-text from <body>. The
+   selectors below are the exception surface: the parts you operate
+   rather than read. They all point at --font-ui, which currently
+   resolves to the same serif, so this block changes nothing today.
+
+   Its purpose is the switch. Set --font-ui to var(--font-sans) in
+   :root and the app becomes hybrid in one edit — Spectral for the
+   content, Inter for the labels, buttons, tabs and badges, which is
+   what keeps a dense interface legible at 0.75rem. Reverting is the
+   same single line.
+   ======================================== */
+.btn,
+.tab-nav .tab-btn,
+.form-group label,
+.file-table thead th,
+.searchable-select-badge,
+.searchable-select-group,
+.sample-badge,
+.file-active-badge,
+.preflight-chip,
+.quick-test-chip {
+    font-family: var(--font-ui);
 }
 
