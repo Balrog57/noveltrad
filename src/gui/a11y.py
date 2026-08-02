@@ -1,6 +1,7 @@
 """Accessibility utilities."""
 from typing import Any
 
+
 def configure(
     widget: Any,
     accessible_name: str | None = None,
