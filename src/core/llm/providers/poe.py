@@ -18,7 +18,10 @@ import httpx
 import asyncio
 import json
 
-from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS, TEMPERATURE
+from src.config import (
+    REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS, TEMPERATURE,
+    POE_DISABLE_THINKING, POE_DISABLE_WEB_SEARCH
+)
 from ..base import LLMProvider, LLMResponse
 from ..exceptions import ContextOverflowError
 from ..rate_limit_handler import handle_rate_limit, is_retryable_http_status
@@ -51,6 +54,7 @@ class PoeProvider(LLMProvider):
 
     # Poe API endpoints
     API_URL = "https://api.poe.com/v1/chat/completions"
+    MODELS_URL = "https://api.poe.com/v1/models"
 
     # Model context sizes (approximate, based on underlying models)
     MODEL_CONTEXT_SIZES = {
@@ -77,11 +81,47 @@ class PoeProvider(LLMProvider):
     _session_tokens = {"prompt": 0, "completion": 0}
     _cost_callback: Optional[Callable[[Dict[str, Any]], None]] = None
 
+    # --- Bot default overrides ---------------------------------------------
+    # Poe has no universal switch for reasoning or web search: each bot
+    # advertises its own knobs in the `parameters` array of /v1/models, and the
+    # API REJECTS any knob a bot does not advertise ("API Bots do not support
+    # extra_body fields: ...", or "Unrecognized request argument supplied: ...",
+    # both HTTP 400). So the overrides we send are derived from the bot's own
+    # schema instead of a hardcoded model list.
+
+    # Reasoning enum knobs, ordered least-thinking first: first match wins.
+    REASONING_ENUM_PREFERENCES = {
+        "thinking_level": ("minimal", "low"),
+        "reasoning_effort": ("none", "minimal", "low"),
+    }
+    # Reasoning numeric knobs: send the schema minimum (0 = no thinking budget).
+    REASONING_BUDGET_PARAMS = ("thinking_budget",)
+    # Reasoning boolean knobs: off.
+    REASONING_TOGGLE_PARAMS = ("enable_thinking",)
+    # `output_effort` (Claude 4.6/4.8) is deliberately left alone: it caps the
+    # whole answer, not just hidden reasoning, so forcing it down would degrade
+    # the translation itself.
+
+    # Retrieval knobs, off: a book is self-contained, so search results are
+    # paid prompt tokens at best and context pollution at worst. Default is on
+    # for gemini-3.6-flash and grok-4.5, where it inflates every single chunk.
+    WEB_SEARCH_PARAMS = ("web_search", "enable_web_search")
+
+    # Advertised parameter schemas, fetched once per process: {model_id: [param]}
+    _model_parameters: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    _model_parameters_failed = False
+    _model_parameters_lock: Optional[asyncio.Lock] = None
+    # Resolved overrides, keyed by model *and* flags since they decide the
+    # result: {(model_id, disable_thinking, disable_web_search): {param: value}}
+    _bot_overrides: Dict[tuple, Dict[str, Any]] = {}
+
     def __init__(
         self,
         api_key: Union[str, List[str]],
         model: str = "Claude-Sonnet-4",
-        api_endpoint: Optional[str] = None
+        api_endpoint: Optional[str] = None,
+        disable_thinking: bool = POE_DISABLE_THINKING,
+        disable_web_search: bool = POE_DISABLE_WEB_SEARCH
     ):
         """
         Initialize the Poe provider.
@@ -90,9 +130,18 @@ class PoeProvider(LLMProvider):
             api_key: Poe API key (get from https://poe.com/api_key)
             model: Bot name on Poe (default: Claude-Sonnet-4)
             api_endpoint: Optional custom API endpoint (default: https://api.poe.com/v1)
+            disable_thinking: Ask the bot for its lowest reasoning setting.
+                Translation gains nothing from reasoning tokens but pays for
+                them: gemini-3.6-flash spends ~1170 reasoning tokens on a
+                102-token prompt at its default thinking_level.
+            disable_web_search: Turn off retrieval on bots that default to it.
+                grok-4.5 sends 1141 prompt tokens for an 84-token translation
+                prompt with search on, and every chunk pays that.
         """
         super().__init__(model, api_keys=api_key, provider_name="poe")
         self.api_endpoint = api_endpoint or self.API_URL
+        self.disable_thinking = disable_thinking
+        self.disable_web_search = disable_web_search
 
     def _get_context_limit(self) -> int:
         """
@@ -106,6 +155,97 @@ class PoeProvider(LLMProvider):
             if prefix in model_lower:
                 return limit
         return 32000  # Conservative default for unknown models
+
+    async def _load_model_parameters(self) -> Optional[Dict[str, List[Dict[str, Any]]]]:
+        """
+        Fetch the parameter schemas Poe advertises for every bot.
+
+        Fetched once per process and cached class-side. Returns None when the
+        catalog is unreachable, which means "unknown" and not "no parameters".
+        """
+        if PoeProvider._model_parameters is not None:
+            return PoeProvider._model_parameters
+        if PoeProvider._model_parameters_failed:
+            return None
+
+        # Safe to create here without a double-check race: no await between the
+        # test and the assignment, so the event loop cannot interleave.
+        if PoeProvider._model_parameters_lock is None:
+            PoeProvider._model_parameters_lock = asyncio.Lock()
+
+        async with PoeProvider._model_parameters_lock:
+            if PoeProvider._model_parameters is not None:
+                return PoeProvider._model_parameters
+            if PoeProvider._model_parameters_failed:
+                return None
+            try:
+                client = await self._get_client()
+                response = await client.get(
+                    self.MODELS_URL,
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Accept": "application/json"
+                    },
+                    timeout=30
+                )
+                response.raise_for_status()
+                PoeProvider._model_parameters = {
+                    m["id"]: (m.get("parameters") or [])
+                    for m in response.json().get("data", [])
+                    if m.get("id")
+                }
+                return PoeProvider._model_parameters
+            except Exception as e:
+                print(f"⚠️ Poe: could not read model parameters ({e});"
+                      f" reasoning stays at the bot's default")
+                PoeProvider._model_parameters_failed = True
+                return None
+
+    def _pick_bot_overrides(self, advertised: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Map a bot's advertised parameters to the settings translation wants."""
+        overrides: Dict[str, Any] = {}
+        for param in advertised:
+            name = param.get("name")
+            schema = param.get("schema") or {}
+
+            if self.disable_thinking and name in self.REASONING_ENUM_PREFERENCES:
+                allowed = schema.get("enum") or []
+                for candidate in self.REASONING_ENUM_PREFERENCES[name]:
+                    if candidate in allowed:
+                        overrides[name] = candidate
+                        break
+            elif self.disable_thinking and name in self.REASONING_BUDGET_PARAMS:
+                minimum = schema.get("minimum", 0)
+                overrides[name] = minimum if isinstance(minimum, (int, float)) else 0
+            elif self.disable_thinking and name in self.REASONING_TOGGLE_PARAMS:
+                overrides[name] = False
+            elif self.disable_web_search and name in self.WEB_SEARCH_PARAMS:
+                overrides[name] = False
+
+        return overrides
+
+    @property
+    def _overrides_cache_key(self) -> tuple:
+        return (self.model, self.disable_thinking, self.disable_web_search)
+
+    async def _get_bot_overrides(self) -> Dict[str, Any]:
+        """Return the request params that override this bot's costly defaults."""
+        if not (self.disable_thinking or self.disable_web_search):
+            return {}
+
+        cached = PoeProvider._bot_overrides.get(self._overrides_cache_key)
+        if cached is not None:
+            return dict(cached)
+
+        catalog = await self._load_model_parameters()
+        if catalog is None:
+            return {}
+
+        overrides = self._pick_bot_overrides(catalog.get(self.model, []))
+        PoeProvider._bot_overrides[self._overrides_cache_key] = overrides
+        if overrides:
+            print(f"⚙️ Poe ({self.model}): bot defaults overridden: {overrides}")
+        return dict(overrides)
 
     @classmethod
     def get_session_cost(cls) -> tuple:
@@ -338,11 +478,13 @@ class PoeProvider(LLMProvider):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
+        bot_overrides = await self._get_bot_overrides()
         payload = {
             "model": self.model,
             "messages": messages,
             "stream": False,
             "temperature": TEMPERATURE,
+            **bot_overrides,
         }
 
         client = await self._get_client()
@@ -382,6 +524,27 @@ class PoeProvider(LLMProvider):
                         self._key_pool, current_key, response.headers,
                         rate_limit_events, MAX_TRANSLATION_ATTEMPTS,
                     )
+                    continue
+
+                # Never let our own overrides be the reason a chunk fails: on
+                # any 400 we retry once without them. Consumes no attempt, and
+                # the branch is one-shot since the overrides are emptied. Poe
+                # names the offending argument in the body ("Unrecognized
+                # request argument supplied: X", or "do not support extra_body
+                # fields: X"); when it names one of ours, the bot genuinely
+                # rejects it, so stop sending it this run.
+                if response.status_code == 400 and bot_overrides:
+                    rejected = [n for n in bot_overrides if n in response.text]
+                    if rejected:
+                        print(f"⚠️ Poe ({self.model}): params {sorted(rejected)} "
+                              f"rejected by the bot, dropping them for this run")
+                        PoeProvider._bot_overrides[self._overrides_cache_key] = {}
+                    else:
+                        print(f"⚠️ Poe ({self.model}): HTTP 400, retrying once without "
+                              f"our param overrides to rule them out")
+                    for name in bot_overrides:
+                        payload.pop(name, None)
+                    bot_overrides = {}
                     continue
 
                 response.raise_for_status()

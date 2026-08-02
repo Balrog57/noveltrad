@@ -15,6 +15,7 @@ from src.config import (
     DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_API_ENDPOINT,
     DEEPSEEK_DISABLE_THINKING,
     POE_API_KEY, POE_MODEL, POE_API_ENDPOINT,
+    POE_DISABLE_THINKING, POE_DISABLE_WEB_SEARCH,
     NIM_API_KEY, NIM_MODEL, NIM_API_ENDPOINT,
     LITELLM_MODEL
 )
@@ -156,7 +157,9 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
         return PoeProvider(
             api_key=api_key,
             model=kwargs.get("model", POE_MODEL),
-            api_endpoint=POE_API_ENDPOINT
+            api_endpoint=POE_API_ENDPOINT,
+            disable_thinking=kwargs.get("poe_disable_thinking", POE_DISABLE_THINKING),
+            disable_web_search=kwargs.get("poe_disable_web_search", POE_DISABLE_WEB_SEARCH)
         )
     elif provider_type.lower() == "nim":
         api_key = _require_key(

@@ -236,6 +236,28 @@ python translate.py -i book.txt -o book_fr.txt \
 
 > Poe usage is metered in points — each model has its own cost. Check the model card on poe.com for the rate.
 
+### Reasoning and web search
+
+Poe bots ship with two defaults that cost tokens translation never uses, so TBL overrides both.
+
+**Reasoning.** Most bots reason by default (`gemini-3.6-flash`: `thinking_level=medium`, `grok-4.5`
+and `kimi-k3`: `reasoning_effort=high`, `glm-5.x`: `enable_thinking=true`). On a 102-token prompt,
+`gemini-3.6-flash` spent 1167 reasoning tokens out of 1231 output tokens. TBL asks each bot for its
+lowest reasoning setting; `POE_DISABLE_THINKING=false` keeps reasoning on.
+
+**Web search.** `gemini-3.6-flash` and `grok-4.5` search the web by default, and every chunk pays for
+it in prompt tokens: `grok-4.5` sent 1141 prompt tokens for an 84-token translation prompt, down to
+283 with search off. A book is self-contained, so retrieval is cost at best and context pollution at
+worst. `POE_DISABLE_WEB_SEARCH=false` allows it.
+
+Poe has no universal switch for either: every bot advertises its own knobs in the `parameters` array
+of `/v1/models` and rejects any knob it does not advertise with HTTP 400, so the settings are read
+from that catalog rather than a hardcoded model list. A rejected knob is dropped and the request
+retried, so a stale catalog entry can never fail a chunk.
+
+One exception: `output_effort` (Claude 4.6/4.8) is left untouched, because it caps the whole answer
+rather than just hidden reasoning. Those two bots keep reasoning.
+
 ---
 
 ## NVIDIA NIM (Cloud)

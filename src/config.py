@@ -359,6 +359,16 @@ DEEPSEEK_API_ENDPOINT = os.getenv('DEEPSEEK_API_ENDPOINT', 'https://api.deepseek
 # wasting ~10-25x tokens on translation. Set to 'false' to keep thinking enabled.
 DEEPSEEK_DISABLE_THINKING = os.getenv('DEEPSEEK_DISABLE_THINKING', 'true').lower() == 'true'
 POE_API_ENDPOINT = os.getenv('POE_API_ENDPOINT', 'https://api.poe.com/v1/chat/completions')
+# Most Poe bots reason by default (gemini-3.6-flash: thinking_level=medium,
+# grok-4.5 / kimi-k3: reasoning_effort=high, glm-5.x: enable_thinking=true),
+# which burns output tokens translation never uses. The provider asks each bot
+# for its lowest reasoning setting, using the schema /v1/models advertises.
+# Set to 'false' to keep reasoning enabled.
+POE_DISABLE_THINKING = os.getenv('POE_DISABLE_THINKING', 'true').lower() == 'true'
+# Some Poe bots search the web by default (gemini-3.6-flash, grok-4.5), which
+# inflates the prompt of every chunk with results a self-contained book never
+# needs. Set to 'false' to allow retrieval.
+POE_DISABLE_WEB_SEARCH = os.getenv('POE_DISABLE_WEB_SEARCH', 'true').lower() == 'true'
 NIM_API_ENDPOINT = os.getenv('NIM_API_ENDPOINT', 'https://integrate.api.nvidia.com/v1/chat/completions')
 
 # SRT-specific configuration
