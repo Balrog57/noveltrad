@@ -5,8 +5,11 @@ Provides centralized configuration for TTS generation including
 provider selection, voice settings, and audio encoding options.
 """
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional, Dict
+
+from src.utils.lang_normalize import normalize_lang_key
 
 # Default voice mappings by language code
 # These are high-quality neural voices from Edge-TTS
@@ -393,6 +396,10 @@ class TTSConfig:
         """
         Get the language code for Chatterbox TTS.
 
+        Chatterbox has no regional variants, so both regional codes
+        ("pt-br", "pt-pt") and regional names ("Portuguese (Brazil)")
+        resolve to the base language it does support ("pt").
+
         Args:
             language: Target language name or code
 
@@ -405,9 +412,15 @@ class TTSConfig:
         if lang in CHATTERBOX_VOICES:
             return lang
 
-        # Try to match by full name
+        # Regional code: "pt-br" / "en_US" -> "pt" / "en"
+        base_code = re.split(r'[-_]', lang, maxsplit=1)[0]
+        if base_code in CHATTERBOX_VOICES:
+            return base_code
+
+        # Try to match by full name, with or without a regional suffix
+        base_name = normalize_lang_key(lang)
         for code, name in CHATTERBOX_VOICES.items():
-            if name.lower() == lang:
+            if name.lower() == base_name:
                 return code
 
         # Fallback to English

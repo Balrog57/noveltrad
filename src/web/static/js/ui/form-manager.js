@@ -321,8 +321,10 @@ export const FormManager = {
             'am': 'Amharic'
         };
 
-        // Regional variant overrides: check full locale before base code
-        if (fullLangCode === 'pt-pt' || fullLangCode === 'pt-pt-x') {
+        // Regional variant overrides: check full locale before base code.
+        // Any pt-* locale other than pt-BR is closer to European Portuguese,
+        // and a bare "pt" keeps the Brazilian default set in languageMap.
+        if (langCode === 'pt' && fullLangCode !== 'pt' && !fullLangCode.startsWith('pt-br')) {
             return 'Portuguese (Portugal)';
         }
 
