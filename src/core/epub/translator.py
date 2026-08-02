@@ -30,6 +30,7 @@ from ..post_processor import clean_residual_tag_placeholders
 from ..context_optimizer import AdaptiveContextManager, INITIAL_CONTEXT_SIZE, CONTEXT_STEP, MAX_CONTEXT_SIZE
 from .rtl_support import apply_rtl_to_epub_directory, is_rtl_language
 from .lang_support import apply_target_language_to_xhtml_directory, get_language_code
+from .attribution_page import add_attribution_page
 from src.utils.security import safe_extract_zip
 
 
@@ -229,6 +230,17 @@ async def translate_epub_file(
                 opf_dir=manifest_data['opf_dir'],
                 opf_tree=manifest_data['opf_tree'],
                 parsed_xhtml_docs=results['parsed_docs'],
+                log_callback=log_callback
+            )
+
+            # 4.7. Append the attribution page to the end of the spine. Runs before
+            # the metadata write (step 5) so the manifest and spine edits are
+            # persisted by that single OPF write, and before RTL (6) and the lang
+            # pass (6.5) so the new page inherits RTL CSS and the target lang
+            # attribute like any other document in the book.
+            add_attribution_page(
+                opf_tree=manifest_data['opf_tree'],
+                opf_dir=manifest_data['opf_dir'],
                 log_callback=log_callback
             )
 

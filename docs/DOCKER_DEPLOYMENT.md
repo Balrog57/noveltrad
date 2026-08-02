@@ -513,7 +513,7 @@ For orchestration, consider:
 
 All translations include a discrete signature for attribution:
 
-- **EPUB**: Adds Dublin Core metadata (`dc:contributor` with role "trl", `dc:description`)
+- **EPUB**: Adds Dublin Core metadata (`dc:contributor` with role "trl", `dc:description`) and appends a short attribution page at the end of the book
 - **Text Files**: Adds footer with project name and GitHub link
 - **SRT Files**: Adds comment at end with attribution
 
@@ -527,6 +527,9 @@ SIGNATURE_ENABLED=true
 
 # Disable signatures
 SIGNATURE_ENABLED=false
+
+# Keep the OPF metadata attribution but drop the visible EPUB end page
+ATTRIBUTION_PAGE_ENABLED=false
 ```
 
 See [TRANSLATION_SIGNATURE.md](../TRANSLATION_SIGNATURE.md) for details.

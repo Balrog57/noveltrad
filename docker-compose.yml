@@ -141,6 +141,7 @@ services:
       # Attribution (please consider keeping enabled to support the project)
       # -----------------------------------------------------------------------
       - ATTRIBUTION_ENABLED=true
+      - ATTRIBUTION_PAGE_ENABLED=true
 
     # Uncomment on Linux so the container can reach Ollama on the host:
     # extra_hosts:

@@ -387,12 +387,17 @@ SRT_LINES_PER_BLOCK = int(os.getenv('SRT_LINES_PER_BLOCK', '10'))
 UNIT_VALIDATION_RETRIES = int(os.getenv('UNIT_VALIDATION_RETRIES', '2'))
 
 # Translation Attribution
-# This adds a discrete attribution to your translations (metadata for EPUB, footer for TXT, comment for SRT)
+# This adds a discrete attribution to your translations (metadata and end page for EPUB, footer for TXT, comment for SRT)
 # Please consider keeping this enabled to support the project and help others discover this free tool!
 # The attribution is non-intrusive and placed at the end of files. Thank you for your support!
 ATTRIBUTION_ENABLED = os.getenv('ATTRIBUTION_ENABLED', os.getenv('SIGNATURE_ENABLED', 'true')).lower() == 'true'
 GENERATOR_NAME = "TranslateBook with LLM (TBL)"
 GENERATOR_SOURCE = "https://github.com/hydropix/TranslateBookWithLLM"
+
+# When enabled, translated EPUBs get a short attribution page appended to the end
+# of the spine, in addition to the OPF metadata. Requires ATTRIBUTION_ENABLED:
+# turning the master switch off disables the page too.
+ATTRIBUTION_PAGE_ENABLED = os.getenv('ATTRIBUTION_PAGE_ENABLED', 'true').lower() == 'true'
 METADATA_VERSION = "1.0"
 
 # Default languages from environment (optional)
