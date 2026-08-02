@@ -416,6 +416,108 @@ export const ApiClient = {
         });
     },
 
+    /**
+     * Get a single custom instruction preset (full extended-schema mapping)
+     * @param {string} filename - Preset filename
+     * @returns {Promise<Object>} Preset payload from read_preset()
+     */
+    async getCustomInstruction(filename) {
+        return await apiRequest(`/api/custom-instructions/${encodeURIComponent(filename)}`);
+    },
+
+    /**
+     * Create a new custom instruction preset
+     * @param {Object} payload - {name, description?, context?, mode?, source_files?, rules?, translation?, refinement?, overwrite?}
+     * @returns {Promise<Object>} {filename, display_name}
+     */
+    async createCustomInstruction(payload) {
+        return await apiRequest('/api/custom-instructions', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    /**
+     * Update (partial) an existing custom instruction preset
+     * @param {string} filename - Preset filename
+     * @param {Object} payload - Any subset of {description, context, mode, source_files, rules, translation, refinement, manual}
+     * @returns {Promise<Object>} {filename, display_name}
+     */
+    async updateCustomInstruction(filename, payload) {
+        return await apiRequest(`/api/custom-instructions/${encodeURIComponent(filename)}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    /**
+     * Delete a custom instruction preset
+     * @param {string} filename - Preset filename
+     * @returns {Promise<Object>} {deleted: true}
+     */
+    async deleteCustomInstruction(filename) {
+        return await apiRequest(`/api/custom-instructions/${encodeURIComponent(filename)}`, {
+            method: 'DELETE'
+        });
+    },
+
+    /**
+     * Duplicate a custom instruction preset
+     * @param {string} filename - Source preset filename
+     * @param {string} [name] - Explicit name for the duplicate (server picks a default when omitted)
+     * @returns {Promise<Object>} {filename, display_name}
+     */
+    async duplicateCustomInstruction(filename, name) {
+        return await apiRequest(`/api/custom-instructions/${encodeURIComponent(filename)}/duplicate`, {
+            method: 'POST',
+            body: JSON.stringify(name ? { name } : {})
+        });
+    },
+
+    /**
+     * Assemble a rule list into the translation/refinement prose blocks
+     * @param {string} mode - 'source' | 'model'
+     * @param {Array<Object>} rules - [{dimension, instruction}, ...]
+     * @param {string} [context] - narrative setting (period, tech level, social frame)
+     * @returns {Promise<Object>} {translation, refinement, flags}
+     */
+    async assembleCustomInstruction(mode, rules, context) {
+        const body = { mode, rules };
+        if (context !== undefined) body.context = context;
+        return await apiRequest('/api/custom-instructions/assemble', {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+    },
+
+    /**
+     * Sample uploaded documents and ask an LLM to characterize their writing style
+     * @param {FormData} formData - Multipart body: files[], mode, source_lang, target_lang,
+     *   max_chars, sample_count, provider, model, api_key, api_endpoint
+     * @returns {Promise<Object>} {rules, summary, suggested_name, assembled, mode, warnings, ...}
+     */
+    async extractStyle(formData) {
+        const response = await fetch(`${API_BASE_URL}/api/custom-instructions/extract-style`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            await handleApiError(response);
+        }
+
+        return await response.json();
+    },
+
+    /**
+     * Get the export URL for a custom instruction preset (YAML download)
+     * @param {string} filename - Preset filename
+     * @returns {string} Download URL
+     */
+    exportCustomInstructionUrl(filename) {
+        return withToken(`${API_BASE_URL}/api/custom-instructions/${encodeURIComponent(filename)}/export`);
+    },
+
     // ========================================
     // TTS (Text-to-Speech) Operations
     // ========================================

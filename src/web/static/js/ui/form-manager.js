@@ -68,6 +68,12 @@ export const FormManager = {
         this.setupEventListeners();
         this.loadDefaultConfig();
         this.loadCustomInstructions();
+
+        // The Styles tab (style-manager.js) owns the Custom_Instructions
+        // CRUD flows; it never writes to #customInstructionSelect directly,
+        // it only signals that the on-disk list changed so this dropdown
+        // stays in sync without a page reload.
+        window.addEventListener('customInstructionsChanged', () => this.loadCustomInstructions());
     },
 
     /**
@@ -98,27 +104,6 @@ export const FormManager = {
             });
         }
 
-        // Prompt options checkboxes - keep section open if any is checked
-        const textCleanup = DomHelpers.getElement('textCleanup');
-        const bilingualMode = DomHelpers.getElement('bilingualMode');
-        const customInstructionSelect = DomHelpers.getElement('customInstructionSelect');
-        const plainTextMode = DomHelpers.getElement('plainTextMode');
-
-        [textCleanup, bilingualMode, plainTextMode].forEach(checkbox => {
-            if (checkbox) {
-                checkbox.addEventListener('change', () => {
-                    this.handlePromptOptionChange();
-                });
-            }
-        });
-
-        // Custom instruction select - keep section open if a file is selected
-        if (customInstructionSelect) {
-            customInstructionSelect.addEventListener('change', () => {
-                this.handlePromptOptionChange();
-            });
-        }
-
         // Custom instructions refresh button
         const refreshCustomInstructionsBtn = DomHelpers.getElement('refreshCustomInstructionsBtn');
         if (refreshCustomInstructionsBtn) {
@@ -127,11 +112,17 @@ export const FormManager = {
             });
         }
 
-        // Custom instructions open folder button
-        const openCustomInstructionsFolderBtn = DomHelpers.getElement('openCustomInstructionsFolderBtn');
-        if (openCustomInstructionsFolderBtn) {
-            openCustomInstructionsFolderBtn.addEventListener('click', () => {
-                this.openCustomInstructionsFolder();
+        // Custom instructions manage button — jumps to the Styles tab, which owns
+        // the Custom_Instructions CRUD flows. Mirrors #glossaryManageBtn, which
+        // does the same for the Glossaries tab (glossary-manager.js).
+        const customInstructionsManageBtn = DomHelpers.getElement('customInstructionsManageBtn');
+        if (customInstructionsManageBtn) {
+            customInstructionsManageBtn.addEventListener('click', () => {
+                // Global rather than imported: switchTopTab lives in
+                // glossary-manager.js and importing it here would close a cycle.
+                if (typeof window.switchTopTab === 'function') {
+                    window.switchTopTab('styles');
+                }
             });
         }
 
@@ -236,22 +227,6 @@ export const FormManager = {
     },
 
     /**
-     * Toggle prompt options panel
-     */
-    togglePromptOptions() {
-        const section = DomHelpers.getElement('promptOptionsSection');
-        const icon = DomHelpers.getElement('promptOptionsIcon');
-
-        if (!section || !icon) return;
-
-        const isHidden = section.classList.toggle('hidden');
-        icon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
-
-        // Update state
-        StateManager.setState('ui.isPromptOptionsOpen', !isHidden);
-    },
-
-    /**
      * Toggle activity log panel
      */
     toggleActivityLog() {
@@ -265,36 +240,6 @@ export const FormManager = {
 
         // Update state
         StateManager.setState('ui.isActivityLogOpen', !isHidden);
-    },
-
-    /**
-     * Handle prompt option checkbox change - keep section open if any option is active
-     */
-    handlePromptOptionChange() {
-        const textCleanup = DomHelpers.getElement('textCleanup');
-        const bilingualMode = DomHelpers.getElement('bilingualMode');
-        const plainTextMode = DomHelpers.getElement('plainTextMode');
-        const customInstructionSelect = DomHelpers.getElement('customInstructionSelect');
-
-        const anyActive = (
-            textCleanup?.checked ||
-            bilingualMode?.checked ||
-            plainTextMode?.checked ||
-            (customInstructionSelect?.value && customInstructionSelect.value !== '')
-        );
-
-        if (anyActive) {
-            const section = DomHelpers.getElement('promptOptionsSection');
-            const icon = DomHelpers.getElement('promptOptionsIcon');
-
-            if (section && section.classList.contains('hidden')) {
-                section.classList.remove('hidden');
-                if (icon) {
-                    icon.style.transform = 'rotate(180deg)';
-                }
-                StateManager.setState('ui.isPromptOptionsOpen', true);
-            }
-        }
     },
 
     /**
@@ -461,6 +406,14 @@ export const FormManager = {
                 }
             }
 
+            // Chunker budget (seeds the input; saved back to .env on Save)
+            if (config.max_tokens_per_chunk) {
+                const maxTokensInput = DomHelpers.getElement('maxTokensPerChunk');
+                if (maxTokensInput) {
+                    maxTokensInput.value = String(config.max_tokens_per_chunk);
+                }
+            }
+
             // Webhook notifications — populate fields from .env
             if ('notify_webhook_url' in config) {
                 DomHelpers.setValue('notifyWebhookUrl', config.notify_webhook_url || '');
@@ -573,22 +526,6 @@ export const FormManager = {
             // Graceful degradation - dropdown will only show "None" option
             // Still dispatch event even on error
             window.dispatchEvent(new CustomEvent('customInstructionsLoaded'));
-        }
-    },
-
-    /**
-     * Open the Custom_Instructions folder in the system file explorer
-     */
-    async openCustomInstructionsFolder() {
-        try {
-            const response = await ApiClient.openCustomInstructionsFolder();
-            if (!response.success) {
-                console.error('[CustomInstructions] Failed to open folder:', response.error);
-                MessageLogger.addLog(t('settings:custom_instructions_load_failed'));
-            }
-        } catch (error) {
-            console.error('[CustomInstructions] Error opening folder:', error);
-            MessageLogger.addLog(t('settings:custom_instructions_load_failed'));
         }
     },
 

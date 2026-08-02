@@ -49,6 +49,9 @@
   "parallel_workers_label": "Parallel requests",
   "parallel_workers_input_title": "Number of chunks translated at the same time",
   "parallel_workers_help": "Translate several chunks at once on cloud providers that allow concurrent requests. 1 keeps the original sequential behavior. Higher values are faster but may hit rate limits, and disable cross-chunk context for consistency. Ignored for local providers (Ollama).",
+  "max_tokens_per_chunk_label": "Chunk size (tokens)",
+  "max_tokens_per_chunk_input_title": "Maximum tokens of source text sent to the LLM in a single chunk",
+  "max_tokens_per_chunk_help": "How much source text goes into one LLM request. Bigger chunks mean fewer requests, better flow across paragraphs and lower cost, but a higher risk that the model condenses or skips text. There is no upper limit, only these constraints: the model needs roughly <code>550 + (chunk size × 3)</code> tokens of context window, and a failed chunk is retried in full. Suggested range: <strong>450</strong> (default, safest) to <strong>800</strong> for tag-heavy EPUB/DOCX, up to <strong>1500-2000</strong> for plain prose on a large-context cloud model. Actual chunks average about 80% of this value.",
 
   "translation_options": "Translation Options",
   "post_processing": "Post-Processing",
@@ -68,6 +71,7 @@
 
   "glossary_label": "Glossary",
   "glossary_manage_title": "Manage glossaries",
+  "custom_instructions_manage_title": "Manage styles",
   "glossary_help": "Inject a curated source-to-target term list into every chunk's prompt to keep entity translations consistent. Click <strong>Manage</strong> to create, edit or auto-extract terms.",
 
   "custom_instructions_label": "Custom Instructions",

@@ -39,6 +39,8 @@ const OPTION_STYLES = {
 
 // Maps a summary item key to the tab + collapsible section it should reveal.
 // `focus` is an optional element id to focus/scroll-to after switching.
+// `panel: 'preflight'` marks the five per-run options that now live in the
+// pre-flight panel on the Translate tab instead of a Settings accordion.
 // Also reused by the Fallbacks recommendation panel (progress-manager.js) to
 // jump to the relevant setting when the user clicks a link in the panel.
 const TARGETS = {
@@ -46,19 +48,33 @@ const TARGETS = {
     model:        { tab: 'settings', section: 'settings', focus: 'model' },
     languages:    { tab: 'translate', section: null,      focus: 'sourceLang' },
     noPause:      { tab: 'settings', section: 'settings', focus: 'disableAutoPause' },
-    bilingual:    { tab: 'settings', section: 'prompt',   focus: 'bilingualMode' },
-    plainText:    { tab: 'settings', section: 'prompt',   focus: 'plainTextMode' },
-    ocr:          { tab: 'settings', section: 'prompt',   focus: 'textCleanup' },
-    glossary:     { tab: 'settings', section: 'prompt',   focus: 'glossarySelect' },
-    instructions: { tab: 'settings', section: 'prompt',   focus: 'customInstructionSelect' },
+    bilingual:    { tab: 'translate', section: null, focus: 'bilingualMode',           panel: 'preflight' },
+    plainText:    { tab: 'translate', section: null, focus: 'plainTextMode',           panel: 'preflight' },
+    ocr:          { tab: 'translate', section: null, focus: 'textCleanup',             panel: 'preflight' },
+    glossary:     { tab: 'translate', section: null, focus: 'glossarySelect',          panel: 'preflight' },
+    instructions: { tab: 'translate', section: null, focus: 'customInstructionSelect', panel: 'preflight' },
     refineOnly:   { tab: 'files',    section: null,       focus: null },
+    // Not a summary chip: reached only through navigateToSetting(), by the
+    // pre-flight zone's "Parallel requests" advice.
+    parallelWorkers: { tab: 'settings', section: 'settings', focus: 'parallelWorkers' },
 };
 
 const SECTION_IDS = {
     settings: { section: 'settingsOptionsSection',     icon: 'settingsOptionsIcon',     stateKey: 'ui.isSettingsOptionsOpen' },
-    prompt:   { section: 'promptOptionsSection',       icon: 'promptOptionsIcon',       stateKey: 'ui.isPromptOptionsOpen' },
     notify:   { section: 'notificationOptionsSection', icon: 'notificationOptionsIcon', stateKey: null },
 };
+
+// Set by preflight-zone.js at init. Inverted rather than imported: this module
+// is imported *by* preflight-zone.js, so a direct import would close a cycle.
+let panelOpener = null;
+
+/**
+ * Register the callback that opens/closes the pre-flight panel.
+ * @param {(open: boolean) => void} fn - Opener, typically PreflightZone.setPanelOpen
+ */
+export function registerPanelOpener(fn) {
+    panelOpener = fn;
+}
 
 function getSelectText(id) {
     const el = DomHelpers.getElement(id);
@@ -224,7 +240,13 @@ function openSection(sectionKey) {
     }
 }
 
-function focusElement(id) {
+/**
+ * Scroll a control into view, then focus it one macrotask later.
+ * Exported so preflight-zone.js reuses the exact same sequence instead of
+ * keeping a second copy of the deferred-focus workaround below.
+ * @param {string} id - Element id to reveal
+ */
+export function focusElement(id) {
     if (!id) return;
     const el = DomHelpers.getElement(id);
     if (!el) return;
@@ -240,10 +262,10 @@ function focusElement(id) {
     }, 50);
 }
 
-function handleClick(event) {
-    const target = event.target.closest('[data-summary-action]');
-    if (!target) return;
-    const action = target.getAttribute('data-summary-action');
+// The single implementation behind both the summary's own click handler and the
+// exported navigateToSetting(): switch tab, reveal the container holding the
+// control, then focus it.
+function goToTarget(action) {
     const dest = TARGETS[action];
     if (!dest) return;
 
@@ -253,9 +275,19 @@ function handleClick(event) {
     if (dest.section) {
         openSection(dest.section);
     }
+    if (dest.panel === 'preflight') {
+        // Guarded: the opener is only present once preflight-zone.js has run.
+        panelOpener?.(true);
+    }
     if (dest.focus) {
         focusElement(dest.focus);
     }
+}
+
+function handleClick(event) {
+    const target = event.target.closest('[data-summary-action]');
+    if (!target) return;
+    goToTarget(target.getAttribute('data-summary-action'));
 }
 
 function injectStyles() {
@@ -279,7 +311,9 @@ function injectStyles() {
     document.head.appendChild(style);
 }
 
-const WATCHED_IDS = [
+// Exported so preflight-zone.js can subscribe to the exact same signals instead
+// of keeping a second copy of this list, which would drift.
+export const WATCHED_IDS = [
     'llmProvider', 'model',
     'sourceLang', 'customSourceLang',
     'targetLang', 'customTargetLang',
@@ -291,21 +325,13 @@ const WATCHED_IDS = [
 /**
  * Jump to the form control behind one of the TARGETS keys. Intended for reuse
  * by other modules (the Fallbacks recommendation panel) so they get the same
- * tab-switch + section-open + scroll-to-focus behaviour as the settings
- * summary chips.
+ * tab-switch + section-open + panel-open + scroll-to-focus behaviour as the
+ * settings summary chips. Callers stay unchanged when a control moves between
+ * containers: only its TARGETS entry does.
+ * @param {string} action - TARGETS key
  */
 export function navigateToSetting(action) {
-    const dest = TARGETS[action];
-    if (!dest) return;
-    if (typeof window.switchTopTab === 'function') {
-        window.switchTopTab(dest.tab);
-    }
-    if (dest.section) {
-        openSection(dest.section);
-    }
-    if (dest.focus) {
-        focusElement(dest.focus);
-    }
+    goToTarget(action);
 }
 
 export const SettingsSummary = {

@@ -151,7 +151,8 @@ export const SettingsManager = {
             { id: 'poeApiKey', event: 'input' },
             { id: 'nimApiKey', event: 'input' },
             { id: 'disableAutoPause', event: 'change' },
-            { id: 'parallelWorkers', event: 'input' }
+            { id: 'parallelWorkers', event: 'input' },
+            { id: 'maxTokensPerChunk', event: 'input' }
         ];
 
         envDirtyElements.forEach(({ id, event }) => {
@@ -357,20 +358,6 @@ export const SettingsManager = {
         if (prefs.customInstructionFile) {
             window.__pendingCustomInstructionSelection = prefs.customInstructionFile;
         }
-
-        // Keep Prompt Options section open if any option is active.
-        // Note: disableAutoPause now lives in the Provider & Defaults section, not here.
-        const hasAnyPromptOption = prefs.textCleanup || prefs.bilingualMode || prefs.plainTextMode || prefs.customInstructionFile;
-        if (hasAnyPromptOption) {
-            const promptOptionsSection = DomHelpers.getElement('promptOptionsSection');
-            const promptOptionsIcon = DomHelpers.getElement('promptOptionsIcon');
-            if (promptOptionsSection) {
-                promptOptionsSection.classList.remove('hidden');
-            }
-            if (promptOptionsIcon) {
-                promptOptionsIcon.style.transform = 'rotate(180deg)';
-            }
-        }
     },
 
     /**
@@ -509,6 +496,16 @@ export const SettingsManager = {
             if (parallelWorkersInput) {
                 const pw = parseInt(parallelWorkersInput.value, 10);
                 envSettings['PARALLEL_TRANSLATIONS'] = String(Number.isFinite(pw) && pw > 0 ? pw : 1);
+            }
+
+            // Save chunker budget. Backend floors it at MIN_CHUNK_SIZE_TOKENS
+            // and applies it to new jobs without a restart (reloadable setting).
+            const maxTokensInput = DomHelpers.getElement('maxTokensPerChunk');
+            if (maxTokensInput) {
+                const mt = parseInt(maxTokensInput.value, 10);
+                if (Number.isFinite(mt) && mt > 0) {
+                    envSettings['MAX_TOKENS_PER_CHUNK'] = String(mt);
+                }
             }
 
             // Webhook notifications — always serialized (even empty) so the user

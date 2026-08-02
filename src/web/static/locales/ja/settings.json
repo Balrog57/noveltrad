@@ -49,6 +49,9 @@
   "parallel_workers_label": "並列リクエスト",
   "parallel_workers_input_title": "同時に翻訳するチャンク数",
   "parallel_workers_help": "並行リクエストに対応したクラウドプロバイダーで複数のチャンクを同時に翻訳します。1 にすると元の逐次処理の動作を維持します。値を大きくすると高速になりますが、レート制限に達する可能性があり、一貫性のためのチャンク間コンテキストが無効になります。ローカルプロバイダー（Ollama）では無視されます。",
+  "max_tokens_per_chunk_label": "チャンクサイズ（トークン）",
+  "max_tokens_per_chunk_input_title": "1 つのチャンクで LLM に送信するソーステキストの最大トークン数",
+  "max_tokens_per_chunk_help": "1 回の LLM リクエストに含めるソーステキストの量です。チャンクを大きくするとリクエスト数が減り、段落間の流れが良くなり、コストも下がりますが、モデルが文章を要約したり飛ばしたりするリスクが高まります。上限はなく、制約は次の 2 点だけです。モデルにはおよそ <code>550 +（チャンクサイズ × 3）</code> トークンのコンテキストウィンドウが必要で、失敗したチャンクは丸ごと再試行されます。推奨範囲：<strong>450</strong>（既定値、最も安全）、タグの多い EPUB/DOCX では <strong>800</strong>、大きなコンテキストを持つクラウドモデルでの平文散文なら <strong>1500〜2000</strong> まで。実際のチャンクは平均でこの値の約 80% になります。",
 
   "translation_options": "翻訳オプション",
   "post_processing": "後処理",
@@ -68,6 +71,7 @@
 
   "glossary_label": "用語集",
   "glossary_manage_title": "用語集を管理",
+  "custom_instructions_manage_title": "スタイルを管理",
   "glossary_help": "厳選された原文と訳文の対訳リストを各チャンクのプロンプトに挿入し、固有名詞の翻訳の一貫性を保ちます。<strong>管理</strong>をクリックして用語を作成、編集、または自動抽出してください。",
 
   "custom_instructions_label": "カスタム指示",

@@ -196,12 +196,14 @@ function switchTopTab(name) {
     const glossariesTab = $('tab-glossaries');
     const filesTab = $('tab-files');
     const sampleTab = $('tab-sample');
+    const stylesTab = $('tab-styles');
 
     if (translateTab) translateTab.classList.toggle('hidden', name !== 'translate');
     if (settingsTab) settingsTab.classList.toggle('hidden', name !== 'settings');
     if (glossariesTab) glossariesTab.classList.toggle('hidden', name !== 'glossaries');
     if (filesTab) filesTab.classList.toggle('hidden', name !== 'files');
     if (sampleTab) sampleTab.classList.toggle('hidden', name !== 'sample');
+    if (stylesTab) stylesTab.classList.toggle('hidden', name !== 'styles');
 
     const buttons = document.querySelectorAll('#topTabNav .tab-btn');
     buttons.forEach((btn) => {
@@ -213,6 +215,8 @@ function switchTopTab(name) {
         loadList();
     } else if (name === 'files' && typeof window.refreshFileList === 'function') {
         window.refreshFileList();
+    } else if (name === 'styles' && typeof window.refreshStyleList === 'function') {
+        window.refreshStyleList();
     }
 }
 

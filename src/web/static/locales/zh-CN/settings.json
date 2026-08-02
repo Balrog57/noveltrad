@@ -49,6 +49,9 @@
   "parallel_workers_label": "并行请求",
   "parallel_workers_input_title": "同时翻译的文本块数量",
   "parallel_workers_help": "在允许并发请求的云服务商上同时翻译多个文本块。设为 1 时保持原有的顺序处理行为。更高的值速度更快，但可能触发速率限制，并会为保持一致性而禁用跨块上下文。本地服务商（Ollama）会忽略此设置。",
+  "max_tokens_per_chunk_label": "文本块大小（tokens）",
+  "max_tokens_per_chunk_input_title": "单个文本块发送给 LLM 的源文本最大 token 数",
+  "max_tokens_per_chunk_help": "单次 LLM 请求中包含的源文本量。文本块越大，请求次数越少、段落之间的行文越连贯、成本也越低，但模型压缩或漏译文本的风险越高。没有上限，只有这些约束：模型大约需要 <code>550 +（文本块大小 × 3）</code> tokens 的上下文窗口，且失败的文本块会整块重试。建议范围：<strong>450</strong>（默认值，最稳妥）到 <strong>800</strong>（适用于标签密集的 EPUB/DOCX），在大上下文的云端模型上翻译纯散文时最高可到 <strong>1500-2000</strong>。实际文本块平均约为该值的 80%。",
 
   "translation_options": "翻译选项",
   "post_processing": "后处理",
@@ -68,6 +71,7 @@
 
   "glossary_label": "术语表",
   "glossary_manage_title": "管理术语表",
+  "custom_instructions_manage_title": "管理风格",
   "glossary_help": "向每个分段的提示词中注入一份经过整理的源到目标术语列表，使实体翻译保持一致。点击 <strong>管理</strong> 可创建、编辑或自动提取术语。",
 
   "custom_instructions_label": "自定义指令",

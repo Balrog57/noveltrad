@@ -20,6 +20,7 @@ from .blueprints import (
     create_security_blueprint,
     create_tts_blueprint,
     create_glossary_blueprint,
+    create_custom_instruction_blueprint,
     create_cost_blueprint,
     create_version_blueprint,
     create_sample_blueprint,
@@ -65,6 +66,10 @@ def configure_routes(app, state_manager, output_dir, start_translation_job, sock
     # connections across the blueprint and the translation handler.
     glossary_bp = create_glossary_blueprint(store=state_manager.get_glossary_store())
     app.register_blueprint(glossary_bp)
+
+    # Register custom-instruction (style preset) CRUD + extraction routes
+    custom_instruction_bp = create_custom_instruction_blueprint()
+    app.register_blueprint(custom_instruction_bp)
 
     # Register TTS routes (requires socketio for progress updates)
     if socketio:

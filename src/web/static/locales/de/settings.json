@@ -49,6 +49,9 @@
   "parallel_workers_label": "Parallele Anfragen",
   "parallel_workers_input_title": "Anzahl der gleichzeitig übersetzten Abschnitte",
   "parallel_workers_help": "Übersetzen Sie mehrere Abschnitte gleichzeitig bei Cloud-Anbietern, die parallele Anfragen erlauben. 1 behält das ursprüngliche sequenzielle Verhalten bei. Höhere Werte sind schneller, können aber Ratenbegrenzungen erreichen und deaktivieren den abschnittsübergreifenden Kontext für die Konsistenz. Bei lokalen Anbietern (Ollama) wird der Wert ignoriert.",
+  "max_tokens_per_chunk_label": "Abschnittsgröße (Tokens)",
+  "max_tokens_per_chunk_input_title": "Maximale Anzahl an Quelltext-Tokens, die in einem einzelnen Abschnitt an das LLM gesendet werden",
+  "max_tokens_per_chunk_help": "Wie viel Quelltext in eine LLM-Anfrage geht. Größere Abschnitte bedeuten weniger Anfragen, besseren Lesefluss über Absätze hinweg und geringere Kosten, aber ein höheres Risiko, dass das Modell Text zusammenfasst oder auslässt. Es gibt keine Obergrenze, nur diese Einschränkungen: Das Modell benötigt etwa <code>550 + (Abschnittsgröße × 3)</code> Tokens Kontextfenster, und ein fehlgeschlagener Abschnitt wird vollständig wiederholt. Empfohlener Bereich: <strong>450</strong> (Standard, am sichersten) bis <strong>800</strong> für tag-lastige EPUB/DOCX, bis zu <strong>1500-2000</strong> für einfache Prosa auf einem Cloud-Modell mit großem Kontext. Tatsächliche Abschnitte liegen im Mittel bei etwa 80 % dieses Werts.",
 
   "translation_options": "Übersetzungsoptionen",
   "post_processing": "Nachbearbeitung",
@@ -61,13 +64,14 @@
 
   "option_bilingual_title": "Zweisprachige Ausgabe",
   "option_bilingual_description": "Originaltext zusammen mit der Übersetzung einfügen. Jedes Segment zeigt den Quelltext gefolgt von seiner Übersetzung, ideal für Sprachenlernen oder direkten Vergleich.",
-  "option_plain_text_title": "Reintextmodus (EPUB / DOCX)",
+  "option_plain_text_title": "Klartextmodus (EPUB / DOCX)",
   "option_plain_text_description": "Vereinfacht die Formatierung stark, bevor der Inhalt an das LLM gesendet wird, um die Übersetzung schneller und zuverlässiger zu machen — kein Modus mit geringerer Qualität. Sehr gut geeignet für einfache Romane und reine Prosa, bei denen die Struktur weniger wichtig ist als das Lesen des übersetzten Texts. Nur Absatztext wird an das LLM gesendet, Inline-Stile und komplexes Markup werden verworfen. Überschriften, Listen und Blockzitate bleiben erhalten; Bilder bleiben in der Ausgabe und werden am Ende ihres ursprünglichen Absatzes neu gruppiert. Besonders hilfreich bei kleinen oder lokalen LLMs, die mit <code>[id0]</code>-Platzhaltern Schwierigkeiten haben. Weniger geeignet für Fachbücher, illustrierte Anleitungen oder alles, bei dem das Layout Bedeutung trägt. Gilt nur für EPUB- und DOCX-Dateien.",
   "option_text_cleanup_title": "Textbereinigung (OCR-Korrektur)",
   "option_text_cleanup_description": "Für schlecht formatierte oder OCR-gescannte Texte. Weist das LLM an, Folgendes zu beheben: defekte Zeilenumbrüche, doppelte Leerzeichen, Zeichensetzungsfehler und falsch getrennte Absätze zusammenzuführen.",
 
   "glossary_label": "Glossar",
   "glossary_manage_title": "Glossare verwalten",
+  "custom_instructions_manage_title": "Stile verwalten",
   "glossary_help": "Eine kuratierte Quell-zu-Ziel-Begriffsliste in den Prompt jedes Segments einfügen, um Konsistenz bei Entitätsübersetzungen zu wahren. Klicken Sie auf <strong>Verwalten</strong>, um Begriffe zu erstellen, zu bearbeiten oder automatisch zu extrahieren.",
 
   "custom_instructions_label": "Benutzerdefinierte Anweisungen",

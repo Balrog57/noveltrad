@@ -223,16 +223,25 @@ def generate_translation_prompt(
     # Build optional prompt sections based on prompt_options
     optional_sections = _build_optional_prompt_sections(prompt_options)
 
-    # Build custom instructions section
+    # Build custom instructions section.
+    #
+    # Deliberately firm but not absolutist. An earlier wording ("ABSOLUTE
+    # PRIORITY", "Non-compliance = FAILURE", "Zero exceptions") contradicted
+    # the presets themselves: a style preset ends with a guard telling the
+    # model to favour natural phrasing whenever a rule fights the passage, so
+    # the wrapper was ordering the opposite of its own payload. What the
+    # emphasis actually needs to buy is persistence — models apply a style to
+    # the opening lines and then drift — which the closing line states without
+    # claiming the instructions outrank meaning.
     custom_instructions_section = ""
     if custom_instructions and custom_instructions.strip():
-        custom_instructions_section = f"""# ⚠️ MANDATORY STYLE INSTRUCTIONS - ABSOLUTE PRIORITY ⚠️
+        custom_instructions_section = f"""# STYLE INSTRUCTIONS
 
-**These instructions override ALL other guidelines. Non-compliance = FAILURE.**
+**Apply these throughout the translation. They take precedence over the general style guidance in this prompt.**
 
 {custom_instructions.strip()}
 
-⚠️ Apply to EVERY word you translate. Zero exceptions. ⚠️
+Keep them in force across the whole passage, not only in its opening lines.
 
 """
 
@@ -374,6 +383,163 @@ Do NOT wrap the JSON in markdown code fences. Do NOT add commentary before or af
 {INPUT_TAG_OUT}
 
 Extract the recurring named entities now. Output the JSON array between {NER_TAG_IN} and {NER_TAG_OUT}, nothing else."""
+
+    return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
+
+
+# ============================================================================
+# STYLE EXTRACTION PROMPT (Phase 2)
+# ============================================================================
+
+STYLE_TAG_IN = "<STYLE_JSON>"
+STYLE_TAG_OUT = "</STYLE_JSON>"
+
+
+def generate_style_extraction_prompt(
+    text: str,
+    mode: str,
+    source_language: str = "English",
+    target_language: str = "English",
+) -> PromptPair:
+    """
+    Build a prompt that asks the LLM to characterize the literary style of a
+    sample of text and emit a strict JSON list of atomic, abstract style
+    rules, in English.
+
+    Two modes are supported:
+      - "source": the passages are the source text about to be translated;
+        the rules must make the translation read like the original.
+      - "model": the passages are a reference work chosen as a stylistic
+        model; the rules must make an unrelated text read like this author.
+
+    Output is wrapped in <STYLE_JSON>...</STYLE_JSON> with a strict schema.
+    The rules are deliberately abstract (no quoted vocabulary) so they do
+    not turn into a lexical tic once applied across a whole book.
+
+    The schema also carries a "context" field describing the narrative
+    setting (era, technological level, social frame) so a translation does
+    not reach for anachronistic vocabulary. In "source" mode it is required
+    and bounded; in "model" mode it must be the empty string, since a
+    stylistic model's own setting must never be imposed on the target text.
+    """
+    if mode not in ("source", "model"):
+        raise ValueError(f"mode must be 'source' or 'model', got {mode!r}")
+
+    if mode == "source":
+        role_framing = (
+            "The passages below are the SOURCE TEXT that is about to be translated. "
+            "Produce rules a translator must follow so that the translation reads like the original."
+        )
+        context_directive = """# CONTEXT FIELD (mandatory)
+
+The "context" field must be 1 to 3 sentences, at most 400 characters, written in English. Describe the world the passages take place in: the historical period (or its secondary-world equivalent), the technological level, the social and cultural frame, and anything else that would make a modern word feel out of place if used in the translation.
+
+Forbidden in "context": proper nouns, character names, place names, and any summary of the plot.
+
+This field exists so the translator never reaches for a word that belongs to a later era or a different technological level than this setting, even when it would otherwise be the most direct equivalent."""
+        context_example = (
+            '"context": "A late-medieval frontier town under martial law, with no gunpowder '
+            'weapons and a rigid guild hierarchy.",'
+        )
+    else:
+        role_framing = (
+            "The passages below are a REFERENCE WORK chosen as a stylistic model. "
+            "Produce rules a translator must follow to make an unrelated text read like this author."
+        )
+        context_directive = """# CONTEXT FIELD (mandatory)
+
+The "context" field MUST be the empty string "". These passages are only a stylistic model for an unrelated text: the reference work's own setting must never be imposed on the text that will actually be translated."""
+        context_example = '"context": "",'
+
+    system_prompt = f"""You are a literary style analyst. Your job is to read the passages below and characterize HOW the text is written, never WHAT it says. Ignore plot, characters, and setting entirely; focus only on the craft choices a translator could reproduce.
+
+{role_framing}
+
+# DIMENSIONS (use exactly these labels)
+
+- "register"         — formality, distance, irony, emotional temperature
+- "narrative_voice"  — person, tense, focalization, narrator presence
+- "sentence_rhythm"  — length distribution, parataxis vs subordination, cadence
+- "lexicon"          — concrete vs abstract, recurring lexical fields, archaisms
+- "imagery"          — metaphors, similes, recurring figurative motifs
+- "dialogue"         — speech tags, orality, idiolects, interruption handling
+- "punctuation"      — em-dashes, semicolons, ellipses, exclamation frequency
+- "formatting"       — paragraph length, italics usage, section breaks
+- "other"            — anything else worth capturing that does not fit above
+
+# LANGUAGE OF THE INSTRUCTIONS
+
+Write every instruction in English, regardless of the language of the passages. This directive holds even when the passages are in one language and the translation target is a different, third language.
+
+# ABSTRACTION DIRECTIVE (mandatory)
+
+Every instruction must describe a PROPERTY of the writing, never the specific words that realize it. Naming specific vocabulary is a trap: the translator will repeat that exact vocabulary across the whole book, and it will read as a tic.
+
+Forbidden, in every instruction:
+1. No quoted material from the passages, and no quotation marks at all.
+2. No example words, phrases, idioms or turns of phrase to use.
+3. No "such as", "e.g.", "for example", "words like", "expressions like".
+4. No proper nouns, no invented terminology, no lexical field named as a word list.
+5. No instruction that can be satisfied by inserting one specific token.
+
+Describe the CHOICE being made instead: proportion, frequency, position, contrast, degree, consistency.
+
+Example:
+- rejected: Use metaphors of darkness and shadow, and words like "dusk" and "gloom".
+- accepted: Draw figurative language from a single consistent sensory field rather than varying its source from one image to the next.
+
+# RULES FOR EACH INSTRUCTION
+
+1. One imperative sentence, self-contained, actionable by a translator who has not read the passages.
+2. At most 240 characters.
+3. Must not mention characters, places, or plot from the passages.
+4. Return between 6 and 14 rules in total, at most 3 rules per dimension. Omit a dimension rather than padding it — 6 abstract rules are better than 14 that name vocabulary.
+
+{context_directive}
+
+# OUTPUT FORMAT
+
+Return ONLY a JSON object wrapped between {STYLE_TAG_IN} and {STYLE_TAG_OUT}. No prose, no explanations, no markdown code fences.
+
+The JSON object MUST have these keys:
+  - "summary"         (string, required) — one sentence, at most 120 characters, usable as a preset description
+  - "suggested_name"  (string, required) — 2 to 4 lowercase words joined by underscores, ASCII only (e.g. "dry_hardboiled_noir")
+  - "context"         (string, required) — see the CONTEXT FIELD section above for the exact requirement
+  - "rules"           (array, required) — a list of objects, each with:
+      - "dimension"   (string, required) — one of the dimension labels listed above
+      - "instruction" (string, required) — the abstract, imperative style rule, in English
+      - "evidence"    (string, required, at most 120 characters) — a short quotation from the passages that justifies the rule
+
+"evidence" is the ONLY field allowed to quote the passages. It is shown to the human reviewer as justification for the rule and is discarded afterwards — it never becomes part of the preset. This separation is what lets "instruction" stay fully abstract without losing the reviewer's ability to check the claim.
+
+Example:
+{STYLE_TAG_IN}
+{{
+  "summary": "Terse, present-tense narration with clipped dialogue and sparse punctuation.",
+  "suggested_name": "terse_present_tense",
+  {context_example}
+  "rules": [
+    {{"dimension": "sentence_rhythm", "instruction": "Favor short, paratactic sentences over long subordinated ones, especially in action passages.", "evidence": "He ran. He did not look back."}}
+  ]
+}}
+{STYLE_TAG_OUT}
+
+Do NOT wrap the JSON in markdown code fences. Do NOT add commentary before or after the tags."""
+
+    if mode == "source":
+        language_note = f"The passages are in {source_language}. The rules you produce will be applied to a translation into {target_language}."
+    else:
+        language_note = f"The passages are already in {target_language}, the target language of the translation these rules will later be applied to."
+
+    user_prompt = f"""# PASSAGES
+
+{language_note}
+
+{INPUT_TAG_IN}
+{text}
+{INPUT_TAG_OUT}
+
+Produce the JSON now. Output it between {STYLE_TAG_IN} and {STYLE_TAG_OUT}, nothing else."""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
@@ -722,13 +888,13 @@ def generate_subtitle_block_prompt(
     if custom_instructions and custom_instructions.strip():
         custom_instructions_section = f"""
 
-# ⚠️ MANDATORY STYLE INSTRUCTIONS - ABSOLUTE PRIORITY ⚠️
+# STYLE INSTRUCTIONS
 
-**These instructions override ALL other guidelines. Non-compliance = FAILURE.**
+**Apply these throughout the translation. They take precedence over the general style guidance in this prompt.**
 
 {custom_instructions.strip()}
 
-⚠️ Apply to EVERY subtitle. Zero exceptions. ⚠️
+Keep them in force across every subtitle in the batch, not only the first few.
 """
 
     # SYSTEM PROMPT - Role and instructions for subtitle translation

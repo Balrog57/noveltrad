@@ -13,6 +13,7 @@ Solutions to common problems with TranslateBookWithLLM.
 - [Thinking Models](#thinking-models)
 - [EPUB Issues](#epub-issues)
 - [SRT Issues](#srt-issues)
+- [Style Preset Issues](#style-preset-issues)
 - [Web Interface Issues](#web-interface-issues)
 - [Configuration Issues](#configuration-issues)
 - [Language Detection Issues](#language-detection-issues)
@@ -284,6 +285,18 @@ Some models (DeepSeek R1, Qwen3, QwQ, etc.) produce internal reasoning within `<
 1. The system preserves subtitle structure automatically
 2. Try a larger model with better instruction-following
 3. Reduce `SRT_LINES_PER_BLOCK` for simpler chunks
+
+---
+
+## Style Preset Issues
+
+| Symptom | Cause / fix |
+|---|---|
+| Extraction returns 0 rules | Raise **Total chars**, try more **Samples**, or the sampled passages may simply be too uniform to yield distinguishable style traits. See [docs/STYLE_EXTRACTION.md](STYLE_EXTRACTION.md#sampling-reference). |
+| Preset not in the style dropdown | The filename must end in `.yaml`, `.yml`, or (legacy) `.txt` — other extensions are skipped when the list is built. If it has the right extension and still doesn't show up, check the server log for a YAML parse error. |
+| Preset has no visible effect | Confirm the phase: a preset with only `translation` set does nothing during a refine-only run, and one with only `refinement` set does nothing during a translation-only run. Check the "Phases" column (`T`, `R`, `T+R`) in the Styles tab. |
+
+See [docs/STYLE_EXTRACTION.md](STYLE_EXTRACTION.md) for the full guide.
 
 ---
 

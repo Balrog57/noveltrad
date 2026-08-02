@@ -20,8 +20,11 @@ import { DomHelpers } from './ui/dom-helpers.js';
 import { MessageLogger } from './ui/message-logger.js';
 import { FormManager } from './ui/form-manager.js';
 import { SettingsSummary } from './ui/settings-summary.js';
+import { PreflightZone } from './ui/preflight-zone.js';
+import { PreflightModal } from './ui/preflight-modal.js';
 import { NotificationsManager } from './ui/notifications-manager.js';
 import { GlossaryManager } from './glossary/glossary-manager.js';
+import { StyleManager } from './style/style-manager.js';
 
 // ========================================
 // Provider Modules
@@ -426,8 +429,11 @@ async function initializeModules() {
     SettingsManager.initialize();
     FormManager.initialize();
     SettingsSummary.initialize();
+    PreflightZone.initialize();
+    PreflightModal.initialize();
     NotificationsManager.initialize();
     GlossaryManager.initialize();
+    StyleManager.initialize();
     StatusManager.initialize();
     initializePreviewHeight();
     ProviderManager.initialize();
@@ -484,7 +490,6 @@ window.resetFiles = () => {
 
 // Form Manager
 window.toggleSettingsOptions = FormManager.toggleSettingsOptions.bind(FormManager);
-window.togglePromptOptions = FormManager.togglePromptOptions.bind(FormManager);
 window.toggleActivityLog = FormManager.toggleActivityLog.bind(FormManager);
 
 // Notifications Manager
@@ -495,6 +500,9 @@ window.checkCustomTargetLanguage = (element) => FormManager.checkCustomTargetLan
 window.resetForm = FormManager.resetForm.bind(FormManager);
 
 // Batch Controller
+// The pre-flight confirmation is not wired here: it lives inside
+// startBatchTranslation(), after that method's own validation, so a run missing a
+// model reports the real problem instead of a suggestion list.
 window.startBatchTranslation = BatchController.startBatchTranslation.bind(BatchController);
 window.interruptCurrentTranslation = async () => {
     const currentJob = StateManager.getState('translation.currentJob');
@@ -554,6 +562,11 @@ window.downloadSelectedFiles = FileManager.downloadSelectedFiles.bind(FileManage
 window.deleteSelectedFiles = FileManager.deleteSelectedFiles.bind(FileManager);
 window.toggleSelectAll = FileManager.toggleSelectAll.bind(FileManager);
 window.openOutputFolder = () => FileActions.openOutputFolder();
+
+// Style Manager (Styles tab — mirrors the window.refreshFileList hook so
+// glossary-manager.js's switchTopTab() can refresh the list without
+// importing style-manager.js and creating a cycle)
+window.refreshStyleList = StyleManager.refreshList.bind(StyleManager);
 
 // File manager functions (exposed in file-manager.js / file-actions.js)
 // window.toggleFileSelection, deleteSingleFile, openLocalFile, revealLocalFile, downloadSingleFile

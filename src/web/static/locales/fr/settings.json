@@ -49,6 +49,9 @@
   "parallel_workers_label": "Requêtes parallèles",
   "parallel_workers_input_title": "Nombre de segments traduits en même temps",
   "parallel_workers_help": "Traduisez plusieurs segments à la fois sur les fournisseurs cloud qui acceptent les requêtes simultanées. 1 conserve le comportement séquentiel d'origine. Des valeurs plus élevées sont plus rapides mais peuvent atteindre les limites de débit, et désactivent le contexte inter-segments pour la cohérence. Ignoré pour les fournisseurs locaux (Ollama).",
+  "max_tokens_per_chunk_label": "Taille des segments (tokens)",
+  "max_tokens_per_chunk_input_title": "Nombre maximal de tokens de texte source envoyés au LLM en un seul segment",
+  "max_tokens_per_chunk_help": "Quantité de texte source envoyée dans une requête LLM. Des segments plus grands signifient moins de requêtes, une meilleure fluidité entre les paragraphes et un coût réduit, mais un risque accru que le modèle condense ou saute du texte. Il n'y a pas de limite supérieure, seulement ces contraintes : le modèle a besoin d'environ <code>550 + (taille du segment × 3)</code> tokens de fenêtre de contexte, et un segment en échec est réessayé en entier. Plage conseillée : <strong>450</strong> (valeur par défaut, la plus sûre) à <strong>800</strong> pour les EPUB/DOCX riches en balises, jusqu'à <strong>1500-2000</strong> pour de la prose simple sur un modèle cloud à grand contexte. Les segments réels font en moyenne environ 80 % de cette valeur.",
 
   "translation_options": "Options de traduction",
   "post_processing": "Post-traitement",
@@ -68,6 +71,7 @@
 
   "glossary_label": "Glossaire",
   "glossary_manage_title": "Gérer les glossaires",
+  "custom_instructions_manage_title": "Gérer les styles",
   "glossary_help": "Injecte une liste de termes source-vers-cible dans le prompt de chaque segment pour garantir la cohérence des traductions d'entités. Cliquez sur <strong>Gérer</strong> pour créer, modifier ou extraire automatiquement des termes.",
 
   "custom_instructions_label": "Instructions personnalisées",

@@ -16,6 +16,7 @@ import { ProgressManager } from './progress-manager.js';
 import { renderTranslationTitle } from './progress-title.js';
 import { FileUpload, generateOutputFilename } from '../files/file-upload.js';
 import { TranslationTracker } from './translation-tracker.js';
+import { PreflightModal } from '../ui/preflight-modal.js';
 import { t } from '../i18n/i18n.js';
 
 /**
@@ -216,6 +217,11 @@ export const BatchController = {
         if (filesUpdated) {
             StateManager.setState('files.toProcess', filesToProcess);
         }
+
+        // Last chance to adjust the per-run options. Placed after validation so a
+        // run that cannot start reports why instead of showing suggestions first;
+        // resolves true immediately when there is nothing to advise.
+        if (!await PreflightModal.confirm()) return;
 
         StateManager.setState('translation.isBatchActive', true);
 

@@ -102,6 +102,7 @@
         #tab-sample > .main-card:first-child,
         #tab-settings > .main-card,
         #tab-glossaries > .main-card,
+        #tab-styles > .main-card,
         #tab-files > .main-card {
             border-top-left-radius: 0;
             border-top-right-radius: 0;
@@ -125,11 +126,12 @@
         .glossary-toolbar-btn .material-symbols-outlined {
             font-size: 1rem;
         }
-        /* Glossary tables: fixed layout + full width + identical horizontal
-           padding on th and td so column titles sit directly above their
-           content. */
+        /* Glossary/Style tables: fixed layout + full width + identical
+           horizontal padding on th and td so column titles sit directly
+           above their content. */
         #glossaryListTable,
-        #glossaryTermsTable {
+        #glossaryTermsTable,
+        #styleListTable {
             table-layout: fixed;
             width: 100%;
             display: table;
@@ -137,26 +139,31 @@
         /* .file-table normally splits thead and tbody into independent
            display:table blocks (to make tbody scrollable). That breaks
            <colgroup> column widths because each row computes its own
-           layout. Restore the standard rendering for glossary tables. */
+           layout. Restore the standard rendering for these tables. */
         #glossaryListTable thead,
-        #glossaryTermsTable thead {
+        #glossaryTermsTable thead,
+        #styleListTable thead {
             display: table-header-group;
         }
         #glossaryListTable tbody,
-        #glossaryTermsTable tbody {
+        #glossaryTermsTable tbody,
+        #styleListTable tbody {
             display: table-row-group;
             max-height: none;
             overflow-y: visible;
         }
         #glossaryListTable tbody tr,
-        #glossaryTermsTable tbody tr {
+        #glossaryTermsTable tbody tr,
+        #styleListTable tbody tr {
             display: table-row;
             width: auto;
         }
         #glossaryListTable th,
         #glossaryListTable td,
         #glossaryTermsTable th,
-        #glossaryTermsTable td {
+        #glossaryTermsTable td,
+        #styleListTable th,
+        #styleListTable td {
             padding: 0.75rem 0.75rem;
             box-sizing: border-box;
             overflow: hidden;
@@ -164,19 +171,24 @@
             white-space: nowrap;
         }
         #glossaryListTable td,
-        #glossaryTermsTable td {
+        #glossaryTermsTable td,
+        #styleListTable td {
             padding: 0.6rem 0.75rem;
         }
         #glossaryListTable .col-center,
         #glossaryListTable td.col-center,
         #glossaryTermsTable .col-center,
-        #glossaryTermsTable td.col-center {
+        #glossaryTermsTable td.col-center,
+        #styleListTable .col-center,
+        #styleListTable td.col-center {
             text-align: center;
         }
         #glossaryListTable .col-right,
         #glossaryListTable td.col-right,
         #glossaryTermsTable .col-right,
-        #glossaryTermsTable td.col-right {
+        #glossaryTermsTable td.col-right,
+        #styleListTable .col-right,
+        #styleListTable td.col-right {
             text-align: right;
         }
         .glossary-cell-input {
@@ -296,6 +308,10 @@
             <button type="button" class="tab-btn" data-tab="glossaries" onclick="switchTopTab('glossaries')">
                 <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">menu_book</span>
                 <span data-i18n="common:tab_glossaries">Glossaries</span>
+            </button>
+            <button type="button" class="tab-btn" data-tab="styles" onclick="switchTopTab('styles')">
+                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">brush</span>
+                <span data-i18n="common:tab_styles">Styles</span>
             </button>
             <button type="button" class="tab-btn" data-tab="files" onclick="switchTopTab('files')">
                 <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">folder_open</span>
@@ -488,8 +504,132 @@
                     </button>
                 </div>
 
-                <!-- Settings Summary (concise overview of LLM + active options) -->
-                <div id="settingsSummary" style="margin-top: 12px; text-align: center; font-size: 0.8125rem; color: var(--text-muted-light); line-height: 1.5;"></div>
+                <!-- Pre-flight Zone: settings summary, pre-launch advice, and the
+                     per-run options panel. The controls inside #preflightPanel used
+                     to live in the Settings tab's "Translation Options" accordion;
+                     they moved here verbatim, ids included, so every consumer that
+                     reads them by id keeps working untouched. -->
+                <div id="preflightZone" class="preflight-zone" role="region"
+                     data-i18n-attr="aria-label:translation:preflight_region_label">
+
+                    <!-- Settings Summary (concise overview of LLM + active options) -->
+                    <div id="settingsSummary" style="margin-top: 12px; text-align: center; font-size: 0.8125rem; color: var(--text-muted-light); line-height: 1.5;"></div>
+
+                    <!-- Both containers below are painted by preflight-zone.js -->
+                    <div id="preflightWarning" class="preflight-warning" hidden></div>
+                    <div id="preflightAdvice" class="preflight-advice" hidden></div>
+
+                    <!-- Adjust/Collapse toggle. preflight-zone.js swaps the label span
+                         between translation:preflight_adjust and preflight_collapse,
+                         rewriting its data-i18n attribute so the label still follows a
+                         locale switch. -->
+                    <button type="button" id="preflightToggle" class="preflight-toggle"
+                            aria-expanded="false" aria-controls="preflightPanel">
+                        <span data-i18n="translation:preflight_adjust">Adjust</span>
+                        <span id="preflightToggleIcon" class="material-symbols-outlined">expand_more</span>
+                    </button>
+
+                    <div id="preflightPanel" class="preflight-panel" hidden>
+                        <h4 data-i18n="translation:preflight_panel_title">Before launching</h4>
+                        <!-- Bilingual Output -->
+                        <div class="option-item">
+                            <label class="option-item__label">
+                                <input type="checkbox" id="bilingualMode">
+                                <div>
+                                    <span class="option-item__title" data-i18n="settings:option_bilingual_title">Bilingual Output</span>
+                                    <p class="option-item__description" data-i18n="settings:option_bilingual_description">
+                                        Include original text alongside the translation. Each chunk displays the source text followed by its translation, ideal for language learning or side-by-side comparison.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Plain Text Mode (EPUB / DOCX plain translation) -->
+                        <div class="option-item">
+                            <label class="option-item__label">
+                                <input type="checkbox" id="plainTextMode">
+                                <div>
+                                    <span class="option-item__title" data-i18n="settings:option_plain_text_title">Plain Text Mode (EPUB / DOCX)</span>
+                                    <p class="option-item__description" data-i18n-html="settings:option_plain_text_description">
+                                        Very well suited to simple novels and plain prose where structure matters less than reading the translated text. Only paragraph text is sent to the LLM, inline styles and complex markup are dropped. Headings, lists and blockquotes are kept; images stay in the output and are regrouped at the end of their original paragraph. Faster and far more reliable on small or local LLMs that struggle with <code>[id0]</code> placeholders. Less ideal for technical books, illustrated guides or anything where layout carries meaning. Only applies to EPUB and DOCX files.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Text Cleanup (OCR Correction) -->
+                        <div class="option-item">
+                            <label class="option-item__label">
+                                <input type="checkbox" id="textCleanup">
+                                <div>
+                                    <span class="option-item__title" data-i18n="settings:option_text_cleanup_title">Text Cleanup (OCR Correction)</span>
+                                    <p class="option-item__description" data-i18n="settings:option_text_cleanup_description">
+                                        For poorly formatted or OCR-scanned texts. Instructs the LLM to fix: broken line breaks, double spaces, punctuation errors, and merge incorrectly split paragraphs.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Glossary Selector -->
+                        <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
+                            <label data-i18n="settings:glossary_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
+                                Glossary
+                            </label>
+                            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 5px;">
+                                <div class="neu-inset-light" style="flex: 1;">
+                                    <select id="glossarySelect" class="form-control" style="margin-bottom: 0;">
+                                        <option value="" data-i18n="settings:select_none">None</option>
+                                    </select>
+                                </div>
+                                <button type="button" id="glossaryRefreshBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                                </button>
+                                <button type="button" id="glossaryManageBtn" class="btn btn-sm" data-i18n-attr="title:settings:glossary_manage_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Manage glossaries">
+                                    <span class="material-symbols-outlined" style="font-size: 16px;">settings</span>
+                                </button>
+                            </div>
+                            <div id="glossaryInfoCard" class="glossary-info-card" style="display: none;"></div>
+                            <p data-i18n-html="settings:glossary_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                                Inject a curated source-to-target term list into every chunk's prompt to keep entity translations consistent. Click <strong>Manage</strong> to create, edit or auto-extract terms.
+                            </p>
+                        </div>
+
+                        <!-- Custom Instructions -->
+                        <div class="form-group" style="margin-bottom: 0; margin-top: 15px;">
+                            <label data-i18n="settings:custom_instructions_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
+                                Custom Instructions
+                            </label>
+                            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 5px;">
+                                <div class="neu-inset-light" style="flex: 1;">
+                                    <select id="customInstructionSelect" class="form-control" style="margin-bottom: 0;">
+                                        <option value="" data-i18n="settings:select_none">None</option>
+                                        <!-- Options populated dynamically via JavaScript -->
+                                    </select>
+                                </div>
+                                <button type="button" id="refreshCustomInstructionsBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                                </button>
+                                <button type="button" id="customInstructionsManageBtn" class="btn btn-sm" data-i18n-attr="title:settings:custom_instructions_manage_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Manage styles">
+                                    <span class="material-symbols-outlined" style="font-size: 16px;">settings</span>
+                                </button>
+                            </div>
+                            <p data-i18n-html="settings:custom_instructions_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
+                                Select custom instructions from the <code>Custom_Instructions/</code> folder. Use <code>.yaml</code> files with <code>translation:</code> and/or <code>refinement:</code> keys to scope a preset per phase. Legacy <code>.txt</code> files still work and apply to both phases.
+                            </p>
+                        </div>
+
+                    </div>
+
+                    <!-- Contextual one-liner written by preflight-zone.js: the reason
+                         behind the advice the user just acted on, or the locked message
+                         during a run. Deliberately carries no data-i18n: which key
+                         applies depends on runtime context. It sits outside
+                         #preflightPanel on purpose — the run lock collapses the panel,
+                         and the locked message has to stay readable when it does. -->
+                    <p id="preflightPanelHelp" class="preflight-panel__help" hidden></p>
+
+                    <button type="button" id="preflightDismissedLink" class="preflight-dismissed-link" hidden></button>
+                </div>
 
                 <!-- Messages (connection status, notifications) -->
                 <div id="messages"></div>
@@ -962,6 +1102,17 @@
                         </small>
                     </div>
 
+                    <!-- Chunk size (token budget per LLM request) -->
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label data-i18n="settings:max_tokens_per_chunk_label" for="maxTokensPerChunk">Chunk size (tokens)</label>
+                        <div class="neu-inset-light">
+                            <input type="number" class="form-control" id="maxTokensPerChunk" min="50" step="50" value="450" data-i18n-attr="title:settings:max_tokens_per_chunk_input_title" title="Maximum tokens of source text sent to the LLM in a single chunk">
+                        </div>
+                        <small data-i18n-html="settings:max_tokens_per_chunk_help" style="color: var(--text-muted-light); font-size: 0.6875rem; margin-top: 0.5rem; display: block;">
+                            How much source text goes into one LLM request. Bigger chunks mean fewer requests, better flow across paragraphs and lower cost, but a higher risk that the model condenses or skips text. There is no upper limit, only these constraints: the model needs roughly <code>550 + (chunk size &times; 3)</code> tokens of context window, and a failed chunk is retried in full. Suggested range: <strong>450</strong> (default, safest) to <strong>800</strong> for tag-heavy EPUB/DOCX, up to <strong>1500-2000</strong> for plain prose on a large-context cloud model. Actual chunks average about 80% of this value.
+                        </small>
+                    </div>
+
                     <!-- Save Settings Button -->
                     <div class="form-group" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
                         <button type="button" id="saveSettingsBtn" class="btn btn-primary" style="width: 100%;" onclick="saveSettings()" disabled>
@@ -970,104 +1121,6 @@
                         </button>
                         <p data-i18n-html="settings:save_settings_help" style="margin: 8px 0 15px 0; font-size: 0.6875rem; color: var(--text-muted-light);">
                             Saves API keys, endpoints, naming convention, and current model as default values in the <code>.env</code> file. Changes in this section are <strong>not</strong> auto-saved.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Translation Options (Collapsible) -->
-                <div class="prompt-options-toggle" onclick="togglePromptOptions()">
-                    <span style="display: flex; align-items: center; gap: 0.75rem;">
-                        <span class="material-symbols-outlined">edit_note</span>
-                        <span data-i18n="settings:translation_options">Translation Options</span>
-                    </span>
-                    <span id="promptOptionsIcon" class="material-symbols-outlined">expand_more</span>
-                </div>
-
-                <div id="promptOptionsSection" class="hidden">
-                    <!-- Bilingual Output -->
-                    <div class="option-item">
-                        <label class="option-item__label">
-                            <input type="checkbox" id="bilingualMode">
-                            <div>
-                                <span class="option-item__title" data-i18n="settings:option_bilingual_title">Bilingual Output</span>
-                                <p class="option-item__description" data-i18n="settings:option_bilingual_description">
-                                    Include original text alongside the translation. Each chunk displays the source text followed by its translation, ideal for language learning or side-by-side comparison.
-                                </p>
-                            </div>
-                        </label>
-                    </div>
-
-                    <!-- Plain Text Mode (EPUB / DOCX plain translation) -->
-                    <div class="option-item">
-                        <label class="option-item__label">
-                            <input type="checkbox" id="plainTextMode">
-                            <div>
-                                <span class="option-item__title" data-i18n="settings:option_plain_text_title">Plain Text Mode (EPUB / DOCX)</span>
-                                <p class="option-item__description" data-i18n-html="settings:option_plain_text_description">
-                                    Very well suited to simple novels and plain prose where structure matters less than reading the translated text. Only paragraph text is sent to the LLM, inline styles and complex markup are dropped. Headings, lists and blockquotes are kept; images stay in the output and are regrouped at the end of their original paragraph. Faster and far more reliable on small or local LLMs that struggle with <code>[id0]</code> placeholders. Less ideal for technical books, illustrated guides or anything where layout carries meaning. Only applies to EPUB and DOCX files.
-                                </p>
-                            </div>
-                        </label>
-                    </div>
-
-                    <!-- Text Cleanup (OCR Correction) -->
-                    <div class="option-item">
-                        <label class="option-item__label">
-                            <input type="checkbox" id="textCleanup">
-                            <div>
-                                <span class="option-item__title" data-i18n="settings:option_text_cleanup_title">Text Cleanup (OCR Correction)</span>
-                                <p class="option-item__description" data-i18n="settings:option_text_cleanup_description">
-                                    For poorly formatted or OCR-scanned texts. Instructs the LLM to fix: broken line breaks, double spaces, punctuation errors, and merge incorrectly split paragraphs.
-                                </p>
-                            </div>
-                        </label>
-                    </div>
-
-                    <!-- Glossary Selector -->
-                    <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
-                        <label data-i18n="settings:glossary_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
-                            Glossary
-                        </label>
-                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 5px;">
-                            <div class="neu-inset-light" style="flex: 1;">
-                                <select id="glossarySelect" class="form-control" style="margin-bottom: 0;">
-                                    <option value="" data-i18n="settings:select_none">None</option>
-                                </select>
-                            </div>
-                            <button type="button" id="glossaryRefreshBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-                            </button>
-                            <button type="button" id="glossaryManageBtn" class="btn btn-sm" data-i18n-attr="title:settings:glossary_manage_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Manage glossaries">
-                                <span class="material-symbols-outlined" style="font-size: 16px;">settings</span>
-                            </button>
-                        </div>
-                        <div id="glossaryInfoCard" class="glossary-info-card" style="display: none;"></div>
-                        <p data-i18n-html="settings:glossary_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
-                            Inject a curated source-to-target term list into every chunk's prompt to keep entity translations consistent. Click <strong>Manage</strong> to create, edit or auto-extract terms.
-                        </p>
-                    </div>
-
-                    <!-- Custom Instructions -->
-                    <div class="form-group" style="margin-bottom: 0; margin-top: 15px;">
-                        <label data-i18n="settings:custom_instructions_label" style="font-weight: 600; color: var(--text-dark); margin-bottom: 5px; display: block;">
-                            Custom Instructions
-                        </label>
-                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 5px;">
-                            <div class="neu-inset-light" style="flex: 1;">
-                                <select id="customInstructionSelect" class="form-control" style="margin-bottom: 0;">
-                                    <option value="" data-i18n="settings:select_none">None</option>
-                                    <!-- Options populated dynamically via JavaScript -->
-                                </select>
-                            </div>
-                            <button type="button" id="refreshCustomInstructionsBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer;" title="Refresh list">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-                            </button>
-                            <button type="button" id="openCustomInstructionsFolderBtn" class="btn btn-sm" data-i18n-attr="title:settings:open_folder_title" style="padding: 6px 10px; background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer;" title="Open folder">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                            </button>
-                        </div>
-                        <p data-i18n-html="settings:custom_instructions_help" style="margin: 5px 0 0 0; font-size: 0.8125rem; color: var(--text-muted-light);">
-                            Select custom instructions from the <code>Custom_Instructions/</code> folder. Use <code>.yaml</code> files with <code>translation:</code> and/or <code>refinement:</code> keys to scope a preset per phase. Legacy <code>.txt</code> files still work and apply to both phases.
                         </p>
                     </div>
                 </div>
@@ -1593,6 +1646,265 @@
             </div>
         </div><!-- /#tab-glossaries -->
 
+        <!-- Tab: Styles -->
+        <div id="tab-styles" class="hidden">
+
+            <!-- LIST VIEW -->
+            <div class="main-card" id="styleListView">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">brush</span>
+                    <h2 data-i18n="style:title">Styles</h2>
+                </div>
+                <div class="card-body">
+                    <p data-i18n-html="style:tab_intro" style="color: var(--text-muted-light); font-size: 0.9rem; margin: 0 0 15px; line-height: 1.5;">
+                        Give the model a <strong>reusable writing style</strong> — register, rhythm, imagery, dialogue conventions — extracted from books you already like or from a quick sample translation. <strong>Assign</strong> one below (or via <em>Settings → Translation Options</em>) to apply it to every chunk.
+                    </p>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">
+                        <button type="button" class="btn btn-primary glossary-toolbar-btn" id="styleNewFromBooksBtn">
+                            <span class="material-symbols-outlined">auto_stories</span>
+                            <span data-i18n="style:new_from_books">New from books</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="styleNewBlankBtn">
+                            <span class="material-symbols-outlined">add</span>
+                            <span data-i18n="style:new_blank">New blank style</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="styleOpenFolderBtn">
+                            <span class="material-symbols-outlined">folder_open</span>
+                            <span data-i18n="style:open_folder">Open folder</span>
+                        </button>
+                    </div>
+                    <div id="styleListContainer" class="neu-inset-light" style="padding: 12px; background: var(--background-light);">
+                        <div id="styleListLoading" data-i18n="common:loading" style="text-align: center; padding: 20px;">Loading...</div>
+                        <div id="styleListEmpty" class="hidden" style="padding: 40px 20px; text-align: center;">
+                            <p data-i18n="style:list_empty_message">No styles yet. Extract one from books or start from a blank style.</p>
+                        </div>
+                        <table id="styleListTable" class="file-table hidden">
+                            <colgroup>
+                                <col>
+                                <col>
+                                <col style="width: 90px;">
+                                <col style="width: 130px;">
+                                <col style="width: 160px;">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th data-i18n="style:name_column">Name</th>
+                                    <th data-i18n="style:description_column">Description</th>
+                                    <th class="col-center" data-i18n="style:phases_column">Phases</th>
+                                    <th class="col-center" data-i18n="style:mode_column">Mode</th>
+                                    <th class="col-right" data-i18n="style:actions_column">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="styleListBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EDITOR VIEW -->
+            <div class="main-card hidden" id="styleEditorView">
+                <div class="card-header style-editor-header">
+                    <button type="button" class="btn btn-secondary style-editor-back" id="styleEditorBack">
+                        <span class="material-symbols-outlined">arrow_back</span>
+                    </button>
+                    <h2 data-i18n="style:editor_title">Edit style</h2>
+                    <span id="styleEditorFilename" class="style-editor-filename"></span>
+                    <select id="styleEditorMode" class="form-control style-editor-mode">
+                        <option value="source" data-i18n="style:mode_source">From the source text</option>
+                        <option value="model" data-i18n="style:mode_model">From a reference author</option>
+                    </select>
+                    <span id="styleManualBadge" class="hidden sample-badge sample-badge-truncated" data-i18n="style:manual_edits_badge">Manually edited</span>
+                </div>
+                <!-- Actions on their own row: the title row already carries the back
+                     button, the name, the mode picker and the manual-edit badge. -->
+                <div class="style-editor-toolbar">
+                    <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="styleEditorSaveBtn">
+                        <span class="material-symbols-outlined">save</span>
+                        <span data-i18n="common:save">Save</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="styleEditorExportBtn">
+                        <span class="material-symbols-outlined">download</span>
+                        <span data-i18n="style:export">Export</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="styleEditorDeleteBtn">
+                        <span class="material-symbols-outlined">delete</span>
+                        <span data-i18n="style:delete">Delete</span>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label for="styleEditorDescription"><span data-i18n="style:editor_description_label">Description</span></label>
+                        <div class="neu-inset-light">
+                            <textarea class="form-control" id="styleEditorDescription" rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="styleEditorContext"><span data-i18n="style:context_label">Narrative setting</span></label>
+                        <div class="neu-inset-light">
+                            <textarea class="form-control" id="styleEditorContext" rows="2" data-i18n-attr="placeholder:style:context_placeholder" placeholder="A pre-industrial secondary world: sword combat, no gunpowder, a feudal social order"></textarea>
+                        </div>
+                        <p data-i18n="style:context_hint" style="color: var(--text-muted-light); font-size: 0.8rem; margin: 4px 0 0;">The world the text takes place in: period, technological level, social frame. This is what keeps the translation from reaching for a word that belongs to another era. Leave empty when it does not apply.</p>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label data-i18n="style:editor_rules_label" style="margin: 0;">Style rules</label>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="styleAddRuleBtn">
+                            <span class="material-symbols-outlined">add</span>
+                            <span data-i18n="style:add_rule">Add rule</span>
+                        </button>
+                    </div>
+                    <div id="styleRulesBody" class="style-rule-list"></div>
+
+                    <div class="form-group">
+                        <label for="styleTranslationText"><span data-i18n="style:translation_block_label">Translation instructions</span></label>
+                        <div class="neu-inset-light">
+                            <textarea class="form-control" id="styleTranslationText" rows="6"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="styleRefinementText"><span data-i18n="style:refinement_block_label">Refinement instructions</span></label>
+                        <div class="neu-inset-light">
+                            <textarea class="form-control" id="styleRefinementText" rows="6"></textarea>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="styleReassembleBtn">
+                            <span class="material-symbols-outlined">sync</span>
+                            <span data-i18n="style:reassemble">Reassemble from rules</span>
+                        </button>
+                        <p data-i18n="style:manual_edits_warning" style="color: var(--text-muted-light); font-size: 0.8rem; margin: 0;">
+                            Editing the text below directly disconnects it from the rules above. Use "Reassemble from rules" to regenerate it from the checked rules.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EXTRACT MODAL -->
+            <div id="styleExtractModal" class="modal-overlay hidden">
+                <div class="modal-content ner-modal-content">
+                    <div class="modal-header">
+                        <h3 class="ner-modal-title">
+                            <span class="material-symbols-outlined" aria-hidden="true">auto_fix_high</span>
+                            <span data-i18n="style:extract_title">Extract a style from books</span>
+                        </h3>
+                        <button class="close-btn" id="styleExtractCloseBtn" data-i18n-attr="aria-label:common:close" aria-label="Close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="ner-modal-intro" data-i18n="style:extract_intro">
+                            Pick one or more books. The model reads sample excerpts and proposes a set of style rules — register, rhythm, imagery, dialogue conventions — that you can review before creating a reusable style.
+                        </p>
+
+                        <div class="form-group">
+                            <label data-i18n="style:mode_label">Extraction mode</label>
+                            <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-weight: normal;">
+                                    <input type="radio" name="styleExtractMode" id="styleExtractModeSource" checked>
+                                    <span data-i18n="style:mode_source">From the source text</span>
+                                </label>
+                                <span class="ner-dropzone-hint" data-i18n="style:mode_source_hint" style="text-transform: none; letter-spacing: normal;">The books you upload are the text you are about to translate — the rules keep the translation reading like the original.</span>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-weight: normal;">
+                                    <input type="radio" name="styleExtractMode" id="styleExtractModeModel">
+                                    <span data-i18n="style:mode_model">From a reference author</span>
+                                </label>
+                                <span class="ner-dropzone-hint" data-i18n="style:mode_model_hint" style="text-transform: none; letter-spacing: normal;">The books you upload are a stylistic model — an unrelated text will be translated to read like them.</span>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px;">
+                            <div class="form-group" style="flex: 1; min-width: 160px; margin-bottom: 0;">
+                                <label data-i18n="translation:source_language">Source Language</label>
+                                <div class="neu-inset-light">
+                                    <select class="form-control" id="styleExtractSourceLang"></select>
+                                </div>
+                            </div>
+                            <div class="form-group" style="flex: 1; min-width: 160px; margin-bottom: 0;">
+                                <label data-i18n="translation:target_language">Target Language</label>
+                                <div class="neu-inset-light">
+                                    <select class="form-control" id="styleExtractTargetLang"></select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <input type="file" id="styleExtractFileInput" accept=".txt,.srt,.epub,.docx" multiple style="display: none;">
+                        <div id="styleExtractDropzone" class="glossary-ner-dropzone">
+                            <div class="ner-dropzone-primary">
+                                <span class="material-symbols-outlined" aria-hidden="true">upload_file</span>
+                                <span data-i18n="style:extract_dropzone">Drop files here or click to browse</span>
+                            </div>
+                        </div>
+                        <div id="styleExtractFileList"></div>
+
+                        <div class="ner-settings-row">
+                            <div class="ner-settings-field">
+                                <label for="styleExtractMaxChars" class="ner-settings-label" data-i18n="style:total_chars_label">Total chars</label>
+                                <input type="number" id="styleExtractMaxChars" class="ner-settings-input" value="10000" min="500" max="12000">
+                            </div>
+                            <div class="ner-settings-field">
+                                <label for="styleExtractSampleCount" class="ner-settings-label" data-i18n="style:sample_count_label">Samples</label>
+                                <input type="number" id="styleExtractSampleCount" class="ner-settings-input" value="6" min="1" max="20">
+                            </div>
+                        </div>
+
+                        <div id="styleExtractLoading" class="hidden" data-i18n="style:extracting" style="margin-top: 15px; color: var(--text-muted-light);">Extracting...</div>
+                        <div id="styleExtractWarnings" class="ner-warnings hidden"></div>
+
+                        <div id="styleExtractResults" class="hidden" style="margin-top: 15px;">
+                            <div class="ner-results-header">
+                                <h3 data-i18n="style:candidates_title" style="margin: 0;">Candidate rules</h3>
+                                <span class="ner-results-hint" data-i18n="style:candidates_hint">Uncheck any rule you don't want to keep.</span>
+                            </div>
+                            <p data-i18n="style:abstraction_notice" style="color: var(--text-muted-light); font-size: 0.85rem;">
+                                Rules that name specific words or quote the book are unchecked — reusing them makes the model repeat that vocabulary throughout the translation. Rewrite them abstractly or leave them out.
+                            </p>
+                            <div class="form-group">
+                                <label for="styleExtractContext"><span data-i18n="style:context_label">Narrative setting</span></label>
+                                <div class="neu-inset-light">
+                                    <textarea class="form-control" id="styleExtractContext" rows="2" data-i18n-attr="placeholder:style:context_placeholder" placeholder="A pre-industrial secondary world: sword combat, no gunpowder, a feudal social order"></textarea>
+                                </div>
+                                <p data-i18n="style:context_hint" style="color: var(--text-muted-light); font-size: 0.8rem; margin: 4px 0 0;">The world the text takes place in: period, technological level, social frame. This is what keeps the translation from reaching for a word that belongs to another era. Leave empty when it does not apply.</p>
+                            </div>
+
+                            <!-- One block per candidate rule rather than a table row: a rule is a
+                                 full sentence and is unreadable squeezed into a cell. -->
+                            <label class="style-rule-selectall">
+                                <input type="checkbox" id="styleExtractSelectAll" checked>
+                                <span data-i18n="style:select_all">Select all</span>
+                            </label>
+                            <div id="styleRulesCandidatesBody" class="style-rule-list"></div>
+
+                            <div class="form-group">
+                                <label for="styleExtractName"><span data-i18n="style:preset_name_label">Style name</span></label>
+                                <div class="neu-inset-light">
+                                    <input type="text" class="form-control" id="styleExtractName">
+                                </div>
+                            </div>
+
+                            <h3 data-i18n="style:preview_title">Preview</h3>
+                            <div class="neu-inset-light" style="margin-bottom: 10px;">
+                                <pre id="stylePreviewTranslation" style="margin: 0; padding: 10px; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;"></pre>
+                            </div>
+                            <div class="neu-inset-light">
+                                <pre id="stylePreviewRefinement" style="margin: 0; padding: 10px; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;"></pre>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" id="styleExtractRunBtn">
+                            <span class="material-symbols-outlined">play_arrow</span>
+                            <span data-i18n="style:run_extract">Run extraction</span>
+                        </button>
+                        <button class="btn btn-primary hidden" id="styleExtractCreateBtn">
+                            <span class="material-symbols-outlined">add</span>
+                            <span data-i18n="style:create_preset">Create style</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /#tab-styles -->
+
     </div>
 
     <!-- Footer -->
@@ -1769,8 +2081,36 @@
         </div>
     </div>
 
+    <!-- Pre-flight confirmation overlay: shown when Start is clicked and at least
+         one suggestion applies to the current queue. #preflightModalList is
+         painted by preflight-modal.js; everything else is static copy owned here.
+         The `hidden` class (not the attribute) does the hiding: .modal-overlay
+         sets display:flex, which beats the UA rule for [hidden]. -->
+    <div id="preflightModal" class="modal-overlay hidden" role="dialog" aria-modal="true"
+         aria-labelledby="preflightModalTitle">
+        <div class="modal-content preflight-modal__content">
+            <div class="modal-header">
+                <h3 style="margin: 0;">
+                    <span class="material-symbols-outlined" style="vertical-align: middle;" aria-hidden="true">checklist</span>
+                    <span id="preflightModalTitle" data-i18n="translation:preflight_panel_title">Before launching</span>
+                </h3>
+                <button class="close-btn" id="preflightModalClose" data-i18n-attr="aria-label:common:close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="preflight-modal__intro" data-i18n="translation:preflight_modal_intro">
+                    These options can improve this translation. Launch as is, or adjust them first.
+                </p>
+                <ul id="preflightModalList" class="preflight-modal__list"></ul>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="preflightModalCancel" data-i18n="common:cancel">Cancel</button>
+                <button class="btn btn-primary" id="preflightModalLaunch" data-i18n="translation:preflight_modal_launch">Launch anyway</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="/static/js/vendor/socket.io.min.js"></script>
-    <script type="module" src="/static/js/index.js?v=20260509-glossary-ux3"></script>
+    <script type="module" src="/static/js/index.js?v=20260802-preflight1"></script>
 </body>
 </html>

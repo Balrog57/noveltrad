@@ -118,9 +118,13 @@ async def suggest_terms(
     return candidates, warnings
 
 
-def _strip_thinking_blocks(text: str) -> str:
+def strip_thinking_blocks(text: str) -> str:
     """Strip any <think>...</think> blocks emitted by reasoning models."""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+
+
+# Kept for backward compatibility — see module docstring / style extraction Phase 3.
+_strip_thinking_blocks = strip_thinking_blocks
 
 
 def _extract_payload(text: str, warnings: List[str]) -> Optional[str]:
@@ -165,7 +169,7 @@ def _extract_payload(text: str, warnings: List[str]) -> Optional[str]:
     return None
 
 
-def _find_balanced(text: str, opener: str, closer: str) -> Optional[str]:
+def find_balanced(text: str, opener: str, closer: str) -> Optional[str]:
     start = text.find(opener)
     if start == -1:
         return None
@@ -194,10 +198,18 @@ def _find_balanced(text: str, opener: str, closer: str) -> Optional[str]:
     return None
 
 
-def _try_repair_json(payload: str) -> Optional[str]:
+# Kept for backward compatibility — see module docstring / style extraction Phase 3.
+_find_balanced = find_balanced
+
+
+def try_repair_json(payload: str) -> Optional[str]:
     """Best-effort repairs: strip trailing commas before } or ]."""
     repaired = re.sub(r",\s*([}\]])", r"\1", payload)
     return repaired if repaired != payload else None
+
+
+# Kept for backward compatibility — see module docstring / style extraction Phase 3.
+_try_repair_json = try_repair_json
 
 
 def _coerce_to_list_of_dicts(data: Any, warnings: List[str]) -> List[Dict[str, Any]]:

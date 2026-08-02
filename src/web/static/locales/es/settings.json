@@ -49,6 +49,9 @@
   "parallel_workers_label": "Solicitudes paralelas",
   "parallel_workers_input_title": "Número de fragmentos traducidos al mismo tiempo",
   "parallel_workers_help": "Traduce varios fragmentos a la vez en proveedores en la nube que permiten solicitudes simultáneas. 1 mantiene el comportamiento secuencial original. Valores más altos son más rápidos pero pueden alcanzar los límites de tasa y desactivan el contexto entre fragmentos para la coherencia. Se ignora para proveedores locales (Ollama).",
+  "max_tokens_per_chunk_label": "Tamaño de fragmento (tokens)",
+  "max_tokens_per_chunk_input_title": "Número máximo de tokens de texto fuente enviados al LLM en un solo fragmento",
+  "max_tokens_per_chunk_help": "Cantidad de texto fuente que se envía en una solicitud al LLM. Fragmentos más grandes suponen menos solicitudes, mejor fluidez entre párrafos y menor coste, pero mayor riesgo de que el modelo condense u omita texto. No hay límite superior, solo estas restricciones: el modelo necesita aproximadamente <code>550 + (tamaño del fragmento × 3)</code> tokens de ventana de contexto, y un fragmento fallido se reintenta por completo. Rango sugerido: <strong>450</strong> (predeterminado, el más seguro) hasta <strong>800</strong> para EPUB/DOCX con muchas etiquetas, y hasta <strong>1500-2000</strong> para prosa simple en un modelo en la nube de contexto amplio. Los fragmentos reales promedian alrededor del 80 % de este valor.",
 
   "translation_options": "Opciones de traducción",
   "post_processing": "Post-procesamiento",
@@ -68,6 +71,7 @@
 
   "glossary_label": "Glosario",
   "glossary_manage_title": "Gestionar glosarios",
+  "custom_instructions_manage_title": "Gestionar estilos",
   "glossary_help": "Inyecta una lista curada de términos origen-destino en el prompt de cada fragmento para mantener consistentes las traducciones de las entidades. Pulsa <strong>Gestionar</strong> para crear, editar o extraer términos automáticamente.",
 
   "custom_instructions_label": "Instrucciones personalizadas",

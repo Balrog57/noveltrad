@@ -21,6 +21,14 @@
     --danger-light: #ef4444;
     --danger-light-hover: #dc2626;
     --danger-light-border: #dc2626;
+    /* Warning/amber palette — same amber already used ad hoc by
+       .sample-warning and the glossary "is-warning" card (#f59e0b / #92400e),
+       now named so the pre-flight zone's warning card can consume it without
+       repeating the literal hex. */
+    --warning-light: #f59e0b;
+    --warning-light-bg: rgba(245, 158, 11, 0.12);
+    --warning-light-border: #f59e0b;
+    --warning-light-text: #92400e;
 
     /* Neumorphic shadows */
     --shadow-dark: #d8dbdf;
@@ -53,6 +61,13 @@ html.dark {
     --danger-light: #dc2626;
     --danger-light-hover: #b91c1c;
     --danger-light-border: #b91c1c;
+    /* Slightly higher alpha than light mode so the tint stays visible against
+       the dark card background; text switches to the lighter amber used by
+       .sample-warning's dark variant so it stays readable on #2a2a2a. */
+    --warning-light: #f59e0b;
+    --warning-light-bg: rgba(245, 158, 11, 0.16);
+    --warning-light-border: #f59e0b;
+    --warning-light-text: #fbbf24;
 
     /* Neumorphic shadows for dark mode */
     --shadow-dark: #1a1a1a;
@@ -640,6 +655,18 @@ select.form-control {
     box-shadow: 0 12px 30px rgba(239, 68, 68, 0.35);
 }
 
+/* Compact variant, for buttons that sit inside a row of text rather than in a
+   footer. The class was already used in the template before it had any rule of
+   its own, so those call sites carried per-button inline padding; their inline
+   values still win here, this only gives the class a sane default. */
+.btn-sm {
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
 /* ========================================
    File Upload Area
    ======================================== */
@@ -954,6 +981,345 @@ select.form-control {
 .recommendation-link:hover { color: rgba(255, 255, 255, 0.85); }
 
 /* ========================================
+   Pre-flight Zone
+   (advised options, launch warnings and, later, the relocated per-run
+   controls, all living under the Start/Interrupt buttons)
+   ======================================== */
+
+/* Outer wrapper around #settingsSummary. Carries the exact same text
+   treatment #settingsSummary already gets inline, so as long as no advice
+   or warning is present the wrapped zone is pixel-identical to today. */
+.preflight-zone {
+    margin-top: 12px;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--text-muted-light);
+    line-height: 1.5;
+}
+
+/* Locked while a translation is running: dimmed AND inert, not merely
+   dimmed, so a user cannot mistake it for a slow-to-respond control. */
+.preflight-zone--locked {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.preflight-zone--locked .preflight-toggle,
+.preflight-zone--locked .preflight-chip,
+.preflight-zone--locked .preflight-warning__action,
+.preflight-zone--locked .preflight-dismissed-link,
+.preflight-zone--locked .preflight-panel * {
+    pointer-events: none;
+}
+.preflight-zone--locked .preflight-panel {
+    /* Flatten the inset shadow so the panel reads as an inert plate instead
+       of a still-raised, still-inviting surface. */
+    box-shadow: none;
+}
+
+/* Advised-options row */
+.preflight-advice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+.preflight-advice[hidden] { display: none; }
+
+.preflight-advice__label {
+    color: var(--text-muted-light);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.6875rem;
+    font-weight: 600;
+}
+
+/* Advised chip. Deliberately subordinate to the active-option .summary-chip
+   (settings-summary.js), which uses a solid tinted fill: a dashed border and
+   a near-transparent fill read as "suggested" at a glance, without having to
+   read either chip's text. Tints are derived from the theme variables via
+   color-mix() rather than a fixed rgba literal, so the chip needs no
+   separate html.dark override — it already matches whatever --text-muted-light
+   / --primary-light resolve to in the active theme. */
+.preflight-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.6;
+    font-family: inherit;
+    background: color-mix(in srgb, var(--text-muted-light) 6%, transparent);
+    color: var(--text-muted-light);
+    border: 1px dashed color-mix(in srgb, var(--text-muted-light) 55%, transparent);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.preflight-chip:hover,
+.preflight-chip:focus-within {
+    background: color-mix(in srgb, var(--primary-light) 10%, transparent);
+    border-color: color-mix(in srgb, var(--primary-light) 55%, transparent);
+    color: var(--text-dark);
+}
+
+/* The chip is a <span> wrapper, not a <button>: a button may not contain the
+   dismiss button, and the parser would close it early. The label is therefore
+   its own borderless button that inherits the pill's typography, so the two
+   still read as one control. Focus lives here, not on the container. */
+.preflight-chip__body {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+.preflight-chip__body:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
+/* Dismiss affordance inside a chip. Uses opacity + visibility rather than
+   display:none so it stays in the tab order: once the chip itself receives
+   focus, :focus-within reveals it and Tab can reach it next. */
+.preflight-chip__dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font-size: 0.7rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease, color 0.15s ease;
+}
+.preflight-chip:hover .preflight-chip__dismiss,
+.preflight-chip:focus-within .preflight-chip__dismiss {
+    opacity: 1;
+    visibility: visible;
+}
+.preflight-chip__dismiss:hover {
+    color: var(--danger-light);
+}
+.preflight-chip__dismiss:focus-visible {
+    opacity: 1;
+    visibility: visible;
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
+/* Launch warning card. Same amber family as .sample-warning /
+   .glossary-info-card.is-warning, now behind the --warning-light-* tokens
+   defined in :root / html.dark instead of the literal #f59e0b / #92400e
+   those two rules use inline. */
+.preflight-warning {
+    margin-top: 8px;
+    padding: 10px 14px;
+    text-align: left;
+    background: var(--warning-light-bg);
+    border-left: 3px solid var(--warning-light-border);
+    border-radius: 0.5rem;
+    color: var(--warning-light-text);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+.preflight-warning[hidden] { display: none; }
+
+.preflight-warning__action {
+    display: inline;
+    margin-left: 4px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+.preflight-warning__action:hover { opacity: 0.85; }
+.preflight-warning__action:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
+/* Adjust/Collapse toggle. Rotation is keyed off aria-expanded rather than an
+   inline style.transform set from JS, so the state survives a re-render of the
+   toggle's own markup and stays in one place instead of being split between the
+   stylesheet and a JS assignment. .is-open is an equivalent hook for JS that
+   prefers toggling a class over an ARIA attribute. */
+.preflight-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    margin-top: 6px;
+    margin-left: auto;
+    padding: 4px 2px;
+    border: none;
+    background: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--primary-light);
+    cursor: pointer;
+}
+.preflight-toggle:hover {
+    text-decoration: underline;
+}
+.preflight-toggle:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+.preflight-toggle .material-symbols-outlined {
+    font-size: 1.05rem;
+    transition: transform 0.2s ease;
+}
+.preflight-toggle[aria-expanded="true"] .material-symbols-outlined,
+.preflight-toggle.is-open .material-symbols-outlined {
+    transform: rotate(180deg);
+}
+/* display: flex above beats the UA [hidden] rule, so the attribute needs an
+   explicit companion — same pattern as the other containers in this block. */
+.preflight-toggle[hidden] { display: none; }
+
+/* Expandable panel. Mirrors .neu-inset-light's shadow recipe (the recessed
+   surface used inside .main-card) via --background-outer rather than that
+   rule's literal #ffffff / #222222, so it reads as one more inner surface of
+   the same card rather than a new floating card. */
+.preflight-panel {
+    margin-top: 10px;
+    padding: 1.25rem 1.5rem;
+    text-align: left;
+    background: var(--background-outer);
+    box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+    border: 2px solid color-mix(in srgb, var(--primary-light) 15%, transparent);
+    border-radius: 1rem;
+}
+.preflight-panel[hidden] { display: none; }
+
+.preflight-panel__help {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-muted-light);
+    line-height: 1.5;
+}
+
+.preflight-dismissed-link {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 0.75rem;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted-light);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+.preflight-dismissed-link[hidden] { display: none; }
+.preflight-dismissed-link:hover {
+    color: var(--primary-light);
+}
+.preflight-dismissed-link:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
+/* ========================================
+   Pre-flight Confirmation Modal
+   (shown when Start is clicked and the app has at least one suggestion
+   about the current translation options; reuses .modal-overlay /
+   .modal-content / .modal-header / .modal-body / .modal-footer / .close-btn
+   as-is — only the inner rule-list styling below is new)
+   ======================================== */
+
+/* Roughly the 600px modal default. The rows are prose, not form fields, so
+   width is what keeps each reason down to two or three lines. */
+.preflight-modal__content {
+    max-width: 580px;
+}
+
+.preflight-modal__intro {
+    margin: 0 0 1rem 0;
+    color: var(--text-muted-light);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
+.preflight-modal__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* One suggestion row. Recessed against the modal body with a neutral,
+   informational left-border accent (the same blue used everywhere else for
+   interactive/informational emphasis) — deliberately calmer than the
+   warning variant below, so the border colour alone tells "suggestion"
+   apart from "risk" without reading the text.
+
+   Stacked, not side by side: the reason is a full sentence, and putting the
+   buttons beside it left the text a narrow column while the actions ate the
+   rest of the row. */
+.preflight-modal__rule {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    background: var(--background-outer);
+    border-left: 3px solid var(--primary-light);
+    border-radius: 0.75rem;
+}
+
+/* Escalated variant for the one rule that is a genuine risk rather than a
+   suggestion. Reuses the same --warning-light-* tokens as .preflight-warning
+   so the two read as one family of "heads up" UI instead of a new one. */
+.preflight-modal__rule--warning {
+    background: var(--warning-light-bg);
+    border-left-color: var(--warning-light-border);
+    color: var(--warning-light-text);
+}
+
+.preflight-modal__rule-text {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.5;
+    overflow-wrap: break-word;
+}
+
+/* Action buttons for one row, on their own line under the text and pushed to
+   the trailing edge so the eye finds them in a predictable place down the
+   list without them competing with the prose for width. */
+.preflight-modal__rule-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+
+/* ========================================
    Log Container
    ======================================== */
 
@@ -1125,7 +1491,6 @@ select.form-control {
     font-weight: 600;
 }
 
-#promptOptionsIcon,
 #settingsOptionsIcon,
 #activityLogIcon {
     transition: transform 0.2s;
@@ -2887,6 +3252,159 @@ html.dark .glossary-info-card .glossary-info-warn {
 .ner-row-identical .ner-target-input,
 .ner-row-identical .ner-category-select {
     background: transparent;
+}
+
+/* ========================================
+   Style preset editor header
+   ======================================== */
+
+/* The title row carries the back button, the title, the preset name, the mode
+   picker and the manual-edit badge — enough to wrap "Edit style" onto two
+   lines at the default 2rem padding. Tighter padding, a non-breaking title,
+   and an elliptical name keep it on one line; the save/export/delete actions
+   live in their own row below. */
+.style-editor-header {
+    flex-wrap: wrap;
+    padding: 1.25rem 2rem;
+    /* The toolbar row right below shares the same background and carries the
+       separator, so the header must not draw a second rule between them. */
+    border-bottom: none;
+}
+
+.style-editor-header h2 {
+    margin: 0;
+    white-space: nowrap;
+}
+
+.style-editor-header .style-editor-back {
+    padding: 0.5rem;
+}
+
+.style-editor-filename {
+    flex: 1 1 6rem;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-muted-light);
+    font-size: 0.9rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.style-editor-header .style-editor-mode {
+    width: auto;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+}
+
+.style-editor-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.75rem 2rem;
+    background: var(--background-light);
+    border-bottom: 1px solid var(--border-light);
+}
+
+/* ========================================
+   Style-extraction rule blocks
+   ======================================== */
+
+/* A style rule is a full sentence, not a short term: a table row truncates it
+   to an unreadable sliver. Each rule therefore gets its own block with a
+   wrapping, auto-growing textarea. Used by both the extraction modal's
+   candidate list and the preset editor. */
+.style-rule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1.25rem;
+}
+
+.style-rule-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0.85rem;
+    background: var(--background-light);
+    border: 1px solid var(--border-light);
+    border-radius: 0.6rem;
+    transition: opacity 0.15s, border-color 0.15s;
+}
+
+.style-rule-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.style-rule-dimension-badge {
+    padding: 0.15rem 0.55rem;
+    background: var(--background-outer);
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    color: var(--text-muted-light);
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.style-rule-card .style-rule-instruction {
+    width: 100%;
+    min-height: 3.6rem;
+    line-height: 1.5;
+    resize: vertical;
+    overflow: hidden;
+}
+
+/* Flagged-and-unchecked rules recede without disappearing — same treatment as
+   the glossary's source == target rows. One click re-enables them. */
+.style-rule-card.is-muted {
+    opacity: 0.55;
+}
+.style-rule-card.is-muted:hover {
+    opacity: 0.9;
+}
+
+.style-rule-flag {
+    color: var(--danger-light);
+    font-size: 1.05rem;
+    cursor: help;
+}
+
+/* The quoted excerpt that justifies the rule. Review aid only — it is never
+   written into a preset. */
+.style-rule-evidence {
+    margin: 0;
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--border-light);
+    color: var(--text-muted-light);
+    font-size: 0.8rem;
+    font-style: italic;
+    line-height: 1.45;
+}
+
+.style-rule-selectall {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.6rem;
+    color: var(--text-muted-light);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.style-rule-card-head .style-rule-remove {
+    margin-left: auto;
+}
+
+.style-rule-card-head .style-rule-dimension {
+    width: auto;
+    min-width: 11rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
 }
 
 /* NER selected-file pill */

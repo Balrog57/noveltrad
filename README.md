@@ -15,6 +15,7 @@ A desktop app that translates **books**, **subtitles**, and **documents** with A
 - **No size limit.** Process documents of any length - from a single page to thousand-page novels. The intelligent chunking system handles unlimited content while preserving context between segments.
 - **Perfect preservation.** Your documents come out exactly as they went in: EPUB formatting, styles, and structure remain intact. SRT timecodes stay perfectly synchronized. Every tag, every timestamp, every formatting detail is preserved.
 - **Resume anytime.** Interrupted translation? Pick up exactly where you left off. The checkpoint system saves progress automatically.
+- **Reusable writing styles.** Extract a style preset from sample books (or write one by hand) and apply it to every chunk for a consistent register, rhythm, and imagery across the whole translation.
 
 [<img width="867" height="861" alt="image" src="https://github.com/user-attachments/assets/3efcb2a4-e1f0-4d18-ac90-1068a694a2da">](https://github.com/user-attachments/assets/3efcb2a4-e1f0-4d18-ac90-1068a694a2da)
 
@@ -220,6 +221,7 @@ See [docs/DOCKER.md](docs/DOCKER.md) for more options.
 | [docs/API_KEY_ROTATION.md](docs/API_KEY_ROTATION.md) | Use multiple API keys per provider with automatic failover on rate-limit |
 | [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md) | Webhook notifications on completion (ntfy, gotify, Discord, Slack, custom) |
 | [docs/GLOSSARY.md](docs/GLOSSARY.md) | Force consistent term translations across a book (Web UI + CLI, auto-extract via NER) |
+| [docs/STYLE_EXTRACTION.md](docs/STYLE_EXTRACTION.md) | Extract a reusable writing-style preset from sample books and apply it to every chunk (Web UI) |
 | [docs/CLI.md](docs/CLI.md) | Complete CLI reference |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Problem solutions |
 | [docs/DOCKER.md](docs/DOCKER.md) | Docker deployment guide |

@@ -28,6 +28,79 @@ from .completion_status import classify_completion
 from .websocket import emit_update
 
 
+def resolve_custom_instructions(prompt_options, custom_instructions_dir, log_callback):
+    """
+    Resolve the translation/refinement instruction prose for a configured custom-instructions
+    preset (`prompt_options['custom_instruction_file']`).
+
+    Extracted verbatim from the inline branch previously in `perform_actual_translation` so it
+    can be exercised in isolation (see tests/integration/test_style_preset_end_to_end.py).
+    Behaviour — including the logging and the error handling — is unchanged.
+
+    Args:
+        prompt_options (dict): the job's `config['prompt_options']` mapping.
+        custom_instructions_dir (Path): directory presets are loaded from.
+        log_callback: callable(message_key, message_content="", data=None), matching
+            `_log_message_callback`'s signature.
+
+    Returns:
+        tuple[str | None, str | None]: (translation_instructions, refinement_instructions).
+    """
+    custom_instruction_file = prompt_options.get('custom_instruction_file', '')
+
+    translation_instructions = None
+    refinement_instructions = None
+
+    if custom_instruction_file:
+        if not is_safe_filename(custom_instruction_file):
+            log_callback(
+                "custom_instructions_invalid",
+                f"⚠️ Custom instructions file name '{custom_instruction_file}' is invalid "
+                f"(allowed: alphanumeric, underscore, hyphen, dot; must end in .txt, .yaml, or .yml). "
+                f"Translation will proceed without it."
+            )
+        else:
+            try:
+                loaded = load_custom_instructions(
+                    custom_instruction_file, custom_instructions_dir
+                )
+                translation_instructions = loaded.get('translation')
+                refinement_instructions = loaded.get('refinement')
+
+                if translation_instructions or refinement_instructions:
+                    phases = []
+                    if translation_instructions:
+                        phases.append('translation')
+                    if refinement_instructions:
+                        phases.append('refinement')
+                    log_callback(
+                        "custom_instructions",
+                        f"📝 Loaded custom instructions: {custom_instruction_file} "
+                        f"(phases: {', '.join(phases)})"
+                    )
+                else:
+                    log_callback(
+                        "custom_instructions_empty",
+                        f"⚠️ Custom instructions file '{custom_instruction_file}' is empty. "
+                        f"Translation will proceed without it."
+                    )
+            except FileNotFoundError:
+                log_callback(
+                    "custom_instructions_missing",
+                    f"⚠️ Custom instructions file '{custom_instruction_file}' was selected "
+                    f"but not found in {custom_instructions_dir}. Translation will proceed "
+                    f"without it."
+                )
+            except (ValueError, Exception) as e:
+                log_callback(
+                    "custom_instructions_error",
+                    f"⚠️ Failed to load custom instructions '{custom_instruction_file}': {e}. "
+                    f"Translation will proceed without it."
+                )
+
+    return translation_instructions, refinement_instructions
+
+
 def _format_stats_summary(config, stats, verdict):
     """Build the ' | 8/10 chunks (1 failed) (1 untranslated)' log suffix.
 
@@ -348,60 +421,11 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             raise Exception(f"{config['file_type'].upper()} translation requires a file_path.")
 
         # Read custom instruction file if specified
-        custom_instruction_file = config.get('prompt_options', {}).get('custom_instruction_file', '')
-
-        translation_instructions = None
-        refinement_instructions = None
-
-        if custom_instruction_file:
-            project_root = Path(os.getcwd())
-            custom_instructions_dir = project_root / 'Custom_Instructions'
-
-            if not is_safe_filename(custom_instruction_file):
-                _log_message_callback(
-                    "custom_instructions_invalid",
-                    f"⚠️ Custom instructions file name '{custom_instruction_file}' is invalid "
-                    f"(allowed: alphanumeric, underscore, hyphen, dot; must end in .txt, .yaml, or .yml). "
-                    f"Translation will proceed without it."
-                )
-            else:
-                try:
-                    loaded = load_custom_instructions(
-                        custom_instruction_file, custom_instructions_dir
-                    )
-                    translation_instructions = loaded.get('translation')
-                    refinement_instructions = loaded.get('refinement')
-
-                    if translation_instructions or refinement_instructions:
-                        phases = []
-                        if translation_instructions:
-                            phases.append('translation')
-                        if refinement_instructions:
-                            phases.append('refinement')
-                        _log_message_callback(
-                            "custom_instructions",
-                            f"📝 Loaded custom instructions: {custom_instruction_file} "
-                            f"(phases: {', '.join(phases)})"
-                        )
-                    else:
-                        _log_message_callback(
-                            "custom_instructions_empty",
-                            f"⚠️ Custom instructions file '{custom_instruction_file}' is empty. "
-                            f"Translation will proceed without it."
-                        )
-                except FileNotFoundError:
-                    _log_message_callback(
-                        "custom_instructions_missing",
-                        f"⚠️ Custom instructions file '{custom_instruction_file}' was selected "
-                        f"but not found in {custom_instructions_dir}. Translation will proceed "
-                        f"without it."
-                    )
-                except (ValueError, Exception) as e:
-                    _log_message_callback(
-                        "custom_instructions_error",
-                        f"⚠️ Failed to load custom instructions '{custom_instruction_file}': {e}. "
-                        f"Translation will proceed without it."
-                    )
+        project_root = Path(os.getcwd())
+        custom_instructions_dir = project_root / 'Custom_Instructions'
+        translation_instructions, refinement_instructions = resolve_custom_instructions(
+            config.get('prompt_options', {}), custom_instructions_dir, _log_message_callback
+        )
 
         # Inject phase-specific custom instructions into prompt_options
         if translation_instructions or refinement_instructions:
