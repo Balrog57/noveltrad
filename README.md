@@ -17,7 +17,8 @@ A desktop app that translates **books**, **subtitles**, and **documents** with A
 - **Resume anytime.** Interrupted translation? Pick up exactly where you left off. The checkpoint system saves progress automatically.
 - **Reusable writing styles.** Extract a style preset from sample books (or write one by hand) and apply it to every chunk for a consistent register, rhythm, and imagery across the whole translation.
 
-[<img width="867" height="861" alt="image" src="https://github.com/user-attachments/assets/3efcb2a4-e1f0-4d18-ac90-1068a694a2da">](https://github.com/user-attachments/assets/3efcb2a4-e1f0-4d18-ac90-1068a694a2da)
+<img width="1150" height="579" alt="image" src="https://github.com/user-attachments/assets/d7dfa806-830b-4405-8300-f10208943d22" />
+
 
 > **[Translation Quality Benchmarks](https://github.com/hydropix/TranslateBooksWithLLMs/wiki)** - Find the best model for your target language.
 
