@@ -972,14 +972,16 @@ def create_config_blueprint(server_session_id=None):
                 if key in allowed_keys:
                     # Sanitize value - remove newlines and dangerous characters
                     safe_value = str(value).replace('\n', '').replace('\r', '')
-                    # Clamp MAX_TOKENS_PER_CHUNK to the same range the UI enforces
-                    # so a hand-crafted POST can't break the chunker.
+                    # Floor MAX_TOKENS_PER_CHUNK so a hand-crafted POST can't
+                    # over-fragment the chunker. No upper bound: the usable
+                    # ceiling depends on the provider's context window and on
+                    # how well the model holds a long passage together.
                     if key == 'MAX_TOKENS_PER_CHUNK':
                         try:
                             n = int(safe_value)
                         except (TypeError, ValueError):
                             continue
-                        safe_value = str(max(50, min(1000, n)))
+                        safe_value = str(max(_config.MIN_CHUNK_SIZE_TOKENS, n))
                     # Clamp parallel workers to [1, MAX_PARALLEL_TRANSLATIONS].
                     elif key == 'PARALLEL_TRANSLATIONS':
                         try:

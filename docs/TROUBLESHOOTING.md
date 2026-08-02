@@ -122,7 +122,7 @@ An advertised context length is only an upper bound - a server can load the mode
 
 | Setting | Default | Effect |
 |---------|---------|--------|
-| `MAX_TOKENS_PER_CHUNK` | `450` (`src/config.py`) | Hard token limit for the source text of one chunk. The web UI clamps requested values to 50-1000. |
+| `MAX_TOKENS_PER_CHUNK` | `450` (`src/config.py`) | Hard token limit for the source text of one chunk. Editable in the web UI under Settings; values are floored at `MIN_CHUNK_SIZE_TOKENS` (50) with no upper bound. |
 | `OLLAMA_NUM_CTX` | `4096` (`src/config.py`) | Context window requested from Ollama (`num_ctx`). **Ollama only** - other providers ignore it. |
 
 **Formula**: `required_context = prompt_tokens + (MAX_TOKENS_PER_CHUNK * 2) + 50`, where `prompt_tokens` is roughly 500 (instructions) plus `MAX_TOKENS_PER_CHUNK` (source text), and the response buffer is doubled because a translation can be up to twice as long as its source.
@@ -132,6 +132,9 @@ An advertised context length is only an upper bound - a server can load the mode
 | 450 (default) | ~2048 |
 | 700 | ~4096 |
 | 800 | ~4096 |
+| 1600 | ~8192 |
+
+There is no hard ceiling on `MAX_TOKENS_PER_CHUNK`. Large-context cloud models (Gemini, GPT, Claude) will not run out of window at any realistic value; the practical limit is translation quality, since a model asked to translate a very long passage is more likely to condense or skip parts of it, and a failed chunk is retried in full.
 
 **Solutions**:
 1. **Ollama**: raise `OLLAMA_NUM_CTX` to at least the value the formula gives, or lower `MAX_TOKENS_PER_CHUNK` until it fits the model you already load.

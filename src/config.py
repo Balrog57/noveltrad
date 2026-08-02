@@ -92,12 +92,16 @@ _RELOADABLE_ENV_SETTINGS = (
     # save it back via /api/settings; reloadable so changes apply without a
     # server restart).
     ('PARALLEL_TRANSLATIONS', 'PARALLEL_TRANSLATIONS', '1'),
+    # Chunker budget. Reloadable so the web UI can change it without a restart:
+    # every runtime consumer resolves it lazily (text_processor.split_text_into_chunks,
+    # translate_file, refine_file) rather than snapshotting it at import.
+    ('MAX_TOKENS_PER_CHUNK', 'MAX_TOKENS_PER_CHUNK', '450'),
 )
 
 
 _NOTIFY_BOOL_ATTRS = {'NOTIFY_ON_SUCCESS', 'NOTIFY_ON_FAILURE', 'NOTIFY_ON_INTERRUPTION'}
 _NOTIFY_INT_ATTRS = {'NOTIFY_TIMEOUT_SECONDS'}
-_INT_ATTRS = {'PARALLEL_TRANSLATIONS'}
+_INT_ATTRS = {'PARALLEL_TRANSLATIONS', 'MAX_TOKENS_PER_CHUNK'}
 
 
 def _apply_reloadable_env_settings():
@@ -325,8 +329,10 @@ MIN_CHUNK_SIZE = int(os.getenv("MIN_CHUNK_SIZE", "5"))
 MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "100"))
 
 # Token-based chunking configuration
-# All file types use token-based chunking with tiktoken for consistent chunk sizes
-MAX_TOKENS_PER_CHUNK = int(os.getenv('MAX_TOKENS_PER_CHUNK', '450'))
+# All file types use token-based chunking with tiktoken for consistent chunk sizes.
+# MAX_TOKENS_PER_CHUNK lives in _RELOADABLE_ENV_SETTINGS (see above) so the web UI
+# can change it at runtime; read it via `import src.config as cfg; cfg.MAX_TOKENS_PER_CHUNK`
+# or a function-local import to get the live value.
 SOFT_LIMIT_RATIO = float(os.getenv('SOFT_LIMIT_RATIO', '0.8'))
 
 # === Translation Buffer Configuration ===
@@ -716,11 +722,14 @@ class TranslationConfig:
     @classmethod
     def from_web_request(cls, request_data: dict) -> 'TranslationConfig':
         """Create config from web request data"""
-        # Clamp chunker budget to the same [50, 1000] window the UI enforces,
-        # falling back to the .env default if the field is absent or malformed.
+        # Floor the chunker budget at MIN_CHUNK_SIZE_TOKENS to avoid
+        # over-fragmentation. There is no upper bound: the usable ceiling depends
+        # on the provider's context window and on how well the model holds a long
+        # passage together, so it is the user's call. Falls back to the .env
+        # default if the field is absent or malformed.
         try:
             requested_max_tokens = int(request_data.get('max_tokens_per_chunk', MAX_TOKENS_PER_CHUNK))
-            clamped_max_tokens = max(50, min(1000, requested_max_tokens))
+            clamped_max_tokens = max(MIN_CHUNK_SIZE_TOKENS, requested_max_tokens)
         except (TypeError, ValueError):
             clamped_max_tokens = MAX_TOKENS_PER_CHUNK
 
