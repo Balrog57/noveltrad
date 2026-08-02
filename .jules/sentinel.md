@@ -1,0 +1,4 @@
+## 2024-05-15 - Secure Temporary File Creation
+**Vulnerability:** Predictable temporary file names via `tempfile.gettempdir() / "noveltrad_updater.bat"` in `src/utils/updater.py`. This predictable file name exposes the system to Time-of-Check to Time-of-Use (TOCTOU) and arbitrary code execution vulnerabilities, where an attacker could pre-create or replace the file before the updater script writes to or executes it.
+**Learning:** Using `gettempdir` with a fixed string for script paths relies on predictable locations where other users or processes might have write access.
+**Prevention:** Always use `tempfile.mkstemp()` combined with `os.fdopen()` to ensure securely randomized file names and restricted permissions, mitigating TOCTOU and hijacking risks, especially for executable scripts or batch files.
