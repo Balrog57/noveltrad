@@ -86,8 +86,9 @@ def _install_fakes(monkeypatch, fail_at_index: int):
 def _reference_finalization(parts, structured_chunks) -> str:
     """The finalization sequence exactly as it was before the extraction.
 
-    Frozen oracle for the `_write_refined_output` refactor: join, attribution
-    footer, normalization. Any drift in the helper shows up as a diff here.
+    Frozen oracle for the `_write_refined_output` refactor: join, then the
+    optional attribution footer. Any drift in the helper shows up as a diff
+    here.
     """
     from src.config import ATTRIBUTION_ENABLED, GENERATOR_NAME, GENERATOR_SOURCE
 
@@ -98,12 +99,6 @@ def _reference_finalization(parts, structured_chunks) -> str:
         footer += f"{GENERATOR_SOURCE}\n"
         footer += f"{'=' * 60}\n"
         final_text += footer
-
-    try:
-        from src.utils.text_encoding import apply_normalization
-        final_text = apply_normalization(final_text)
-    except Exception:
-        pass
 
     return final_text
 

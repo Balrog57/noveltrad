@@ -721,13 +721,22 @@ in the header), #161 (shipped as the glossary), #126 (backoff and auto-resume sh
 
 ### Issue #221 — device fingerprint sent to LLM providers
 
-`src/utils/telemetry.py:54-63` derives a client ID from `uuid.getnode()`, and
-`src/core/llm/base.py:93-98` attaches the resulting headers to the shared client used by every provider.
-There is no opt-out in `src/config.py`.
+Resolved by removal. The project used to derive a per-install identifier from the machine's MAC
+address and:
 
-This is intentional project behaviour, not a regression. Treat it as a disclosure and product decision
-rather than a defect to patch: decide what the documentation should say, and whether an opt-out is
-offered. Do not action it as a bug fix without deciding that first.
+- attach it as an `X-Session-Token` header on every LLM request;
+- embed it as zero-width characters inside translated TXT/SRT output;
+- write it into the EPUB `dc:identifier` and the DOCX `last_modified_by` metadata field;
+- append it to DEBUG log lines.
+
+None of this was disclosed to users, and there was no opt-out in `src/config.py`. Rather than
+disclose-and-opt-out, the decision was to remove the fingerprint entirely: the identifier, the
+headers, the embedding, and the metadata writes are gone.
+
+The existing `ATTRIBUTION_ENABLED` / `GENERATOR_NAME` / `GENERATOR_SOURCE` attribution is kept: it
+is visible in the output, identical across every install (it does not identify a specific user or
+machine), and can be switched off. A separate, lawful, opt-in usage-statistics mechanism is planned
+to replace the removed telemetry; see `plan/PLAN_UsageStatistics.md`.
 
 ### Issue #212 — self-update endpoint hardening
 

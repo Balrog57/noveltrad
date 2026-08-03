@@ -94,8 +94,10 @@ def test_attribution_page_survives_metadata_write_and_inherits_target_lang(tmp_p
     metadata = on_disk_tree.getroot().find('.//opf:metadata', namespaces=NAMESPACES)
     contributors = metadata.findall('.//{http://purl.org/dc/elements/1.1/}contributor')
     assert len(contributors) == 1
+    # The auxiliary per-install dc:identifier was removed: step 5 must never
+    # emit one again, whatever the attribution settings say.
     render_uid = metadata.find('.//{http://purl.org/dc/elements/1.1/}identifier[@id="render-uid"]')
-    assert render_uid is not None
+    assert render_uid is None
 
     # D10: the attribution page written at 4.7 was walked by step 6.5 just
     # like any other document, so it carries the target language.
