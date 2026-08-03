@@ -86,24 +86,27 @@ def _parse_json(text: str) -> dict[str, str]:
 def _parse_delimited(text: str, delimiter: str) -> dict[str, str]:
     """Parse a CSV/TSV with an optional header row term,translation."""
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    rows = [row for row in reader if row and any(cell.strip() for cell in row)]
-    if not rows:
-        return {}
 
     out: dict[str, str] = {}
-    # Detect header: treat as header ONLY if BOTH first and second cells look
-    # like header names. Otherwise a legitimate term named "source"/"key"/"term"
-    # in the first row would be wrongly skipped.
-    first = rows[0]
     term_headers = {"term", "source", "key", "source_term"}
     trans_headers = {"translation", "target", "value", "target_term"}
-    header_like = (
-        len(first) >= 2
-        and first[0].strip().lower() in term_headers
-        and first[1].strip().lower() in trans_headers
-    )
-    start = 1 if header_like else 0
-    for row in rows[start:]:
+
+    is_first = True
+    for row in reader:
+        if not row or not any(cell.strip() for cell in row):
+            continue
+
+        if is_first:
+            is_first = False
+            # Detect header: treat as header ONLY if BOTH first and second cells look
+            # like header names. Otherwise a legitimate term named "source"/"key"/"term"
+            # in the first row would be wrongly skipped.
+            if len(row) >= 2:
+                term_cell = row[0].strip().lower()
+                trans_cell = row[1].strip().lower()
+                if term_cell in term_headers and trans_cell in trans_headers:
+                    continue  # skip header
+
         if len(row) < 2:
             continue  # skip malformed lines
         term = row[0].strip()
