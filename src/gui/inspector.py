@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.a11y import configure
+
 # Pipeline stages in order, with display labels.
 STAGES: list[tuple[str, str]] = [
     ("translator", "1. Traducteur"),
@@ -60,6 +62,12 @@ class StageWidget(QFrame):
         self.expand_btn.setFixedWidth(24)
         self.expand_btn.setCheckable(True)
         self.expand_btn.setChecked(True)
+
+        configure(
+            self.expand_btn,
+            accessible_name=f"Réduire {label}",
+            tooltip=f"Réduire {label}"
+        )
         self.expand_btn.toggled.connect(self._on_toggle)
 
         header.addWidget(self.expand_btn)
@@ -153,6 +161,9 @@ class StageWidget(QFrame):
 
     def _on_toggle(self, checked: bool) -> None:
         self.expand_btn.setText("▾" if checked else "▸")
+        lbl = self.title.text().replace("<b>", "").replace("</b>", "").split(" — ")[0]
+        action = "Réduire" if checked else "Développer"
+        configure(self.expand_btn, accessible_name=f"{action} {lbl}", tooltip=f"{action} {lbl}")
         self.table.setVisible(checked)
         self.preview.setVisible(checked)
         # CoT follows the same expanded/collapsed state (only if it has content).
@@ -174,6 +185,11 @@ class InspectorPanel(QWidget):
         top.addStretch()
         self.simple_btn = QPushButton("Vue simplifiée")
         self.simple_btn.setCheckable(True)
+        configure(
+            self.simple_btn,
+            accessible_name="Activer la vue simplifiée",
+            tooltip="Activer la vue simplifiée"
+        )
         self.simple_btn.toggled.connect(self.toggle_simple)
         top.addWidget(self.simple_btn)
         layout.addLayout(top)
@@ -229,3 +245,9 @@ class InspectorPanel(QWidget):
                 sw.cot_view.setVisible(False)
         self.log_view.setVisible(not simple)
         self.simple_btn.setText("Vue détaillée" if simple else "Vue simplifiée")
+        action = "détaillée" if simple else "simplifiée"
+        configure(
+            self.simple_btn,
+            accessible_name=f"Activer la vue {action}",
+            tooltip=f"Activer la vue {action}"
+        )
