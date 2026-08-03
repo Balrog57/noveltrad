@@ -13,8 +13,15 @@ datas_list = [
     ('../../src/web/templates', 'src/web/templates'),
     ('../../src', 'src'),
     ('../../.env.example', '.'),
-    ('../../Custom_Instructions', 'Custom_Instructions'),
 ]
+
+# Bundle the style presets only when some are shipped. PyInstaller treats a
+# missing data source as a hard error, and the repo currently ships none, so an
+# unconditional entry breaks the build. launcher.py already skips the first-run
+# seeding when the bundle carries no Custom_Instructions folder.
+custom_instructions_dir = os.path.join(SPECPATH, '..', '..', 'Custom_Instructions')
+if os.path.isdir(custom_instructions_dir):
+    datas_list.append((custom_instructions_dir, 'Custom_Instructions'))
 
 # Add tiktoken_ext if directory exists
 if os.path.exists(tiktoken_ext_dir):
