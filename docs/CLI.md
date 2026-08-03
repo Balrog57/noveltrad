@@ -64,6 +64,10 @@ python translate.py -i input_file -o output_file
 |--------|-------------|
 | `--text-cleanup` | Enable OCR/typographic cleanup (fix broken lines, spacing, punctuation) |
 | `--refine` | Enable refinement pass: runs a second pass to polish translation quality and literary style |
+| `--refine-only` | Run ONLY a refinement pass on an already-translated file (skips the translation phase). The input file is assumed to already be in the target language. |
+| `--glossary` | Path to a glossary file (.json or .csv) injected per-chunk to keep entity translations consistent |
+| `--auto-glossary` | Derive a throwaway glossary from the input document with one extra LLM call before translating (no file, nothing saved). Ignored when `--glossary` is given or with `--refine-only`. |
+| `--auto-style` | Derive style instructions from the input document with one extra LLM call before translating (no preset file, nothing saved). |
 
 ### TTS (Text-to-Speech)
 
@@ -170,6 +174,10 @@ python translate.py -i novel.epub -tl French --refine
 
 # Both options combined
 python translate.py -i scanned_book.txt -tl French --text-cleanup --refine
+
+# Auto glossary + auto style: no glossary file, no preset, derived from the
+# document itself with one extra LLM call each before translation starts
+python translate.py -i novel.epub -sl Chinese -tl English --auto-glossary --auto-style
 ```
 
 ### With TTS (Text-to-Speech)

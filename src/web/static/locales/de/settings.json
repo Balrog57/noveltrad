@@ -73,9 +73,11 @@
   "glossary_manage_title": "Glossare verwalten",
   "custom_instructions_manage_title": "Stile verwalten",
   "glossary_help": "Eine kuratierte Quell-zu-Ziel-Begriffsliste in den Prompt jedes Segments einfügen, um Konsistenz bei Entitätsübersetzungen zu wahren. Klicken Sie auf <strong>Verwalten</strong>, um Begriffe zu erstellen, zu bearbeiten oder automatisch zu extrahieren.",
+  "glossary_auto_option": "Auto — aus diesem Dokument erstellen",
 
   "custom_instructions_label": "Benutzerdefinierte Anweisungen",
   "custom_instructions_help": "Wählen Sie benutzerdefinierte Anweisungen aus dem Ordner <code>Custom_Instructions/</code>. Verwenden Sie <code>.yaml</code>-Dateien mit den Schlüsseln <code>translation:</code> und/oder <code>refinement:</code>, um eine Voreinstellung pro Phase zu definieren. Vorhandene <code>.txt</code>-Dateien funktionieren weiterhin und gelten für beide Phasen.",
+  "style_auto_option": "Auto — den Stil dieses Dokuments übernehmen",
   "custom_instructions_load_failed": "Ordner Custom_Instructions konnte nicht geöffnet werden",
   "default_config_load_failed": "Standardkonfiguration konnte nicht geladen werden",
 

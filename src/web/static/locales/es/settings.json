@@ -73,9 +73,11 @@
   "glossary_manage_title": "Gestionar glosarios",
   "custom_instructions_manage_title": "Gestionar estilos",
   "glossary_help": "Inyecta una lista curada de términos origen-destino en el prompt de cada fragmento para mantener consistentes las traducciones de las entidades. Pulsa <strong>Gestionar</strong> para crear, editar o extraer términos automáticamente.",
+  "glossary_auto_option": "Auto — generar a partir de este documento",
 
   "custom_instructions_label": "Instrucciones personalizadas",
   "custom_instructions_help": "Selecciona instrucciones personalizadas desde la carpeta <code>Custom_Instructions/</code>. Usa archivos <code>.yaml</code> con las claves <code>translation:</code> y/o <code>refinement:</code> para acotar un preajuste por fase. Los archivos <code>.txt</code> heredados siguen funcionando y se aplican a ambas fases.",
+  "style_auto_option": "Auto — igualar el estilo de este documento",
   "custom_instructions_load_failed": "Error al abrir la carpeta Custom_Instructions",
   "default_config_load_failed": "Error al cargar la configuración por defecto",
 

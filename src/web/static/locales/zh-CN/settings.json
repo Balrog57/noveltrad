@@ -73,9 +73,11 @@
   "glossary_manage_title": "管理术语表",
   "custom_instructions_manage_title": "管理风格",
   "glossary_help": "向每个分段的提示词中注入一份经过整理的源到目标术语列表，使实体翻译保持一致。点击 <strong>管理</strong> 可创建、编辑或自动提取术语。",
+  "glossary_auto_option": "自动 —— 根据本文档生成",
 
   "custom_instructions_label": "自定义指令",
   "custom_instructions_help": "从 <code>Custom_Instructions/</code> 文件夹选择自定义指令。使用包含 <code>translation:</code> 和/或 <code>refinement:</code> 键的 <code>.yaml</code> 文件以按阶段限定预设。原有的 <code>.txt</code> 文件仍可使用，并同时应用于两个阶段。",
+  "style_auto_option": "自动 —— 匹配本文档风格",
   "custom_instructions_load_failed": "无法打开 Custom_Instructions 文件夹",
   "default_config_load_failed": "无法加载默认配置",
 

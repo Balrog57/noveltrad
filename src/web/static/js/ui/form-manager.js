@@ -493,7 +493,8 @@ export const FormManager = {
             const currentValue = select.value;
 
             // Reset dropdown to default
-            select.innerHTML = `<option value="">${t('settings:select_none')}</option>`;
+            select.innerHTML = `<option value="" data-i18n="settings:select_none">${t('settings:select_none')}</option>` +
+                `<option value="__auto__" data-i18n="settings:style_auto_option">${t('settings:style_auto_option')}</option>`;
 
             // Populate dropdown with available files
             if (data.files && data.files.length > 0) {
@@ -666,6 +667,15 @@ export const FormManager = {
         // Get TTS configuration
         const ttsEnabled = DomHelpers.getElement('ttsEnabled')?.checked || false;
 
+        const ciValue = DomHelpers.getValue('customInstructionSelect') || '';
+        const promptOptions = {
+            preserve_technical_content: true,
+            text_cleanup: DomHelpers.getElement('textCleanup')?.checked || false,
+            refine: false,
+            custom_instruction_file: ciValue === '__auto__' ? '' : ciValue
+        };
+        if (ciValue === '__auto__') promptOptions.style_auto = true;
+
         return {
             source_language: sourceLanguageVal,
             target_language: targetLanguageVal,
@@ -677,12 +687,7 @@ export const FormManager = {
             openrouter_api_key: openrouterApiKey,
             // Prompt options (optional system prompt instructions)
             // Technical content protection is always enabled
-            prompt_options: {
-                preserve_technical_content: true,
-                text_cleanup: DomHelpers.getElement('textCleanup')?.checked || false,
-                refine: false,
-                custom_instruction_file: DomHelpers.getValue('customInstructionSelect') || ''
-            },
+            prompt_options: promptOptions,
             // Bilingual output (original + translation interleaved)
             bilingual_output: DomHelpers.getElement('bilingualMode')?.checked || false,
             // Disable auto-pause on rate limit (auto-resume after Retry-After)

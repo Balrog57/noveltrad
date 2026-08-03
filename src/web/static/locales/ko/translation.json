@@ -51,6 +51,7 @@
 
   "translating": "번역 중",
   "refining": "다듬는 중",
+  "preparing_auto": "준비 중 (자동 용어집/문체)",
   "translating_step": "번역 중 ({{step}}/{{total}})",
   "refining_step": "다듬는 중 ({{step}}/{{total}})",
   "validation_failed_log": "❌ 검증 실패: {{message}}",
@@ -233,6 +234,8 @@
   "preflight_reason_instructions": "선택된 사용자 지정 지침이 없습니다: 번역은 중립적인 기본 어조를 유지합니다. 프리셋을 사용하면 책의 처음부터 끝까지 어조와 문체를 유지할 수 있습니다.",
   "preflight_warning_small_model_tagged": "{{model}}은(는) 소형 모델이며 이 {{ext}}에는 아직 모든 서식이 그대로 남아 있습니다. 서식 손상이나 텍스트 누락의 위험이 높으므로 일반 텍스트 모드를 강력히 권장합니다.",
   "preflight_warning_action": "일반 텍스트 모드 활성화",
+  "preflight_danger_same_language": "원본 언어와 번역 언어가 모두 {{lang}}입니다: LLM이 이미 쓰여 있는 언어로 책을 다시 쓰기만 합니다. 실행하기 전에 다른 번역 언어를 선택하세요.",
+  "preflight_danger_action": "언어 변경",
   "preflight_modal_intro": "이 옵션들은 이 번역을 개선할 수 있습니다. 그대로 실행하거나, 먼저 조정하세요.",
   "preflight_modal_launch": "그대로 실행",
   "preflight_modal_enable": "활성화",

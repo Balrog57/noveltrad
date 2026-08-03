@@ -110,12 +110,17 @@ function updateProgressBar(percent) {
  * Resolve the localized operation label ("Translating" / "Refining (2/2)" / etc.)
  * for the current phase of the workflow.
  *
- * @param {Object} stats - Server stats. May contain enable_refinement,
- *   current_phase, refine_only.
+ * @param {Object} stats - Server stats. May contain auto_prep_active,
+ *   enable_refinement, current_phase, refine_only.
  * @returns {string} Label to show in the progress section title.
  */
 export function resolveOperationLabel(stats) {
     if (!stats) return t('translation:translating');
+
+    // Auto glossary/style run before the first chunk exists: the bar has
+    // nothing to advance yet, so name the work instead of claiming to
+    // translate a document that has not been chunked.
+    if (stats.auto_prep_active) return t('translation:preparing_auto');
 
     if (stats.enable_refinement) {
         return stats.current_phase === 2
@@ -141,7 +146,28 @@ export function resolveOperationLabel(stats) {
 function updateOperationLabel(stats) {
     const labelEl = DomHelpers.getElement('progressOperationLabel');
     if (!labelEl) return;
-    labelEl.textContent = resolveOperationLabel(stats);
+
+    const text = resolveOperationLabel(stats);
+    // While auto prep runs, the bar has no chunk to advance: the spinner is the
+    // only moving thing telling the user the job is alive rather than hung.
+    const wantSpinner = !!(stats && stats.auto_prep_active);
+    const hasSpinner = !!labelEl.querySelector('.inline-spinner');
+
+    // Auto prep re-emits every couple of seconds to keep the panel alive.
+    // Rebuilding identical content on each of those ticks would restart the
+    // CSS animation, so the spinner would visibly stutter. Only touch the DOM
+    // when something actually changed.
+    if (labelEl.dataset.labelText === text && hasSpinner === wantSpinner) return;
+
+    labelEl.textContent = text;
+    labelEl.dataset.labelText = text;
+
+    if (wantSpinner) {
+        const spinner = document.createElement('span');
+        spinner.className = 'inline-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        labelEl.appendChild(spinner);
+    }
 }
 
 // The Fallbacks card has a single active state — "critical" (red). Any

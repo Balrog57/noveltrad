@@ -56,13 +56,17 @@ function renderRow(rule) {
         ? 'translation:preflight_modal_enable'
         : 'translation:preflight_adjust';
     const fixLabel = DomHelpers.escapeHtml(t(fixKey));
-    const warning = rule.severity === 'warning' ? ' preflight-modal__rule--warning' : '';
+    // Two escalation levels above a plain suggestion: amber for a risky run,
+    // brick red for one that is simply wrong (source language === target).
+    const variant = rule.severity === 'danger' ? ' preflight-modal__rule--danger'
+        : rule.severity === 'warning' ? ' preflight-modal__rule--warning'
+        : '';
 
     // No dismiss control here on purpose: this dialog is a one-off interruption,
     // and suppressing a tip for good belongs to the inline zone's chips, which
     // the user sees on every visit. Dismissals made there are still honoured —
     // activeRules() filters on the same store.
-    return `<li class="preflight-modal__rule${warning}">`
+    return `<li class="preflight-modal__rule${variant}">`
         + `<span class="preflight-modal__rule-text">${reason}</span>`
         + `<span class="preflight-modal__rule-actions">`
         + `<button type="button" class="btn btn-sm"`

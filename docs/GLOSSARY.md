@@ -20,6 +20,7 @@ Entries may also carry a character gender, which is injected into every chunk so
 - [Categories](#categories)
 - [Per-chunk filter](#per-chunk-filter)
 - [Auto-extract reference](#auto-extract-reference)
+- [Auto mode](#auto-mode)
 - [Storage and migration](#storage-and-migration)
 - [Tuning](#tuning)
 - [Troubleshooting](#troubleshooting)
@@ -542,6 +543,22 @@ The parser is permissive: if the tags are missing it falls back to markdown-fenc
 ### Re-running on the same file
 
 Each run samples different excerpts (the LLM sees different parts of the document each time), so running auto-extract 2-3 times on a long book is the recommended flow. The second run typically surfaces 30-50% new entities. Stop when the table is mostly `(already in glossary)`.
+
+---
+
+## Auto mode
+
+Auto mode skips the whole build-review-select workflow above. Pick **Auto — build from this document** in the glossary dropdown (Translate tab) and the server derives a throwaway glossary from the document you are about to translate, right before the first chunk is sent — no separate upload, no candidates table, no "Add selected" step.
+
+- **Where to select it.** It's a third option in the same dropdown as your saved glossaries, next to `None`: `Auto — build from this document`.
+- **Cost.** Exactly one extra LLM call, on the job's own provider/model, run before the first chunk. While it runs, the progress header reads **Preparing (auto glossary/style)** and the bar stays at 0% — there is no chunk to advance yet. The log names the passes as they start and reports what each one found.
+- **Nothing is reviewed, nothing is saved.** The derived terms live only inside that job (and its checkpoint): resuming an interrupted job reuses the same derived glossary rather than recomputing it, so a resumed translation never disagrees with itself mid-book.
+- **An explicit glossary always wins.** Select a real, saved glossary and Auto is ignored for that job.
+- **Skipped in refine-only mode.** The input is already in the target language, so a source-to-target term pass on it would produce meaningless identity pairs. (Auto-style, see [docs/STYLE_EXTRACTION.md](STYLE_EXTRACTION.md#auto-mode), still runs in refine-only mode.)
+- **Not available in Quick Test or Sample & Compare.** Both are meant to stay instant; an `Auto` selection there is treated as `None`.
+- **On failure or timeout,** the job proceeds with no glossary injected, and a `⚠️` line appears in the log so you know why nothing was applied.
+
+**The quality tradeoff.** This is the same NER pass as [Auto-extract reference](#auto-extract-reference), minus the review step. Unreviewed candidates go straight into the prompt, so a wrong or garbled term translation lands in *every* chunk that contains it, not just one. Two guards limit the damage: identity pairs (source equals target) are dropped, and the injected list is capped at 60 terms — but nothing caps how wrong a kept term can be. If the log shows the `⚠️` "no usable terms" line often, or you spot a wrong name propagating across the book, turn Auto off and build a reviewed glossary instead.
 
 ---
 

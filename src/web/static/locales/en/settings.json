@@ -73,9 +73,11 @@
   "glossary_manage_title": "Manage glossaries",
   "custom_instructions_manage_title": "Manage styles",
   "glossary_help": "Inject a curated source-to-target term list into every chunk's prompt to keep entity translations consistent. Click <strong>Manage</strong> to create, edit or auto-extract terms.",
+  "glossary_auto_option": "Auto — build from this document",
 
   "custom_instructions_label": "Custom Instructions",
   "custom_instructions_help": "Select custom instructions from the <code>Custom_Instructions/</code> folder. Use <code>.yaml</code> files with <code>translation:</code> and/or <code>refinement:</code> keys to scope a preset per phase. Legacy <code>.txt</code> files still work and apply to both phases.",
+  "style_auto_option": "Auto — match this document's style",
   "custom_instructions_load_failed": "Failed to open Custom_Instructions folder",
   "default_config_load_failed": "Failed to load default configuration",
 

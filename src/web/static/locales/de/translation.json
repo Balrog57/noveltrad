@@ -51,6 +51,7 @@
 
   "translating": "Wird übersetzt",
   "refining": "Wird verfeinert",
+  "preparing_auto": "Vorbereitung (Auto-Glossar/-Stil)",
   "translating_step": "Übersetzung ({{step}}/{{total}})",
   "refining_step": "Verfeinerung ({{step}}/{{total}})",
   "validation_failed_log": "❌ Validierung fehlgeschlagen: {{message}}",
@@ -233,6 +234,8 @@
   "preflight_reason_instructions": "Keine benutzerdefinierten Anweisungen ausgewählt: Die Übersetzung behält einen neutralen Standardton bei. Eine Voreinstellung kann Register und Stimme des Buchs von Anfang bis Ende beibehalten.",
   "preflight_warning_small_model_tagged": "{{model}} ist ein kleines Modell, und diese {{ext}}-Datei behält noch die gesamte Formatierung bei. Hohes Risiko von beschädigter Formatierung oder fehlendem Text. Der Klartextmodus wird dringend empfohlen.",
   "preflight_warning_action": "Klartextmodus aktivieren",
+  "preflight_danger_same_language": "Quell- und Zielsprache sind beide {{lang}}: Das LLM würde das Buch in der Sprache neu schreiben, in der es bereits vorliegt. Wählen Sie vor dem Start eine andere Zielsprache.",
+  "preflight_danger_action": "Sprachen ändern",
   "preflight_modal_intro": "Diese Optionen können diese Übersetzung verbessern. Starten Sie einfach so, oder passen Sie sie zuerst an.",
   "preflight_modal_launch": "Trotzdem starten",
   "preflight_modal_enable": "Aktivieren",

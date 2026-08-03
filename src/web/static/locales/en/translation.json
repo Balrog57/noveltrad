@@ -51,6 +51,7 @@
 
   "translating": "Translating",
   "refining": "Refining",
+  "preparing_auto": "Preparing (auto glossary/style)",
   "translating_step": "Translating ({{step}}/{{total}})",
   "refining_step": "Refining ({{step}}/{{total}})",
   "validation_failed_log": "❌ Validation failed: {{message}}",
@@ -233,6 +234,8 @@
   "preflight_reason_instructions": "No custom instructions selected: the translation keeps a neutral default tone. A preset can hold the register and voice of the book from start to finish.",
   "preflight_warning_small_model_tagged": "{{model}} is a small model and this {{ext}} still carries all its formatting. High risk of broken formatting or missing text. Plain Text Mode is strongly advised.",
   "preflight_warning_action": "Enable Plain Text Mode",
+  "preflight_danger_same_language": "Source and target language are both {{lang}}: the LLM would rewrite the book in the language it is already in. Pick a different target language before launching.",
+  "preflight_danger_action": "Change the languages",
   "preflight_modal_intro": "These options can improve this translation. Launch as is, or adjust them first.",
   "preflight_modal_launch": "Launch anyway",
   "preflight_modal_enable": "Enable",

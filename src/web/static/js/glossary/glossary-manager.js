@@ -269,6 +269,12 @@ async function refreshDropdown() {
     noneOpt.textContent = t('settings:select_none');
     select.appendChild(noneOpt);
 
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '__auto__';
+    autoOpt.textContent = t('settings:glossary_auto_option');
+    autoOpt.setAttribute('data-i18n', 'settings:glossary_auto_option');
+    select.appendChild(autoOpt);
+
     for (const g of glossaries) {
         const opt = document.createElement('option');
         opt.value = String(g.id);
@@ -281,7 +287,7 @@ async function refreshDropdown() {
     }
 
     const stillExists = glossaries.some((g) => String(g.id) === previous);
-    select.value = stillExists ? previous : '';
+    select.value = (previous === '__auto__' || stillExists) ? previous : '';
     refreshGlossaryInfoCard();
     select.dispatchEvent(new Event('change', { bubbles: true }));
 }
@@ -295,7 +301,7 @@ function refreshGlossaryInfoCard() {
     const select = $('glossarySelect');
     if (!card || !select) return;
     const id = select.value || '';
-    if (!id) {
+    if (!id || id === '__auto__') {
         card.style.display = 'none';
         card.innerHTML = '';
         card.classList.remove('is-warning');

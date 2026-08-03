@@ -15,6 +15,7 @@ Give the model a **reusable writing style** — register, sentence rhythm, image
 - [The dimensions](#the-dimensions)
 - [Why instructions stay abstract](#why-instructions-stay-abstract)
 - [Sampling reference](#sampling-reference)
+- [Auto mode](#auto-mode)
 - [The extended YAML format](#the-extended-yaml-format)
 - [Manual authoring](#manual-authoring)
 - [Editing and the manual-override state](#editing-and-the-manual-override-state)
@@ -248,6 +249,24 @@ Each file's excerpts are pulled independently with `extract_samples_from_upload(
 If a file yields no usable text it is skipped with a warning; if a file's budget can't afford `sample_count` excerpts of at least 1200 characters, the excerpt count is reduced (or the whole file is sent if it's shorter than its budget) and a warning is added. If every uploaded file fails, the endpoint returns 400 instead of calling the LLM.
 
 The LLM call itself reuses the provider/model/key already configured for translation (context window fixed at 16384, independent of `OLLAMA_NUM_CTX`) — you don't need a separate key for extraction.
+
+---
+
+## Auto mode
+
+Auto mode skips the whole extract-review-save workflow above. Pick **Auto — match this document's style** in the style dropdown (Translate tab, or Settings → Translation Options) and the server derives a throwaway style block from the document you are about to translate, right before the first chunk is sent — no file upload, no candidate-rules table, no preset saved to `Custom_Instructions/`.
+
+- **Where to select it.** It's a third option in the same dropdown as your saved presets, next to `None`: `Auto — match this document's style`.
+- **Cost.** Exactly one extra LLM call, on the job's own provider/model, run before the first chunk. While it runs, the progress header reads **Preparing (auto glossary/style)** and the bar stays at 0% — there is no chunk to advance yet.
+- **Nothing is reviewed, nothing is saved.** The assembled instructions live only inside that job (and its checkpoint): resuming an interrupted job reuses the same derived style rather than recomputing it, so the voice doesn't shift partway through a resumed book.
+- **An explicit preset always wins.** Select a real, saved style and Auto is ignored for that job.
+- **Runs in refine-only mode too**, unlike auto-glossary (see [docs/GLOSSARY.md](GLOSSARY.md#auto-mode)): the already-translated text is sampled directly, with the source language treated as the target language, so the derived rules describe "keep this text's own voice" rather than a source-to-target change.
+- **Not available in Quick Test or Sample & Compare.** Both are meant to stay instant; an `Auto` selection there is treated as `None`.
+- **The abstraction lint filter still applies.** Only rules the linter leaves unflagged (see [Why instructions stay abstract](#why-instructions-stay-abstract)) are assembled — a flagged rule (quoting the book, listing specific words, too specific to be a tendency, ...) is silently dropped rather than applied, exactly the filter the manual extraction endpoint applies before showing you a preview.
+- **On failure or timeout,** the job proceeds with no style instructions injected, and a `⚠️` line appears in the log so you know why nothing was applied.
+- **Always `source` mode.** Auto has no way to pick a separate reference author, so it always treats the document being translated as its own style source (see [The two modes](#the-two-modes)).
+
+**The quality tradeoff.** With no review step, a small or unreliable model can return low-quality rules on every single job, silently spending a call's worth of tokens for nothing useful. The lint filter blocks the clearest abstraction violations (quoted text, word lists, proper nouns), but it cannot tell a plausible-sounding bad rule from a good one. If the `⚠️` "no usable style rules found" line shows up often, or the translated prose picks up a stylistic tic you didn't ask for, turn Auto off and use a reviewed preset instead.
 
 ---
 

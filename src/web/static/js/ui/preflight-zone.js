@@ -82,22 +82,36 @@ function clearDismissed() {
     }
 }
 
-function renderWarning(rule) {
+function renderWarningCard(rule) {
+    // t() output carries a model name, a language and a file extension, all
+    // user-influenced.
+    const reason = DomHelpers.escapeHtml(t(rule.reasonKey, rule.params));
+    const label = DomHelpers.escapeHtml(t(rule.labelKey, rule.params));
+    // 'danger' outranks 'warning': the run is misconfigured rather than risky,
+    // so the card wears the same brick red as the destructive buttons.
+    const variant = rule.severity === 'danger' ? ' preflight-warning--danger' : '';
+
+    return `<div class="preflight-warning${variant}">`
+        + `<span>${reason}</span>`
+        + `<button type="button" class="preflight-warning__action"`
+        + ` data-preflight-action="${DomHelpers.escapeHtml(rule.id)}">${label}</button>`
+        + `</div>`;
+}
+
+// One card per non-advice rule rather than the single highest one: a same-language
+// run and a small-model-on-tagged-file run can apply at once, and each names a
+// different control to fix.
+function renderWarnings(rules) {
     const container = DomHelpers.getElement('preflightWarning');
     if (!container) return;
 
-    if (!rule) {
+    if (!rules.length) {
         container.innerHTML = '';
         container.hidden = true;
         return;
     }
 
-    // t() output carries a model name and a file extension, both user-influenced.
-    const reason = DomHelpers.escapeHtml(t(rule.reasonKey, rule.params));
-    const label = DomHelpers.escapeHtml(t(rule.labelKey, rule.params));
-    container.innerHTML = `<span>${reason}</span>`
-        + `<button type="button" class="preflight-warning__action"`
-        + ` data-preflight-action="${DomHelpers.escapeHtml(rule.id)}">${label}</button>`;
+    container.innerHTML = rules.map(renderWarningCard).join('');
     container.hidden = false;
 }
 
@@ -242,7 +256,7 @@ function refresh() {
 
     visibleRules = new Map(rules.map(rule => [rule.id, rule]));
 
-    renderWarning(rules.find(rule => rule.severity === 'warning') || null);
+    renderWarnings(rules.filter(rule => rule.severity !== 'advice'));
     renderAdvice(rules.filter(rule => rule.severity === 'advice'));
     renderDismissedLink(dismissed.length);
     // Re-resolved here too: `localeChanged` routes through this function, and the
@@ -321,7 +335,14 @@ export const PreflightZone = {
     initialize() {
         for (const id of WATCHED_IDS) {
             const el = DomHelpers.getElement(id);
-            if (el) el.addEventListener('change', scheduleRefresh);
+            if (!el) continue;
+            el.addEventListener('change', scheduleRefresh);
+            // Free-text controls (the custom language fields) only fire `change`
+            // on blur, which would leave the same-language warning a beat behind
+            // the settings summary right above it.
+            if (el.tagName === 'INPUT' && el.type === 'text') {
+                el.addEventListener('input', scheduleRefresh);
+            }
         }
 
         // parallelWorkers is not in WATCHED_IDS (it is .env-backed, so the
@@ -336,6 +357,11 @@ export const PreflightZone = {
         window.addEventListener('customInstructionsLoaded', scheduleRefresh);
         window.addEventListener('fileListChanged', scheduleRefresh);
         window.addEventListener('localeChanged', scheduleRefresh);
+        // The per-file language dropdowns in the Selected file card are the second
+        // place a run's languages can be set, and they write straight to the file
+        // object: no form control changes, so none of the WATCHED_IDS listeners
+        // above ever fire. This is the signal _updateFileField() emits instead.
+        window.addEventListener('translationOptionsChanged', scheduleRefresh);
 
         // One delegated listener covers the chips, the dismissal buttons, the
         // dismissed-tips link and the Adjust/Collapse toggle alike.

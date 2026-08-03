@@ -51,6 +51,7 @@
 
   "translating": "Traduction en cours",
   "refining": "Raffinement en cours",
+  "preparing_auto": "Préparation (glossaire/style auto)",
   "translating_step": "Traduction ({{step}}/{{total}})",
   "refining_step": "Raffinement ({{step}}/{{total}})",
   "validation_failed_log": "❌ Échec de la validation : {{message}}",
@@ -233,6 +234,8 @@
   "preflight_reason_instructions": "Aucune instruction personnalisée sélectionnée : la traduction conserve un ton neutre par défaut. Un préréglage peut préserver le registre et la voix du livre du début à la fin.",
   "preflight_warning_small_model_tagged": "{{model}} est un petit modèle et ce fichier {{ext}} conserve encore toute sa mise en forme. Risque élevé de mise en forme cassée ou de texte manquant. Le Mode texte brut est vivement conseillé.",
   "preflight_warning_action": "Activer le Mode texte brut",
+  "preflight_danger_same_language": "La langue source et la langue cible sont toutes les deux {{lang}} : le LLM réécrirait le livre dans la langue où il est déjà. Choisissez une autre langue cible avant de lancer.",
+  "preflight_danger_action": "Changer les langues",
   "preflight_modal_intro": "Ces options peuvent améliorer cette traduction. Lancez-la telle quelle, ou ajustez-les d'abord.",
   "preflight_modal_launch": "Lancer quand même",
   "preflight_modal_enable": "Activer",

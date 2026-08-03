@@ -73,9 +73,11 @@
   "glossary_manage_title": "Gérer les glossaires",
   "custom_instructions_manage_title": "Gérer les styles",
   "glossary_help": "Injecte une liste de termes source-vers-cible dans le prompt de chaque segment pour garantir la cohérence des traductions d'entités. Cliquez sur <strong>Gérer</strong> pour créer, modifier ou extraire automatiquement des termes.",
+  "glossary_auto_option": "Auto — générer à partir de ce document",
 
   "custom_instructions_label": "Instructions personnalisées",
   "custom_instructions_help": "Sélectionnez des instructions personnalisées dans le dossier <code>Custom_Instructions/</code>. Utilisez des fichiers <code>.yaml</code> avec les clés <code>translation:</code> et/ou <code>refinement:</code> pour cibler une phase. Les fichiers <code>.txt</code> hérités fonctionnent toujours et s'appliquent aux deux phases.",
+  "style_auto_option": "Auto — respecter le style de ce document",
   "custom_instructions_load_failed": "Échec de l'ouverture du dossier Custom_Instructions",
   "default_config_load_failed": "Échec du chargement de la configuration par défaut",
 

@@ -520,7 +520,7 @@
                     <div id="settingsSummary" style="margin-top: 12px; text-align: center; font-size: 0.8125rem; color: var(--text-muted-light); line-height: 1.5;"></div>
 
                     <!-- Both containers below are painted by preflight-zone.js -->
-                    <div id="preflightWarning" class="preflight-warning" hidden></div>
+                    <div id="preflightWarning" class="preflight-warnings" hidden></div>
                     <div id="preflightAdvice" class="preflight-advice" hidden></div>
 
                     <!-- Adjust/Collapse toggle. preflight-zone.js swaps the label span
@@ -583,6 +583,7 @@
                                 <div class="neu-inset-light" style="flex: 1;">
                                     <select id="glossarySelect" class="form-control" style="margin-bottom: 0;">
                                         <option value="" data-i18n="settings:select_none">None</option>
+                                        <option value="__auto__" data-i18n="settings:glossary_auto_option">Auto — build from this document</option>
                                     </select>
                                 </div>
                                 <button type="button" id="glossaryRefreshBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list">
@@ -607,6 +608,7 @@
                                 <div class="neu-inset-light" style="flex: 1;">
                                     <select id="customInstructionSelect" class="form-control" style="margin-bottom: 0;">
                                         <option value="" data-i18n="settings:select_none">None</option>
+                                        <option value="__auto__" data-i18n="settings:style_auto_option">Auto — match this document's style</option>
                                         <!-- Options populated dynamically via JavaScript -->
                                     </select>
                                 </div>

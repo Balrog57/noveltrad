@@ -51,6 +51,7 @@
 
   "translating": "翻译中",
   "refining": "润色中",
+  "preparing_auto": "准备中（自动术语表/文体）",
   "translating_step": "翻译中 ({{step}}/{{total}})",
   "refining_step": "润色中 ({{step}}/{{total}})",
   "validation_failed_log": "❌ 校验失败：{{message}}",
@@ -233,6 +234,8 @@
   "preflight_reason_instructions": "未选择自定义指令：翻译将保持中性的默认语气。预设可以让全书从头到尾保持一致的语域和语气。",
   "preflight_warning_small_model_tagged": "{{model}} 是一个小型模型，而此 {{ext}} 文件仍保留全部格式。格式损坏或文本丢失的风险很高，强烈建议使用纯文本模式。",
   "preflight_warning_action": "启用纯文本模式",
+  "preflight_danger_same_language": "源语言和目标语言都是 {{lang}}：大模型只会用原本的语言把这本书重写一遍。启动前请选择另一种目标语言。",
+  "preflight_danger_action": "修改语言",
   "preflight_modal_intro": "这些选项可以改善这次翻译效果。可以照常启动，也可以先调整它们。",
   "preflight_modal_launch": "仍然启动",
   "preflight_modal_enable": "启用",

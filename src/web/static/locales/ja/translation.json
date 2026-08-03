@@ -51,6 +51,7 @@
 
   "translating": "翻訳中",
   "refining": "推敲中",
+  "preparing_auto": "準備中（自動用語集・文体）",
   "translating_step": "翻訳中 ({{step}}/{{total}})",
   "refining_step": "推敲中 ({{step}}/{{total}})",
   "validation_failed_log": "❌ 検証に失敗しました: {{message}}",
@@ -233,6 +234,8 @@
   "preflight_reason_instructions": "カスタム指示が選択されていません：翻訳は中立的な既定のトーンのままになります。プリセットを使うと、本全体の文体と語り口を最初から最後まで一定に保てます。",
   "preflight_warning_small_model_tagged": "{{model}}は小規模モデルであり、この{{ext}}にはまだすべての書式が残っています。書式の破損やテキスト欠落のリスクが高いため、プレーンテキストモードを強くお勧めします。",
   "preflight_warning_action": "プレーンテキストモードを有効にする",
+  "preflight_danger_same_language": "元の言語と翻訳先の言語がどちらも{{lang}}です。このままではLLMがすでに書かれている言語で本を書き直すだけになります。実行する前に別の翻訳先言語を選んでください。",
+  "preflight_danger_action": "言語を変更する",
   "preflight_modal_intro": "これらのオプションでこの翻訳を改善できます。このまま実行するか、先に調整してください。",
   "preflight_modal_launch": "このまま実行",
   "preflight_modal_enable": "有効にする",

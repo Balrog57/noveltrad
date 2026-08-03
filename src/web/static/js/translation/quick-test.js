@@ -64,13 +64,18 @@ function readGlobalLlmConfig() {
     if (provider === 'ollama') apiEndpoint = (DomHelpers.getValue('apiEndpoint') || '').trim() || undefined;
     else if (provider === 'openai') apiEndpoint = (DomHelpers.getValue('openaiEndpoint') || '').trim() || undefined;
 
+    // Quick Test deliberately does not run auto mode (kept cheap and instant, decision D9):
+    // the '__auto__' sentinel is treated as "none" here rather than triggering the extra LLM passes.
+    const ci = (DomHelpers.getValue('customInstructionSelect') || '').trim();
+    const gid = (DomHelpers.getValue('glossarySelect') || '').trim();
+
     return {
         provider,
         model,
         api_key: '__USE_ENV__',
         api_endpoint: apiEndpoint,
-        custom_instruction_file: (DomHelpers.getValue('customInstructionSelect') || '').trim(),
-        glossary_id: (DomHelpers.getValue('glossarySelect') || '').trim() || null,
+        custom_instruction_file: ci === '__auto__' ? '' : ci,
+        glossary_id: (!gid || gid === '__auto__') ? null : gid,
     };
 }
 

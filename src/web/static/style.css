@@ -21,6 +21,11 @@
     --danger-light: #ef4444;
     --danger-light-hover: #dc2626;
     --danger-light-border: #dc2626;
+    /* Tinted surface + readable ink for the same brick red, used by the
+       pre-flight "source and target language are identical" card. Mirrors the
+       amber pair below so the two escalation levels are built the same way. */
+    --danger-light-bg: rgba(239, 68, 68, 0.12);
+    --danger-light-text: #b91c1c;
     /* Warning/amber palette — same amber already used ad hoc by
        .sample-warning and the glossary "is-warning" card (#f59e0b / #92400e),
        now named so the pre-flight zone's warning card can consume it without
@@ -91,6 +96,11 @@ html.dark {
     --danger-light: #dc2626;
     --danger-light-hover: #b91c1c;
     --danger-light-border: #b91c1c;
+    /* Higher alpha and a lighter ink for the same reason as the amber pair
+       below: the tint has to stay visible on #2a2a2a and #b91c1c text would not
+       be readable on it. Same red as .sample-warning-error's dark variant. */
+    --danger-light-bg: rgba(239, 68, 68, 0.18);
+    --danger-light-text: #fca5a5;
     /* Slightly higher alpha than light mode so the tint stays visible against
        the dark card background; text switches to the lighter amber used by
        .sample-warning's dark variant so it stays readable on #2a2a2a. */
@@ -1157,12 +1167,23 @@ select.form-control {
     outline-offset: 2px;
 }
 
+/* Stack of launch warning cards (#preflightWarning). A layout-only wrapper: it
+   holds one .preflight-warning per non-advice rule, because a same-language run
+   and a small-model-on-a-tagged-file run can apply to the same launch and each
+   points at a different control. */
+.preflight-warnings {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+.preflight-warnings[hidden] { display: none; }
+
 /* Launch warning card. Same amber family as .sample-warning /
    .glossary-info-card.is-warning, now behind the --warning-light-* tokens
    defined in :root / html.dark instead of the literal #f59e0b / #92400e
    those two rules use inline. */
 .preflight-warning {
-    margin-top: 8px;
     padding: 10px 14px;
     text-align: left;
     background: var(--warning-light-bg);
@@ -1172,7 +1193,15 @@ select.form-control {
     font-size: 0.8125rem;
     line-height: 1.5;
 }
-.preflight-warning[hidden] { display: none; }
+
+/* Escalated variant: the run is not merely risky, it is misconfigured (source
+   language identical to the target). Wears the same brick red as .btn-danger and
+   the delete actions, through the shared --danger-light-* tokens. */
+.preflight-warning--danger {
+    background: var(--danger-light-bg);
+    border-left-color: var(--danger-light);
+    color: var(--danger-light-text);
+}
 
 .preflight-warning__action {
     display: inline;
@@ -1335,6 +1364,15 @@ select.form-control {
     background: var(--warning-light-bg);
     border-left-color: var(--warning-light-border);
     color: var(--warning-light-text);
+}
+
+/* One step above the amber warning, for the rule that means the run would be
+   pointless rather than imperfect. Same brick red as .preflight-warning--danger
+   so the inline zone and this dialog say it the same way. */
+.preflight-modal__rule--danger {
+    background: var(--danger-light-bg);
+    border-left-color: var(--danger-light);
+    color: var(--danger-light-text);
 }
 
 .preflight-modal__rule-text {
@@ -4487,7 +4525,12 @@ html.dark .file-test-btn { color: #a5b4fc; }
 }
 .quick-test-error { color: #dc2626; }
 
-.quick-test-spinner {
+/* Shared "work in flight" ring. `.quick-test-spinner` is the original name,
+   kept so its existing markup keeps working; `.inline-spinner` is the generic
+   alias any label can append (e.g. the progress header while auto glossary /
+   style run, where the bar has no chunk to advance yet). */
+.quick-test-spinner,
+.inline-spinner {
     display: inline-block;
     width: 14px;
     height: 14px;
@@ -4497,6 +4540,15 @@ html.dark .file-test-btn { color: #a5b4fc; }
     border-radius: 50%;
     vertical-align: middle;
     animation: spin 0.8s linear infinite;
+}
+
+/* Users who ask for reduced motion get a static ring rather than a rotating
+   one — the label text already says what is happening. */
+@media (prefers-reduced-motion: reduce) {
+    .quick-test-spinner,
+    .inline-spinner {
+        animation: none;
+    }
 }
 
 /* ========================================
@@ -4542,7 +4594,8 @@ html.dark .file-test-btn { color: #a5b4fc; }
 
     /* Only exception: a rotating square ring reads as a rendering bug,
        not as a design choice. */
-    .quick-test-spinner {
+    .quick-test-spinner,
+    .inline-spinner {
         border-radius: 50% !important;
     }
 }

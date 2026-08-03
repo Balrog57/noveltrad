@@ -73,9 +73,11 @@
   "glossary_manage_title": "用語集を管理",
   "custom_instructions_manage_title": "スタイルを管理",
   "glossary_help": "厳選された原文と訳文の対訳リストを各チャンクのプロンプトに挿入し、固有名詞の翻訳の一貫性を保ちます。<strong>管理</strong>をクリックして用語を作成、編集、または自動抽出してください。",
+  "glossary_auto_option": "自動 — この文書から作成",
 
   "custom_instructions_label": "カスタム指示",
   "custom_instructions_help": "<code>Custom_Instructions/</code> フォルダからカスタム指示を選択します。<code>translation:</code> または <code>refinement:</code> キーを持つ <code>.yaml</code> ファイルを使うと、フェーズごとにプリセットを切り分けられます。従来の <code>.txt</code> ファイルもそのまま動作し、両方のフェーズに適用されます。",
+  "style_auto_option": "自動 — この文書のスタイルに合わせる",
   "custom_instructions_load_failed": "Custom_Instructions フォルダを開けませんでした",
   "default_config_load_failed": "デフォルト設定の読み込みに失敗しました",
 

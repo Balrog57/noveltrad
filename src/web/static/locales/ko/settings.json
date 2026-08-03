@@ -73,9 +73,11 @@
   "glossary_manage_title": "용어집 관리",
   "custom_instructions_manage_title": "스타일 관리",
   "glossary_help": "엔티티 번역의 일관성을 유지하기 위해 모든 청크의 프롬프트에 큐레이션된 원본-대상 용어 목록을 주입합니다. <strong>관리</strong>를 클릭하여 용어를 만들거나 편집하거나 자동 추출하세요.",
+  "glossary_auto_option": "자동 — 이 문서에서 생성",
 
   "custom_instructions_label": "사용자 지정 지침",
   "custom_instructions_help": "<code>Custom_Instructions/</code> 폴더에서 사용자 지정 지침을 선택합니다. <code>translation:</code> 와(과)/또는 <code>refinement:</code> 키가 있는 <code>.yaml</code> 파일을 사용하면 단계별로 프리셋을 분리할 수 있습니다. 기존 <code>.txt</code> 파일은 그대로 작동하며 두 단계 모두에 적용됩니다.",
+  "style_auto_option": "자동 — 이 문서의 문체에 맞춤",
   "custom_instructions_load_failed": "Custom_Instructions 폴더를 열지 못했습니다",
   "default_config_load_failed": "기본 구성을 로드하지 못했습니다",
 

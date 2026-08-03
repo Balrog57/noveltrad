@@ -63,16 +63,20 @@ function getTranslationConfig(file) {
     const operation = file.operation || 'translate';
     const refineAfter = operation === 'translate' && !!file.refineAfter;
 
+    const ciValue = DomHelpers.getValue('customInstructionSelect') || '';
     const promptOptions = {
         preserve_technical_content: true,
         text_cleanup: DomHelpers.getElement('textCleanup')?.checked || false,
         refine: refineAfter,
         plain_text_mode: DomHelpers.getElement('plainTextMode')?.checked || false,
-        custom_instruction_file: DomHelpers.getValue('customInstructionSelect') || ''
+        custom_instruction_file: ciValue === '__auto__' ? '' : ciValue
     };
+    if (ciValue === '__auto__') promptOptions.style_auto = true;
 
     const glossaryId = DomHelpers.getValue('glossarySelect');
-    if (glossaryId) {
+    if (glossaryId === '__auto__') {
+        promptOptions.glossary_auto = true;
+    } else if (glossaryId) {
         promptOptions.glossary_id = parseInt(glossaryId, 10);
     }
 

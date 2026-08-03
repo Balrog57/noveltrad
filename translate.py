@@ -20,9 +20,112 @@ from src.utils.unified_logger import setup_cli_logger, LogType
 from src.tts.tts_config import TTSConfig, TTS_ENABLED, TTS_VOICE, TTS_RATE, TTS_BITRATE, TTS_OUTPUT_FORMAT
 from src.persistence.checkpoint_manager import CheckpointManager
 from src.core.adapters import translate_file, refine_file
+from src.core import auto_prep
+from src.core.auto_prep import build_auto_prompt_options
+from src.core.llm_client import create_llm_client
 from src.utils.notifier import notify, EVENT_SUCCESS, EVENT_FAILURE
 import time
 import uuid
+
+
+def _apply_cli_auto_prep(args, prompt_options, logger) -> None:
+    """Merge auto glossary/style into `prompt_options` (in place). Never raises.
+
+    Mirrors the web path's auto mode (see plan/PLAN_AutoGlossaryStyle.md,
+    Phase 4) for the CLI: `--auto-glossary` and `--auto-style` each derive a
+    throwaway glossary/style block from the input document with one extra LLM
+    call, and merge the result straight into `prompt_options` — nothing is
+    saved, nothing is reviewed.
+
+    Precedence, each logged as a warning when a flag is dropped:
+      - `--auto-glossary` + `--glossary`     -> auto-glossary skipped
+        ("⚠️ --auto-glossary ignored: --glossary was provided.")
+      - `--auto-glossary` + `--refine-only`  -> auto-glossary skipped
+        ("⚠️ --auto-glossary ignored in --refine-only mode.")
+    `--auto-style` is honoured in every mode, including `--refine-only`: the
+    refinement block reaches `refine_file` through the same `prompt_options`.
+
+    Language handling mirrors decision D7 of the plan: in `--refine-only`
+    mode the input is already in the target language, so
+    `source_language := args.target_lang` for the style pass.
+
+    Event-loop discipline: this helper owns its own `asyncio.run(...)`, fully
+    closed before the translation starts. The `LLMClient` is created *and*
+    closed inside that single coroutine — an `LLMClient` built in one event
+    loop and closed in another would leak httpx state.
+
+    The whole body is wrapped in try/except so a failure here only logs a
+    warning and leaves `prompt_options` untouched; it can never make the
+    translation job fail.
+    """
+    try:
+        want_glossary = bool(getattr(args, "auto_glossary", False))
+        want_style = bool(getattr(args, "auto_style", False))
+
+        if want_glossary and getattr(args, "glossary", None):
+            logger.warning("⚠️ --auto-glossary ignored: --glossary was provided.")
+            want_glossary = False
+
+        if want_glossary and getattr(args, "refine_only", False):
+            logger.warning("⚠️ --auto-glossary ignored in --refine-only mode.")
+            want_glossary = False
+
+        if not want_glossary and not want_style:
+            return
+
+        source_text = auto_prep.extract_source_text(file_path=args.input)
+        if not source_text or not source_text.strip():
+            logger.warning(
+                "⚠️ Auto mode: could not read the source document — "
+                "translating without an auto glossary or style."
+            )
+            return
+
+        refine_only = bool(getattr(args, "refine_only", False))
+        source_language = args.target_lang if refine_only else args.source_lang
+        target_language = args.target_lang
+
+        async def _run():
+            client = create_llm_client(
+                args.provider,
+                args.gemini_api_key,
+                args.api_endpoint,
+                args.model,
+                openai_api_key=args.openai_api_key,
+                openrouter_api_key=args.openrouter_api_key,
+                mistral_api_key=args.mistral_api_key,
+                deepseek_api_key=args.deepseek_api_key,
+                poe_api_key=args.poe_api_key,
+                nim_api_key=args.nim_api_key,
+                context_window=auto_prep.AUTO_PREP_CONTEXT_WINDOW,
+            )
+            if client is None:
+                logger.warning(
+                    f"⚠️ Auto mode: unknown LLM provider '{args.provider}' — "
+                    "translating without an auto glossary or style."
+                )
+                return {}
+            try:
+                return await build_auto_prompt_options(
+                    source_text=source_text,
+                    source_language=source_language,
+                    target_language=target_language,
+                    want_glossary=want_glossary,
+                    want_style=want_style,
+                    llm_client=client,
+                    log=lambda key, msg: logger.info(msg),
+                )
+            finally:
+                try:
+                    await client.close()
+                except Exception as close_exc:
+                    logger.debug(f"auto prep client close failed: {close_exc}")
+
+        fragment = asyncio.run(_run())
+        if fragment:
+            prompt_options.update(fragment)
+    except Exception as exc:
+        logger.warning(f"⚠️ Auto mode failed: {exc} — translating without it.")
 
 
 if __name__ == "__main__":
@@ -55,6 +158,15 @@ if __name__ == "__main__":
     prompt_group.add_argument("--refine", action="store_true", help="Enable refinement pass: runs a second pass to polish translation quality and literary style.")
     prompt_group.add_argument("--refine-only", action="store_true", dest="refine_only", help="Run ONLY a refinement pass on an already-translated file (skips the translation phase). The input file is assumed to already be in the target language.")
     prompt_group.add_argument("--glossary", default=None, help="Path to a glossary file (.json or .csv) injected per-chunk to keep entity translations consistent.")
+    prompt_group.add_argument(
+        "--auto-glossary", action="store_true", dest="auto_glossary",
+        help="Derive a throwaway glossary from the input document with one extra LLM call "
+             "before translating (no file, nothing saved). Ignored when --glossary is given "
+             "or with --refine-only.")
+    prompt_group.add_argument(
+        "--auto-style", action="store_true", dest="auto_style",
+        help="Derive style instructions from the input document with one extra LLM call "
+             "before translating (no preset file, nothing saved).")
 
     # TTS (Text-to-Speech) arguments
     tts_group = parser.add_argument_group('TTS Options', 'Text-to-Speech audio generation')
@@ -211,6 +323,10 @@ if __name__ == "__main__":
                 logger.warning(f"Glossary file {args.glossary} contained no usable entries")
         except Exception as e:
             parser.error(f"Failed to load glossary {args.glossary}: {e}")
+
+    # Auto glossary / auto style: derive throwaway prompt_options from the
+    # input document itself, with one extra LLM call per requested pass.
+    _apply_cli_auto_prep(args, prompt_options, logger)
 
     start_time = time.time()
     try:

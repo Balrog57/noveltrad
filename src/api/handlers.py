@@ -5,6 +5,7 @@ import os
 import re
 import time
 import asyncio
+import logging
 import tempfile
 import threading
 from datetime import datetime
@@ -17,8 +18,10 @@ from src.utils.custom_instructions import (
     load_custom_instructions,
     is_safe_filename,
 )
+from src.core import auto_prep
 from src.core.llm import OpenRouterProvider
 from src.core.llm.exceptions import RateLimitError
+from src.core.llm_client import create_llm_client
 from src.config import AUTO_PAUSE_ON_RATE_LIMIT, RATE_LIMIT_AUTO_RESUME_DELAY
 from src.core.adapters import translate_file, refine_file
 from src.core.progress import snapshot_from_legacy_stats
@@ -26,6 +29,11 @@ from src.tts.tts_config import TTSConfig
 from src.utils.notifier import notify, EVENT_SUCCESS, EVENT_FAILURE, EVENT_INTERRUPTION
 from .completion_status import classify_completion
 from .websocket import emit_update
+
+# Module logger for diagnostics that must never reach the user-facing job log
+# (the job log is driven by `_log_message_callback`, which only exists inside a
+# running job).
+_logger = logging.getLogger("api.handlers")
 
 
 def resolve_custom_instructions(prompt_options, custom_instructions_dir, log_callback):
@@ -99,6 +107,201 @@ def resolve_custom_instructions(prompt_options, custom_instructions_dir, log_cal
                 )
 
     return translation_instructions, refinement_instructions
+
+
+def _auto_prep_wants(config):
+    """Decide whether each auto pass should run for this job.
+
+    Calls `auto_prep.normalize_auto_flags(config['prompt_options'])` — which also
+    consumes the `__auto__` sentinels sent by stale/hand-written clients — then
+    applies the precedence rules of the plan (D6, D7):
+
+      - an explicitly selected glossary always wins. By the time this runs, that
+        glossary has already been snapshotted into `prompt_options['glossary_terms']`
+        by the block just above the call site, so a non-empty snapshot means
+        "a real glossary already won"; `glossary_id` is checked too for the case
+        where the snapshot could not be taken;
+      - auto-glossary is skipped in `refine_only` mode (the input is already in
+        the target language, so source→target term pairs are meaningless);
+      - an explicitly selected custom-instructions preset always wins over
+        auto-style.
+
+    Creates `config['prompt_options']` if absent. Pure apart from that and the
+    documented in-place normalization. Never raises.
+
+    Args:
+        config (dict): the job's translation configuration.
+
+    Returns:
+        tuple[bool, bool]: (want_glossary, want_style).
+    """
+    try:
+        prompt_options = config.get('prompt_options')
+        if not isinstance(prompt_options, dict):
+            prompt_options = {}
+            config['prompt_options'] = prompt_options
+
+        glossary_requested, style_requested = auto_prep.normalize_auto_flags(prompt_options)
+
+        want_glossary = bool(
+            glossary_requested
+            and not prompt_options.get('glossary_terms')
+            and not prompt_options.get('glossary_id')
+            and not config.get('refine_only')
+        )
+        want_style = bool(
+            style_requested
+            and not (prompt_options.get('custom_instruction_file') or '').strip()
+        )
+        return want_glossary, want_style
+    except Exception as exc:  # pragma: no cover - defensive: never raise
+        _logger.debug("auto prep want-detection failed: %s", exc, exc_info=True)
+        return False, False
+
+
+# How often the auto passes tell the UI they are still alive. They run before
+# the first chunk exists, so nothing else emits for as long as they take.
+_AUTO_PREP_HEARTBEAT_S = 2.0
+
+
+async def _auto_prep_heartbeat(progress_callback, interval):
+    """Re-emit the "preparing" state every `interval` seconds until cancelled.
+
+    Without this tick the whole progress panel is a still image for as long as
+    the two auto passes take: the bar cannot move (no chunk exists yet) and the
+    elapsed timer only advances when something emits. A frozen panel reads as a
+    hung job, which is exactly what the auto passes are not.
+    """
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            progress_callback(True)
+        except Exception as exc:
+            _logger.debug("auto prep heartbeat emit failed: %s", exc, exc_info=True)
+
+
+async def _apply_auto_prep(config, log_callback, progress_callback=None):
+    """Compute the auto glossary/style for this job and merge them in place.
+
+    Runs before `checkpoint_manager.start_job(...)` so the derived snapshot is
+    persisted with the job config and a resume never recomputes it (D5).
+
+    Invariants:
+      - the whole body is inside `try/except Exception`: any unexpected error is
+        logged and swallowed. This function can never make a translation job fail;
+      - only `config['prompt_options']` is mutated;
+      - no LLM client is created and no LLM call is made when neither auto pass
+        is wanted, and `progress_callback` is not called either.
+
+    Args:
+        config (dict): the job's translation configuration, mutated in place.
+        log_callback: callable(message_key, message_content="", data=None),
+            matching `_log_message_callback`'s signature.
+        progress_callback: optional callable(active: bool) used to advertise the
+            "preparing" state to the UI. Called with True when the passes start
+            (then periodically while they run) and exactly once with False when
+            they end, whatever the outcome. None disables the feature — the CLI
+            has no progress panel to drive.
+    """
+    def _signal(active):
+        if progress_callback is None:
+            return
+        try:
+            progress_callback(active)
+        except Exception as exc:
+            _logger.debug("auto prep progress emit failed: %s", exc, exc_info=True)
+
+    try:
+        want_glossary, want_style = _auto_prep_wants(config)
+        if not want_glossary and not want_style:
+            return
+
+        # From here on the job is doing invisible work; say so before the first
+        # blocking call, and clear the flag on every exit path below.
+        _signal(True)
+        try:
+            source_text = auto_prep.extract_source_text(
+                file_path=config.get('file_path'),
+                text=config.get('text'),
+            )
+            if not source_text or not source_text.strip():
+                log_callback(
+                    "auto_prep_no_text",
+                    "⚠️ Auto mode: could not read the source document — "
+                    "translating without an auto glossary or style."
+                )
+                return
+
+            source_language = config.get('source_language')
+            target_language = config.get('target_language')
+            if config.get('refine_only'):
+                # D7: the input is already in the target language, so the style pass
+                # must read it as such ("keep this text's voice").
+                source_language = target_language
+
+            llm_provider = config.get('llm_provider', 'ollama')
+            client = create_llm_client(
+                llm_provider,
+                config.get('gemini_api_key', ''),
+                config['llm_api_endpoint'],
+                config['model'],
+                openai_api_key=config.get('openai_api_key', ''),
+                openrouter_api_key=config.get('openrouter_api_key', ''),
+                mistral_api_key=config.get('mistral_api_key', ''),
+                deepseek_api_key=config.get('deepseek_api_key', ''),
+                poe_api_key=config.get('poe_api_key', ''),
+                nim_api_key=config.get('nim_api_key', ''),
+                context_window=auto_prep.AUTO_PREP_CONTEXT_WINDOW,
+            )
+            if client is None:
+                log_callback(
+                    "auto_prep_client_warning",
+                    f"⚠️ Auto mode: no LLM client could be built for provider "
+                    f"'{llm_provider}' — translating without an auto glossary or style."
+                )
+                return
+
+            heartbeat = None
+            if progress_callback is not None:
+                # Read the interval at call time so it stays tunable (and
+                # testable) rather than frozen into a default argument.
+                heartbeat = asyncio.create_task(
+                    _auto_prep_heartbeat(_signal, _AUTO_PREP_HEARTBEAT_S)
+                )
+            try:
+                fragment = await auto_prep.build_auto_prompt_options(
+                    source_text=source_text,
+                    source_language=source_language,
+                    target_language=target_language,
+                    want_glossary=want_glossary,
+                    want_style=want_style,
+                    llm_client=client,
+                    log=log_callback,
+                )
+            finally:
+                if heartbeat is not None:
+                    heartbeat.cancel()
+                    try:
+                        await heartbeat
+                    except asyncio.CancelledError:
+                        pass
+                # The client is ours: close it whatever happened, and never let a
+                # close error mask the real outcome.
+                try:
+                    await client.close()
+                except Exception as close_exc:
+                    _logger.debug("auto prep client close failed: %s", close_exc, exc_info=True)
+
+            if fragment:
+                config.setdefault('prompt_options', {}).update(fragment)
+        finally:
+            # Whatever happened, the panel must stop saying "Preparing".
+            _signal(False)
+    except Exception as exc:
+        log_callback(
+            "auto_prep_error",
+            f"⚠️ Auto mode failed: {exc} — translating without it."
+        )
 
 
 def _format_stats_summary(config, stats, verdict):
@@ -310,6 +513,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         # phase; the stored stats already carry the terminal phase/percent.
         _emit_progress(new_stats_dict, {})
 
+    def _auto_prep_progress_callback(active):
+        # Auto mode runs before the first chunk exists, so there is no chunk
+        # progress to report — only the fact that work is happening. The flag
+        # makes the header read "Preparing…" instead of a frozen "Translating
+        # 0/0", and each emit refreshes elapsed_time so the panel stays alive.
+        _emit_progress({}, {'auto_prep_active': bool(active)})
+
     def _openrouter_cost_callback(cost_data):
         """Update OpenRouter cost in state. No emit: this callback runs on the
         provider's HTTP response thread, and a cross-thread emit can overtake
@@ -355,6 +565,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             except Exception as e:
                 # Non-fatal: log later once the logger is wired in.
                 config.setdefault('prompt_options', {})['glossary_load_error'] = str(e)
+
+        # Auto mode: derive a throwaway glossary/style from this very document.
+        # Runs after the snapshot above so an explicitly selected glossary is
+        # already visible to the precedence check (D6), and before start_job so
+        # the derived snapshot is persisted with the job config — a resume
+        # reuses it instead of recomputing it (D5).
+        await _apply_auto_prep(config, _log_message_callback, _auto_prep_progress_callback)
 
     try:
         # Create checkpoint for new jobs (not for resumed jobs)
@@ -437,11 +654,14 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         glossary_terms_snapshot = config.get('prompt_options', {}).get('glossary_terms')
         glossary_load_error = config.get('prompt_options', {}).pop('glossary_load_error', None)
         if glossary_terms_snapshot:
-            glossary_name = config.get('prompt_options', {}).get('glossary_name', '?')
-            _log_message_callback(
-                "glossary_loaded",
-                f"📖 Loaded glossary '{glossary_name}' ({len(glossary_terms_snapshot)} terms)"
-            )
+            # An auto-derived glossary already announced itself with its own
+            # "🧠 Auto glossary:" line, so this one would only be a duplicate.
+            if config.get('prompt_options', {}).get('glossary_source') != 'auto':
+                glossary_name = config.get('prompt_options', {}).get('glossary_name', '?')
+                _log_message_callback(
+                    "glossary_loaded",
+                    f"📖 Loaded glossary '{glossary_name}' ({len(glossary_terms_snapshot)} terms)"
+                )
         elif glossary_load_error:
             _log_message_callback(
                 "glossary_error",
