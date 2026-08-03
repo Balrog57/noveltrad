@@ -757,7 +757,7 @@ async def _translate_all_chunks_with_checkpoint(
     if stats_callback:
         stats_callback(stats.to_dict())
 
-    from src.core.common.parallel import iter_ordered_concurrent
+    from src.core.common.parallel import aclosing, iter_ordered_concurrent
     from src.core.llm.exceptions import RateLimitError
 
     # EPUB chunks carry no cross-chunk translation context (the prompt is built
@@ -832,44 +832,47 @@ async def _translate_all_chunks_with_checkpoint(
 
     # Continuous concurrency with in-order delivery: translated_chunks stays a
     # contiguous prefix (resume-safe) while up to `workers` requests run at once.
-    async for i, result in iter_ordered_concurrent(
+    # aclosing() is required: the rate-limit branch breaks out of the loop, and
+    # only closing the generator cancels the requests still in flight.
+    async with aclosing(iter_ordered_concurrent(
         pending, workers, _translate_one, check_interruption_callback
-    ):
-        if isinstance(result, RateLimitError):
-            # Stop before appending this chunk so resume restarts at it.
-            rate_limit_error = result
-            break
-        if isinstance(result, Exception):
-            # Non-rate-limit errors propagate as before (after persisting the
-            # contiguous prefix already appended).
-            if checkpoint_manager and translation_id and file_href and translated_chunks:
-                _save_state(len(translated_chunks))
-            raise result
+    )) as stream:
+        async for i, result in stream:
+            if isinstance(result, RateLimitError):
+                # Stop before appending this chunk so resume restarts at it.
+                rate_limit_error = result
+                break
+            if isinstance(result, Exception):
+                # Non-rate-limit errors propagate as before (after persisting the
+                # contiguous prefix already appended).
+                if checkpoint_manager and translation_id and file_href and translated_chunks:
+                    _save_state(len(translated_chunks))
+                raise result
 
-        translated_chunks.append(result)
-        i_done = i
+            translated_chunks.append(result)
+            i_done = i
 
-        # === HEALTH CHECK ===
-        # Warn loudly once if the LLM is failing to preserve placeholders at a
-        # high rate. Without this, retries pile up silently.
-        quality_warning = stats.check_quality_warning()
-        if quality_warning and log_callback:
-            log_callback("quality_warning", quality_warning)
+            # === HEALTH CHECK ===
+            # Warn loudly once if the LLM is failing to preserve placeholders at
+            # a high rate. Without this, retries pile up silently.
+            quality_warning = stats.check_quality_warning()
+            if quality_warning and log_callback:
+                log_callback("quality_warning", quality_warning)
 
-        # === PERIODIC CHECKPOINT === (every N chunks and at the last chunk)
-        should_checkpoint = (
-            (i_done + 1) % CHECKPOINT_FREQUENCY == 0 or
-            (i_done + 1) == len(chunks)
-        )
-        if should_checkpoint:
-            _save_state(i_done + 1)
-            if log_callback:
-                log_callback("xhtml_checkpoint_saved",
-                    f"💾 Checkpoint saved: chunk {i_done + 1}/{len(chunks)}")
+            # === PERIODIC CHECKPOINT === (every N chunks and at the last chunk)
+            should_checkpoint = (
+                (i_done + 1) % CHECKPOINT_FREQUENCY == 0 or
+                (i_done + 1) == len(chunks)
+            )
+            if should_checkpoint:
+                _save_state(i_done + 1)
+                if log_callback:
+                    log_callback("xhtml_checkpoint_saved",
+                        f"💾 Checkpoint saved: chunk {i_done + 1}/{len(chunks)}")
 
-        # Report progress after completing each chunk
-        if stats_callback:
-            stats_callback(stats.to_dict())
+            # Report progress after completing each chunk
+            if stats_callback:
+                stats_callback(stats.to_dict())
 
     if rate_limit_error is not None:
         # Persist the contiguous prefix appended before the limit, then

@@ -19,7 +19,7 @@ from src.core.chunking.token_chunker import TokenChunker
 from src.core.translator import generate_translation_request
 from src.core.post_processor import clean_translated_text
 from src.core.epub.translation_metrics import TranslationMetrics
-from src.core.common.parallel import iter_ordered_concurrent
+from src.core.common.parallel import aclosing, iter_ordered_concurrent
 from src.core.llm.exceptions import RateLimitError
 
 
@@ -339,63 +339,66 @@ async def translate_paragraphs_plain(
     processed = len(prefix)
 
     # Continuous concurrency with in-order delivery (see iter_ordered_concurrent).
-    async for i, result in iter_ordered_concurrent(
+    # aclosing() is required: the rate-limit branch breaks out of the loop, and
+    # only closing the generator cancels the requests still in flight.
+    async with aclosing(iter_ordered_concurrent(
         pending, workers, _translate_chunk, check_interruption_callback
-    ):
-        main_content = chunks[i].get('main_content', '')
+    )) as stream:
+        async for i, result in stream:
+            main_content = chunks[i].get('main_content', '')
 
-        if isinstance(result, RateLimitError):
-            rate_limit_error = result
-            break
+            if isinstance(result, RateLimitError):
+                rate_limit_error = result
+                break
 
-        if isinstance(result, Exception):
-            if log_callback:
-                log_callback(
-                    "plain_text_chunk_failed",
-                    f"Chunk {i + 1}/{len(chunks)} failed ({result}) - keeping original text"
-                )
-            translated_parts[i] = main_content
-            stats.failed_chunks += 1
-        else:
-            kind, value = result
-            if kind == 'empty':
-                translated_parts[i] = value
-                stats.successful_first_try += 1
-            elif value is None:
+            if isinstance(result, Exception):
                 if log_callback:
                     log_callback(
                         "plain_text_chunk_failed",
-                        f"Chunk {i + 1}/{len(chunks)} failed - keeping original text"
+                        f"Chunk {i + 1}/{len(chunks)} failed ({result}) - keeping original text"
                     )
                 translated_parts[i] = main_content
                 stats.failed_chunks += 1
             else:
-                cleaned = clean_translated_text(value)
-                cleaned = strip_hallucinated_markup(
-                    cleaned, chunks[i].get('main_content', ''))
-                translated_parts[i] = cleaned
-                stats.successful_first_try += 1
-                if sequential:
-                    words = cleaned.split()
-                    previous_translation_context = (
-                        " ".join(words[-25:]) if len(words) > 25 else cleaned
-                    )
+                kind, value = result
+                if kind == 'empty':
+                    translated_parts[i] = value
+                    stats.successful_first_try += 1
+                elif value is None:
+                    if log_callback:
+                        log_callback(
+                            "plain_text_chunk_failed",
+                            f"Chunk {i + 1}/{len(chunks)} failed - keeping original text"
+                        )
+                    translated_parts[i] = main_content
+                    stats.failed_chunks += 1
+                else:
+                    cleaned = clean_translated_text(value)
+                    cleaned = strip_hallucinated_markup(
+                        cleaned, chunks[i].get('main_content', ''))
+                    translated_parts[i] = cleaned
+                    stats.successful_first_try += 1
+                    if sequential:
+                        words = cleaned.split()
+                        previous_translation_context = (
+                            " ".join(words[-25:]) if len(words) > 25 else cleaned
+                        )
 
-        stats.record_processed()
-        if stats_callback:
-            stats_callback(stats.to_dict())
-        processed += 1
+            stats.record_processed()
+            if stats_callback:
+                stats_callback(stats.to_dict())
+            processed += 1
 
-        # === CONTIGUITY INVARIANT ===
-        # iter_ordered_concurrent yields indices strictly in ascending order and
-        # every branch above assigns translated_parts[i] (success, empty, None
-        # result, or exception -> source fallback). Therefore, once index i has
-        # been handled, slots 0..i are all non-None and i + 1 is a gap-free
-        # resume point. Every hook call below relies on this: the prefix handed
-        # to the checkpoint is never sparse.
-        next_index = i + 1
-        if next_index % checkpoint_step == 0 or next_index == len(chunks):
-            _run_checkpoint_hook(next_index)
+            # === CONTIGUITY INVARIANT ===
+            # iter_ordered_concurrent yields indices strictly in ascending order
+            # and every branch above assigns translated_parts[i] (success, empty,
+            # None result, or exception -> source fallback). Therefore, once index
+            # i has been handled, slots 0..i are all non-None and i + 1 is a
+            # gap-free resume point. Every hook call below relies on this: the
+            # prefix handed to the checkpoint is never sparse.
+            next_index = i + 1
+            if next_index % checkpoint_step == 0 or next_index == len(chunks):
+                _run_checkpoint_hook(next_index)
 
     if rate_limit_error is not None:
         # Persist the contiguous prefix translated before the limit, then keep

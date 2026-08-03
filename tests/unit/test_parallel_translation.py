@@ -14,6 +14,7 @@ import pytest
 
 from src.config import resolve_parallel_workers, MAX_PARALLEL_TRANSLATIONS
 from src.core.common.parallel import (
+    aclosing,
     gather_window,
     iter_ordered_windows,
     iter_ordered_concurrent,
@@ -165,10 +166,8 @@ class TestOrderedConcurrent:
         # profile it is meaningfully faster.
         assert continuous <= windowed + 0.01
 
-    @pytest.mark.asyncio
-    async def test_break_cancels_in_flight(self):
-        cancelled = []
-
+    @staticmethod
+    def _cancel_tracking_worker(cancelled):
         async def worker(x):
             try:
                 await asyncio.sleep(0.05 if x > 0 else 0.0)
@@ -177,11 +176,49 @@ class TestOrderedConcurrent:
                 cancelled.append(x)
                 raise
 
-        async for item, _ in iter_ordered_concurrent([0, 1, 2, 3], 4, worker):
+        return worker
+
+    @pytest.mark.asyncio
+    async def test_break_under_aclosing_cancels_in_flight(self):
+        """The documented call pattern: aclosing() cancels deterministically.
+
+        Every production call site wraps the iteration this way, because the
+        rate-limit branch breaks out of the loop.
+        """
+        cancelled = []
+        worker = self._cancel_tracking_worker(cancelled)
+
+        async with aclosing(iter_ordered_concurrent([0, 1, 2, 3], 4, worker)) as stream:
+            async for item, _ in stream:
+                if item == 0:
+                    break
+
+        # No sleep needed: aclose() awaits the cancelled tasks before returning.
+        assert set(cancelled) == {1, 2, 3}
+
+    @pytest.mark.asyncio
+    async def test_bare_break_does_not_cancel_promptly(self):
+        """Regression guard for the reason aclosing() is mandatory.
+
+        A bare `break` only suspends the generator; its finally block — and the
+        cancellation of in-flight LLM requests — is deferred to garbage
+        collection. This test pins that behaviour so a future refactor that
+        drops aclosing() at a call site is caught by the test above instead of
+        silently leaking billed requests.
+        """
+        cancelled = []
+        worker = self._cancel_tracking_worker(cancelled)
+
+        stream = iter_ordered_concurrent([0, 1, 2, 3], 4, worker)
+        async for item, _ in stream:
             if item == 0:
-                break  # triggers generator close -> cancels 1,2,3
-        # Give the event loop a tick to process cancellations.
+                break
+
         await asyncio.sleep(0.01)
+        assert cancelled == []
+
+        # Explicitly close so the test leaves no orphan tasks behind.
+        await stream.aclose()
         assert set(cancelled) == {1, 2, 3}
 
 
