@@ -25,22 +25,17 @@
     {
       "completed_chunks": 0,
       "failed_chunks": 0,
-      "total_chunks": 3
+      "total_chunks": 2
     },
     {
       "completed_chunks": 1,
       "failed_chunks": 0,
-      "total_chunks": 3
+      "total_chunks": 2
     },
     {
       "completed_chunks": 2,
       "failed_chunks": 0,
-      "total_chunks": 3
-    },
-    {
-      "completed_chunks": 3,
-      "failed_chunks": 0,
-      "total_chunks": 3
+      "total_chunks": 2
     }
   ]
 }
