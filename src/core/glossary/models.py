@@ -5,6 +5,46 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Dict
 
+# Recognized gender values for a glossary entry. "unknown" is stored as None:
+# it carries no information for the prompt, and keeping it out of the column
+# means a NER pass that labels every location "unknown" does not fill the
+# database with noise.
+GENDER_MALE = "male"
+GENDER_FEMALE = "female"
+GENDER_UNKNOWN = "unknown"
+
+#: Values that actually reach the prompt.
+KNOWN_GENDERS = (GENDER_MALE, GENDER_FEMALE)
+
+#: Values accepted on input (from the UI, an import file, or the NER pass).
+ALLOWED_GENDERS = (GENDER_MALE, GENDER_FEMALE, GENDER_UNKNOWN)
+
+#: Cap on the cast block. It is injected into every chunk, so an unbounded
+#: list would be a permanent token tax on long sagas. 80 named characters
+#: covers all but the largest ensembles at roughly 900 tokens.
+DEFAULT_MAX_CAST_ENTRIES = 80
+
+
+def normalize_gender(value) -> Optional[str]:
+    """Coerce arbitrary input to 'male', 'female', or None.
+
+    Accepts a few common spellings so hand-written CSV files and chatty LLM
+    output both land on the canonical value: 'M'/'F', 'man'/'woman',
+    'masculine'/'feminine'. Anything unrecognized — including 'unknown', the
+    empty string, and None — yields None, which means "no gender information"
+    everywhere downstream.
+    """
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text in (GENDER_MALE, "m", "man", "boy", "masculine", "masc", "male."):
+        return GENDER_MALE
+    if text in (GENDER_FEMALE, "f", "woman", "girl", "feminine", "fem", "female."):
+        return GENDER_FEMALE
+    return None
+
 
 @dataclass
 class GlossaryTerm:
@@ -12,7 +52,11 @@ class GlossaryTerm:
     source_term: str
     translated_term: str
     category: Optional[str] = None
+    gender: Optional[str] = None
     id: Optional[int] = None
+
+    def __post_init__(self):
+        self.gender = normalize_gender(self.gender)
 
     def to_dict(self) -> Dict:
         return {
@@ -20,6 +64,7 @@ class GlossaryTerm:
             "source": self.source_term,
             "target": self.translated_term,
             "category": self.category or "",
+            "gender": self.gender or "",
         }
 
     @classmethod
@@ -28,6 +73,7 @@ class GlossaryTerm:
             source_term=data.get("source") or data.get("source_term") or "",
             translated_term=data.get("target") or data.get("translated_term") or "",
             category=data.get("category") or None,
+            gender=data.get("gender") or data.get("sex") or None,
             id=data.get("id"),
         )
 
@@ -47,6 +93,27 @@ class Glossary:
     def terms_dict(self) -> Dict[str, str]:
         """Returns {source_term: translated_term} mapping for filter."""
         return {t.source_term: t.translated_term for t in self.terms if t.source_term}
+
+    @property
+    def terms_metadata(self) -> Dict[str, Dict[str, str]]:
+        """Returns {source_term: {category, gender}} for the injector.
+
+        Only entries carrying at least one piece of metadata are included, so
+        a glossary with no categories and no genders yields an empty dict and
+        the injector can skip its optional sections entirely.
+        """
+        metadata: Dict[str, Dict[str, str]] = {}
+        for t in self.terms:
+            if not t.source_term:
+                continue
+            entry = {}
+            if t.category:
+                entry["category"] = t.category
+            if t.gender:
+                entry["gender"] = t.gender
+            if entry:
+                metadata[t.source_term] = entry
+        return metadata
 
     def to_dict(self) -> Dict:
         return {
@@ -76,6 +143,7 @@ class GlossaryConfig:
     max_entries: int = 50
     case_sensitive: bool = True
     warn_on_cap: bool = True
+    max_cast_entries: int = DEFAULT_MAX_CAST_ENTRIES
 
 
 @dataclass

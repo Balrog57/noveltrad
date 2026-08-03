@@ -349,10 +349,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                         config['prompt_options'] = {}
                     config['prompt_options']['glossary_terms'] = glossary.terms_dict
                     config['prompt_options']['glossary_name'] = glossary.name
-                    metadata = {}
-                    for term in glossary.terms:
-                        if term.category:
-                            metadata[term.source_term] = {'category': term.category}
+                    metadata = glossary.terms_metadata
                     if metadata:
                         config['prompt_options']['glossary_term_metadata'] = metadata
             except Exception as e:

@@ -44,6 +44,14 @@ const CATEGORY_OPTIONS = [
     { value: 'other',        labelKey: 'glossary:category_other' },
 ];
 
+// The empty value means "unknown": no gender information reaches the prompt,
+// which is what every pre-existing glossary entry holds.
+const GENDER_OPTIONS = [
+    { value: '',       labelKey: 'glossary:gender_unknown' },
+    { value: 'female', labelKey: 'glossary:gender_female' },
+    { value: 'male',   labelKey: 'glossary:gender_male' },
+];
+
 // ========================================
 // Helpers
 // ========================================
@@ -68,11 +76,11 @@ function isConflictError(err) {
     return m.includes('already') || m.includes('conflict') || m.includes('unique') || m.includes('409');
 }
 
-function buildCategorySelect(currentValue) {
+function buildOptionSelect(field, options, currentValue) {
     const select = document.createElement('select');
     select.className = 'glossary-cell-input';
-    select.dataset.field = 'category';
-    for (const opt of CATEGORY_OPTIONS) {
+    select.dataset.field = field;
+    for (const opt of options) {
         const o = document.createElement('option');
         o.value = opt.value;
         o.textContent = t(opt.labelKey);
@@ -82,8 +90,21 @@ function buildCategorySelect(currentValue) {
     return select;
 }
 
+function buildCategorySelect(currentValue) {
+    return buildOptionSelect('category', CATEGORY_OPTIONS, currentValue);
+}
+
+function buildGenderSelect(currentValue) {
+    return buildOptionSelect('gender', GENDER_OPTIONS, currentValue);
+}
+
+function genderLabel(value) {
+    const opt = GENDER_OPTIONS.find((o) => o.value === (value || ''));
+    return opt ? t(opt.labelKey) : (value || '');
+}
+
 function getRowFieldValues(tr) {
-    const out = { source: '', target: '', category: '' };
+    const out = { source: '', target: '', category: '', gender: '' };
     const inputs = tr.querySelectorAll('.glossary-cell-input');
     inputs.forEach((el) => {
         const f = el.dataset.field;
@@ -705,6 +726,10 @@ function _termSortValue(term, key) {
     if (key === 'source') return (term.source || '').toLowerCase();
     if (key === 'target') return (term.target || '').toLowerCase();
     if (key === 'category') return (term.category || '').toLowerCase();
+    // Sorting on the raw value rather than the translated label keeps the
+    // order stable across UI languages, and groups the blanks together so a
+    // character missing a gender is easy to spot.
+    if (key === 'gender') return (term.gender || '').toLowerCase();
     return '';
 }
 
@@ -729,7 +754,11 @@ function _applyFilter(terms) {
     return terms.filter((term) => {
         return (term.source || '').toLowerCase().includes(q)
             || (term.target || '').toLowerCase().includes(q)
-            || (term.category || '').toLowerCase().includes(q);
+            || (term.category || '').toLowerCase().includes(q)
+            // Match both the canonical value and the localized label, so
+            // "female" and "féminin" both find the same rows.
+            || (term.gender || '').toLowerCase().includes(q)
+            || (term.gender ? genderLabel(term.gender).toLowerCase().includes(q) : false);
     });
 }
 
@@ -858,6 +887,12 @@ function buildTermRow(term) {
     catSelect.dataset.lastValue = catSelect.value;
     tdCategory.appendChild(catSelect);
 
+    const tdGender = document.createElement('td');
+    const genderSelect = buildGenderSelect(term && term.gender);
+    genderSelect.dataset.lastValue = genderSelect.value;
+    genderSelect.title = t('glossary:gender_cell_title');
+    tdGender.appendChild(genderSelect);
+
     const tdActions = document.createElement('td');
     tdActions.className = 'col-center';
     const delBtn = document.createElement('button');
@@ -873,6 +908,7 @@ function buildTermRow(term) {
     tr.appendChild(tdSource);
     tr.appendChild(tdTarget);
     tr.appendChild(tdCategory);
+    tr.appendChild(tdGender);
     tr.appendChild(tdActions);
 
     const fields = tr.querySelectorAll('.glossary-cell-input');
@@ -928,6 +964,7 @@ async function _doFieldCommit(tr, el) {
                 source: values.source,
                 target: values.target,
                 category: values.category,
+                gender: values.gender,
             });
             if (created && created.id != null) {
                 tr.dataset.termId = String(created.id);
@@ -939,6 +976,7 @@ async function _doFieldCommit(tr, el) {
                     source: created.source || values.source,
                     target: created.target || values.target,
                     category: created.category || values.category || '',
+                    gender: created.gender || values.gender || '',
                 });
                 flashRow(tr, 'rgba(34, 197, 94, 0.15)');
             }
@@ -1042,7 +1080,7 @@ function handleAddRow() {
     const table = $('glossaryTermsTable');
     if (!body) return;
 
-    const tr = buildTermRow({ id: null, source: '', target: '', category: '' });
+    const tr = buildTermRow({ id: null, source: '', target: '', category: '', gender: '' });
     body.appendChild(tr);
 
     if (empty) empty.classList.add('hidden');
@@ -1236,9 +1274,41 @@ async function handleBulkSetCategory() {
     }
 }
 
+async function handleBulkSetGender() {
+    const ids = Array.from(_selectedTermIds);
+    if (ids.length === 0) return;
+    const sel = $('glossaryBulkGenderSelect');
+    const gender = sel ? (sel.value || '') : '';
+    try {
+        const resp = await ApiClient.bulkGlossaryTerms(currentGlossaryId, {
+            action: 'set_gender',
+            term_ids: ids,
+            gender,
+        });
+        const n = (resp && resp.updated) || 0;
+        for (const id of ids) {
+            _updateLocalTerm(id, { gender: gender || '' });
+        }
+        rerenderTerms();
+        toast.success(n === 1 ? t('glossary:bulk_gender_updated_one') : t('glossary:bulk_gender_updated_other', { count: n }));
+    } catch (err) {
+        console.error('Bulk set-gender failed:', err);
+        toast.error(t('glossary:bulk_gender_failed', { error: err.message || t('glossary:unknown_error') }));
+    }
+}
+
 // ========================================
 // Import / Export
 // ========================================
+
+// Pick the singular or plural variant of a count-bearing key. The i18n layer
+// leaves plural selection to the caller (see the bulk_* handlers), so this
+// keeps the choice in one place instead of at every call site.
+function pluralized(baseKey, count) {
+    return count === 1
+        ? t(`${baseKey}_one`)
+        : t(`${baseKey}_other`, { count });
+}
 
 async function handleImportFile(file) {
     if (currentGlossaryId == null || !file) return;
@@ -1248,16 +1318,20 @@ async function handleImportFile(file) {
         const skippedEmpty = (result && result.skipped_empty) || 0;
         const skippedDuplicate = (result && result.skipped_duplicate) || 0;
 
-        let message = `Imported ${imported} term${imported === 1 ? '' : 's'}.`;
+        let message = pluralized('glossary:import_success', imported);
         if (skippedEmpty > 0 || skippedDuplicate > 0) {
             const parts = [];
             if (skippedEmpty > 0) {
-                parts.push(`${skippedEmpty} empty row${skippedEmpty === 1 ? '' : 's'} skipped`);
+                parts.push(pluralized('glossary:import_skipped_empty', skippedEmpty));
             }
             if (skippedDuplicate > 0) {
-                parts.push(`${skippedDuplicate} duplicate${skippedDuplicate === 1 ? '' : 's'} skipped`);
+                parts.push(pluralized('glossary:import_skipped_duplicate', skippedDuplicate));
             }
-            message += ` (${parts.join(', ')}.)`;
+            // The separator and the surrounding punctuation are localized too:
+            // CJK uses '、' and fullwidth parentheses, not ASCII.
+            message += t('glossary:import_skipped_suffix', {
+                details: parts.join(t('glossary:list_separator')),
+            });
         }
         toast.success(message);
         await openEditor(currentGlossaryId);
@@ -1619,12 +1693,24 @@ function buildNerRow(candidate) {
     catSelect.classList.add('ner-category-select');
     tdCategory.appendChild(catSelect);
 
+    const tdGender = document.createElement('td');
+    const genderSelect = buildGenderSelect(candidate.gender);
+    genderSelect.classList.add('ner-gender-select');
+    // A character the model could not gender from the sample is the one row
+    // worth a human glance, so mark it instead of letting it read as settled.
+    if ((candidate.category || '') === 'character' && !candidate.gender) {
+        genderSelect.classList.add('ner-gender-missing');
+        genderSelect.title = t('glossary:ner_gender_unknown_title');
+    }
+    tdGender.appendChild(genderSelect);
+
     tr.dataset.source = candidate.source || '';
 
     tr.appendChild(tdCheck);
     tr.appendChild(tdSource);
     tr.appendChild(tdTarget);
     tr.appendChild(tdCategory);
+    tr.appendChild(tdGender);
     return tr;
 }
 
@@ -1649,10 +1735,12 @@ async function handleNerAddSelected() {
     const termsToAdd = selected.map((tr) => {
         const targetEl = tr.querySelector('.ner-target-input');
         const catEl = tr.querySelector('.ner-category-select');
+        const genderEl = tr.querySelector('.ner-gender-select');
         return {
             source: tr.dataset.source || '',
             target: targetEl ? targetEl.value : '',
             category: catEl ? catEl.value : '',
+            gender: genderEl ? genderEl.value : '',
         };
     });
 
@@ -1924,6 +2012,8 @@ function wireEditorView() {
     if (bulkDel) bulkDel.addEventListener('click', handleBulkDelete);
     const bulkSet = $('glossaryBulkSetCategoryBtn');
     if (bulkSet) bulkSet.addEventListener('click', handleBulkSetCategory);
+    const bulkSetGender = $('glossaryBulkSetGenderBtn');
+    if (bulkSetGender) bulkSetGender.addEventListener('click', handleBulkSetGender);
     const bulkClear = $('glossaryBulkClearBtn');
     if (bulkClear) bulkClear.addEventListener('click', clearSelection);
 

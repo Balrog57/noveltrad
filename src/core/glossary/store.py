@@ -15,7 +15,12 @@ import time
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-from src.core.glossary.models import BulkReplaceResult, Glossary, GlossaryTerm
+from src.core.glossary.models import (
+    BulkReplaceResult,
+    Glossary,
+    GlossaryTerm,
+    normalize_gender,
+)
 
 logger = logging.getLogger("glossary.store")
 
@@ -51,7 +56,16 @@ def _row_to_term(row: sqlite3.Row) -> GlossaryTerm:
         source_term=row["source_term"],
         translated_term=row["translated_term"],
         category=row["category"],
+        gender=_row_value(row, "gender"),
     )
+
+
+def _row_value(row: sqlite3.Row, column: str):
+    """Read an optional column, tolerating rows selected before it existed."""
+    try:
+        return row[column]
+    except (IndexError, KeyError):
+        return None
 
 
 def _row_to_glossary(row: sqlite3.Row, terms: Optional[List[GlossaryTerm]] = None) -> Glossary:
@@ -138,6 +152,7 @@ class GlossaryStore:
         term_cols = [row[1] for row in cursor.fetchall()]
         if term_cols:
             self._migrate_drop_notes_column(cursor)
+            self._migrate_add_gender_column(cursor)
         conn.commit()
 
     def _initialize_schema(self):
@@ -163,6 +178,7 @@ class GlossaryStore:
                     source_term TEXT NOT NULL,
                     translated_term TEXT NOT NULL,
                     category TEXT,
+                    gender TEXT,
                     FOREIGN KEY (glossary_id) REFERENCES glossaries(id) ON DELETE CASCADE,
                     UNIQUE (glossary_id, source_term)
                 )
@@ -174,6 +190,7 @@ class GlossaryStore:
             """)
 
             self._migrate_drop_notes_column(cursor)
+            self._migrate_add_gender_column(cursor)
             self._migrate_drop_glossaries_legacy_columns(cursor)
 
             conn.commit()
@@ -316,6 +333,11 @@ class GlossaryStore:
         try:
             cursor.execute("ALTER TABLE glossary_terms DROP COLUMN notes")
         except sqlite3.OperationalError:
+            # Old SQLite without DROP COLUMN support — full rebuild. `gender`
+            # is carried over when the source table already has it, so a
+            # rebuild never silently discards the genders a user has entered.
+            has_gender = "gender" in columns
+            gender_select = "gender" if has_gender else "NULL"
             cursor.execute("""
                 CREATE TABLE glossary_terms_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -323,13 +345,16 @@ class GlossaryStore:
                     source_term TEXT NOT NULL,
                     translated_term TEXT NOT NULL,
                     category TEXT,
+                    gender TEXT,
                     FOREIGN KEY (glossary_id) REFERENCES glossaries(id) ON DELETE CASCADE,
                     UNIQUE (glossary_id, source_term)
                 )
             """)
-            cursor.execute("""
-                INSERT INTO glossary_terms_new (id, glossary_id, source_term, translated_term, category)
-                SELECT id, glossary_id, source_term, translated_term, category FROM glossary_terms
+            cursor.execute(f"""
+                INSERT INTO glossary_terms_new
+                    (id, glossary_id, source_term, translated_term, category, gender)
+                SELECT id, glossary_id, source_term, translated_term, category, {gender_select}
+                FROM glossary_terms
             """)
             cursor.execute("DROP TABLE glossary_terms")
             cursor.execute("ALTER TABLE glossary_terms_new RENAME TO glossary_terms")
@@ -337,6 +362,23 @@ class GlossaryStore:
                 CREATE INDEX IF NOT EXISTS idx_glossary_terms_glossary
                 ON glossary_terms(glossary_id)
             """)
+
+    def _migrate_add_gender_column(self, cursor: sqlite3.Cursor):
+        """Add the `gender` column to glossary_terms if missing. Idempotent.
+
+        Additive migration: existing rows get NULL, which means "no gender
+        information" and keeps the injected prompt byte-identical for every
+        glossary predating this column.
+        """
+        cursor.execute("PRAGMA table_info(glossary_terms)")
+        columns = [row["name"] for row in cursor.fetchall()]
+        if not columns or "gender" in columns:
+            return
+        try:
+            cursor.execute("ALTER TABLE glossary_terms ADD COLUMN gender TEXT")
+            logger.info("Added `gender` column to glossary_terms")
+        except sqlite3.OperationalError as exc:
+            logger.warning(f"Could not add `gender` column to glossary_terms: {exc}")
 
     def _migrate_drop_glossaries_legacy_columns(self, cursor: sqlite3.Cursor):
         """Drop legacy columns from `glossaries` if present. Idempotent."""
@@ -379,7 +421,7 @@ class GlossaryStore:
 
     def _fetch_terms(self, cursor: sqlite3.Cursor, glossary_id: int) -> List[GlossaryTerm]:
         cursor.execute(
-            "SELECT id, source_term, translated_term, category "
+            "SELECT id, source_term, translated_term, category, gender "
             "FROM glossary_terms WHERE glossary_id = ? ORDER BY id",
             (glossary_id,),
         )
@@ -540,13 +582,14 @@ class GlossaryStore:
             try:
                 cursor.execute(
                     "INSERT INTO glossary_terms "
-                    "(glossary_id, source_term, translated_term, category) "
-                    "VALUES (?, ?, ?, ?)",
+                    "(glossary_id, source_term, translated_term, category, gender) "
+                    "VALUES (?, ?, ?, ?, ?)",
                     (
                         glossary_id,
                         term.source_term,
                         term.translated_term,
                         term.category,
+                        term.gender,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
@@ -565,6 +608,7 @@ class GlossaryStore:
                 source_term=term.source_term,
                 translated_term=term.translated_term,
                 category=term.category,
+                gender=term.gender,
             )
 
     def bulk_add_terms(
@@ -606,13 +650,14 @@ class GlossaryStore:
                     try:
                         cursor.execute(
                             "INSERT INTO glossary_terms "
-                            "(glossary_id, source_term, translated_term, category) "
-                            "VALUES (?, ?, ?, ?)",
+                            "(glossary_id, source_term, translated_term, category, gender) "
+                            "VALUES (?, ?, ?, ?, ?)",
                             (
                                 glossary_id,
                                 source,
                                 term.translated_term,
                                 term.category,
+                                term.gender,
                             ),
                         )
                         added += 1
@@ -637,14 +682,20 @@ class GlossaryStore:
         source_term: Optional[str] = None,
         translated_term: Optional[str] = None,
         category: Optional[str] = None,
+        gender: Optional[str] = None,
     ) -> Optional[GlossaryTerm]:
-        """Patch provided fields on a term and return the updated record."""
+        """Patch provided fields on a term and return the updated record.
+
+        ``gender`` follows the same convention as the other fields: ``None``
+        means "leave unchanged". Pass the empty string to clear a gender back
+        to unknown.
+        """
         with self._lock:
             conn = self._get_connection()
             cursor = conn.cursor()
 
             cursor.execute(
-                "SELECT id, glossary_id, source_term, translated_term, category "
+                "SELECT id, glossary_id, source_term, translated_term, category, gender "
                 "FROM glossary_terms WHERE id = ?",
                 (term_id,),
             )
@@ -663,6 +714,9 @@ class GlossaryStore:
             if category is not None:
                 assignments.append("category = ?")
                 params.append(category)
+            if gender is not None:
+                assignments.append("gender = ?")
+                params.append(normalize_gender(gender))
 
             if assignments:
                 params.append(term_id)
@@ -683,7 +737,7 @@ class GlossaryStore:
                 conn.commit()
 
             cursor.execute(
-                "SELECT id, source_term, translated_term, category "
+                "SELECT id, source_term, translated_term, category, gender "
                 "FROM glossary_terms WHERE id = ?",
                 (term_id,),
             )
@@ -761,8 +815,8 @@ class GlossaryStore:
                 new_id = cursor.lastrowid
                 cursor.execute(
                     "INSERT INTO glossary_terms "
-                    "(glossary_id, source_term, translated_term, category) "
-                    "SELECT ?, source_term, translated_term, category "
+                    "(glossary_id, source_term, translated_term, category, gender) "
+                    "SELECT ?, source_term, translated_term, category, gender "
                     "FROM glossary_terms WHERE glossary_id = ?",
                     (new_id, glossary_id),
                 )
@@ -825,6 +879,39 @@ class GlossaryStore:
             conn.commit()
             return int(updated or 0)
 
+    def bulk_set_gender(
+        self,
+        glossary_id: int,
+        term_ids: List[int],
+        gender: Optional[str],
+    ) -> int:
+        """Set the gender for several terms at once. Returns the number updated.
+
+        An unrecognized or empty ``gender`` clears the field back to NULL,
+        which reads as "unknown" everywhere downstream.
+        """
+        if not term_ids:
+            return 0
+        gender_value = normalize_gender(gender)
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in term_ids)
+            params = [gender_value, glossary_id, *term_ids]
+            cursor.execute(
+                f"UPDATE glossary_terms SET gender = ? "
+                f"WHERE glossary_id = ? AND id IN ({placeholders})",
+                params,
+            )
+            updated = cursor.rowcount
+            if updated:
+                cursor.execute(
+                    "UPDATE glossaries SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (glossary_id,),
+                )
+            conn.commit()
+            return int(updated or 0)
+
     def bulk_replace_terms(
         self, glossary_id: int, terms: List[GlossaryTerm]
     ) -> BulkReplaceResult:
@@ -867,13 +954,14 @@ class GlossaryStore:
                     seen_sources.add(source)
                     cursor.execute(
                         "INSERT INTO glossary_terms "
-                        "(glossary_id, source_term, translated_term, category) "
-                        "VALUES (?, ?, ?, ?)",
+                        "(glossary_id, source_term, translated_term, category, gender) "
+                        "VALUES (?, ?, ?, ?, ?)",
                         (
                             glossary_id,
                             source,
                             term.translated_term,
                             term.category,
+                            term.gender,
                         ),
                     )
                     inserted += 1

@@ -3,13 +3,16 @@ NER-assisted glossary extraction (Phase 2 of the glossary plan).
 
 Given a sample of source text, ask the configured LLM to propose recurring
 named entities (characters, locations, sects, items) with a suggested target
-translation. The user reviews the candidates before adding them to a glossary
-— nothing is auto-applied.
+translation and, for characters, the gender evidenced by the passage. The user
+reviews the candidates before adding them to a glossary — nothing is
+auto-applied.
 """
 import json
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
+
+from src.core.glossary.models import normalize_gender
 
 logger = logging.getLogger("glossary.ner")
 
@@ -30,8 +33,10 @@ def parse_ner_response(raw: str) -> Tuple[List[Dict[str, str]], List[str]]:
       4. The longest balanced {...} JSON object (and pull a list out of any value).
 
     Returns (candidates, warnings). `candidates` is a list of dicts with at
-    least `source` and one of `target`/`category` populated. `warnings` is a
-    list of human-readable issues that the caller should surface.
+    least `source` and one of `target`/`category` populated, plus a `gender`
+    key that is "male", "female", or "" (unknown / not a character).
+    `warnings` is a list of human-readable issues that the caller should
+    surface.
     """
     if not raw:
         return [], ["empty LLM response"]
@@ -63,6 +68,10 @@ def parse_ner_response(raw: str) -> Tuple[List[Dict[str, str]], List[str]]:
         source = _str(entry.get("source") or entry.get("source_term"))
         target = _str(entry.get("target") or entry.get("translated_term") or entry.get("translation"))
         category = _str(entry.get("category") or entry.get("type") or "").lower()
+        # An unrecognized gender (including the expected "unknown") normalizes
+        # to None and is surfaced as "" — the user reviews blanks, so a model
+        # that hedges costs nothing, while a bogus value would silently ship.
+        gender = normalize_gender(entry.get("gender") or entry.get("sex"))
 
         if not source:
             warnings.append("skipped entry without 'source'")
@@ -78,6 +87,7 @@ def parse_ner_response(raw: str) -> Tuple[List[Dict[str, str]], List[str]]:
             "source": source,
             "target": target,
             "category": category or "other",
+            "gender": gender or "",
         })
 
     return candidates, warnings

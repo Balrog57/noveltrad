@@ -331,7 +331,12 @@ def generate_ner_extraction_prompt(
     """
     Build a prompt that asks the LLM to extract recurring proper-noun entities
     (characters, locations, organizations/sects, items) from a sample of source
-    text, along with a suggested target-language translation for each.
+    text, along with a suggested target-language translation for each and, for
+    characters, the gender evidenced by the passage.
+
+    The gender field is deliberately evidence-only with an explicit "unknown"
+    escape hatch: a sampled excerpt often carries no gender marker at all, and
+    a confidently wrong gender is worse than a blank the user reviews.
 
     Output is wrapped in <NER_JSON>...</NER_JSON> with a strict schema. The
     parser is permissive (handles markdown fences, missing tags, partial JSON).
@@ -356,6 +361,19 @@ def generate_ner_extraction_prompt(
 5. If you are unsure about an entry, omit it rather than guessing.
 6. Preserve the original {source_language} form exactly as it appears in the text (no extra spaces, no normalization).
 
+# GENDER
+
+For entities in the "character" category, also report the character's gender. This matters because {source_language} may not mark gender the way {target_language} does: when a passage omits the subject or uses an unmarked pronoun, a translator with no gender information defaults every character to "he" and silently corrupts the cast across a whole book.
+
+Determine gender ONLY from evidence in the passage: gendered pronouns (她 / 彼女 / she), gendered forms of address or kinship terms (姐姐, 母亲, Miss, Lady, sir), or explicit description. Do NOT guess from the name itself, and do NOT assume a protagonist is male.
+
+Report exactly one of:
+  - "female"  — the passage shows this character is female
+  - "male"    — the passage shows this character is male
+  - "unknown" — no gender evidence in the passage, or the entity is not a character
+
+"unknown" is the correct, expected answer whenever the evidence is absent. A wrong guess is far more damaging than an honest "unknown", because the user reviews unknowns but trusts stated genders.
+
 # OUTPUT FORMAT
 
 Return ONLY a JSON array wrapped between {NER_TAG_IN} and {NER_TAG_OUT}. No prose, no explanations.
@@ -364,12 +382,15 @@ Each array element MUST be an object with these keys:
   - "source"   (string, required) — the entity in {source_language}
   - "target"   (string, required) — the proposed {target_language} translation
   - "category" (string, required) — one of the labels listed above
+  - "gender"   (string, required) — "female", "male", or "unknown"
 
 Example:
 {NER_TAG_IN}
 [
-  {{"source": "李凡", "target": "Li Fan", "category": "character"}},
-  {{"source": "青玄宗", "target": "Qingxuan Sect", "category": "organization"}}
+  {{"source": "李凡", "target": "Li Fan", "category": "character", "gender": "male"}},
+  {{"source": "林月", "target": "Lin Yue", "category": "character", "gender": "female"}},
+  {{"source": "沈青", "target": "Shen Qing", "category": "character", "gender": "unknown"}},
+  {{"source": "青玄宗", "target": "Qingxuan Sect", "category": "organization", "gender": "unknown"}}
 ]
 {NER_TAG_OUT}
 

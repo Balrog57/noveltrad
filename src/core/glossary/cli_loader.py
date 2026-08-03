@@ -2,18 +2,20 @@
 Load a glossary from a JSON or CSV file.
 
 JSON shapes accepted:
-  - {"terms": [{"source": "...", "target": "...", "category": "..."}, ...]}
+  - {"terms": [{"source": "...", "target": "...", "category": "...", "gender": "..."}, ...]}
   - {"name": "...", "terms": [...]}              (other top-level fields ignored)
   - [{"source": "...", "target": "..."}, ...]    (bare list of terms)
 
 CSV shape accepted:
   - Header row required, must include at least `source` and `target` columns.
-  - Optional `category` column is read when present.
+  - Optional `category` and `gender` columns are read when present.
 """
 import csv
 import json
 import os
 from typing import Dict, Iterable, List, Tuple
+
+from src.core.glossary.models import normalize_gender
 
 
 def _iter_term_entries(raw_terms: Iterable) -> Iterable[Dict[str, str]]:
@@ -25,10 +27,12 @@ def _iter_term_entries(raw_terms: Iterable) -> Iterable[Dict[str, str]]:
         if not source or not target:
             continue
         category = (entry.get("category") or "").strip()
+        gender = normalize_gender(entry.get("gender") or entry.get("sex"))
         yield {
             "source": source,
             "target": target,
             "category": category,
+            "gender": gender or "",
         }
 
 
@@ -66,8 +70,12 @@ def load_glossary_terms_from_file(path: str) -> Dict[str, str]:
 def load_glossary_from_file(path: str) -> Tuple[Dict[str, str], Dict[str, Dict[str, str]]]:
     """
     Load a glossary file and return:
-      - terms: {source: target}          (consumed by the filter)
-      - metadata: {source: {category}}   (consumed by the injector)
+      - terms: {source: target}                  (consumed by the filter)
+      - metadata: {source: {category, gender}}   (consumed by the injector)
+
+    A term contributes a metadata entry only for the fields it actually has,
+    so a glossary with no genders produces exactly the metadata it did before
+    the field existed.
     """
     entries = _read_file(path)
     terms: Dict[str, str] = {}
@@ -75,6 +83,11 @@ def load_glossary_from_file(path: str) -> Tuple[Dict[str, str], Dict[str, Dict[s
     for e in entries:
         source = e["source"]
         terms[source] = e["target"]
+        entry_meta = {}
         if e["category"]:
-            metadata[source] = {"category": e["category"]}
+            entry_meta["category"] = e["category"]
+        if e["gender"]:
+            entry_meta["gender"] = e["gender"]
+        if entry_meta:
+            metadata[source] = entry_meta
     return terms, metadata

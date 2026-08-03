@@ -3287,8 +3287,16 @@ html.dark .glossary-info-card .glossary-info-warn {
     opacity: 0.85;
 }
 .ner-row-identical .ner-target-input,
-.ner-row-identical .ner-category-select {
+.ner-row-identical .ner-category-select,
+.ner-row-identical .ner-gender-select {
     background: transparent;
+}
+
+/* A character whose gender the sample did not reveal. Flagged rather than left
+   blank: an ungendered character is exactly the case where the model falls back
+   to "he" for everyone, so it is worth a human glance before adding the term. */
+.ner-gender-select.ner-gender-missing {
+    border-color: var(--warning-light, #f59e0b);
 }
 
 /* ========================================

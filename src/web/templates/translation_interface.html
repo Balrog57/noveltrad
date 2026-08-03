@@ -1617,6 +1617,15 @@
                             </select>
                         </label>
                         <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkSetCategoryBtn" data-i18n="glossary:bulk_apply">Apply</button>
+                        <label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+                            <span data-i18n="glossary:bulk_set_gender">Set gender:</span>
+                            <select id="glossaryBulkGenderSelect">
+                                <option value="" data-i18n="glossary:gender_unknown">unknown</option>
+                                <option value="female" data-i18n="glossary:gender_female">female</option>
+                                <option value="male" data-i18n="glossary:gender_male">male</option>
+                            </select>
+                        </label>
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkSetGenderBtn" data-i18n="glossary:bulk_apply">Apply</button>
                         <span class="bulk-spacer"></span>
                         <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkClearBtn" data-i18n-attr="title:glossary:bulk_clear_title" title="Clear selection">
                             <span class="material-symbols-outlined">close</span>
@@ -1630,6 +1639,7 @@
                             <col>
                             <col>
                             <col style="width: 160px;">
+                            <col style="width: 120px;">
                             <col style="width: 60px;">
                         </colgroup>
                         <thead>
@@ -1638,6 +1648,7 @@
                                 <th class="sortable" data-sort-key="source" data-i18n-attr="title:glossary:source_header_title" title="Source term. Use '|' to separate inflected forms (e.g. Москва|Москве|Москвы) — any form will match."><span data-i18n="glossary:source_header">Source</span> <span class="sort-indicator">⇅</span></th>
                                 <th class="sortable" data-sort-key="target"><span data-i18n="glossary:target_header">Target</span> <span class="sort-indicator">⇅</span></th>
                                 <th class="sortable" data-sort-key="category"><span data-i18n="glossary:category_header">Category</span> <span class="sort-indicator">⇅</span></th>
+                                <th class="sortable" data-sort-key="gender" data-i18n-attr="title:glossary:gender_header_title" title="Character gender. Injected into every chunk so the model keeps pronouns right even where the source omits the subject."><span data-i18n="glossary:gender_header">Gender</span> <span class="sort-indicator">⇅</span></th>
                                 <th class="col-center"></th>
                             </tr>
                         </thead>
@@ -1999,6 +2010,7 @@
                                     <th data-i18n="glossary:source_header">Source</th>
                                     <th data-i18n="glossary:ner_target_editable">Target (editable)</th>
                                     <th style="width: 110px;" data-i18n="glossary:category_header">Category</th>
+                                    <th style="width: 110px;" data-i18n="glossary:gender_header">Gender</th>
                                 </tr>
                             </thead>
                             <tbody id="ner-candidates-body"></tbody>

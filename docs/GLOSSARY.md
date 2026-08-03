@@ -2,6 +2,8 @@
 
 Force consistent translations of recurring terms (characters, places, organizations, items) across an entire book. The glossary block is injected into the LLM system prompt only for chunks where a term actually appears, so it costs no tokens elsewhere.
 
+Entries may also carry a character gender, which is injected into every chunk so pronouns stay correct even where the source omits the subject. See [Character gender](#character-gender-chinese-japanese-korean-).
+
 > Available in both the Web UI (full CRUD, auto-extract via LLM) and the CLI (`--glossary file.json`).
 
 ---
@@ -12,6 +14,7 @@ Force consistent translations of recurring terms (characters, places, organizati
 - [5-minute quick start](#5-minute-quick-start)
 - [End-to-end workflows](#end-to-end-workflows)
 - [Handling inflected languages (Russian, German, Polish, ...)](#handling-inflected-languages-russian-german-polish-)
+- [Character gender (Chinese, Japanese, Korean, ...)](#character-gender-chinese-japanese-korean-)
 - [Correcting a glossary mid-translation](#correcting-a-glossary-mid-translation)
 - [File formats](#file-formats)
 - [Categories](#categories)
@@ -263,6 +266,72 @@ Or add the base form first, then edit it later in the editor table by clicking t
 
 ---
 
+## Character gender (Chinese, Japanese, Korean, ...)
+
+### The problem
+
+Chinese, Japanese, Korean, Turkish and Finnish either don't mark gender the way English and French do, or drop the subject entirely when context makes it obvious. A passage can run for pages of dialogue without naming anyone. The model then has to produce an English pronoun from a source that contains no gender information, and it falls back on its prior: **everyone becomes "he"**.
+
+This is not a cosmetic slip. It can invert the meaning of a whole book — the reporter of [issue #250](https://github.com/hydropix/TranslateBookWithLLM/issues/250) accidentally turned an all-female yuri novel into an all-male yaoi novel.
+
+### How the gender field fixes it
+
+Each glossary entry carries an optional gender: `female`, `male`, or unset. Entries with a gender are collected into a **cast block** that is injected into **every chunk**, regardless of whether the character is named in it:
+
+```text
+# CAST - CHARACTER GENDERS
+
+MANDATORY: each entity below has a fixed gender for the entire text.
+Use pronouns and gendered agreement matching the gender listed here, even when
+the source passage omits the subject or does not mark gender.
+Never default to masculine for an entity listed as female, and never switch an
+entity's gender between passages.
+This list is the reference for the whole work — an entity may be referred to
+here by pronoun only in the passage you are translating.
+
+  - 林月 (Lin Yue) — female
+  - 李凡 (Li Fan) — male
+```
+
+The cast block deliberately breaks the per-chunk filtering rule that governs the rest of the glossary. That is the whole point: the chunk where the gender is *needed* is the chunk where the name is *absent*. A gender injected only when the name appears would help exactly where the model already had the answer.
+
+The gender also appears in the normal glossary block's bracketed hint, next to the category:
+
+```text
+  - 林月 -> Lin Yue  [character, female]
+```
+
+### Cost and safety
+
+| Aspect | Behavior |
+| ------ | -------- |
+| Token cost | ~10 tokens per gendered entry, on every chunk. A 40-character cast is roughly 400 tokens per chunk. |
+| Cap | 80 gendered entries. Beyond that, the extra entries are dropped and a warning is logged once per job. |
+| Existing glossaries | The column starts empty, so no cast block is emitted and prompts stay byte-identical until you fill a gender in. |
+| Block stability | The cast block is identical for every chunk of a job, which keeps prompt caching effective and prevents a character from changing gender mid-book. |
+
+### Auto-detection
+
+The auto-extract pass reports a gender for each `character` it finds, based **only on evidence in the sampled text**: gendered pronouns (`她`, `彼女`), gendered forms of address or kinship terms (`姐姐`, `母亲`, `Miss`), or explicit description. It is instructed never to guess from the name itself.
+
+When the sample carries no evidence, the model returns `unknown` and the candidate row is **flagged in the review table** with an amber border. That blank is intentional: a confidently wrong gender ships silently and corrupts the book, whereas a blank is something you notice and fix. Expect to fill in some genders by hand — a 6000-character sample simply doesn't reveal every character's gender.
+
+Values other than `female` and `male` — including `unknown` — are stored as empty, meaning "no gender information".
+
+### Filling genders in efficiently
+
+1. Sort the terms table by **Category** and then filter on `character`.
+2. Select several rows with the checkboxes.
+3. Use **Set gender** in the bulk bar and click Apply.
+
+Sorting by the **Gender** column groups the blanks together, which makes the remaining work visible at a glance.
+
+### Non-binary and ungendered characters
+
+Only `female` and `male` exist. For a deliberately ambiguous narrator, a genderless entity, or a non-binary character, leave the gender **unset** and use the style preset or custom instructions to state how that character should be referred to. Forcing one of the two values would be worse than leaving the model to the surrounding context.
+
+---
+
 ## Correcting a glossary mid-translation
 
 You launched a translation, watched the first few chunks come out, and noticed an entry produces a wrong target. Here is how to fix it without losing progress.
@@ -327,7 +396,8 @@ Full glossary with metadata:
   "source_lang": "Chinese",
   "target_lang": "English",
   "terms": [
-    { "source": "李凡青",   "target": "Li Fanqing",  "category": "character" },
+    { "source": "李凡青",   "target": "Li Fanqing",  "category": "character", "gender": "male" },
+    { "source": "林月",     "target": "Lin Yue",     "category": "character", "gender": "female" },
     { "source": "铁宗",     "target": "Iron Sect",   "category": "organization" },
     { "source": "玄武城",   "target": "Xuanwu City", "category": "location" }
   ]
@@ -345,15 +415,18 @@ Minimal (bare list of terms):
 
 ### CSV
 
-Header row required. `source` and `target` are mandatory; `category` is optional.
+Header row required. `source` and `target` are mandatory; `category` and `gender` are optional.
 
 ```csv
-source,target,category
-李凡青,Li Fanqing,character
-铁宗,Iron Sect,organization
-玄武城,Xuanwu City,location
-"Москва|Москве|Москвы|Москвой",Moscou,location
+source,target,category,gender
+李凡青,Li Fanqing,character,male
+林月,Lin Yue,character,female
+铁宗,Iron Sect,organization,
+玄武城,Xuanwu City,location,
+"Москва|Москве|Москвы|Москвой",Moscou,location,
 ```
+
+A file without a `gender` column imports exactly as before.
 
 UTF-8 BOM and quoted values are supported. Use quotes around any source that contains commas (rare with `|` separator, but possible).
 
@@ -366,8 +439,11 @@ The parser accepts both new and legacy field names:
 | `source`   | `source_term`                 |
 | `target`   | `translated_term`, `translation` |
 | `category` | `type`                        |
+| `gender`   | `sex`                         |
 
 So old exports from other tools should import without renaming.
+
+`gender` values are normalized on import, so `F`, `f`, `Female`, `woman` and `feminine` all become `female`. Anything unrecognized — including `unknown`, `other` and `nonbinary` — is stored as empty.
 
 ---
 
@@ -393,11 +469,15 @@ The LLM is instructed to use the hint **only to disambiguate**, not to include i
 
 Unknown categories are accepted but the UI may flag them. The auto-extract output is always one of the values above.
 
+Entries in the `character` category are the ones that benefit from a [gender](#character-gender-chinese-japanese-korean-).
+
 ---
 
 ## Per-chunk filter
 
 The filter scans each translation chunk and only injects the entries that actually appear. This keeps the prompt small and keeps the model focused.
+
+> The cast block is the one exception: gendered entries are injected into every chunk, filter or no filter. See [Character gender](#character-gender-chinese-japanese-korean-).
 
 | Behavior                        | Detail                                                                   |
 | ------------------------------- | ------------------------------------------------------------------------ |
@@ -446,13 +526,14 @@ Each excerpt must be at least 500 chars; if the budget cannot afford that many s
 
 ### How extraction works
 
-The provider/model configured for translation is reused (you don't need a separate API key). It is called with a fixed 8K context window and asked to return a JSON list of `{source, target, category}` candidates inside `<NER_JSON>...</NER_JSON>` tags.
+The provider/model configured for translation is reused (you don't need a separate API key). It is called with a fixed 8K context window and asked to return a JSON list of `{source, target, category, gender}` candidates inside `<NER_JSON>...</NER_JSON>` tags.
 
-The parser is permissive: if the tags are missing it falls back to markdown-fenced JSON, then balanced arrays, then balanced objects. Reasoning models' `<think>` blocks are stripped before parsing.
+The parser is permissive: if the tags are missing it falls back to markdown-fenced JSON, then balanced arrays, then balanced objects. Reasoning models' `<think>` blocks are stripped before parsing. A missing or unrecognized `gender` is treated as unknown, so smaller models that ignore the field degrade gracefully.
 
 ### Review flow
 
-- Each candidate appears with an editable target field and a category dropdown.
+- Each candidate appears with an editable target field, a category dropdown and a gender dropdown.
+- A `character` whose gender the sample did not reveal gets an amber border on its gender dropdown — set it by hand, or the model may default to "he" for that character across the whole book.
 - Rows whose source equals the proposed target (the LLM gave up translating, often a proper noun kept as-is) are dimmed and unchecked by default. Check them if you want the entry anyway (useful for locking proper nouns).
 - Rows whose source already exists in the glossary are tagged `(already in glossary)` and unchecked by default.
 - Edit any field before clicking **Add selected**. Common edits: fix transliteration, expand `source` with `|` alternatives, switch category.
@@ -475,7 +556,9 @@ data/glossaries.db
 Tables:
 
 - `glossaries` (id, name, source_language, target_language, timestamps)
-- `glossary_terms` (id, glossary_id, source_term, translated_term, category) with `UNIQUE(glossary_id, source_term)`
+- `glossary_terms` (id, glossary_id, source_term, translated_term, category, gender) with `UNIQUE(glossary_id, source_term)`
+
+`gender` is added by an idempotent additive migration on startup. Databases created before it open normally with every gender NULL, so upgrading changes no prompt until you fill a gender in.
 
 ### Migration from older builds
 
@@ -504,6 +587,7 @@ The CLI does not touch the database at all; it loads JSON/CSV files directly fro
 | Knob                         | Default | Where                                            |
 | ---------------------------- | ------- | ------------------------------------------------ |
 | Per-chunk cap                | 50      | `GlossaryConfig.max_entries`                     |
+| Cast block cap               | 80      | `GlossaryConfig.max_cast_entries`                |
 | Case sensitivity             | True    | `GlossaryConfig.case_sensitive`                  |
 | Auto-extract sample budget   | 6000    | UI field, hard cap also 6000                     |
 | Auto-extract sample count    | 10      | UI field (1..50)                                 |
@@ -530,22 +614,22 @@ The CLI does not touch the database at all; it loads JSON/CSV files directly fro
 
 For programmatic access, the Web UI exposes REST endpoints under `/api/glossaries`:
 
-| Method | Path                                                  | Action                                  |
-| ------ | ----------------------------------------------------- | --------------------------------------- |
-| GET    | `/api/glossaries`                                     | List glossaries with term counts        |
-| POST   | `/api/glossaries`                                     | Create a glossary                       |
-| GET    | `/api/glossaries/<gid>`                               | Read a glossary with all its terms      |
-| PUT    | `/api/glossaries/<gid>`                               | Patch glossary fields                   |
-| DELETE | `/api/glossaries/<gid>`                               | Delete (cascade to terms)               |
-| POST   | `/api/glossaries/<gid>/duplicate`                     | Clone a glossary                        |
-| POST   | `/api/glossaries/<gid>/terms`                         | Add a single term                       |
-| PUT    | `/api/glossaries/<gid>/terms/<tid>`                   | Patch a term                            |
-| DELETE | `/api/glossaries/<gid>/terms/<tid>`                   | Delete a term                           |
-| POST   | `/api/glossaries/<gid>/terms/bulk`                    | Bulk action: `add`, `delete`, `set_category` |
-| POST   | `/api/glossaries/<gid>/import`                        | Replace all terms from JSON or CSV      |
-| GET    | `/api/glossaries/<gid>/export?format=json\|csv`       | Download                                |
-| POST   | `/api/glossaries/<gid>/preview-block`                 | Render the injected block for a sample chunk |
-| POST   | `/api/glossaries/<gid>/suggest-terms`                 | NER auto-extract                        |
+| Method | Path                                            | Action                                                     |
+| ------ | ----------------------------------------------- | ---------------------------------------------------------- |
+| GET    | `/api/glossaries`                               | List glossaries with term counts                           |
+| POST   | `/api/glossaries`                               | Create a glossary                                          |
+| GET    | `/api/glossaries/<gid>`                         | Read a glossary with all its terms                         |
+| PUT    | `/api/glossaries/<gid>`                         | Patch glossary fields                                      |
+| DELETE | `/api/glossaries/<gid>`                         | Delete (cascade to terms)                                  |
+| POST   | `/api/glossaries/<gid>/duplicate`               | Clone a glossary                                           |
+| POST   | `/api/glossaries/<gid>/terms`                   | Add a single term                                          |
+| PUT    | `/api/glossaries/<gid>/terms/<tid>`             | Patch a term                                               |
+| DELETE | `/api/glossaries/<gid>/terms/<tid>`             | Delete a term                                              |
+| POST   | `/api/glossaries/<gid>/terms/bulk`              | Bulk action: `add`, `delete`, `set_category`, `set_gender` |
+| POST   | `/api/glossaries/<gid>/import`                  | Replace all terms from JSON or CSV                         |
+| GET    | `/api/glossaries/<gid>/export?format=json\|csv` | Download                                                   |
+| POST   | `/api/glossaries/<gid>/preview-block`           | Render the injected block for a sample chunk               |
+| POST   | `/api/glossaries/<gid>/suggest-terms`           | NER auto-extract                                           |
 
 ### Bulk add example
 

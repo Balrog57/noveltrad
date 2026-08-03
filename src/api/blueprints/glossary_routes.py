@@ -18,7 +18,7 @@ from urllib.parse import quote
 from flask import Blueprint, Response, jsonify, request
 
 from src.core.glossary import Glossary, GlossaryStore, GlossaryTerm
-from src.core.glossary import build_glossary_block, filter_glossary
+from src.core.glossary import build_cast_block, build_glossary_block, filter_glossary
 from src.core.glossary import suggest_terms as ner_suggest_terms
 from src.core.glossary.models import GlossaryConfig
 from src.core.llm.exceptions import RateLimitError
@@ -132,6 +132,7 @@ def create_glossary_blueprint(store: Optional[GlossaryStore] = None):
                 source_term=source,
                 translated_term=target,
                 category=category,
+                gender=row.get('gender') or row.get('sex'),
             ))
         return terms
 
@@ -270,6 +271,7 @@ def create_glossary_blueprint(store: Optional[GlossaryStore] = None):
                 source_term=source,
                 translated_term=target,
                 category=(data.get('category') or '').strip() or None,
+                gender=data.get('gender'),
             )
 
             try:
@@ -298,6 +300,10 @@ def create_glossary_blueprint(store: Optional[GlossaryStore] = None):
                 kwargs['translated_term'] = (data.get('target') or data.get('translated_term') or '').strip()
             if 'category' in data:
                 kwargs['category'] = (data.get('category') or '').strip() or None
+            if 'gender' in data:
+                # The empty string clears the gender; store.update_term treats
+                # only None as "leave unchanged", so '' must survive as ''.
+                kwargs['gender'] = (data.get('gender') or '').strip()
 
             try:
                 updated = store.update_term(tid, **kwargs)
@@ -317,9 +323,10 @@ def create_glossary_blueprint(store: Optional[GlossaryStore] = None):
         """Apply a bulk action to several terms at once.
 
         Body shapes:
-          - ``{"action": "add", "terms": [{"source": "...", "target": "...", "category": "..."}, ...]}``
+          - ``{"action": "add", "terms": [{"source": "...", "target": "...", "category": "...", "gender": "..."}, ...]}``
           - ``{"action": "delete", "term_ids": [int, ...]}``
           - ``{"action": "set_category", "term_ids": [int, ...], "category": "..."}``
+          - ``{"action": "set_gender", "term_ids": [int, ...], "gender": "male"|"female"|""}``
         """
         try:
             if not store.get_glossary(gid):
@@ -356,6 +363,12 @@ def create_glossary_blueprint(store: Optional[GlossaryStore] = None):
                 if category is None:
                     return jsonify({"error": "category is required for set_category"}), 400
                 updated = store.bulk_set_category(gid, term_ids, category)
+                return jsonify({"updated": updated})
+            if action == 'set_gender':
+                gender = data.get('gender')
+                if gender is None:
+                    return jsonify({"error": "gender is required for set_gender"}), 400
+                updated = store.bulk_set_gender(gid, term_ids, gender)
                 return jsonify({"updated": updated})
             return jsonify({"error": f"Unknown action: {action}"}), 400
         except Exception as e:
@@ -455,13 +468,16 @@ def create_glossary_blueprint(store: Optional[GlossaryStore] = None):
 
             if fmt == 'csv':
                 buffer = io.StringIO()
-                writer = csv.DictWriter(buffer, fieldnames=['source', 'target', 'category'])
+                writer = csv.DictWriter(
+                    buffer, fieldnames=['source', 'target', 'category', 'gender']
+                )
                 writer.writeheader()
                 for term in glossary.terms:
                     writer.writerow({
                         'source': term.source_term,
                         'target': term.translated_term,
                         'category': term.category or '',
+                        'gender': term.gender or '',
                     })
                 return Response(
                     buffer.getvalue(),
@@ -501,6 +517,10 @@ def create_glossary_blueprint(store: Optional[GlossaryStore] = None):
 
         Body: ``{"text": "<sample chunk>"}``. Returns the filtered terms
         (post word-boundary / CJK matching) and the formatted block string.
+
+        The cast block is included when any entry carries a gender, because
+        that is what actually reaches the model — it is not chunk-filtered, so
+        it appears even for a sample text that matches no term at all.
         """
         try:
             glossary = store.get_glossary(gid)
@@ -511,24 +531,31 @@ def create_glossary_blueprint(store: Optional[GlossaryStore] = None):
             text = data.get('text') or ''
 
             terms_dict = glossary.terms_dict
-            term_metadata = {
-                t.source_term: {"category": t.category or ""}
-                for t in glossary.terms
-                if t.source_term
-            }
+            term_metadata = glossary.terms_metadata
+            config = GlossaryConfig()
 
-            filtered, capped = filter_glossary(text, terms_dict, GlossaryConfig())
-            block = build_glossary_block(
+            filtered, capped = filter_glossary(text, terms_dict, config)
+            glossary_block = build_glossary_block(
                 filtered_terms=filtered,
                 target_language=glossary.target_language or '',
                 term_metadata=term_metadata,
             )
+            cast_block, cast_capped = build_cast_block(
+                terms_dict,
+                term_metadata=term_metadata,
+                max_entries=config.max_cast_entries,
+            )
+            block = "\n".join(b for b in (cast_block, glossary_block) if b)
 
             return jsonify({
                 "block": block,
+                "cast_block": cast_block,
+                "glossary_block": glossary_block,
                 "matched_count": len(filtered),
                 "total_terms": len(terms_dict),
+                "gendered_count": sum(1 for t in glossary.terms if t.gender),
                 "capped": capped,
+                "cast_capped": cast_capped,
             })
         except Exception as e:
             logger.error(f"Error previewing block for glossary {gid}: {e}")

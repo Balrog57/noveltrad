@@ -530,15 +530,27 @@ answers it as "pre-convert with pdf-craft", which stays a valid interim answer.
 
 ---
 
-### [ ] 5.2 — Issue #250: gender support in the glossary
+### [x] 5.2 — Issue #250: gender support in the glossary
 
 When the source language does not mark gender, such as Chinese, the model defaults every character to
-"he", corrupting character identity across a whole book. No gender field exists in `src/core/glossary/`;
-the only gender-related code in the repo is unrelated TTS voice selection.
+"he", corrupting character identity across a whole book.
 
-**Fix direction.** Add an optional gender column to glossary entries and inject it into the per-chunk
-glossary prompt. Requires locale keys in all seven files for the new UI column.
-**Effort.** M. **Impact.** Real translation quality gain for CJK sources.
+**Shipped.** An optional `gender` column (`male` / `female` / unset) on glossary entries, auto-detected by
+the NER pass and injected into the prompt.
+
+The load-bearing design decision: the gender is carried by a **cast block that is not chunk-filtered**
+(`build_cast_block` in `src/core/glossary/injector.py`). Filtering it like the rest of the glossary would
+have missed the reported bug entirely — the chunk where the gender is needed is the chunk where the
+character's name is *absent*, which is why the model guesses there. Cost is ~10 tokens per gendered entry
+per chunk, capped at 80 entries via `GlossaryConfig.max_cast_entries`.
+
+Two deliberate restraints, both to avoid shipping confident errors: unrecognized gender values (including
+`unknown`) normalize to NULL rather than being stored, and the NER pass is instructed to answer `unknown`
+whenever the sample carries no gender evidence, with those rows flagged amber in the review table. A wrong
+gender ships silently; a blank gets reviewed.
+
+Non-binary and ungendered characters are intentionally out of scope for the column — the documented
+guidance is to leave the gender unset and handle them via style instructions.
 
 ---
 
@@ -616,8 +628,14 @@ thread. The known costs: one extra LLM call per chunk, and translation becomes s
 state evolves, which removes parallelism.
 
 **Action.** Convert to a tracked issue capturing the design questions already raised: context storage
-shape, prompt placement, growth control, and the cost/parallelism tradeoff. Overlaps with item 5.2, gender
-is the narrow, cheap version of the same problem, so ship 5.2 first and learn from it.
+shape, prompt placement, growth control, and the cost/parallelism tradeoff.
+
+**What item 5.2 already settled.** Gender was the narrow version of this problem and shipped first, which
+answers two of the four design questions cheaply. Prompt placement: a dedicated block ahead of the
+glossary block, injected unconditionally. Growth control: a hard entry cap with a once-per-job warning
+rather than unbounded growth. It also showed that a *static* per-book context needs no extra LLM call and
+no sequential execution, so the remaining open question is narrower than the discussion assumes — what
+genuinely requires per-chunk evolution, rather than a one-shot extraction pass reused everywhere.
 **Effort.** L.
 
 ---

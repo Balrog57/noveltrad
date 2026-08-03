@@ -43,7 +43,14 @@ def _build_chunk_glossary_block(
 
     Reads `glossary_terms` (dict source -> target) and optional `glossary_config`
     (GlossaryConfig) from prompt_options. Returns "" when no glossary is active
-    or no terms match this chunk.
+    or when the glossary has neither a term matching this chunk nor any gendered
+    entity.
+
+    Two sections may be emitted:
+      - the cast block (gendered entities), which is NOT chunk-filtered, since
+        a passage referring to a character by pronoun alone contains no match
+        yet is exactly where the model would otherwise guess the gender;
+      - the glossary block, restricted to terms present in this chunk.
 
     When the per-chunk cap is hit and `warn_on_cap` is enabled, logs a single
     warning per job. The dedupe flag lives in `runtime_state` (a transient dict
@@ -57,7 +64,12 @@ def _build_chunk_glossary_block(
     if not terms:
         return ""
     try:
-        from src.core.glossary import filter_glossary, build_glossary_block, GlossaryConfig
+        from src.core.glossary import (
+            build_cast_block,
+            build_glossary_block,
+            filter_glossary,
+            GlossaryConfig,
+        )
     except ImportError:
         return ""
     config = prompt_options.get("glossary_config") or GlossaryConfig()
@@ -75,11 +87,35 @@ def _build_chunk_glossary_block(
                 f"Excess entries are dropped — increase `max_entries` if you need full coverage."
             )
 
-    if not filtered:
-        return ""
-
     metadata = prompt_options.get("glossary_term_metadata") or None
-    return build_glossary_block(filtered, term_metadata=metadata)
+
+    cast_block, cast_capped = build_cast_block(
+        terms,
+        term_metadata=metadata,
+        max_entries=getattr(config, "max_cast_entries", None) or 0,
+    )
+
+    if cast_capped and config.warn_on_cap and not runtime_state.get("cast_cap_warned"):
+        runtime_state["cast_cap_warned"] = True
+        if log_callback:
+            log_callback(
+                "glossary_cast_capped",
+                f"⚠️ Cast block cap reached: more than {config.max_cast_entries} glossary entries "
+                f"carry a gender. Entries beyond the cap are dropped from the per-chunk gender "
+                f"reference — raise `max_cast_entries` if the whole cast must be listed."
+            )
+
+    glossary_block = (
+        build_glossary_block(filtered, term_metadata=metadata) if filtered else ""
+    )
+
+    if not cast_block and not glossary_block:
+        return ""
+    if not cast_block:
+        return glossary_block
+    if not glossary_block:
+        return cast_block
+    return f"{cast_block}\n{glossary_block}"
 
 
 def split_chunk_for_retry(main_content: str, target_ratio: float = 0.5) -> Tuple[str, str]:

@@ -24,7 +24,7 @@ from src.config import (
     MAX_TOKENS_PER_CHUNK, OLLAMA_NUM_CTX,
     REQUEST_TIMEOUT, SRT_LINES_PER_BLOCK,
 )
-from src.core.glossary import build_glossary_block, filter_glossary
+from src.core.glossary import build_cast_block, build_glossary_block, filter_glossary
 from src.core.glossary.models import GlossaryConfig
 from src.core.llm.factory import create_llm_provider
 from src.core.pricing.pricing_data import get_default_pricing
@@ -523,28 +523,34 @@ def _load_column_glossary(glossary_id: Any) -> Optional[Dict[str, Any]]:
         return None
     return {
         "terms_dict": glossary.terms_dict,
-        "term_metadata": {
-            term.source_term: {"category": term.category or ""}
-            for term in glossary.terms if term.source_term
-        },
+        "term_metadata": glossary.terms_metadata,
         "target_language": glossary.target_language or "",
     }
 
 
 def _glossary_block_for(glossary_data: Optional[Dict[str, Any]], text: str) -> str:
-    """Build the per-cell glossary block: filter the glossary to terms present
-    in this cell's source text, then format. Returns '' when nothing matches."""
+    """Build the per-cell glossary prompt section.
+
+    The cast block (gendered entities) is not chunk-filtered and so is emitted
+    even when no term matches this cell; the glossary block is filtered to the
+    terms actually present. Returns '' when neither applies.
+    """
     if not glossary_data:
         return ""
     try:
-        filtered, _capped = filter_glossary(text, glossary_data["terms_dict"], GlossaryConfig())
-        if not filtered:
-            return ""
-        return build_glossary_block(
+        config = GlossaryConfig()
+        filtered, _capped = filter_glossary(text, glossary_data["terms_dict"], config)
+        glossary_block = build_glossary_block(
             filtered_terms=filtered,
             target_language=glossary_data["target_language"],
             term_metadata=glossary_data["term_metadata"],
+        ) if filtered else ""
+        cast_block, _cast_capped = build_cast_block(
+            glossary_data["terms_dict"],
+            term_metadata=glossary_data["term_metadata"],
+            max_entries=config.max_cast_entries,
         )
+        return "\n".join(b for b in (cast_block, glossary_block) if b)
     except Exception as exc:
         logger.warning("sample: failed to build glossary block: %s", exc)
         return ""
