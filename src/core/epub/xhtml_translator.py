@@ -44,6 +44,7 @@ from lxml import etree
 
 from .body_serializer import extract_body_html, replace_body_content
 from .html_chunker import HtmlChunker
+from .html_utils import is_text_free_chunk
 from .translation_metrics import TranslationMetrics
 from .tag_preservation import TagPreserver
 from .exceptions import (
@@ -811,6 +812,23 @@ async def _translate_all_chunks_with_checkpoint(
 
     async def _translate_one(i):
         chunk = chunks[i]
+
+        # A chunk with no translatable character (pure markup, a '==' separator,
+        # a bare number, CJK ellipsis) has nothing for the LLM to do. Sending it
+        # anyway invites an empty answer, and an empty answer used to wipe the
+        # body — the cover page's <svg> image was destroyed this way. Pass it
+        # through verbatim instead, restoring global indices exactly like the
+        # untranslated fallback does.
+        if is_text_free_chunk(chunk['text'], placeholder_format):
+            if log_callback:
+                log_callback("chunk_text_free_skipped",
+                    f"⏭️ Chunk {i + 1}/{len(chunks)} has no translatable text - kept as-is")
+            # Same completed-chunk bookkeeping as a first-try success, minus the
+            # LLM-call, token and retry counters (no request was made).
+            stats.successful_first_try += 1
+            stats.record_processed()
+            return PlaceholderManager.restore_to_global(chunk['text'], chunk['global_indices'])
+
         return await translate_chunk_with_fallback(
             chunk_text=chunk['text'],
             local_tag_map=chunk['local_tag_map'],
