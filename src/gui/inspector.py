@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.a11y import configure
+
 # Pipeline stages in order, with display labels.
 STAGES: list[tuple[str, str]] = [
     ("translator", "1. Traducteur"),
@@ -61,6 +63,11 @@ class StageWidget(QFrame):
         self.expand_btn.setCheckable(True)
         self.expand_btn.setChecked(True)
         self.expand_btn.toggled.connect(self._on_toggle)
+        configure(
+            self.expand_btn,
+            accessible_name="Réduire",
+            tooltip="Réduire",
+        )
 
         header.addWidget(self.expand_btn)
         header.addWidget(self.title, 1)
@@ -153,6 +160,12 @@ class StageWidget(QFrame):
 
     def _on_toggle(self, checked: bool) -> None:
         self.expand_btn.setText("▾" if checked else "▸")
+        state_text = "Réduire" if checked else "Développer"
+        configure(
+            self.expand_btn,
+            accessible_name=state_text,
+            tooltip=state_text,
+        )
         self.table.setVisible(checked)
         self.preview.setVisible(checked)
         # CoT follows the same expanded/collapsed state (only if it has content).
