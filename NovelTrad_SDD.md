@@ -20,7 +20,7 @@ Création d'un projet représentant une œuvre ; import EPUB, DOCX, TXT, Markdow
 
 ## 1.4 Hors périmètre
 
-Édition collaborative, multi-utilisateur, microservices, Redis, reverse proxy, multi-machine, multi-GPU, stockage cloud natif, conservation des originaux, historique complet des versions.
+Édition collaborative, multi-utilisateur, microservices, Redis, reverse proxy, multi-machine, multi-GPU, stockage cloud natif, conservation des originaux, historique complet des versions. Aucun import ni export complet de projet NovelTrad n'est autorisé ; seuls l'import de documents et l'export temporaire de l'œuvre dans les formats définis par ce SDD existent.
 
 ## 1.5 Principes fondateurs
 
@@ -201,7 +201,7 @@ Les seize identifiants `EF-001` à `EF-016` sont uniques, stables et ne constitu
 
 ## 3.6 Références croisées et cas non spécifiés
 
-Les critères détaillés figurent en 17.11 et la traçabilité en 19.10. Tout comportement fonctionnel absent de `EF-001` à `EF-016` et non déductible des règles `RM` est **non spécifié**.
+Les critères détaillés figurent en 17.11 et la traçabilité en 19.10. Tout comportement fonctionnel absent de `EF-001` à `EF-016` et non déductible des règles `RM` est **non spécifié**. Pour l'interface, restent notamment non spécifiés les raccourcis clavier, la disposition visuelle précise, le moteur de rendu de l'aperçu et le délai exact de l'autosauvegarde ; ces choix d'implémentation ne peuvent ajouter aucune fonction au contrat minimal de 13.5.
 
 # Chapitre 4 — Règles métier
 
@@ -382,7 +382,7 @@ Un conteneur applicatif unique regroupe Streamlit et le Worker. Le fournisseur I
 
 ## 6.3 Environnement
 
-.env contient APP_PASSWORD et éventuellement des options techniques. Tous les paramètres fonctionnels sont dans SQLite.
+`.env` contient `APP_PASSWORD` et éventuellement des options techniques. Il est distinct du dossier `data`, doit être protégé comme un secret et se sauvegarde séparément. Tous les paramètres fonctionnels sont dans SQLite.
 
 ## 6.4 Volume
 
@@ -398,7 +398,9 @@ Fin de l'appel IA courant, sauvegarde atomique, mise à jour du job et arrêt pr
 
 ## 6.7 Sauvegarde et restauration
 
-La copie du dossier data constitue une sauvegarde complète. Sa restauration doit suffire à retrouver l'installation.
+La copie du dossier `data` sauvegarde toutes les données applicatives persistantes : SQLite, journaux, `source.md`, `translated.md` et images WebP. Elle ne sauvegarde pas la configuration d'installation contenue dans `.env`.
+
+Une sauvegarde complète de l'installation exige donc deux opérations séparées : copier `data` et sauvegarder `.env` dans un emplacement sûr adapté aux secrets. Pour restaurer, arrêter l'application, restaurer `data`, puis restaurer ou recréer séparément `.env` avec au minimum `APP_PASSWORD` avant le redémarrage. Les permissions, le chiffrement et le support de sauvegarde de `.env` sont **non spécifiés** ; ils doivent seulement empêcher l'exposition du secret.
 
 ## 6.8 Mise à jour
 
@@ -844,7 +846,7 @@ Chaque document produit un source.md. translated.md sera créé lors du lancemen
 
 ## 10.5 Markdown
 
-La structure (titres, listes, tableaux, liens, images et blocs de code éventuels) doit être conservée autant que possible.
+La protection structurelle des blocs GFM reconnus est garantie pendant la conversion : titres, listes, tableaux, liens, images, citations et blocs de code clôturés ne sont ni coupés ni fusionnés de manière à produire une structure invalide. La fidélité exacte de présentation lorsque le format source n'a pas d'équivalent GFM est **non spécifiée** ; elle ne peut remettre en cause la validité structurelle.
 
 ## 10.6 Contrôles
 
@@ -907,6 +909,7 @@ CONVERTIR_ET_VALIDER(fichier_temporaire):
   détecter le format depuis l'extension autorisée et le contenu
   extraire texte, structure et images selon le format
   convertir la structure en GitHub Flavored Markdown
+  identifier et protéger les blocs GFM reconnus pendant la conversion
   pour chaque image référencée:
     convertir en WebP lossless
     remplacer la référence par son chemin relatif
@@ -1019,12 +1022,13 @@ Un document est considéré comme terminé uniquement lorsque les quatre étapes
 SEGMENTER(markdown, limite_contexte):
   si markdown tient dans la limite: retourner [markdown]
   découper uniquement sur des frontières structurelles GFM sûres
+  détecter les blocs de dialogues détectables et interdire une coupure interne
   préserver pour chaque segment son ordre et les références nécessaires
   refuser tout découpage qui casserait une structure non refermable
   retourner les segments ordonnés
 ```
 
-La mesure exacte de la fenêtre, la taille cible et le chevauchement éventuel sont **non spécifiés**. Ils doivent seulement préserver l'ordre et la structure.
+La mesure exacte de la fenêtre, la taille cible, le chevauchement éventuel et la méthode de détection des dialogues sont **non spécifiés**. Ils doivent seulement préserver l'ordre, les dialogues détectables et la structure.
 
 ## 11.15 Pseudo-code du pipeline et des reprises
 
@@ -1193,13 +1197,13 @@ RECUPERER_AU_DEMARRAGE():
   dans une transaction:
     pour chaque job trouvé Running ou Retrying:
       conserver last_validated_stage et translated.md validé
-      placer le job en Queued avec sa position de reprise déterministe
+      placer le job en Queued en conservant ses clés FIFO queued_at et id d'origine
     conserver Paused comme Paused
     ne modifier aucun état terminal
   démarrer la consommation FIFO
 ```
 
-Le placement relatif exact d'un job interrompu ou repris face aux jobs déjà `Queued` est **non spécifié**. L'implémentation doit choisir une règle déterministe documentée utilisant uniquement les clés FIFO, sans priorité et sans permettre deux jobs actifs.
+Après redémarrage, tous les jobs `Queued`, y compris ceux récupérés depuis `Running` ou `Retrying`, sont consommés selon leurs clés `(queued_at, id)` d'origine. La récupération ne réhorodate jamais un job et ne modifie donc pas son ordre relatif dans la FIFO. Aucun mécanisme de priorité ne peut intervenir et deux jobs ne peuvent jamais être actifs.
 
 ## 12.17 Préconditions, postconditions et acceptation
 
@@ -1230,6 +1234,10 @@ Création, renommage, suppression, recherche et ouverture d'un projet avec résu
 ## 13.5 Écran Projet
 
 Glisser-déposer, réorganisation des chapitres, aperçu des statistiques, lancement de la traduction et export.
+
+Après la finalisation complète du pipeline, l'écran fournit un éditeur Markdown simple limité à `translated.md` et un aperçu rendu de son contenu courant. Chaque modification valide déclenche une autosauvegarde atomique de `translated.md` ; le délai exact, le moteur de rendu et les raccourcis sont **non spécifiés**. Avant la finalisation, l'éditeur reste en lecture seule et aucune autosauvegarde ne peut modifier le fichier.
+
+La recherche et le remplacement global définis par `EF-012` portent uniquement sur les `translated.md` finalisés du projet. L'interface affiche le nombre et les emplacements des occurrences, puis exige une confirmation explicite avant toute écriture atomique. Une annulation ou l'absence de confirmation ne modifie aucun fichier ; `source.md` reste toujours exclu.
 
 ## 13.6 Paramètres
 
@@ -1314,7 +1322,7 @@ La fréquence de rafraîchissement et les composants Streamlit exacts sont **non
 
 **Cas d'erreur.** Authentification invalide, session expirée, action verrouillée, service indisponible et validation de formulaire échouée donnent un message FR/EN actionnable.
 
-**Invariants.** FR/EN, thèmes clair/sombre/sépia, fonctionnalités accessibles sur PC/tablette/smartphone, aucun SQL/fichier/appel IA direct.
+**Invariants.** FR/EN, thèmes clair/sombre/sépia, fonctionnalités accessibles sur PC/tablette/smartphone, aucun SQL/fichier/appel IA direct. L'éditeur et l'autosauvegarde restent verrouillés avant finalisation ; tout remplacement global attend une confirmation explicite.
 
 **Contraintes.** Streamlit est l'unique technologie d'interface et ne devient pas une API métier.
 
@@ -1398,11 +1406,15 @@ Chaque adaptateur expose les capacités logiques suivantes ; les signatures Pyth
 
 Adaptateurs obligatoires : Ollama, LM Studio, OpenAI-compatible personnalisé, OpenRouter, OpenAI/ChatGPT, Gemini, Claude et Grok. Tous présentent les mêmes catégories d'erreur au pipeline.
 
+DeepSeek désigne un modèle utilisable par l'intermédiaire d'Ollama, LM Studio, OpenRouter ou de la configuration OpenAI-compatible personnalisée lorsque le fournisseur choisi le propose. DeepSeek ne constitue pas un neuvième fournisseur et n'exige aucun adaptateur distinct.
+
 ## 14.15 Invariants, dépendances et verrouillage
 
 Une seule configuration globale est active. Le Worker en capture un instantané au démarrage du job et utilise exactement le même modèle pour les quatre appels. `SettingsService` refuse toute mutation tant qu'une traduction est active.
 
 La détection automatique des modèles est obligatoire uniquement pour Ollama et LM Studio. Pour les autres fournisseurs, la manière d'obtenir ou saisir les modèles est **non spécifiée**.
+
+Pour les options avancées de 14.12, les types exacts, bornes, unités, valeurs par défaut et règles de combinaison qui ne sont pas exposés par le fournisseur sont **non spécifiés**. L'interface ne peut afficher et transmettre qu'une option déclarée compatible par l'adaptateur actif.
 
 Les clés sont transmises seulement à l'adaptateur concerné, masquées dans l'interface et absentes des journaux, exceptions et exports.
 
@@ -1639,9 +1651,9 @@ Aucune version ne peut être publiée si un test critique échoue.
 
 ## 17.10 Tests de performance
 
-- Import massif de documents.
-- Exécution prolongée du Worker.
-- Validation des migrations SQLite.
+- Import massif de documents : scénarios `IT-EF-003` et `FT-EF-003` répétés sur un lot mêlant les cinq formats ; réussite si chaque fichier est soit converti et ordonné, soit rejeté atomiquement sans état partiel. Le nombre de fichiers, leur volume et les seuils de durée sont **non spécifiés**.
+- Exécution prolongée du Worker : scénario `IT-WORKER-001` ; réussite si un seul job reste actif, si l'ordre FIFO d'origine est respecté après redémarrage et si aucun job ne reste bloqué dans un état incohérent. La durée et le volume du scénario sont **non spécifiés**.
+- Validation des migrations SQLite : scénario `IT-MIG-001` ; réussite si montée, rollback et reprise respectent le contrat de 8.15 sans perte de données validées. Le volume de la base de performance est **non spécifié**.
 
 ## 17.11 Catalogue de tests des exigences fonctionnelles
 
@@ -1657,10 +1669,10 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 | EF-006 | `UT-EF-006` calcule un ordre contigu | `IT-EF-006` persiste le glisser-déposer | `FT-EF-006` réordonne avant traduction | ordre de dépôt initial puis ordre utilisateur stable |
 | EF-007 | `UT-EF-007` évalue les gardes | `IT-EF-007` contrôle fichiers/configuration/disque | `FT-EF-007` bloque puis autorise le lancement | `Ready` seulement si tous les contrôles réussissent |
 | EF-008 | `UT-EF-008` impose quatre étapes | `IT-EF-008` exécute quatre appels au même modèle | `FT-EF-008` montre les quatre validations | ni étape omise, inversée ou facultative |
-| EF-009 | `UT-EF-009` trie `(queued_at,id)` | `IT-EF-009` traite un lot séquentiellement | `FT-EF-009` met plusieurs chapitres en file | un seul actif, ordre FIFO, aucune priorité |
+| EF-009 | `UT-EF-009` trie `(queued_at,id)` | `IT-EF-009` traite un lot et redémarre sans réhorodater | `FT-EF-009` met plusieurs chapitres en file puis redémarre | un seul actif, ordre FIFO d'origine, aucune priorité |
 | EF-010 | `UT-EF-010` diffère pause/arrêt | `IT-EF-010` attend la fin de l'appel | `FT-EF-010` arrête depuis l'interface | aucun appel interrompu au milieu, point validé conservé |
-| EF-011 | `UT-EF-011` garde l'édition | `IT-EF-011` refuse avant et écrit après finalisation | `FT-EF-011` édite un chapitre terminé | seul `translated.md` change après pipeline complet |
-| EF-012 | `UT-EF-012` calcule les remplacements | `IT-EF-012` écrit atomiquement tous les `translated.md` terminés | `FT-EF-012` remplace dans l'œuvre | aucune source modifiée, corrections persistées |
+| EF-011 | `UT-EF-011` garde l'éditeur et l'autosauvegarde | `IT-EF-011` refuse avant, prévisualise et autosauvegarde après finalisation | `FT-EF-011` édite et prévisualise un chapitre terminé | seul `translated.md` finalisé est autosauvegardé atomiquement |
+| EF-012 | `UT-EF-012` calcule la prévisualisation des remplacements | `IT-EF-012` exige confirmation puis écrit atomiquement les `translated.md` terminés | `FT-EF-012` annule puis confirme un remplacement global | aucune écriture sans confirmation, aucune source modifiée |
 | EF-013 | `UT-EF-013` accepte cinq sorties | `IT-EF-013` génère chacune depuis tous les documents | `FT-EF-013` télécharge chaque format | EPUB/DOCX/MD/TXT/SRT complets et ordonnés |
 | EF-014 | `UT-EF-014` planifie le nettoyage | `IT-EF-014` supprime succès/erreur | `FT-EF-014` vérifie l'absence après téléchargement | aucun export conservé |
 | EF-015 | `UT-EF-015` couvre traductions/thèmes | `IT-EF-015` rend les variantes | `FT-EF-015` parcourt FR/EN, 3 thèmes et 3 tailles | aucune fonction inaccessible ni information perdue |
@@ -1692,13 +1704,13 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 | `IT-DB-002` | intégration | rollback et cohérence fichier/base | aucun état validé si écriture atomique échoue |
 | `IT-MIG-001` | intégration | montée, rollback et reprise de migration | version inscrite seulement après succès |
 | `IT-WORKER-001` | intégration | concurrence | au plus un job `Running`/`Retrying` |
-| `IT-RECOVERY-001` | intégration | redémarrage à chacune des quatre étapes | reprise à l'étape suivante sans rejeu |
+| `IT-RECOVERY-001` | intégration | redémarrage à chacune des quatre étapes | reprise à l'étape suivante sans rejeu ni modification de `(queued_at, id)` |
 | `IT-PROVIDER-001` | intégration contractuelle | huit adaptateurs | mêmes sorties/erreurs logiques ; même modèle par pipeline |
 | `IT-LOG-001` | intégration sécurité | mots de passe, clés et contenus injectés | aucune valeur sensible dans SQLite, console ou UI |
 | `FT-AUTH-001` | fonctionnel | mot de passe unique | seul `APP_PASSWORD` ouvre l'application, aucun compte |
 | `FT-DOCKER-001` | fonctionnel | conteneur unique et santé | Streamlit/Worker/SQLite sains dans un conteneur |
 | `FT-RESP-001` | fonctionnel | arrêt conteneur pendant appel | arrêt après appel, données validées intactes |
-| `FT-BACKUP-001` | fonctionnel | copie/restauration de `data` | projets, métadonnées et contenus autorisés restaurés |
+| `FT-BACKUP-001` | fonctionnel | restauration séparée de `data` et `.env` | données restaurées et démarrage possible avec `APP_PASSWORD`, sans secret dans `data` |
 | `FT-TEMP-001` | fonctionnel | nettoyage au démarrage | seuls les temporaires reconnus sont supprimés |
 
 ## 17.14 Préconditions, postconditions et références
@@ -1711,7 +1723,7 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 
 **Cas d'erreur.** Un test non exécutable, instable ou sans oracle est un échec ; il ne peut pas être marqué comme couvert.
 
-**Critères d'acceptation.** Les 28 REQ disposent chacun d'un test unitaire, d'intégration et fonctionnel ; la matrice 19.10 ne contient aucune cellule vide.
+**Critères d'acceptation.** Les 28 REQ disposent chacun d'un test unitaire, d'intégration et fonctionnel, soit exactement 84 tests REQ. Avec les 13 tests techniques transversaux de 17.13, il existe exactement 97 tests documentés au total : 29 unitaires, 35 d'intégration et 33 fonctionnels. La matrice 19.10 ne contient aucune cellule vide.
 
 # Chapitre 18 — Diagrammes et modèles
 
@@ -1764,6 +1776,7 @@ Toute évolution majeure de l'architecture impose une mise à jour des diagramme
 
 ```plantuml
 @startuml NovelTrad_Components
+!pragma layout smetana
 skinparam componentStyle rectangle
 actor Utilisateur
 node "Conteneur applicatif unique" {
@@ -1789,6 +1802,7 @@ Services --> AI
 
 ```plantuml
 @startuml NovelTrad_Classes
+!pragma layout smetana
 class ProjectService
 class DocumentService
 class JobService
@@ -1816,6 +1830,7 @@ LogService --> Repository
 
 ```plantuml
 @startuml NovelTrad_Sequence
+!pragma layout smetana
 actor Utilisateur
 participant Streamlit
 participant ProjectService
@@ -1852,6 +1867,7 @@ ExportService -> ExportService: cleanup()
 
 ```plantuml
 @startuml NovelTrad_Project_Document_States
+!pragma layout smetana
 state Project {
   [*] --> Draft
   Draft --> Ready : validation complète
@@ -1880,6 +1896,7 @@ state Document {
 
 ```plantuml
 @startuml NovelTrad_Job_Worker_States
+!pragma layout smetana
 state Job {
   [*] --> Waiting
   Waiting --> Queued : mise en FIFO
@@ -1911,6 +1928,7 @@ state Worker {
 
 ```plantuml
 @startuml NovelTrad_Pipeline
+!pragma layout smetana
 [*] --> Prepared
 Prepared --> Translated : appel 1 validé
 Translated --> Revised : appel 2 validé
@@ -1922,19 +1940,20 @@ Translated --> Retrying : échec appel 2
 Revised --> Retrying : échec appel 3
 ContextChecked --> Retrying : échec appel 4
 Retrying --> Failed : cinq nouvelles tentatives épuisées
-Retrying --> Prepared : succès étape 1
-Retrying --> Translated : succès étape 2
-Retrying --> Revised : succès étape 3
-Retrying --> ContextChecked : succès étape 4
+Retrying --> Translated : succès étape 1
+Retrying --> Revised : succès étape 2
+Retrying --> ContextChecked : succès étape 3
+Retrying --> Finalized : succès étape 4
 @enduml
 ```
 
-Les quatre retours depuis `Retrying` représentent le retour à l'étape qui était en cours ; ils ne rejouent aucune étape déjà validée.
+Les quatre retours depuis `Retrying` représentent la validation de l'étape qui était en reprise ; ils atteignent donc respectivement `Translated`, `Revised`, `ContextChecked` et `Finalized` sans rejouer aucune étape déjà validée.
 
 ## 18.17 Diagramme d'activité du flux de traduction
 
 ```plantuml
 @startuml NovelTrad_Translation_Flow
+!pragma layout smetana
 start
 :Charger source et dernier point validé;
 :Segmenter si nécessaire;
@@ -1965,6 +1984,7 @@ stop
 
 ```plantuml
 @startuml NovelTrad_SQLite
+!pragma layout smetana
 hide methods
 hide stereotypes
 entity projects {
@@ -2051,6 +2071,31 @@ jobs |o--o{ logs
 **Cas d'erreur.** Un diagramme non compilable, une transition sans texte normatif ou une relation SQLite absente du schéma est une référence cassée.
 
 **Critères d'acceptation.** Les huit blocs PlantUML 18.11–18.18 compilent sans erreur et leurs éléments correspondent aux sections citées.
+
+**Validation reproductible.** Les huit blocs utilisent le moteur Smetana intégré afin de ne pas dépendre d'une version externe de Graphviz. La chaîne de référence exige Java 17 ou ultérieur et le JAR PlantUML `1.2026.1` dont le SHA-256 est `89c116168a2a0f7cf5292e11617ba22abd743f891914f1fec5bc9c7d257b3092`. Depuis la racine du dépôt, la procédure autonome suivante extrait les huit blocs inchangés, vérifie le JAR, produit huit SVG et échoue au premier diagramme invalide :
+
+```bash
+validation_dir="$(mktemp -d)"
+trap 'rm -rf "$validation_dir"' EXIT
+npm --cache "$validation_dir/npm-cache" pack --silent plantuml-cli@1.2026.1 --pack-destination "$validation_dir"
+tar -xzf "$validation_dir/plantuml-cli-1.2026.1.tgz" -C "$validation_dir"
+plantuml_jar="$validation_dir/package/build/plantuml-1.2026.1.jar"
+test "$(sha256sum "$plantuml_jar" | cut -d' ' -f1)" = "89c116168a2a0f7cf5292e11617ba22abd743f891914f1fec5bc9c7d257b3092"
+python3 - "$validation_dir" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+markdown = Path("NovelTrad_SDD.md").read_text(encoding="utf-8")
+blocks = re.findall(r"```plantuml\n(.*?)```", markdown, flags=re.S)
+assert len(blocks) == 8, f"8 blocs attendus, {len(blocks)} trouvés"
+for index, block in enumerate(blocks, 1):
+    assert block.count("@startuml") == block.count("@enduml") == 1
+    Path(sys.argv[1], f"diagram-{index}.puml").write_text(block, encoding="utf-8")
+PY
+java -jar "$plantuml_jar" -tsvg -failfast2 "$validation_dir"/diagram-*.puml
+test "$(find "$validation_dir" -maxdepth 1 -name '*.svg' | wc -l)" -eq 8
+```
 
 # Chapitre 19 — Exigences (REQ) et traçabilité
 
@@ -2228,7 +2273,7 @@ data/
   projects/<project_id>/<document_id>/images/*.webp
 ```
 
-`translated.md` n'existe pas avant le lancement du pipeline. Aucun `project.json`, original importé ou export final n'appartient à cette arborescence persistante. Les noms précis des sous-fichiers Python et des répertoires temporaires sont **non spécifiés**.
+`translated.md` n'existe pas avant le lancement du pipeline. Aucun `project.json`, original importé ou export final n'appartient à cette arborescence persistante. Aucun import ni export complet de projet NovelTrad n'est autorisé ; cette arborescence ne constitue pas un format d'échange. Les noms précis des sous-fichiers Python et des répertoires temporaires sont **non spécifiés**.
 
 ## 20.13 Conventions et formats
 
@@ -2246,7 +2291,7 @@ Les entrées et sorties sont limitées à EPUB, DOCX, TXT, Markdown et SRT. Le M
 | Worker unique et FIFO sans priorité | exécution déterministe et simple | 12 |
 | Quatre appels au même modèle | qualité automatique obligatoire | 11 |
 | Markdown et WebP persistants | stockage minimal et formats pivots | 10, 20.12 |
-| Aucun historique/glossaire métier/project.json | périmètre simple figé | 1.4, 20.12 |
+| Aucun historique/glossaire métier/project.json, import ou export complet de projet | périmètre simple figé | 1.4, 20.12 |
 | Export temporaire de tous les documents | cohérence de l'œuvre et absence d'artefacts | 15 |
 
 ## 20.15 Contrat de clôture du SDD
