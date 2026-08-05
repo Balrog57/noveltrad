@@ -9,3 +9,7 @@
 ## 2024-07-13 - State Toggle Button Accessibility
 **Learning:** Adding an `aria-label` to a state-toggling button that already contains dynamic, informative text (e.g., `{{ currentMode === 'A' ? 'A' : 'B' }}`) is an accessibility anti-pattern. The `aria-label` completely overrides the visible text for screen readers, hiding the crucial state context.
 **Action:** When improving state toggle buttons, do not use `aria-label` if it overrides useful dynamic text. Instead, use a `title` attribute for a visual tooltip and `:aria-pressed="condition"` to expose the toggle state programmatically to screen readers.
+
+## 2024-08-05 - Dynamic Accessible Names on State Toggle Buttons
+**Learning:** When creating icon-only state-toggling buttons in PySide6 (like an accordion expand/collapse button), a static `accessibleName` is insufficient. The accessible name must dynamically update (e.g., from "Réduire" to "Développer") when the state changes so screen reader users understand the current action available.
+**Action:** Always dynamically update the accessible name inside the toggle event handler for state-toggling buttons using the custom `src.gui.a11y.configure` utility.
