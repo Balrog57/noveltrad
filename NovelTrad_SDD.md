@@ -520,6 +520,10 @@ Fonctions courtes avec une responsabilité unique.
 
 Journalisation structurée des erreurs.
 
+Le réemploi de code externe est encouragé lorsqu'il réduit le risque d'implémentation d'un comportement déjà exigé par ce SDD. Avant intégration, chaque emprunt doit être rattaché à un dépôt, un commit et un fichier précis, puis contrôlé sur quatre axes : licence compatible, dépendances compatibles avec le conteneur unique, respect des invariants NovelTrad et présence de tests transposables.
+
+Le périmètre fonctionnel reste exclusivement défini par ce SDD : un composant externe ne peut introduire ni format, ni fournisseur, ni passe IA, ni cache de métadonnées, ni Worker, ni service ou option utilisateur supplémentaire. La licence de NovelTrad est **non spécifiée** par ce SDD. En l'absence d'une décision de licence explicite et compatible, le code GPL-3.0 ou AGPL-3.0 est une référence de conception et de tests uniquement ; il doit faire l'objet d'une réimplémentation indépendante. Le code sous licence permissive peut être adapté à condition de conserver les mentions d'auteur et de licence requises.
+
 ## 7.17 Conventions de tests
 
 Chaque module possède son propre dossier de tests. Les tests utilisent des doubles (mocks/fakes) pour les fournisseurs IA et le système de fichiers lorsque nécessaire.
@@ -942,6 +946,10 @@ La bibliothèque de conversion, la méthode de détection de langue et la normal
 
 **Critères d'acceptation et références.** EF-002 à EF-006 réussissent les tests 17.11 ; modèle de document 8.6, états 9.14, séquence 18.13.
 
+La mise en œuvre suit un contrat d'adaptateur commun, dérivé des architectures inspectées sans en importer le périmètre fonctionnel : `extraire → protéger → segmenter → reconstruire → valider → publier`. La protection remplace temporairement chaque élément structurel non traduisible par un marqueur opaque associé univoquement à son contenu d'origine. La reconstruction échoue si un marqueur manque, est dupliqué, change d'ordre lorsque l'ordre est significatif ou produit une structure non refermée.
+
+Les adaptateurs appliquent ce contrat aux cinq formats autorisés : arbre XHTML et ressources pour EPUB ; paragraphes, tableaux, relations et images pour DOCX ; blocs GFM, liens, images et blocs de code clôturés pour Markdown ; lignes et séparateurs pour TXT ; indices, horodatages et texte pour SRT. Les blocs de dialogue détectables restent indivisibles conformément à 11.14. Les techniques DOM et leurs tests de `bilingual_book_maker` sous MIT peuvent être adaptées pour EPUB ; l'insertion bilingue, PDF et tout format supplémentaire restent exclus.
+
 # Chapitre 11 — Pipeline IA
 
 ## 11.1 Objectif
@@ -1015,6 +1023,10 @@ Un document est considéré comme terminé uniquement lorsque les quatre étapes
 **Invariants.** Ordre traduction → révision → vérification contextuelle → finalisation ; aucune étape facultative ; même modèle ; aucune correction humaine avant achèvement ; aucune étape validée rejouée à la reprise.
 
 **Contraintes.** Le contexte est limité aux trois éléments de RM-008 et la structure GFM doit être préservée.
+
+**Patrons d'implémentation retenus.** Les quatre prompts sont des ressources distinctes, chargées par identifiant d'étape et substituées uniquement avec des variables nommées autorisées. Un contexte d'appel immuable porte la langue cible, le modèle figé, l'étape et les trois éléments maximum de RM-008 ; il ne contient ni glossaire, ni recherche web, ni mémoire agentique. Ce découplage peut adapter le chargeur de prompts et le contexte typé d'Aphra sous MIT, mais jamais son pipeline à cinq agents.
+
+Avant validation, la réponse normalisée doit être non vide, conserver le nombre et l'ordre des unités attendues, restituer tous les marqueurs protégés une fois chacun et produire une structure GFM valide. Une réponse refusée, tronquée, surnuméraire, désordonnée ou structurellement invalide est un échec récupérable soumis à l'unique politique 11.8. Les retries internes d'un SDK fournisseur sont désactivés afin que l'appel initial et les cinq nouvelles tentatives restent exactement ceux de RM-009.
 
 ## 11.14 Pseudo-code de segmentation
 
@@ -1153,6 +1165,8 @@ Chaque changement d'état est enregistré dans SQLite et dans les journaux.
 **Invariants.** Une boucle logique, un job actif, aucune priorité, aucun dépassement FIFO, arrêt/pause seulement après l'appel IA courant.
 
 **Contraintes.** Aucun Redis, service de file externe, second Worker logique ou exécution distribuée.
+
+Les patrons de checkpoint sur fichier, de cache JSON ou de fichier EPUB temporaire observés dans les dépôts comparés ne sont pas intégrables tels quels : SQLite demeure l'unique source des métadonnées et `translated.md` le seul contenu de travail mutable. Le Worker persiste exclusivement les états déjà définis, `last_validated_stage`, `retry_count` et les clés FIFO d'origine ; il ne crée ni journal de reprise parallèle ni seconde file. Les contrôles d'annulation coopérative observés peuvent être réimplémentés uniquement à la frontière située après l'appel IA courant, jamais à l'intérieur de cet appel.
 
 ## 12.14 Pseudo-code de la boucle FIFO
 
@@ -1407,6 +1421,8 @@ Chaque adaptateur expose les capacités logiques suivantes ; les signatures Pyth
 Adaptateurs obligatoires : Ollama, LM Studio, OpenAI-compatible personnalisé, OpenRouter, OpenAI/ChatGPT, Gemini, Claude et Grok. Tous présentent les mêmes catégories d'erreur au pipeline.
 
 DeepSeek désigne un modèle utilisable par l'intermédiaire d'Ollama, LM Studio, OpenRouter ou de la configuration OpenAI-compatible personnalisée lorsque le fournisseur choisi le propose. DeepSeek ne constitue pas un neuvième fournisseur et n'exige aucun adaptateur distinct.
+
+Une fabrique interne associe la configuration globale à exactement l'un des huit adaptateurs. Aucun objet propre à un SDK ne franchit la frontière de 14.14 : les réponses ChatCompletions ou équivalentes sont normalisées en texte et métadonnées techniques sûres, et les erreurs en catégories communes. La détection de capacité d'une sortie structurée peut choisir une extraction structurée ou un repli textuel déterministe, sans modifier les prompts métier, le nombre d'appels ni l'interface utilisateur. L'orchestrateur du chapitre 11 reste seul propriétaire des tentatives et délais ; chaque client fournisseur doit donc être configuré sans retry automatique supplémentaire et être fermé proprement à l'arrêt du Worker.
 
 ## 14.15 Invariants, dépendances et verrouillage
 
@@ -1704,8 +1720,8 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 | `IT-DB-002` | intégration | rollback et cohérence fichier/base | aucun état validé si écriture atomique échoue |
 | `IT-MIG-001` | intégration | montée, rollback et reprise de migration | version inscrite seulement après succès |
 | `IT-WORKER-001` | intégration | concurrence | au plus un job `Running`/`Retrying` |
-| `IT-RECOVERY-001` | intégration | redémarrage à chacune des quatre étapes | reprise à l'étape suivante sans rejeu ni modification de `(queued_at, id)` |
-| `IT-PROVIDER-001` | intégration contractuelle | huit adaptateurs | mêmes sorties/erreurs logiques ; même modèle par pipeline |
+| `IT-RECOVERY-001` | intégration | redémarrage à chacune des quatre étapes | reprise à l'étape suivante sans rejeu, cache de reprise parallèle ni modification de `(queued_at, id)` |
+| `IT-PROVIDER-001` | intégration contractuelle | huit adaptateurs | mêmes sorties/erreurs logiques ; sortie vide, cardinalité, ordre, marqueurs et GFM contrôlés ; retry SDK désactivé ; même modèle par pipeline |
 | `IT-LOG-001` | intégration sécurité | mots de passe, clés et contenus injectés | aucune valeur sensible dans SQLite, console ou UI |
 | `FT-AUTH-001` | fonctionnel | mot de passe unique | seul `APP_PASSWORD` ouvre l'application, aucun compte |
 | `FT-DOCKER-001` | fonctionnel | conteneur unique et santé | Streamlit/Worker/SQLite sains dans un conteneur |
@@ -2209,13 +2225,28 @@ Description des formats importés et exportés ainsi que des contraintes de comp
 
 Historique des choix d'architecture majeurs et justification des arbitrages.
 
+| Date | Décision | Justification |
+|---|---|---|
+| 2026-08-05 | Inspecter les implémentations comparables et réemployer au maximum leurs mécanismes compatibles, sans importer leur périmètre fonctionnel | réduire les risques techniques tout en préservant les 16 EF, 12 RM et l'architecture simple de NovelTrad |
+
 ## 20.6 Évolutions futures
 
 Liste des améliorations envisageables sans remettre en cause l'architecture validée.
 
 ## 20.7 Références
 
-Références documentaires : Markdown GFM, SQLite, Docker, Streamlit et fournisseurs IA.
+Références documentaires : Markdown GFM, SQLite, Docker, Streamlit et fournisseurs IA. Le PDF comparatif `Open Source AI Translation Tools.pdf` oriente l'étude mais n'est pas normatif. Les versions de code suivantes ont été inspectées ; leurs dépôts et commits ne deviennent jamais des dépendances d'exécution ni des sources d'exigences.
+
+| Projet inspecté et version | Fichiers de référence | Licence constatée | Réemploi autorisé dans NovelTrad | Éléments explicitement exclus |
+|---|---|---|---|---|
+| [TranslateBooksWithLLMs `0ae4704`](https://github.com/hydropix/TranslateBooksWithLLMs/tree/0ae47041ca8db486313765dbf8f9489c07610a29) | `src/core/common/translation_orchestrator.py`, `src/core/epub/epub_translation_adapter.py`, `src/core/epub/translator.py`, `tests/test_common/test_translation_orchestrator.py` | AGPL-3.0 | référence pour la frontière adaptateur, la protection par marqueurs, la reconstruction et les scénarios de reprise ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | Flask, parallélisme, glossaire, TTS, OCR, raffinement optionnel, rotation de clés, notifications et formats hors périmètre |
+| [bilingual_book_maker `fc1aea0`](https://github.com/yihong0618/bilingual_book_maker/tree/fc1aea0a582dfd2cdf75f991ade1ec75d8539fa3) | `book_maker/loader/epub_loader.py`, `book_maker/translator/chatgptapi_translator.py`, `tests/test_epub_loader_batch_translate.py` | MIT | adaptation directe possible des parcours DOM EPUB, tests d'extraction, validation de cardinalité/ordre et repli déterministe de réponse, avec mentions de licence | sortie bilingue, PDF, liseuse, cache `_temp.epub`, multi-clés, modèles/fournisseurs supplémentaires et passe facultative |
+| [Aphra `d5cdd49`](https://github.com/DavidLMS/aphra/tree/d5cdd49cfcd9805af8cca7befc64c0d01e1718ad) | `aphra/core/context.py`, `aphra/core/workflow.py`, `tests/test_core_prompts.py` | MIT | adaptation directe possible du contexte typé, du chargement de prompts et de leurs tests, avec mentions de licence | agents multiples, analyse préalable, recherche web, glossaire, critique séparée, notes du traducteur et cinquième passe |
+| [GalTransl `c1c470b`](https://github.com/GalTransl/GalTransl/tree/c1c470b55e6c60dea723f0da4670213f997715b7) | `GalTransl/Backend/BaseTranslate.py`, `GalTransl/Cache.py`, `tests/test_translate_refactor_regressions.py` | GPL-3.0 | référence de tests pour limite de retries, fermeture des flux et annulation coopérative ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | concurrence adaptative, cache JSON, dictionnaires/glossaires, formats de jeux et fournisseurs supplémentaires |
+| [PDFMathTranslate `44c4d5b`](https://github.com/PDFMathTranslate/PDFMathTranslate/tree/44c4d5b332705797c1df17fadde2022e7c49f5de) | `pdf2zh/translator.py` | AGPL-3.0 | référence pour une interface fournisseur uniforme et la normalisation des erreurs ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | PDF, vision, détection de mise en page, cache de traduction et services non prévus |
+| [AiNiee `ab567e3`](https://github.com/NEKOparapa/AiNiee/tree/ab567e36f315f7f4d399f4e21196cd58be4f64c5) | `ModuleFolders/Domain/ResponseChecker/ResponseChecker.py`, `ModuleFolders/Service/TaskExecutor/TranslatorTask.py`, `ModuleFolders/Domain/FileAccessor/EpubAccessor.py` | AGPL-3.0 | référence pour les invariants de réponse — vide, cardinalité, ordre, marqueurs — et la restauration structurelle ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | GUI de bureau, parallélisme, glossaires, filtres de jeux, PDF/PPT/ASS/VTT/LRC et passes ou options supplémentaires |
+
+Toute réutilisation effective doit figer le commit inspecté, conserver les avis requis, supprimer les branches de code hors périmètre et repasser les tests NovelTrad. Une mise à jour amont n'est jamais absorbée automatiquement.
 
 ## 20.8 Clôture
 
@@ -2226,6 +2257,8 @@ Le présent SDD constitue la référence technique unique du projet NovelTrad. T
 - Nouveaux fournisseurs IA.
 - Nouveaux formats d'import et d'export.
 - Optimisations du pipeline.
+
+Cette liste est informative et n'autorise aucune implémentation. Chaque évolution exige au préalable une modification validée du présent SDD ; jusqu'alors, les formats, fournisseurs et quatre étapes actuellement définis forment un ensemble fermé.
 
 ## 20.10 Révision du SDD
 
@@ -2293,6 +2326,7 @@ Les entrées et sorties sont limitées à EPUB, DOCX, TXT, Markdown et SRT. Le M
 | Markdown et WebP persistants | stockage minimal et formats pivots | 10, 20.12 |
 | Aucun historique/glossaire métier/project.json, import ou export complet de projet | périmètre simple figé | 1.4, 20.12 |
 | Export temporaire de tous les documents | cohérence de l'œuvre et absence d'artefacts | 15 |
+| Réemploi externe contrôlé | utiliser du code éprouvé sans importer de fonctionnalité, dépendance ou obligation de licence incompatible | 7.16, 10.14, 11.13, 12.13, 14.14, 20.7 |
 
 ## 20.15 Contrat de clôture du SDD
 
