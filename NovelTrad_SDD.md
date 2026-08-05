@@ -59,7 +59,7 @@ Les évolutions futures ne doivent pas remettre en cause les principes fondateur
 
 **Cas d'erreur.** Une opération incompatible avec le périmètre, un secret absent ou une ressource locale indisponible est refusé avec un message exploitable, sans altérer les données validées.
 
-**Critères d'acceptation.** Un parcours complet permet, en français comme en anglais et sur PC, tablette ou smartphone, de créer une œuvre, importer ses documents, exécuter les quatre appels IA séquentiels et télécharger un export sans conservation de celui-ci.
+**Critères d'acceptation.** Un parcours complet permet, en français comme en anglais et sur PC, tablette ou smartphone, de créer une œuvre, importer ses documents, exécuter les quatre passes IA séquentielles et télécharger un export sans conservation de celui-ci.
 
 **Références croisées.** Architecture : chapitre 2 ; règles : chapitre 4 ; stockage : chapitre 8 ; pipeline : chapitre 11 ; tests : chapitre 17 ; traçabilité : chapitre 19.
 
@@ -149,7 +149,7 @@ EF-006 --- Conserver l'ordre de dépôt et autoriser le réordonnancement avant 
 
 EF-007 --- Valider le projet avant lancement.
 
-EF-008 --- Exécuter quatre appels IA : traduction, révision linguistique, contexte, finalisation.
+EF-008 --- Exécuter quatre passes IA : traduction, révision linguistique, contexte, finalisation.
 
 EF-009 --- Traiter une seule unité à la fois et accepter une file de nombreux chapitres.
 
@@ -295,11 +295,11 @@ Exécute les opérations longues sans connaître Streamlit.
 
 ## 5.6 Fournisseur IA
 
-Interface commune couvrant Ollama, LM Studio, OpenAI, OpenRouter, Gemini, Claude, Grok et les serveurs OpenAI-compatibles.
+Interface commune fermée couvrant Ollama, LM Studio et une API OpenAI-compatible, dont l'API OpenAI publique est la configuration cloud de référence.
 
 ## 5.7 Fichiers persistants
 
-SQLite, source.md, translated.md et images WebP uniquement.
+SQLite, `source.md`, `translated.md`, images WebP et checkpoints internes de segments uniquement. Les checkpoints existent seulement pendant le pipeline, ne sont ni éditables ni exportables et sont supprimés après publication atomique du document final.
 
 ## 5.8 Contrats des services
 
@@ -340,7 +340,7 @@ Les types Python précis des objets d'entrée et de sortie sont **non spécifié
 | `ProjectService` | Créer, renommer, valider et supprimer une œuvre | nom, langue cible, identifiant projet, confirmation si requise | projet ou état mis à jour | projet absent, état incompatible, validation impossible | `projects` repository ; un projet = une œuvre |
 | `DocumentService` | Importer, convertir, ordonner, supprimer et recalculer les statistiques | fichiers acceptés, identifiant projet/document, ordre demandé | documents et statistiques | format refusé, conversion invalide, verrouillage actif, espace insuffisant | `documents` repository, système de fichiers ; `source.md` immuable |
 | `JobService` | Créer la FIFO, demander pause/annulation, reprendre et récupérer | documents validés, commande de contrôle | jobs et états persistés | job absent, transition interdite, traduction déjà active | `jobs` repository ; FIFO stricte, Worker unique |
-| `TranslationService` | Exécuter les quatre appels et valider chaque étape | source, contexte autorisé, configuration globale figée | étape validée et `translated.md` atomique | réponse invalide, fournisseur indisponible, tentatives épuisées | fournisseur IA, `JobService`, fichiers ; même modèle aux quatre appels |
+| `TranslationService` | Exécuter les quatre passes et valider chaque segment | source, contexte autorisé, configuration globale figée | segment validé, checkpoint atomique et `translated.md` reconstruit | réponse invalide, fournisseur indisponible, tentatives épuisées | fournisseur IA, `JobService`, fichiers ; même modèle pendant les quatre passes |
 | `VerificationService` | Révision linguistique, contrôle contextuel, finalisation | résultat de l'étape précédente et contexte défini en RM-008 | contenu révisé/validé | structure altérée, omission détectée, réponse invalide | `TranslationService` ; étapes obligatoires et ordonnées |
 | `ExportService` | Contrôler, assembler, générer puis nettoyer l'export | projet terminé, format supporté | flux ou chemin temporaire téléchargeable | projet incomplet, image absente, génération impossible | repositories, système de fichiers ; aucun export persistant |
 | `SettingsService` | Lire, valider et enregistrer la configuration globale | langue, thème, fournisseur, URL, clé, modèle, options | configuration masquée et résultat de validation | configuration invalide, job actif, connexion impossible | `settings` repository, adaptateur IA ; aucun secret journalisé |
@@ -438,7 +438,7 @@ Configuration chargée.
 
 **Préconditions.** Docker Compose, un volume `data` inscriptible et `APP_PASSWORD` sont disponibles. Les exigences minimales de ressources sont **non spécifiées**.
 
-**Postconditions.** Après démarrage sain, Streamlit, SQLite et le Worker répondent ; après arrêt, l'appel IA courant est terminé et la dernière étape validée est persistée.
+**Postconditions.** Après démarrage sain, Streamlit, SQLite et le Worker répondent ; après arrêt, l'appel IA courant est terminé et chaque segment déjà validé reste persisté.
 
 **Cas d'erreur.** Secret absent, volume inaccessible, migration échouée ou Worker non démarré rendent le contrôle de santé négatif sans destruction de données.
 
@@ -520,7 +520,7 @@ Fonctions courtes avec une responsabilité unique.
 
 Journalisation structurée des erreurs.
 
-Le réemploi de code externe est encouragé lorsqu'il réduit le risque d'implémentation d'un comportement déjà exigé par ce SDD. Avant intégration, chaque emprunt doit être rattaché à un dépôt, un commit et un fichier précis, puis contrôlé sur quatre axes : licence compatible, dépendances compatibles avec le conteneur unique, respect des invariants NovelTrad et présence de tests transposables.
+Le réemploi de code externe est encouragé lorsqu'il réduit le risque d'implémentation d'un comportement déjà exigé par ce SDD. Avant intégration, chaque emprunt doit être rattaché à un dépôt, un commit et un fichier précis, puis contrôlé sur cinq axes : pertinence pour une exigence existante, licence compatible, dépendances compatibles avec le conteneur unique, respect de l'architecture et des invariants NovelTrad, maturité démontrée par le code maintenu et des tests transposables.
 
 Le périmètre fonctionnel reste exclusivement défini par ce SDD : un composant externe ne peut introduire ni format, ni fournisseur, ni passe IA, ni cache de métadonnées, ni Worker, ni service ou option utilisateur supplémentaire. La licence de NovelTrad est **non spécifiée** par ce SDD. En l'absence d'une décision de licence explicite et compatible, le code GPL-3.0 ou AGPL-3.0 est une référence de conception et de tests uniquement ; il doit faire l'objet d'une réimplémentation indépendante. Le code sous licence permissive peut être adapté à condition de conserver les mentions d'auteur et de licence requises.
 
@@ -566,7 +566,7 @@ SQLite est l'unique base de données de NovelTrad. Elle stocke uniquement les m�
 
 ## 8.2 Principes
 
-La base contient les projets, documents, jobs, paramètres et journaux. Aucun texte de chapitre ni image n'est enregistré dans SQLite.
+La base contient les projets, documents, chapitres, segments, jobs, paramètres et journaux. Aucun texte de chapitre, checkpoint ni image n'est enregistré dans SQLite.
 
 ## 8.3 Transactions
 
@@ -590,7 +590,9 @@ Les clés étrangères sont activées. Toutes les dates sont stockées au format
 
 Le choix de langue cible est immuable pendant une traduction active. L'unicité du nom n'est pas exigée et reste **non spécifiée**.
 
-## 8.6 Table documents
+## 8.6 Tables documents, chapters et segments
+
+**Table `documents`**
 
 | Colonne | Type SQLite | Null / défaut | Contraintes et sens |
 |---|---|---|---|
@@ -601,13 +603,45 @@ Le choix de langue cible est immuable pendant une traduction active. L'unicité 
 | `source_path` | TEXT | non nul | chemin relatif unique du `source.md` du document |
 | `translated_path` | TEXT | nul avant lancement | chemin relatif du seul contenu éditable |
 | `status` | TEXT | non nul | `ToTranslate`, `Running`, `Paused`, `Completed` ou `Failed` |
-| `pipeline_stage` | TEXT | nul avant pipeline | dernière étape validée selon 11.16 |
 | `progress` | REAL | 0 | de 0 à 100 inclus |
 | `word_count` | INTEGER | 0 | entier ≥ 0 |
 | `character_count` | INTEGER | 0 | entier ≥ 0 |
 | `detected_language` | TEXT | nul avant détection | langue source détectée |
 | `last_error` | TEXT | nul | résumé expurgé, jamais le contenu complet |
 | `updated_at` | TEXT | non nul | UTC ISO-8601 |
+
+**Table `chapters`**
+
+Un document produit un ou plusieurs chapitres structurels. Un format plat produit un seul chapitre ; un EPUB suit les unités de lecture de sa `spine`. Cette normalisation ne crée aucune fonction utilisateur ni aucun format supplémentaire.
+
+| Colonne | Type SQLite | Null / défaut | Contraintes et sens |
+|---|---|---|---|
+| `id` | INTEGER | non nul | clé primaire |
+| `document_id` | INTEGER | non nul | FK → `documents.id`, `ON DELETE CASCADE` |
+| `order_index` | INTEGER | non nul | entier ≥ 0 ; `UNIQUE(document_id, order_index)` |
+| `title` | TEXT | nul | titre structurel extrait, jamais généré par IA |
+| `source_start` | INTEGER | non nul | offset en octets dans le `source.md` immuable |
+| `source_end` | INTEGER | non nul | offset exclusif, strictement supérieur à `source_start` |
+| `source_hash` | TEXT | non nul | empreinte du contenu source référencé |
+
+**Table `segments`**
+
+| Colonne | Type SQLite | Null / défaut | Contraintes et sens |
+|---|---|---|---|
+| `id` | INTEGER | non nul | clé primaire |
+| `chapter_id` | INTEGER | non nul | FK → `chapters.id`, `ON DELETE CASCADE` |
+| `order_index` | INTEGER | non nul | entier ≥ 0 ; `UNIQUE(chapter_id, order_index)` |
+| `source_start` | INTEGER | non nul | offset en octets dans le chapitre source |
+| `source_end` | INTEGER | non nul | offset exclusif, strictement supérieur à `source_start` |
+| `source_hash` | TEXT | non nul | empreinte du segment source immuable |
+| `state` | TEXT | `PENDING` | `PENDING`, `TRANSLATED`, `REVISED`, `COHERENCE_CHECKED` ou `POLISHED` |
+| `checkpoint_path` | TEXT | nul pour `PENDING` | chemin relatif vers le dernier checkpoint atomique validé |
+| `checkpoint_hash` | TEXT | nul pour `PENDING` | empreinte du checkpoint référencé |
+| `retry_count` | INTEGER | 0 | de 0 à 5 pour l'appel courant ; remis à 0 après validation |
+| `last_error` | TEXT | nul | diagnostic expurgé du dernier échec |
+| `updated_at` | TEXT | non nul | UTC ISO-8601 |
+
+Le contenu intermédiaire reste dans des checkpoints de fichiers immuables ; SQLite conserve l'état, le chemin et l'empreinte qui font autorité. Aucun texte source ou final n'est stocké en BLOB ou en colonne SQLite.
 
 ## 8.7 Table jobs
 
@@ -617,11 +651,10 @@ Le choix de langue cible est immuable pendant une traduction active. L'unicité 
 | `document_id` | INTEGER | non nul | FK → `documents.id`, `ON DELETE CASCADE` |
 | `state` | TEXT | non nul | `Waiting`, `Queued`, `Running`, `Paused`, `Retrying`, `Completed`, `Cancelled` ou `Failed` |
 | `provider` | TEXT | non nul à l'exécution | instantané du fournisseur global |
-| `model` | TEXT | non nul à l'exécution | même modèle pour les quatre appels |
+| `model` | TEXT | non nul à l'exécution | même modèle pendant les quatre passes |
 | `current_stage` | TEXT | nul avant exécution | étape en cours |
-| `last_validated_stage` | TEXT | nul avant première validation | point de reprise persistant |
+| `current_segment_id` | INTEGER | nul hors appel | FK → `segments.id`, `ON DELETE SET NULL`, segment en cours d'appel |
 | `progress` | REAL | 0 | de 0 à 100 inclus |
-| `retry_count` | INTEGER | 0 | de 0 à 5 pour l'appel courant ; remis à 0 après succès |
 | `last_message` | TEXT | nul | diagnostic expurgé |
 | `queued_at` | TEXT | nul tant que `Waiting` | UTC ISO-8601 ; clé principale de FIFO |
 | `started_at` | TEXT | nul | UTC ISO-8601 |
@@ -670,6 +703,9 @@ Index obligatoires :
 - `idx_projects_name` sur `projects(name)` ;
 - contrainte/index unique `uq_documents_project_order` sur `documents(project_id, order_index)` ;
 - `idx_documents_status` sur `documents(status)` ;
+- contrainte/index unique `uq_chapters_document_order` sur `chapters(document_id, order_index)` ;
+- contrainte/index unique `uq_segments_chapter_order` sur `segments(chapter_id, order_index)` ;
+- `idx_segments_resume` sur `segments(state, chapter_id, order_index)` ;
 - `idx_jobs_fifo` sur `jobs(state, queued_at, id)` ;
 - `idx_logs_created_at` sur `logs(created_at)` ;
 - `idx_logs_project` sur `logs(project_id, created_at)`.
@@ -678,7 +714,7 @@ Les index supplémentaires dépendent des mesures de performance et sont **non s
 
 ## 8.10 Invariants
 
-SQLite est l'unique source des métadonnées. Les suppressions sont transactionnelles. Un projet supprimé supprime ses documents, jobs et journaux associés.
+SQLite est l'unique source des métadonnées et des états de reprise. Les suppressions sont transactionnelles. Un projet supprimé supprime ses documents, chapitres, segments, jobs et journaux associés.
 
 ## 8.11 Stratégie de migration
 
@@ -698,7 +734,7 @@ Un project_id référencé doit exister.
 
 order_index est unique par projet.
 
-Les colonnes `projects.status`, `documents.status`, `jobs.state`, `logs.level`, les progressions et `jobs.retry_count` sont protégées par des contraintes `CHECK` correspondant exactement aux domaines documentés en 8.5–8.8. `documents.source_path` est unique ; `documents.translated_path` est unique lorsqu'il n'est pas nul.
+Les colonnes `projects.status`, `documents.status`, `segments.state`, `jobs.state`, `logs.level`, les progressions et `segments.retry_count` sont protégées par des contraintes `CHECK` correspondant exactement aux domaines documentés en 8.5–8.8. `documents.source_path` est unique ; `documents.translated_path` est unique lorsqu'il n'est pas nul. Les plages de chapitres et segments sont ordonnées, contiguës, non chevauchantes et incluses dans leur parent.
 
 Les chemins stockés sont relatifs au dossier du projet.
 
@@ -706,13 +742,13 @@ Toute suppression respecte les clés étrangères.
 
 ## 8.13 Règles de suppression et de fichiers
 
-La suppression d'un projet cascade vers documents, jobs et logs dans la même transaction SQLite, puis supprime le dossier du projet après confirmation. Si la suppression des fichiers échoue, l'opération ne doit pas laisser SQLite annoncer une suppression complète ; le mécanisme compensatoire exact est **non spécifié**.
+La suppression d'un projet cascade vers documents, chapitres, segments, jobs et logs dans la même transaction SQLite, puis supprime le dossier du projet après confirmation. Si la suppression des fichiers échoue, l'opération ne doit pas laisser SQLite annoncer une suppression complète ; le mécanisme compensatoire exact est **non spécifié**.
 
-La suppression d'un document cascade vers ses jobs et logs. Un document traduit exige la confirmation renforcée de RM-011. Aucun `source.md`, `translated.md` ou WebP n'est stocké en BLOB.
+La suppression d'un document cascade vers ses chapitres, segments, jobs et logs. Un document traduit exige la confirmation renforcée de RM-011. Aucun `source.md`, `translated.md`, checkpoint ou WebP n'est stocké en BLOB.
 
 ## 8.14 Contrat des repositories SQLite
 
-**Responsabilités.** Exécuter exclusivement les lectures et écritures du schéma 8.5–8.9.
+**Responsabilités.** Exécuter exclusivement les lectures et écritures du schéma 8.5–8.9, y compris les transitions atomiques des segments.
 
 **Entrées / sorties.** Entités ou critères typés → entités, listes ou compteurs ; aucun objet Streamlit.
 
@@ -794,8 +830,8 @@ Le tableau de bord calcule automatiquement le nombre de documents, de mots, de c
 | `Draft` | imports valides puis validation complète | `Ready` | figer l'ordre candidat et autoriser la mise en file |
 | `Draft` | import, suppression ou réordonnancement | `Draft` | mettre à jour documents et statistiques |
 | `Ready` | démarrage du premier job FIFO | `Running` | verrouiller ordre, documents et configuration IA |
-| `Running` | demande de pause, après fin de l'appel IA courant | `Paused` | persister le dernier point validé |
-| `Paused` | job repris effectivement par le Worker | `Running` | reprendre sans rejouer les étapes validées |
+| `Running` | demande de pause, après fin de l'appel IA courant | `Paused` | persister le segment courant s'il est validé |
+| `Paused` | job repris effectivement par le Worker | `Running` | reprendre sans rejouer les segments validés |
 | `Running` | tous les documents terminés | `Completed` | déverrouiller l'édition humaine et l'export |
 | `Running` | job en échec après tentatives | `Failed` | conserver le point de reprise et déverrouiller les commandes de récupération autorisées |
 | `Failed` | reprise manuelle valide | `Running` | reprendre au dernier point validé |
@@ -807,11 +843,11 @@ La suppression confirmée est possible hors traduction active. Depuis `Running`,
 
 | État courant | Événement / garde | État suivant | Effet obligatoire |
 |---|---|---|---|
-| inexistant | conversion import validée | `ToTranslate` | créer `source.md` immuable et les métadonnées |
-| `ToTranslate` | job démarré | `Running` | créer `translated.md` et commencer à la première étape non validée |
-| `Running` | pause effective après appel courant | `Paused` | persister étape et contenu validés |
-| `Paused` | job repris effectivement par le Worker | `Running` | continuer à l'étape suivante non validée |
-| `Running` | quatre étapes validées | `Completed` | autoriser l'édition humaine |
+| inexistant | conversion import validée | `ToTranslate` | créer `source.md` immuable, document et chapitres structurels |
+| `ToTranslate` | job démarré | `Running` | créer `translated.md` et les segments `PENDING` |
+| `Running` | pause effective après appel courant | `Paused` | persister état et checkpoint du segment validé |
+| `Paused` | job repris effectivement par le Worker | `Running` | continuer au premier segment non validé de la passe courante |
+| `Running` | quatre passes validées pour tous les segments | `Completed` | publier `translated.md` et autoriser l'édition humaine |
 | `Running` | tentatives épuisées | `Failed` | conserver fichiers et dernier point validé |
 | `Failed` | reprise manuelle | `Running` | reprendre sans rejeu |
 | `Completed` | correction humaine | `Completed` | écriture atomique de `translated.md` uniquement |
@@ -968,23 +1004,23 @@ Validation du Markdown, segmentation si nécessaire et préparation des données
 
 ## 11.3 Traduction fidèle
 
-Premier appel IA produisant une traduction fidèle sans ajout ni omission.
+Première passe IA. Chaque segment `PENDING` est traduit fidèlement sans ajout ni omission, puis passe à `TRANSLATED` après validation.
 
 ## 11.4 Révision linguistique
 
-Deuxième appel IA corrigeant orthographe, grammaire, ponctuation et fluidité sans changer le sens.
+Deuxième passe IA. Chaque segment `TRANSLATED` est corrigé pour l'orthographe, la grammaire, la ponctuation et la fluidité sans changer le sens, puis passe à `REVISED`.
 
 ## 11.5 Vérification contextuelle
 
-Troisième appel IA utilisant le chapitre précédent traduit, le chapitre courant traduit et le chapitre suivant source pour assurer la cohérence.
+Troisième passe IA. Chaque segment `REVISED` est contrôlé avec le chapitre précédent traduit, le chapitre courant traduit et le chapitre suivant source, puis passe à `COHERENCE_CHECKED`.
 
 ## 11.6 Validation finale
 
-Quatrième appel IA vérifiant qu'aucun passage n'est oublié, que la structure Markdown est conservée et que le résultat est prêt à être édité.
+Quatrième passe IA. Chaque segment `COHERENCE_CHECKED` est poli en vérifiant qu'aucun passage n'est oublié, que la structure Markdown est conservée et que le résultat est prêt à être édité, puis passe à `POLISHED`.
 
 ## 11.7 Sauvegarde
 
-Après chaque étape, translated.md est écrit de façon atomique et la progression est mise à jour dans SQLite.
+Après chaque segment validé, un nouveau checkpoint immuable est écrit, synchronisé sur disque puis référencé dans la même transition SQLite que son nouvel état. Après chaque passe complète, `translated.md` est reconstruit et remplacé atomiquement ; il ne constitue pas le point de reprise. Après la quatrième passe, la reconstruction finale est publiée puis les checkpoints antérieurs sont nettoyés.
 
 ## 11.8 Politique de reprise
 
@@ -996,7 +1032,7 @@ Le pipeline est toujours exécuté dans le même ordre et aucune étape ne peut 
 
 ## 11.10 Segmentation et contexte
 
-Lorsqu'un chapitre dépasse la fenêtre de contexte du modèle, il est découpé en segments. La reconstruction respecte strictement l'ordre d'origine. La vérification contextuelle utilise toujours le chapitre précédent traduit, le chapitre courant traduit et le chapitre suivant dans sa version source.
+Lorsqu'un chapitre dépasse la fenêtre de contexte du modèle, il est découpé en segments stables avant le premier appel. La même partition et le même ordre sont conservés pendant les quatre passes. Une barrière de passe interdit de commencer la passe suivante tant que tous les segments du document n'ont pas atteint l'état requis. La reconstruction respecte strictement l'ordre d'origine. La vérification contextuelle utilise toujours le chapitre précédent traduit, le chapitre courant traduit et le chapitre suivant dans sa version source.
 
 ## 11.11 Contrats des appels IA
 
@@ -1012,21 +1048,21 @@ Toute anomalie déclenche une nouvelle tentative ou un passage en erreur.
 
 ## 11.12 Critères de validation
 
-Un document est considéré comme terminé uniquement lorsque les quatre étapes du pipeline sont validées, que le Markdown reste cohérent et qu'aucune erreur bloquante n'est détectée.
+Un document est considéré comme terminé uniquement lorsque les quatre passes du pipeline sont validées pour tous ses segments, que le Markdown reconstruit reste cohérent et qu'aucune erreur bloquante n'est détectée.
 
 ## 11.13 Contrat technique du pipeline IA
 
-**Responsabilités et règles.** Transformer un `source.md` immuable en un `translated.md` validé au moyen de quatre appels obligatoires et séquentiels au même modèle.
+**Responsabilités et règles.** Transformer un `source.md` immuable en un `translated.md` validé au moyen de quatre passes obligatoires et séquentielles au même modèle. Une passe effectue un appel par segment restant dans son état d'entrée ; les retries éventuels ne constituent pas une passe supplémentaire.
 
 **Entrées.** Document courant, langue cible du projet, configuration globale figée, prompt versionné de l'étape et contexte autorisé.
 
-**Sorties.** Contenu de l'étape validée, point de reprise et progression persistés ; après la quatrième étape, document `Completed`.
+**Sorties.** Checkpoint, état et progression du segment validé ; après la quatrième passe et la publication atomique de tous les segments, document `Completed`.
 
 **Exceptions.** Configuration ou modèle indisponible, fenêtre de contexte dépassée sans segmentation possible, délai/erreur fournisseur, réponse vide, structure Markdown altérée, omission ou incohérence détectée.
 
 **Dépendances.** `TranslationService`, `VerificationService`, adaptateur fournisseur, `JobService`, repositories et écriture atomique.
 
-**Invariants.** Ordre traduction → révision → vérification contextuelle → finalisation ; aucune étape facultative ; même modèle ; aucune correction humaine avant achèvement ; aucune étape validée rejouée à la reprise.
+**Invariants.** Ordre traduction → révision → vérification contextuelle → finalisation ; aucune passe facultative ; même modèle ; barrières entre passes ; aucune correction humaine avant achèvement ; aucun segment validé rejoué à la reprise.
 
 **Contraintes.** Le contexte est limité aux trois éléments de RM-008 et la structure GFM doit être préservée.
 
@@ -1056,49 +1092,53 @@ La stratégie de repli examine les frontières dans l'ordre décroissant de sûr
 
 ```text
 EXECUTER_PIPELINE(document, configuration_figee):
-  étapes = [TRADUIRE, REVISER, VERIFIER_CONTEXTE, FINALISER]
-  charger dernière étape validée et dernier contenu atomique
-  pour chaque étape strictement après la dernière validée:
-    entrée = contenu précédent, ou source.md pour TRADUIRE
-    si étape = VERIFIER_CONTEXTE:
-      ajouter précédent traduit s'il existe
-      ajouter courant traduit
-      ajouter suivant source s'il existe
-    réponse = APPELER_AVEC_REPRISE(étape, entrée, configuration_figee)
-    valider réponse, sens attendu et structure Markdown
-    écrire translated.md atomiquement
-    persister l'étape comme validée et remettre retry_count à zéro
-    si pause ou annulation demandée: appliquer la demande maintenant
+  passes = [TRADUIRE, REVISER, VERIFIER_CONTEXTE, FINALISER]
+  charger les segments ordonnés et vérifier leurs sources/checkpoints par empreinte
+  pour chaque passe dans l'ordre:
+    état_entrée, état_sortie = transition définie en 11.16
+    pour chaque segment dont state = état_entrée, dans l'ordre:
+      entrée = source du segment pour TRADUIRE, sinon checkpoint validé
+      si passe = VERIFIER_CONTEXTE:
+        ajouter précédent traduit s'il existe
+        ajouter courant traduit
+        ajouter suivant source s'il existe
+      réponse = APPELER_AVEC_REPRISE(passe, segment, entrée, configuration_figee)
+      valider réponse, sens attendu et structure Markdown
+      écrire et fsync un nouveau checkpoint immuable par remplacement atomique
+      dans une transaction SQLite, référencer chemin/empreinte et passer à état_sortie
+      si pause ou annulation demandée: appliquer la demande maintenant
+    vérifier que tous les segments ont atteint état_sortie
+    reconstruire translated.md et le remplacer atomiquement
   marquer document et job terminés
 
-APPELER_AVEC_REPRISE(étape, entrée, configuration):
+APPELER_AVEC_REPRISE(passe, segment, entrée, configuration):
   délais = [0, 1, 5, 15, 30, 60]
   pour tentative de 0 à 5:
     attendre délais[tentative] si tentative > 0
     essayer l'appel au même modèle
     si réponse valide: retourner réponse
-    persister état Retrying et nombre de nouvelles tentatives consommées
+    persister job Retrying et segment.retry_count
   lever tentatives épuisées
 ```
 
 Le tableau contient l'appel initial puis exactement cinq nouvelles tentatives.
 
-## 11.16 Machine à états des étapes du pipeline
+## 11.16 Machine à états des segments
 
-| Étape validée courante | Événement | Étape validée suivante | Contenu persistant |
+| État persistant courant | Événement | État persistant suivant | Contenu persistant |
 |---|---|---|---|
-| aucune | traduction fidèle validée | `Translated` | première traduction |
-| `Translated` | révision validée | `Revised` | texte révisé |
-| `Revised` | vérification contextuelle validée | `ContextChecked` | texte contextualisé |
-| `ContextChecked` | finalisation validée | `Finalized` | résultat final éditable |
+| `PENDING` | traduction fidèle validée | `TRANSLATED` | première traduction |
+| `TRANSLATED` | révision validée | `REVISED` | texte révisé |
+| `REVISED` | vérification contextuelle validée | `COHERENCE_CHECKED` | texte contextualisé |
+| `COHERENCE_CHECKED` | polissage validé | `POLISHED` | résultat final du segment |
 
-Un échec ou une pause ne fait jamais avancer l'étape validée. La reprise repart de l'état persistant et exécute seulement l'étape suivante. Les transitions inverses automatiques sont interdites.
+Un échec, une saturation VRAM, une coupure ou une pause ne fait jamais avancer l'état validé. La reprise sélectionne, dans la passe la moins avancée, le premier segment qui n'a pas atteint son état de sortie ; les segments déjà validés ne sont pas rejoués. Les transitions inverses automatiques sont interdites. L'état d'un document est dérivé de ses segments : `Completed` exige que tous soient `POLISHED` et que `translated.md` ait été publié atomiquement.
 
 ## 11.17 Préconditions, postconditions et acceptation
 
 **Préconditions.** Projet `Ready` ou repris, tous les documents à traiter validés, configuration testée et aucun autre job actif.
 
-**Postconditions.** Soit une nouvelle étape est atomiquement validée, soit l'étape précédente reste la référence ; après finalisation, l'édition et l'export deviennent possibles selon leurs gardes.
+**Postconditions.** Soit un nouveau segment est atomiquement validé, soit son état et son checkpoint précédents restent la référence ; après polissage de tous les segments, l'édition et l'export deviennent possibles selon leurs gardes.
 
 **Critères d'acceptation.** EF-008 à EF-011 et RM-005, RM-008, RM-009 sont couverts par 17.11–17.12 et les diagrammes 18.13, 18.16 et 18.17.
 
@@ -1122,7 +1162,7 @@ Le Worker met à jour l'étape courante, le pourcentage, le fournisseur IA, le m
 
 ## 12.5 Pause et reprise
 
-Une pause est demandée proprement. L'appel IA en cours se termine, puis le job est suspendu. La reprise recommence à la dernière étape validée.
+Une pause est demandée proprement. L'appel IA en cours se termine, puis le job est suspendu. La reprise recommence au premier segment non validé de la passe la moins avancée.
 
 ## 12.6 Erreurs
 
@@ -1144,9 +1184,9 @@ Le Worker exécute les jobs de manière séquentielle selon une file FIFO. Les d
 
 Une annulation attend la fin de l'appel IA en cours avant d'arrêter le job.
 
-Une reprise redémarre à la dernière étape validée.
+Une reprise redémarre au premier segment non validé de la passe la moins avancée.
 
-Les étapes déjà validées ne sont jamais rejouées automatiquement ni sur commande de reprise.
+Les segments déjà validés ne sont jamais rejoués automatiquement ni sur commande de reprise.
 
 ## 12.11 Métriques
 
@@ -1176,7 +1216,7 @@ Chaque changement d'état est enregistré dans SQLite et dans les journaux.
 
 **Contraintes.** Aucun Redis, service de file externe, second Worker logique ou exécution distribuée.
 
-Les patrons de checkpoint sur fichier, de cache JSON ou de fichier EPUB temporaire observés dans les dépôts comparés ne sont pas intégrables tels quels : SQLite demeure l'unique source des métadonnées et `translated.md` le seul contenu de travail mutable. Le Worker persiste exclusivement les états déjà définis, `last_validated_stage`, `retry_count` et les clés FIFO d'origine ; il ne crée ni journal de reprise parallèle ni seconde file. Les contrôles d'annulation coopérative observés peuvent être réimplémentés uniquement à la frontière située après l'appel IA courant, jamais à l'intérieur de cet appel.
+Les patrons de cache JSON ou de fichier EPUB temporaire observés dans les dépôts comparés ne sont pas intégrables tels quels : SQLite demeure l'unique source des états de reprise. Les seuls fichiers de reprise sont les checkpoints internes immuables référencés par `segments`, jamais un journal parallèle ni une seconde file. Le Worker persiste les états de segments, leurs empreintes, `segments.retry_count` et les clés FIFO d'origine. Les contrôles d'annulation coopérative observés peuvent être réimplémentés uniquement à la frontière située après l'appel IA courant, jamais à l'intérieur de cet appel.
 
 ## 12.14 Pseudo-code de la boucle FIFO
 
@@ -1189,7 +1229,7 @@ BOUCLE_WORKER():
     si aucun job: attendre une notification locale ou scruter à intervalle non spécifié
     sinon:
       transitionner atomiquement job vers Running
-      exécuter le pipeline depuis last_validated_stage
+      exécuter le pipeline depuis le premier segment non validé de la passe la moins avancée
       après chaque appel IA, appliquer pause ou annulation demandée
       sur succès final: transitionner vers Completed
       sur tentatives épuisées: transitionner vers Failed
@@ -1218,14 +1258,18 @@ Le mécanisme local de réveil du Worker et l'intervalle de scrutation sont **no
 
 ```text
 RECUPERER_AU_DEMARRAGE():
+  vérifier chaque checkpoint référencé par son chemin et son empreinte
+  ignorer puis nettoyer les fichiers orphelins non référencés
   dans une transaction:
     pour chaque job trouvé Running ou Retrying:
-      conserver last_validated_stage et translated.md validé
+      conserver chaque état/checkpoint de segment validé
       placer le job en Queued en conservant ses clés FIFO queued_at et id d'origine
     conserver Paused comme Paused
     ne modifier aucun état terminal
   démarrer la consommation FIFO
 ```
+
+Un checkpoint est publié avant la transaction SQLite par écriture dans un nouveau fichier, `fsync`, remplacement atomique et synchronisation du dossier parent. Une coupure avant le `COMMIT` peut donc laisser au plus un fichier orphelin, qui n'est jamais pris pour un état validé ; une coupure après le `COMMIT` retrouve un fichier durable dont l'empreinte correspond. Un checkpoint référencé manquant ou corrompu place le job en `Failed` avec diagnostic expurgé au lieu de rejouer silencieusement une passe validée.
 
 Après redémarrage, tous les jobs `Queued`, y compris ceux récupérés depuis `Running` ou `Retrying`, sont consommés selon leurs clés `(queued_at, id)` d'origine. La récupération ne réhorodate jamais un job et ne modifie donc pas son ordre relatif dans la FIFO. Aucun mécanisme de priorité ne peut intervenir et deux jobs ne peuvent jamais être actifs.
 
@@ -1233,7 +1277,7 @@ Après redémarrage, tous les jobs `Queued`, y compris ceux récupérés depuis 
 
 **Préconditions.** Schéma migré, Worker logique unique et jobs cohérents avec leurs documents.
 
-**Postconditions.** Chaque transition est atomique et journalisée ; une interruption conserve le dernier contenu et la dernière étape validés.
+**Postconditions.** Chaque transition est atomique et journalisée ; une interruption conserve tous les segments et checkpoints déjà validés.
 
 **Critères d'acceptation et références croisées.** EF-009, EF-010, RM-007, RM-009 et RM-012 réussissent 17.11–17.12 ; diagrammes 18.15–18.17.
 
@@ -1364,7 +1408,7 @@ Langue (FR/EN), thème (Clair/Sombre/Sépia), niveau de journalisation.
 
 ## 14.3 Fournisseurs IA
 
-Ollama, LM Studio, OpenAI, OpenRouter, Gemini, Claude, Grok et toute API compatible OpenAI.
+Ollama, LM Studio et API OpenAI-compatible. L'API OpenAI publique est la configuration cloud de référence de ce troisième adaptateur ; aucune intégration fournisseur supplémentaire n'est définie.
 
 ## 14.4 Configuration
 
@@ -1428,17 +1472,15 @@ Chaque adaptateur expose les capacités logiques suivantes ; les signatures Pyth
 | `list_models` | configuration Ollama ou LM Studio | modèles installés | service local indisponible, réponse invalide |
 | `complete` | prompt versionné, contenu, modèle et options supportées | texte de réponse et métadonnées techniques sûres | délai, quota, réseau, fournisseur, réponse vide/invalide |
 
-Adaptateurs obligatoires : Ollama, LM Studio, OpenAI-compatible personnalisé, OpenRouter, OpenAI/ChatGPT, Gemini, Claude et Grok. Tous présentent les mêmes catégories d'erreur au pipeline.
+Adaptateurs obligatoires et exhaustifs : Ollama, LM Studio et OpenAI-compatible. Tous présentent les mêmes catégories d'erreur au pipeline. Le troisième adaptateur accepte l'endpoint OpenAI public ou un endpoint explicitement compatible avec le contrat Chat Completions ; cette compatibilité ne crée ni marque fournisseur distincte ni réglage métier supplémentaire.
 
-DeepSeek désigne un modèle utilisable par l'intermédiaire d'Ollama, LM Studio, OpenRouter ou de la configuration OpenAI-compatible personnalisée lorsque le fournisseur choisi le propose. DeepSeek ne constitue pas un neuvième fournisseur et n'exige aucun adaptateur distinct.
-
-Une fabrique interne associe la configuration globale à exactement l'un des huit adaptateurs. Aucun objet propre à un SDK ne franchit la frontière de 14.14 : les réponses ChatCompletions ou équivalentes sont normalisées en texte et métadonnées techniques sûres, et les erreurs en catégories communes. La détection de capacité d'une sortie structurée peut choisir une extraction structurée ou un repli textuel déterministe, sans modifier les prompts métier, le nombre d'appels ni l'interface utilisateur. L'orchestrateur du chapitre 11 reste seul propriétaire des tentatives et délais ; chaque client fournisseur doit donc être configuré sans retry automatique supplémentaire et être fermé proprement à l'arrêt du Worker.
+Une fabrique interne associe la configuration globale à exactement l'un des trois adaptateurs. Aucun objet propre à un SDK ne franchit la frontière de 14.14 : les réponses Chat Completions ou équivalentes sont normalisées en texte et métadonnées techniques sûres, et les erreurs en catégories communes. La détection de capacité d'une sortie structurée peut choisir une extraction structurée ou un repli textuel déterministe, sans modifier les prompts métier, les quatre passes ni l'interface utilisateur. L'orchestrateur du chapitre 11 reste seul propriétaire des tentatives et délais ; chaque client fournisseur doit donc être configuré sans retry automatique supplémentaire et être fermé proprement à l'arrêt du Worker.
 
 ## 14.15 Invariants, dépendances et verrouillage
 
-Une seule configuration globale est active. Le Worker en capture un instantané au démarrage du job et utilise exactement le même modèle pour les quatre appels. `SettingsService` refuse toute mutation tant qu'une traduction est active.
+Une seule configuration globale est active. Le Worker en capture un instantané au démarrage du job et utilise exactement le même modèle pendant les quatre passes. `SettingsService` refuse toute mutation tant qu'une traduction est active.
 
-La détection automatique des modèles est obligatoire uniquement pour Ollama et LM Studio. Pour les autres fournisseurs, la manière d'obtenir ou saisir les modèles est **non spécifiée**.
+La détection automatique des modèles est obligatoire uniquement pour Ollama et LM Studio. Pour l'adaptateur OpenAI-compatible, la manière d'obtenir ou saisir les modèles est **non spécifiée**.
 
 Pour les options avancées de 14.12, les types exacts, bornes, unités, valeurs par défaut et règles de combinaison qui ne sont pas exposés par le fournisseur sont **non spécifiés**. L'interface ne peut afficher et transmettre qu'une option déclarée compatible par l'adaptateur actif.
 
@@ -1574,7 +1616,7 @@ Toutes les écritures sont atomiques. Les transactions SQLite assurent la cohér
 
 ## 16.5 Reprise après incident
 
-Après un redémarrage, les jobs interrompus sont restaurés à leur dernière étape validée.
+Après un redémarrage, les jobs interrompus sont restaurés au premier segment non validé de la passe la moins avancée, après vérification des checkpoints référencés.
 
 ## 16.6 Nettoyage
 
@@ -1694,7 +1736,7 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 | EF-005 | `UT-EF-005` décide le nettoyage après validation | `IT-EF-005` supprime original/temporaire | `FT-EF-005` constate leur absence après import | aucun original ; échec conservant les données validées |
 | EF-006 | `UT-EF-006` calcule un ordre contigu | `IT-EF-006` persiste le glisser-déposer | `FT-EF-006` réordonne avant traduction | ordre de dépôt initial puis ordre utilisateur stable |
 | EF-007 | `UT-EF-007` évalue les gardes | `IT-EF-007` contrôle fichiers/configuration/disque | `FT-EF-007` bloque puis autorise le lancement | `Ready` seulement si tous les contrôles réussissent |
-| EF-008 | `UT-EF-008` impose quatre étapes et des délimiteurs non conflictuels | `IT-EF-008` exécute quatre appels au même modèle après segmentation structurelle | `FT-EF-008` montre les quatre validations | ni étape omise, inversée ou facultative ; aucun contenu perdu, dupliqué ou pris pour une instruction |
+| EF-008 | `UT-EF-008` impose quatre passes, leurs barrières et des délimiteurs non conflictuels | `IT-EF-008` exécute un appel par segment et par passe au même modèle | `FT-EF-008` montre les quatre passes validées | ni passe omise, inversée ou facultative ; aucun contenu perdu, dupliqué ou pris pour une instruction |
 | EF-009 | `UT-EF-009` trie `(queued_at,id)` | `IT-EF-009` traite un lot et redémarre sans réhorodater | `FT-EF-009` met plusieurs chapitres en file puis redémarre | un seul actif, ordre FIFO d'origine, aucune priorité |
 | EF-010 | `UT-EF-010` diffère pause/arrêt | `IT-EF-010` attend la fin de l'appel | `FT-EF-010` arrête depuis l'interface | aucun appel interrompu au milieu, point validé conservé |
 | EF-011 | `UT-EF-011` garde l'éditeur et l'autosauvegarde | `IT-EF-011` refuse avant, prévisualise et autosauvegarde après finalisation | `FT-EF-011` édite et prévisualise un chapitre terminé | seul `translated.md` finalisé est autosauvegardé atomiquement |
@@ -1712,7 +1754,7 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 | RM-002 | `UT-RM-002` sélectionne tous les documents | `IT-RM-002` assemble sans filtre caché | `FT-RM-002` retrouve chaque chapitre exporté | aucun document présent omis |
 | RM-003 | `UT-RM-003` interdit l'écriture source | `IT-RM-003` simule toutes les mutations | `FT-RM-003` compare le hash avant/après | `source.md` identique |
 | RM-004 | `UT-RM-004` garde la création | `IT-RM-004` crée au lancement seulement | `FT-RM-004` observe le cycle du fichier | absent avant, présent au pipeline |
-| RM-005 | `UT-RM-005` garde l'édition | `IT-RM-005` refuse avant `Finalized` | `FT-RM-005` vérifie verrou/déverrouillage | corrections uniquement après quatre étapes |
+| RM-005 | `UT-RM-005` garde l'édition | `IT-RM-005` refuse avant que tous les segments soient `POLISHED` | `FT-RM-005` vérifie verrou/déverrouillage | corrections uniquement après quatre passes complètes |
 | RM-006 | `UT-RM-006` retourne l'ordre unique | `IT-RM-006` partage l'ordre entre pipeline/contexte/export | `FT-RM-006` vérifie un ordre réorganisé | même ordre partout |
 | RM-007 | `UT-RM-007` évalue le verrou | `IT-RM-007` refuse mutations actives | `FT-RM-007` vérifie commandes désactivées | projet immuable pendant traduction sauf contrôles du job |
 | RM-008 | `UT-RM-008` construit trois contextes | `IT-RM-008` gère premier/milieu/dernier chapitre | `FT-RM-008` inspecte les appels du double IA | précédent traduit si présent, courant traduit, suivant source si présent |
@@ -1726,12 +1768,12 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 | ID | Niveau | Objet | Critère de réussite |
 |---|---|---|---|
 | `UT-ARCH-001` | unitaire | dépendances de couches | aucune dépendance interdite de 2.5 |
-| `IT-DB-001` | intégration | schéma, FK, CHECK, index et cascades | schéma 8.5–8.9 conforme, `foreign_keys` actif |
-| `IT-DB-002` | intégration | rollback et cohérence fichier/base | aucun état validé si écriture atomique échoue |
+| `IT-DB-001` | intégration | schéma, FK, CHECK, index et cascades | schéma 8.5–8.9 conforme, tables `chapters`/`segments`, états fermés et `foreign_keys` actif |
+| `IT-DB-002` | intégration | rollback et cohérence checkpoint/base | aucun état de segment avancé si écriture atomique ou transaction échoue ; orphelin ignoré |
 | `IT-MIG-001` | intégration | montée, rollback et reprise de migration | version inscrite seulement après succès |
 | `IT-WORKER-001` | intégration | concurrence | au plus un job `Running`/`Retrying` |
-| `IT-RECOVERY-001` | intégration | redémarrage à chacune des quatre étapes | reprise à l'étape suivante sans rejeu, cache de reprise parallèle ni modification de `(queued_at, id)` |
-| `IT-PROVIDER-001` | intégration contractuelle | huit adaptateurs | mêmes sorties/erreurs logiques ; sortie vide, cardinalité, ordre, marqueurs, délimiteurs conflictuels et GFM contrôlés ; retry SDK désactivé ; même modèle par pipeline |
+| `IT-RECOVERY-001` | intégration | coupure ou saturation VRAM après chaque segment de chaque passe | reprise au premier segment non validé sans rejeu, cache parallèle ni modification de `(queued_at, id)` ; checkpoint manquant/corrompu détecté |
+| `IT-PROVIDER-001` | intégration contractuelle | trois adaptateurs | mêmes sorties/erreurs logiques ; sortie vide, cardinalité, ordre, marqueurs, délimiteurs conflictuels et GFM contrôlés ; retry SDK désactivé ; même modèle par pipeline |
 | `IT-LOG-001` | intégration sécurité | mots de passe, clés et contenus injectés | aucune valeur sensible dans SQLite, console ou UI |
 | `FT-AUTH-001` | fonctionnel | mot de passe unique | seul `APP_PASSWORD` ouvre l'application, aucun compte |
 | `FT-DOCKER-001` | fonctionnel | conteneur unique et santé | Streamlit/Worker/SQLite sains dans un conteneur |
@@ -1743,7 +1785,7 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 
 **Responsabilités et contraintes.** La suite de tests prouve chaque REQ aux trois niveaux, isole les ressources et interdit toute dépendance à un fournisseur IA réel pour les tests déterministes.
 
-**Préconditions.** Jeux de données minimaux pour les cinq formats, doubles déterministes des huit fournisseurs, base et volume temporaires isolés.
+**Préconditions.** Jeux de données minimaux pour les cinq formats, doubles déterministes des trois adaptateurs, base et volume temporaires isolés.
 
 **Postconditions.** Les tests ne laissent aucun export, original ou secret et restaurent leur environnement.
 
@@ -1812,7 +1854,7 @@ node "Conteneur applicatif unique" {
   component "Repositories" as Repos
 }
 database "SQLite\nMétadonnées" as DB
-folder "Système de fichiers\nsource.md / translated.md / WebP" as FS
+folder "Système de fichiers\nsource.md / translated.md / WebP / checkpoints" as FS
 cloud "Fournisseur IA configuré" as AI
 Utilisateur --> UI
 UI --> Services
@@ -1874,11 +1916,13 @@ Utilisateur -> Streamlit: valider et traduire
 Streamlit -> JobService: enqueue(documents_in_project_order)
 loop chaque job FIFO
   Worker -> JobService: take_next()
-  loop quatre étapes obligatoires
-    Worker -> TranslationService: execute_next_valid_stage()
-    TranslationService -> AIProvider: complete(same_model, prompt, context)
-    AIProvider --> TranslationService: response
-    TranslationService --> Worker: atomic_checkpoint
+  loop quatre passes obligatoires
+    loop segments non validés dans l'ordre
+      Worker -> TranslationService: execute_next_segment()
+      TranslationService -> AIProvider: complete(same_model, prompt, context)
+      AIProvider --> TranslationService: response
+      TranslationService --> Worker: checkpoint + état atomiques
+    end
   end
 end
 Utilisateur -> Streamlit: exporter(format)
@@ -1910,7 +1954,7 @@ state Document {
   ToTranslate --> DocRunning : job démarré
   DocRunning --> DocPaused : pause après appel
   DocPaused --> DocRunning : reprise
-  DocRunning --> DocCompleted : quatre étapes validées
+  DocRunning --> DocCompleted : tous segments POLISHED
   DocRunning --> DocFailed : tentatives épuisées
   DocFailed --> DocRunning : reprise manuelle
   DocCompleted --> DocCompleted : correction humaine
@@ -1955,25 +1999,25 @@ state Worker {
 ```plantuml
 @startuml NovelTrad_Pipeline
 !pragma layout smetana
-[*] --> Prepared
-Prepared --> Translated : appel 1 validé
-Translated --> Revised : appel 2 validé
-Revised --> ContextChecked : appel 3 validé
-ContextChecked --> Finalized : appel 4 validé
-Finalized --> [*]
-Prepared --> Retrying : échec appel 1
-Translated --> Retrying : échec appel 2
-Revised --> Retrying : échec appel 3
-ContextChecked --> Retrying : échec appel 4
+[*] --> PENDING
+PENDING --> TRANSLATED : passe 1 validée
+TRANSLATED --> REVISED : passe 2 validée
+REVISED --> COHERENCE_CHECKED : passe 3 validée
+COHERENCE_CHECKED --> POLISHED : passe 4 validée
+POLISHED --> [*]
+PENDING --> Retrying : échec segment passe 1
+TRANSLATED --> Retrying : échec segment passe 2
+REVISED --> Retrying : échec segment passe 3
+COHERENCE_CHECKED --> Retrying : échec segment passe 4
 Retrying --> Failed : cinq nouvelles tentatives épuisées
-Retrying --> Translated : succès étape 1
-Retrying --> Revised : succès étape 2
-Retrying --> ContextChecked : succès étape 3
-Retrying --> Finalized : succès étape 4
+Retrying --> TRANSLATED : succès passe 1
+Retrying --> REVISED : succès passe 2
+Retrying --> COHERENCE_CHECKED : succès passe 3
+Retrying --> POLISHED : succès passe 4
 @enduml
 ```
 
-Les quatre retours depuis `Retrying` représentent la validation de l'étape qui était en reprise ; ils atteignent donc respectivement `Translated`, `Revised`, `ContextChecked` et `Finalized` sans rejouer aucune étape déjà validée.
+Les quatre retours depuis `Retrying` représentent la validation du segment de la passe qui était en reprise ; ils atteignent donc respectivement `TRANSLATED`, `REVISED`, `COHERENCE_CHECKED` et `POLISHED` sans rejouer aucun segment déjà validé.
 
 ## 18.17 Diagramme d'activité du flux de traduction
 
@@ -1981,14 +2025,14 @@ Les quatre retours depuis `Retrying` représentent la validation de l'étape qui
 @startuml NovelTrad_Translation_Flow
 !pragma layout smetana
 start
-:Charger source et dernier point validé;
-:Segmenter si nécessaire;
-while (Étape obligatoire restante ?) is (oui)
+:Charger source, segments et checkpoints validés;
+while (Passe obligatoire restante ?) is (oui)
+  :Sélectionner le premier segment non validé;
   :Construire entrée et contexte autorisé;
   :Appeler le même modèle;
   if (Réponse valide ?) then (oui)
-    :Écrire translated.md atomiquement;
-    :Persister le point validé;
+    :Écrire checkpoint atomiquement;
+    :Persister l'état du segment;
   else (non)
     :Attendre 1, 5, 15, 30 ou 60 s;
     if (Cinq nouvelles tentatives épuisées ?) then (oui)
@@ -2001,6 +2045,7 @@ while (Étape obligatoire restante ?) is (oui)
     stop
   endif
 endwhile (non)
+:Publier translated.md atomiquement;
 :Marquer document et job Completed;
 stop
 @enduml
@@ -2032,11 +2077,35 @@ entity documents {
   source_path : TEXT
   translated_path : TEXT?
   status : TEXT
-  pipeline_stage : TEXT?
   progress : REAL
   word_count : INTEGER
   character_count : INTEGER
   detected_language : TEXT?
+  last_error : TEXT?
+  updated_at : TEXT
+}
+entity chapters {
+  * id : INTEGER <<PK>>
+  * document_id : INTEGER <<FK>>
+  --
+  order_index : INTEGER
+  title : TEXT?
+  source_start : INTEGER
+  source_end : INTEGER
+  source_hash : TEXT
+}
+entity segments {
+  * id : INTEGER <<PK>>
+  * chapter_id : INTEGER <<FK>>
+  --
+  order_index : INTEGER
+  source_start : INTEGER
+  source_end : INTEGER
+  source_hash : TEXT
+  state : TEXT
+  checkpoint_path : TEXT?
+  checkpoint_hash : TEXT?
+  retry_count : INTEGER
   last_error : TEXT?
   updated_at : TEXT
 }
@@ -2048,9 +2117,8 @@ entity jobs {
   provider : TEXT
   model : TEXT
   current_stage : TEXT?
-  last_validated_stage : TEXT?
+  current_segment_id : INTEGER? <<FK>>
   progress : REAL
-  retry_count : INTEGER
   last_message : TEXT?
   queued_at : TEXT?
   started_at : TEXT?
@@ -2079,7 +2147,10 @@ entity schema_migrations {
   applied_at : TEXT
 }
 projects ||--o{ documents
+documents ||--|{ chapters
+chapters ||--|{ segments
 documents ||--o{ jobs
+segments |o--o{ jobs
 projects ||--o{ logs
 documents |o--o{ logs
 jobs |o--o{ logs
@@ -2264,7 +2335,7 @@ Références documentaires : Markdown GFM, SQLite, Docker, Streamlit et fourniss
 
 Toute réutilisation effective doit figer le commit inspecté, conserver les avis requis, supprimer les branches de code hors périmètre et repasser les tests NovelTrad. Une mise à jour amont n'est jamais absorbée automatiquement.
 
-Le corpus additionnel fourni le 5 août 2026 contient 57 entrées. Cinquante-quatre arbres Git ont été examinés localement à leur tête observée, Beautiful Soup a été contrôlé via sa distribution et sa documentation officielles, et deux liens n'ont fourni aucun code auditable : `BeowuIf/libretranslator` redirige vers une authentification GitLab et `thinh-vu/epub_to_text` répond `404`. Les clients LibreTranslate/Argos, SDK Go, bibliothèques d'interface ou de CLI, applications de bureau, skills de prompts et frameworks multi-agents restants n'apportent aucun code directement intégrable au monolithe Python/Streamlit sans ajouter un fournisseur, un format, une interface, un service ou un workflow interdit ; ils ne sont donc pas des sources d'implémentation NovelTrad.
+Le corpus additionnel fourni le 5 août 2026 contient 57 entrées. Cinquante-quatre arbres Git ont été examinés localement à leur tête observée, Beautiful Soup a été contrôlé via sa distribution et sa documentation officielles, et deux liens n'ont fourni aucun code auditable : `BeowuIf/libretranslator` redirige vers une authentification GitLab et `thinh-vu/epub_to_text` répond `404`. Après application des cinq critères de 7.16, seules six sources de ce corpus sont conservées dans les références utiles ci-dessus : EbookLib, `translation-agent`, `mdait`, `llm_text_splitter`, `Ebook-Subtitle-Translator` et Beautiful Soup. Les clients LibreTranslate/Argos, SDK Go, bibliothèques d'interface ou de CLI, applications de bureau, skills de prompts et frameworks multi-agents restants n'apportent aucun mécanisme plus robuste ou directement intégrable au monolithe Python/Streamlit sans ajouter un fournisseur, un format, une interface, un service ou un workflow interdit ; ils ne sont donc pas des sources d'implémentation NovelTrad.
 
 Le corpus secondaire de 29 outils communiqué le 5 août 2026 a été contrôlé séparément. Un nom commercial sans dépôt public ne constitue pas une source de code ; une description de boutique ne prouve ni l'architecture interne ni la licence. Les décisions ci-dessous sont exhaustives pour ce corpus et ne créent aucune exigence.
 
@@ -2283,8 +2354,8 @@ Le corpus secondaire de 29 outils communiqué le 5 août 2026 a été contrôlé
 | [BookTranslator.ai](https://booktranslator.ai/) | SaaS fermé | conservation EPUB revendiquée | référence UX non probante seulement ; aucun code ni contrat testable, aucune dépendance |
 | [OpenL Doc Translator](https://doc.openl.io/) | SaaS fermé | conservation de formats revendiquée | aucun réemploi ; OCR, PDF/Office étendu, service distant et sortie bilingue exclus |
 | [Immersive Translate `ba74c9c`](https://github.com/immersive-translate/immersive-translate/tree/ba74c9c624931f4e5d283f50d3a2ca854b990e13) | distribution d'extension sans fichier de licence à la révision contrôlée | styles EPUB et remplacement DOM | aucun code repris sans licence explicite ; traduction web, extension et affichage bilingue exclus |
-| [DeepL Document Translation](https://www.deepl.com/en/features/document-translation) | service/API propriétaire | catégories d'erreur et préservation SRT/DOCX déclarées | aucune dépendance ni nouveau fournisseur ; DeepL reste utilisable seulement derrière un endpoint déjà autorisé si celui-ci respecte 14.14, sans changer les huit adaptateurs |
-| [Google Translate Documents](https://support.google.com/translate/answer/2534559) | service propriétaire | validation de taille/format côté service | aucun réemploi ; Google Translate document n'est pas Gemini et n'ajoute aucun fournisseur ni format |
+| [DeepL Document Translation](https://www.deepl.com/en/features/document-translation) | service/API propriétaire | catégories d'erreur et préservation SRT/DOCX déclarées | aucun réemploi, aucune dépendance et aucun nouveau fournisseur ; DeepL n'appartient pas aux trois adaptateurs autorisés |
+| [Google Translate Documents](https://support.google.com/translate/answer/2534559) | service propriétaire | validation de taille/format côté service | aucun réemploi ; Google Translate Documents n'appartient pas aux trois adaptateurs et n'ajoute aucun format |
 | [DocuTranslate `a8c0cc4`](https://github.com/xunbu/docutranslate/tree/a8c0cc4d938d9dc88238115f940460473163e6ba) | Python, MPL-2.0 | séparation reader/IR/translator/exporter et parcours SRT/EPUB | référence d'interface ; reprise d'un fichier MPL seulement après décision de licence explicite et maintien des avis/sources ; glossaire, MCP, API, concurrence, PDF/Office étendu et formats supplémentaires exclus |
 | [epub-translate `ad331bd`](https://github.com/Poyeyo/epub-translate/tree/ad331bd6050bcecde376fe34e6472c653b19bcb2) | script Python, Unlicense | recopie des entrées ZIP non textuelles | ne pas reprendre : analyse XHTML caractère par caractère, absence de validation structurelle et clés/exemples de fournisseurs rendent l'implémentation moins sûre que les sources retenues |
 | [epub-translator `1652567`](https://github.com/oomol-lab/epub-translator/tree/1652567fb057e7d711b65e71251d5b1cbd572bc1) | bibliothèque Python, MIT | `epub/spines.py`, `epub/zip.py`, segments inline et tests EPUB 2/3 : ordre de spine, migration des ressources, cardinalité/imbrication/attributs | adaptation directe possible avec avis MIT et tests transposés ; cache, concurrence, sortie bilingue, traduction TOC/métadonnées optionnelle et dépendances hors périmètre exclus |
@@ -2312,7 +2383,7 @@ Le présent SDD constitue la référence technique unique du projet NovelTrad. T
 - Nouveaux formats d'import et d'export.
 - Optimisations du pipeline.
 
-Cette liste est informative et n'autorise aucune implémentation. Chaque évolution exige au préalable une modification validée du présent SDD ; jusqu'alors, les formats, fournisseurs et quatre étapes actuellement définis forment un ensemble fermé.
+Cette liste est informative et n'autorise aucune implémentation. Chaque évolution exige au préalable une modification validée du présent SDD ; jusqu'alors, les formats, trois adaptateurs et quatre passes actuellement définis forment un ensemble fermé.
 
 ## 20.10 Révision du SDD
 
