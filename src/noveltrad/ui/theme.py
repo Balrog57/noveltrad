@@ -74,14 +74,34 @@ def _css(theme: str) -> str:
         --font: 'Roboto', sans-serif;
         background-color: {c["background"]};
         color: {c["text"]};
-        font-family: 'Roboto', sans-serif;
+        /* font-family is applied per-widget below, never globally: the global
+           rule would override Streamlit's Material Icons glyph spans */
+    }}
+
+    /* ---------- Material icons: Streamlit ships "Material Symbols Rounded" ---------- */
+    .material-icons, .material-icons-extended, .material-symbols-rounded,
+    [data-testid="stIconMaterial"], [data-testid="stIcon"],
+    span[class*="material-symbols"],
+    span[class*="material-icons"],
+    button[aria-label*="visibility"] span,
+    [data-testid="stSidebarCollapsedControl"] span {{
+        font-family: "Material Symbols Rounded", "Material Icons" !important;
+        color: {c["text_secondary"]} !important;
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }}
+    /* password visibility toggle */
+    [data-testid="stWidgetLabel"] span[class*="st-emotion"] {{
+        font-family: "Material Symbols Rounded", "Material Icons" !important;
     }}
 
     /* ---------- global text ---------- */
-    .stApp * {{ font-family: 'Roboto', sans-serif; }}
     .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown h1,
     .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5,
-    .stCaption, .stTitle, .stSubheader, .stHeader {{
+    .stCaption, .stTitle, .stSubheader, .stHeader,
+    .stTextInput input, .stTextArea textarea, .stNumberInput input,
+    .stSelectbox [data-baseweb="select"] > div,
+    .stButton button, .stDownloadButton button {{
+        font-family: 'Roboto', sans-serif;
         color: {c["text"]} !important;
     }}
     .stMarkdown a {{ color: {c["primary"]} !important; }}
@@ -291,6 +311,57 @@ def _css(theme: str) -> str:
         background-color: {c["surface"]} !important;
         color: {c["text"]} !important;
     }}
+
+    /* ---------- theme-specific text enforcement ---------- */
+    .stApp [data-testid="stWidgetLabel"],
+    .stApp [data-testid="stWidgetLabel"] p,
+    .stApp [data-testid="stWidgetLabel"] span,
+    .stApp label p,
+    .stApp .stMarkdown p,
+    .stApp .stMarkdown span,
+    .stApp [data-testid="stCaptionContainer"] p,
+    .stApp [data-testid="stExpander"] summary,
+    .stApp .stExpander summary,
+    .stApp [data-testid="stSelectbox"] input,
+    .stApp [data-testid="stMultiSelect"] input,
+    .stApp [data-testid="stNumberInput"] input,
+    .stApp .stTextInput label,
+    .stApp .stNumberInput label,
+    .stApp .stTextArea label,
+    .stApp .stDateInput label {{
+        color: {c["text"]} !important;
+    }}
+
+    /* selectbox selected value */
+    .stApp [data-baseweb="select"] span {{
+        color: {c["text"]} !important;
+    }}
+
+    /* collapsed sidebar toggle */
+    .stApp [data-testid="stSidebarCollapsedControl"] {{
+        color: {c["text"]} !important;
+    }}
+    .stApp [data-testid="stSidebarCollapsedControl"] .material-icons,
+    .stApp [data-testid="stSidebarCollapsedControl"] span {{
+        color: {c["text"]} !important;
+    }}
+
+    /* markdown emphasis and bullets */
+    .stApp .stMarkdown strong {{ color: {c["text"]} !important; }}
+    .stApp .stMarkdown em {{ color: {c["text"]} !important; }}
+    .stApp .stMarkdown ul li, .stApp .stMarkdown ol li {{ color: {c["text"]} !important; }}
+
+    /* metric */
+    .stApp [data-testid="stMetric"] * {{ color: {c["text"]} !important; }}
+    .stApp [data-testid="stMetricLabel"] * {{ color: {c["text_secondary"]} !important; }}
+
+    /* dataframe cells */
+    .stApp [data-testid="stDataFrame"] .stMarkdown p {{ color: {c["text"]} !important; }}
+    .stApp [data-testid="stTable"] * {{ color: {c["text"]} !important; }}
+
+    /* dialog/popover */
+    .stApp [data-testid="stDialog"] * {{ color: {c["text"]} !important; }}
+    .stApp [data-testid="stPopover"] * {{ color: {c["text"]} !important; }}
     </style>
     """
 

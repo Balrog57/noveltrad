@@ -1,8 +1,9 @@
 """Settings view (SDD 13.6, 14).
 
-Each provider exposes URL, optional API key (enabled explicitly) and
-auto-detection of installed models using the current form values. The
-connection test also uses the form values, without saving anything.
+Seven provider presets: Ollama and LM Studio (local, model auto-detection),
+OpenAI/ChatGPT, Google Gemini, DeepSeek, Grok (xAI) and Claude (Anthropic)
+(cloud, model list preloaded + optional auto-detection), plus a fully
+manual OpenAI-compatible entry. Cloud providers only need the API key.
 """
 
 from __future__ import annotations
@@ -12,19 +13,86 @@ import streamlit as st
 from noveltrad.core.contracts import ProviderName, SettingsUpdate
 from noveltrad.ui.i18n import translate
 
-# Providers that require an API key to work at all
-_REQUIRE_KEY = frozenset({"openai_compatible"})
-# Providers with local auto-detection of installed models
-_AUTO_DETECT = frozenset({"ollama", "lm_studio"})
-
-# Preset provider labels mapped to (adapter code, default URL)
-_PRESETS = {
-    "Ollama": ("ollama", "http://host.docker.internal:11434"),
-    "LM Studio": ("lm_studio", "http://host.docker.internal:1234/v1"),
-    "OpenAI (ChatGPT)": ("openai_compatible", "https://api.openai.com/v1"),
-    "Google Gemini": ("openai_compatible", "https://generativelanguage.googleapis.com/v1beta/openai"),
-    "DeepSeek": ("openai_compatible", "https://api.deepseek.com/v1"),
+# Preset label -> (adapter code, default URL, requires key, known models)
+_PRESETS: dict[str, tuple[str, str, bool, tuple[str, ...]]] = {
+    "Ollama": (
+        "ollama",
+        "http://host.docker.internal:11434",
+        False,
+        (),
+    ),
+    "LM Studio": (
+        "lm_studio",
+        "http://host.docker.internal:1234/v1",
+        False,
+        (),
+    ),
+    "OpenAI-compatible (personnalisé)": (
+        "openai_compatible",
+        "http://localhost:8000/v1",
+        False,
+        (),
+    ),
+    "OpenAI (ChatGPT)": (
+        "openai_compatible",
+        "https://api.openai.com/v1",
+        True,
+        (
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo",
+            "o4-mini",
+            "o3",
+            "o3-mini",
+        ),
+    ),
+    "Google Gemini": (
+        "openai_compatible",
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        True,
+        (
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
+            "gemini-pro",
+        ),
+    ),
+    "DeepSeek": (
+        "openai_compatible",
+        "https://api.deepseek.com/v1",
+        True,
+        ("deepseek-chat", "deepseek-reasoner", "deepseek-coder"),
+    ),
+    "Grok (xAI)": (
+        "openai_compatible",
+        "https://api.x.ai/v1",
+        True,
+        ("grok-3", "grok-3-mini", "grok-3-mini-fast", "grok-2", "grok-2-latest"),
+    ),
+    "Claude (Anthropic)": (
+        "anthropic",
+        "https://api.anthropic.com",
+        True,
+        (
+            "claude-opus-4-20250514",
+            "claude-sonnet-4-20250514",
+            "claude-3-7-sonnet-20250219",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "claude-3-opus-20240229",
+            "claude-3-haiku-20240307",
+        ),
+    ),
 }
+
+# Providers that support model auto-detection via /models
+_AUTO_DETECT = frozenset({"ollama", "lm_studio", "openai_compatible"})
 
 
 def render(container, session) -> None:
@@ -44,22 +112,21 @@ def render(container, session) -> None:
 
     preset_names = list(_PRESETS.keys())
     current_label = next(
-        (name for name, (code, _url) in _PRESETS.items()
+        (name for name, (code, _url, _key, _models) in _PRESETS.items()
          if code == str(current.provider)
          and (current.base_url or "") == (_url if _url else "")),
         None,
     )
     if current_label is None:
-        # fall back on matching the adapter code alone
         current_label = next(
-            (name for name, (code, _url) in _PRESETS.items()
+            (name for name, (code, _url, _key, _models) in _PRESETS.items()
              if code == str(current.provider)),
             preset_names[0],
         )
     provider_label = st.selectbox(
         t("settings.provider"), preset_names, index=preset_names.index(current_label)
     )
-    provider_code, preset_url = _PRESETS[provider_label]
+    provider_code, preset_url, requires_key, known_models = _PRESETS[provider_label]
 
     # -- provider section -------------------------------------------------
     st.subheader(provider_label)
@@ -71,8 +138,8 @@ def render(container, session) -> None:
 
     api_key_enabled = st.checkbox(
         t("settings.api_key"),
-        value=current.api_key_configured or provider_code in _REQUIRE_KEY,
-        help=t("settings.api_key") + " (optional)",
+        value=current.api_key_configured or requires_key,
+        help=t("settings.api_key") + (" (required)" if requires_key else " (optional)"),
     )
     api_key = ""
     if api_key_enabled:
@@ -81,23 +148,36 @@ def render(container, session) -> None:
             t("settings.api_key"), value="", type="password", placeholder=placeholder
         )
 
-    model = st.text_input(t("settings.model"), value=current.model or "")
+    # -- model selection ---------------------------------------------------
+    if "detected_models" not in st.session_state:
+        st.session_state.detected_models = None
 
     if provider_code in _AUTO_DETECT:
-        if st.button(t("settings.models"), key="list_models_btn"):
+        detect_col, spacer = st.columns([1, 3])
+        if detect_col.button(t("settings.models"), key="list_models_btn"):
             with st.spinner("..."):
                 models = settings_service.list_models_for(
                     ProviderName(provider_code),
                     base_url,
                     api_key if api_key else None,
-                    model,
+                    current.model,
                 )
             if models:
-                st.write(", ".join(models))
+                st.session_state.detected_models = models
             else:
                 st.warning("—")
+
+    model_options = st.session_state.detected_models or known_models
+    if model_options:
+        current_model = current.model or model_options[0]
+        model_index = (
+            model_options.index(current_model) if current_model in model_options else 0
+        )
+        model = st.selectbox(
+            t("settings.model"), list(model_options), index=model_index, key="model_select"
+        )
     else:
-        st.caption(t("settings.models") + ": manual")
+        model = st.text_input(t("settings.model"), value=current.model or "")
 
     # -- advanced section -------------------------------------------------
     window = current.context_window_tokens or 8192
@@ -159,6 +239,7 @@ def render(container, session) -> None:
             )
             session.language = ui_language
             session.theme = theme
+            st.session_state.detected_models = None
             st.success(t("settings.save"))
             st.rerun()
         except Exception as exc:  # noqa: BLE001

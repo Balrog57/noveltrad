@@ -6,6 +6,7 @@ from __future__ import annotations
 from noveltrad.core.contracts import ProviderName, SettingsView
 from noveltrad.core.exceptions import ValidationError
 
+from .anthropic import AnthropicProvider
 from .lm_studio import LMStudioProvider
 from .ollama import OllamaProvider
 from .openai_compatible import OpenAICompatibleProvider
@@ -33,6 +34,10 @@ class ProviderFactory:
             provider.set_api_key(self._api_key)
             if base_url:
                 provider.set_base_url(base_url)
+            return provider
+        if settings.provider == ProviderName.ANTHROPIC:
+            provider = AnthropicProvider(base_url=base_url)
+            provider.set_api_key(self._api_key)
             return provider
         raise ValidationError(f"unknown provider: {settings.provider}")
 

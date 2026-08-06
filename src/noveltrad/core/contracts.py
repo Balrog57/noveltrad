@@ -28,6 +28,7 @@ class ProviderName(StrEnum):
     OLLAMA = "ollama"
     LM_STUDIO = "lm_studio"
     OPENAI_COMPATIBLE = "openai_compatible"
+    ANTHROPIC = "anthropic"
 
 
 class PipelineStage(StrEnum):

@@ -24,6 +24,9 @@ class Router:
         language = session.language
         t = lambda key: translate(key, language)  # noqa: E731
         with st.sidebar:
+            from noveltrad.ui.logo import logo_data_uri
+
+            st.image(logo_data_uri(), width=64)
             st.title(t("app.title"))
             page = st.radio(
                 "Navigation",
