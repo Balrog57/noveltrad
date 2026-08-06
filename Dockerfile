@@ -12,7 +12,7 @@ FROM python:3.12.13-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e2631
 COPY --from=ghcr.io/astral-sh/uv:0.11.33 /uv /uvx /bin/
 
 WORKDIR /build
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md LICENSE THIRD_PARTY_NOTICES.md ./
 RUN uv sync --locked --no-dev
 
 FROM python:3.12.13-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2
