@@ -66,9 +66,7 @@ def test_enqueue_creates_fifo(job_service: JobService, conn: sqlite3.Connection)
     assert jobs[0].state == JobState.QUEUED
     assert jobs[1].state == JobState.WAITING
     assert jobs[2].state == JobState.WAITING
-    status = conn.execute(
-        "SELECT status FROM projects WHERE id=?", (project_id,)
-    ).fetchone()[0]
+    status = conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()[0]
     assert status == ProjectStatus.RUNNING.value
 
 
@@ -87,13 +85,12 @@ def test_mark_completed_promotes_next(job_service: JobService, conn: sqlite3.Con
     project_id = _project_with_docs(conn, 3)
     jobs = job_service.enqueue_project(project_id, _snapshot())
     job_service.mark_completed(jobs[0].id)
-    remaining = conn.execute(
-        "SELECT state FROM jobs WHERE id=?", (jobs[1].id,)
-    ).fetchone()[0]
+    remaining = conn.execute("SELECT state FROM jobs WHERE id=?", (jobs[1].id,)).fetchone()[0]
     assert remaining == "Queued"
-    assert conn.execute(
-        "SELECT status FROM projects WHERE id=?", (project_id,)
-    ).fetchone()[0] == "Running"
+    assert (
+        conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()[0]
+        == "Running"
+    )
 
 
 def test_mark_completed_finishes_project(job_service: JobService, conn: sqlite3.Connection):
@@ -101,13 +98,13 @@ def test_mark_completed_finishes_project(job_service: JobService, conn: sqlite3.
     jobs = job_service.enqueue_project(project_id, _snapshot())
     job_service.mark_completed(jobs[0].id)
     job_service.mark_completed(jobs[1].id)
-    assert conn.execute(
-        "SELECT status FROM projects WHERE id=?", (project_id,)
-    ).fetchone()[0] == "Completed"
+    assert (
+        conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()[0]
+        == "Completed"
+    )
     statuses = [
-        tuple(row) for row in conn.execute(
-            "SELECT status FROM documents WHERE project_id=?", (project_id,)
-        )
+        tuple(row)
+        for row in conn.execute("SELECT status FROM documents WHERE project_id=?", (project_id,))
     ]
     assert statuses == [("Completed",), ("Completed",)]
 
@@ -116,17 +113,16 @@ def test_request_pause_then_apply(job_service: JobService, conn: sqlite3.Connect
     project_id = _project_with_docs(conn, 2)
     jobs = job_service.enqueue_project(project_id, _snapshot())
     job_service.request_pause(project_id)
-    row = conn.execute(
-        "SELECT control_request FROM jobs WHERE id=?", (jobs[0].id,)
-    ).fetchone()[0]
+    row = conn.execute("SELECT control_request FROM jobs WHERE id=?", (jobs[0].id,)).fetchone()[0]
     assert row == "PAUSE"
     job_service.apply_pause(jobs[0].id)
-    assert conn.execute(
-        "SELECT state FROM jobs WHERE id=?", (jobs[0].id,)
-    ).fetchone()[0] == "Paused"
-    assert conn.execute(
-        "SELECT status FROM projects WHERE id=?", (project_id,)
-    ).fetchone()[0] == "Paused"
+    assert (
+        conn.execute("SELECT state FROM jobs WHERE id=?", (jobs[0].id,)).fetchone()[0] == "Paused"
+    )
+    assert (
+        conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()[0]
+        == "Paused"
+    )
 
 
 def test_take_next_respects_pause_request(job_service: JobService, conn: sqlite3.Connection):
@@ -150,16 +146,17 @@ def test_mark_failed(job_service: JobService, conn: sqlite3.Connection):
     project_id = _project_with_docs(conn, 2)
     jobs = job_service.enqueue_project(project_id, _snapshot())
     job_service.mark_failed(jobs[0].id, "PROVIDER_ERROR")
-    assert conn.execute(
-        "SELECT state FROM jobs WHERE id=?", (jobs[0].id,)
-    ).fetchone()[0] == "Failed"
-    assert conn.execute(
-        "SELECT status FROM projects WHERE id=?", (project_id,)
-    ).fetchone()[0] == "Failed"
+    assert (
+        conn.execute("SELECT state FROM jobs WHERE id=?", (jobs[0].id,)).fetchone()[0] == "Failed"
+    )
+    assert (
+        conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()[0]
+        == "Failed"
+    )
     # no promotion after failure
-    assert conn.execute(
-        "SELECT state FROM jobs WHERE id=?", (jobs[1].id,)
-    ).fetchone()[0] == "Waiting"
+    assert (
+        conn.execute("SELECT state FROM jobs WHERE id=?", (jobs[1].id,)).fetchone()[0] == "Waiting"
+    )
 
 
 def test_resume_failed(job_service: JobService, conn: sqlite3.Connection):
@@ -168,9 +165,10 @@ def test_resume_failed(job_service: JobService, conn: sqlite3.Connection):
     job_service.mark_failed(jobs[0].id, "X")
     resumed = job_service.resume(jobs[0].id)
     assert resumed.state == JobState.QUEUED
-    assert conn.execute(
-        "SELECT status FROM projects WHERE id=?", (project_id,)
-    ).fetchone()[0] == "Running"
+    assert (
+        conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()[0]
+        == "Running"
+    )
 
 
 def test_recover_interrupted(job_service: JobService, conn: sqlite3.Connection):
@@ -179,9 +177,9 @@ def test_recover_interrupted(job_service: JobService, conn: sqlite3.Connection):
     conn.execute("UPDATE jobs SET state='Running' WHERE id=?", (jobs[0].id,))
     conn.commit()
     job_service.recover_interrupted()
-    assert conn.execute(
-        "SELECT state FROM jobs WHERE id=?", (jobs[0].id,)
-    ).fetchone()[0] == "Queued"
+    assert (
+        conn.execute("SELECT state FROM jobs WHERE id=?", (jobs[0].id,)).fetchone()[0] == "Queued"
+    )
 
 
 def test_enqueue_rejects_running_project(job_service: JobService, conn: sqlite3.Connection):

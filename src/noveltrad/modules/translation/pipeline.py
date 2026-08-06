@@ -212,8 +212,7 @@ class TranslationService:
                 (exit_state, relative, digest, utc_now().isoformat(), segment["id"]),
             )
             self._conn.execute(
-                "UPDATE jobs SET current_stage=?, current_segment_id=?, progress=? "
-                "WHERE id=?",
+                "UPDATE jobs SET current_stage=?, current_segment_id=?, progress=? WHERE id=?",
                 (None, None, self._progress_of(document, segment), job_id),
             )
         self._logs.record(

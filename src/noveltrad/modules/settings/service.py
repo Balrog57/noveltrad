@@ -105,9 +105,7 @@ class SettingsService:
             finally:
                 await provider.close()
         except Exception as exc:  # noqa: BLE001
-            return ValidationReport(
-                False, ("PROVIDER_ERROR",), (f"configuration invalid: {exc}",)
-            )
+            return ValidationReport(False, ("PROVIDER_ERROR",), (f"configuration invalid: {exc}",))
 
     async def list_models(self) -> tuple[str, ...]:
         settings = self.get_masked()
@@ -134,9 +132,7 @@ class SettingsService:
                 _KEY_COMPLETION_SOUND, "true" if values.completion_sound_enabled else "false"
             )
             provider_value = (
-                values.provider.value
-                if hasattr(values.provider, "value")
-                else values.provider
+                values.provider.value if hasattr(values.provider, "value") else values.provider
             )
             self._repo.set(_KEY_PROVIDER, provider_value)
             self._repo.set(_KEY_BASE_URL, values.base_url)

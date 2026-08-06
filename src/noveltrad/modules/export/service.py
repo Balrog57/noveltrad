@@ -67,9 +67,7 @@ class ExportService:
                 raise ConflictError("document has no published translation")
             target = resolve(self._data_dir, doc["translated_path"])
             markdown_parts.append(target.read_text(encoding="utf-8"))
-            for name, payload in read_images(
-                self._data_dir, f"projects/{project_id}/{doc['id']}"
-            ):
+            for name, payload in read_images(self._data_dir, f"projects/{project_id}/{doc['id']}"):
                 images.setdefault(name, payload)
             if progress is not None:
                 progress(
@@ -148,9 +146,7 @@ class ExportService:
         return removed
 
     def _check_eligible(self, project_id: ProjectId) -> None:
-        row = self._conn.execute(
-            "SELECT status FROM projects WHERE id=?", (project_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()
         if row is None:
             raise NotFoundError(f"project {project_id} not found")
         if row["status"] != "Completed":

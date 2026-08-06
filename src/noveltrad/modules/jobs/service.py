@@ -44,13 +44,9 @@ class JobService:
 
     # -- enqueue ----------------------------------------------------------
 
-    def enqueue_project(
-        self, project_id: ProjectId, snapshot: PipelineSnapshot
-    ) -> tuple[Job, ...]:
+    def enqueue_project(self, project_id: ProjectId, snapshot: PipelineSnapshot) -> tuple[Job, ...]:
         """Create the FIFO for all validated documents (12.2)."""
-        row = self._conn.execute(
-            "SELECT status FROM projects WHERE id=?", (project_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()
         if row is None:
             raise NotFoundError(f"project {project_id} not found")
         if row["status"] in (ProjectStatus.RUNNING.value, ProjectStatus.PAUSED.value):
@@ -114,9 +110,7 @@ class JobService:
                 JobState.RUNNING.value,
                 started_at=utc_now().isoformat(),
             )
-            self._logs.record(
-                "INFO", "job.take", "job started", _ctx(candidate.id)
-            )
+            self._logs.record("INFO", "job.take", "job started", _ctx(candidate.id))
             return to_job(updated, self._snapshot_of(candidate))
 
     def _snapshot_of(self, row) -> PipelineSnapshot:
@@ -130,9 +124,7 @@ class JobService:
         for row in rows:
             if row.state in _PAUSE_STATES:
                 updated = self._repo.request_pause(row.id)
-                self._logs.record(
-                    "INFO", "job.pause", "pause requested", _ctx(row.id)
-                )
+                self._logs.record("INFO", "job.pause", "pause requested", _ctx(row.id))
                 del updated
 
     def resume(self, job_id: JobId) -> Job:
@@ -142,9 +134,7 @@ class JobService:
             raise ConflictError(f"job {job_id} is not resumable")
         with UnitOfWork(self._conn, immediate=True):
             if row.state == JobState.FAILED.value:
-                row = self._repo.update_state(
-                    job_id, JobState.QUEUED.value, next_retry_at=None
-                )
+                row = self._repo.update_state(job_id, JobState.QUEUED.value, next_retry_at=None)
             else:
                 row = self._repo.update_state(job_id, JobState.QUEUED.value)
             self._conn.execute(
@@ -159,9 +149,7 @@ class JobService:
             self._logs.record("INFO", "job.resume", "job resumed", _ctx(job_id))
         return to_job(row, self._snapshot_of(row))
 
-    def restart_with_current_configuration(
-        self, job_id: JobId, confirmation: str
-    ) -> Job:
+    def restart_with_current_configuration(self, job_id: JobId, confirmation: str) -> Job:
         """RESTART_DOCUMENT: reset segments to PENDING with a new snapshot (11.16)."""
         if confirmation != "RESTART_DOCUMENT":
             raise ValidationError("confirmation mismatch: expected RESTART_DOCUMENT")
@@ -203,8 +191,7 @@ class JobService:
                 finished_at=utc_now().isoformat(),
             )
             self._conn.execute(
-                "UPDATE documents SET status='Completed', progress=100.0, updated_at=? "
-                "WHERE id=?",
+                "UPDATE documents SET status='Completed', progress=100.0, updated_at=? WHERE id=?",
                 (utc_now().isoformat(), row.document_id),
             )
             next_job = self._repo.promote_next_waiting(project_id)
@@ -219,9 +206,7 @@ class JobService:
                         "UPDATE projects SET status='Completed', updated_at=? WHERE id=?",
                         (utc_now().isoformat(), project_id),
                     )
-            self._logs.record(
-                "INFO", "job.completed", "job completed", _ctx(job_id)
-            )
+            self._logs.record("INFO", "job.completed", "job completed", _ctx(job_id))
         return to_job(updated, self._snapshot_of(row))
 
     def mark_failed(self, job_id: JobId, error_code: str) -> Job:
@@ -261,16 +246,12 @@ class JobService:
                     "UPDATE documents SET status='ToTranslate', updated_at=? WHERE id=?",
                     (utc_now().isoformat(), row.document_id),
                 )
-                self._logs.record(
-                    "INFO", "job.resume", "interrupted job recovered", _ctx(row.id)
-                )
+                self._logs.record("INFO", "job.resume", "interrupted job recovered", _ctx(row.id))
 
     # -- progress ---------------------------------------------------------
 
     def get_progress(self, project_id: ProjectId) -> ProjectProgress:
-        row = self._conn.execute(
-            "SELECT status FROM projects WHERE id=?", (project_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT status FROM projects WHERE id=?", (project_id,)).fetchone()
         if row is None:
             raise NotFoundError(f"project {project_id} not found")
         docs = self._conn.execute(
@@ -280,9 +261,7 @@ class JobService:
             (project_id,),
         ).fetchone()
         active = self._repo.active_job()
-        active_job = (
-            to_job(active, self._snapshot_of(active)) if active else None
-        )
+        active_job = to_job(active, self._snapshot_of(active)) if active else None
         return ProjectProgress(
             project_id=project_id,
             project_status=ProjectStatus(row["status"]),

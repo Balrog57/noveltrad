@@ -54,9 +54,11 @@ class Container:
         self.auth = AuthenticationService(self.config.app_password)
 
         salt = load_or_create_salt(self.data_dir)
-        self.encryption_key = derive_key(
-            self.config.app_password or "", salt
-        ) if self.config.app_password else b"\x00" * 32
+        self.encryption_key = (
+            derive_key(self.config.app_password or "", salt)
+            if self.config.app_password
+            else b"\x00" * 32
+        )
 
         self.project_repo = ProjectRepository(conn)
         self.document_repo = DocumentRepository(conn)

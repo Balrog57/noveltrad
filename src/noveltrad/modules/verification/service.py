@@ -26,9 +26,7 @@ class VerificationService:
             return ValidationReport(False, ("DOCUMENT_NOT_FOUND",), ("document not found",))
         return ValidationReport(True, (), ())
 
-    def validate_completion(
-        self, segment_id: SegmentId, markdown: str
-    ) -> ValidationReport:
+    def validate_completion(self, segment_id: SegmentId, markdown: str) -> ValidationReport:
         errors: list[str] = []
         messages: list[str] = []
         gfm_errors = validate_gfm(markdown)

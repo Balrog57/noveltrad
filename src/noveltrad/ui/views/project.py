@@ -105,10 +105,7 @@ def render(container, session) -> None:
     elif project.status in (ProjectStatus.RUNNING, ProjectStatus.PAUSED):
         progress = job_service.get_progress(project_id)
         st.progress(progress.completed_documents / max(1, progress.total_documents))
-        st.caption(
-            f"{progress.completed_documents}/{progress.total_documents} "
-            f"{t('project.docs')}"
-        )
+        st.caption(f"{progress.completed_documents}/{progress.total_documents} {t('project.docs')}")
         if project.status == ProjectStatus.RUNNING:
             if st.button(t("project.pause"), key="pause_btn"):
                 job_service.request_pause(project_id)

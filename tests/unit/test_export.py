@@ -1,4 +1,4 @@
-﻿"""Unit tests for export (SDD 15)."""
+"""Unit tests for export (SDD 15)."""
 
 from __future__ import annotations
 

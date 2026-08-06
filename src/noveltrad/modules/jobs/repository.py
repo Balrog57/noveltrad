@@ -35,9 +35,7 @@ def _row_to_job(row: sqlite3.Row) -> JobRow:
         model=row["model"],
         snapshot_json=row["snapshot_json"],
         snapshot_hash=row["snapshot_hash"],
-        current_stage=(
-            PipelineStage(row["current_stage"]) if row["current_stage"] else None
-        ),
+        current_stage=(PipelineStage(row["current_stage"]) if row["current_stage"] else None),
         current_segment_id=row["current_segment_id"],
         progress=row["progress"],
         last_message=row["last_message"],
@@ -121,9 +119,7 @@ class JobRepository:
         return self.get(JobId(int(cur.lastrowid)))
 
     def get(self, job_id: JobId) -> JobRow:
-        row = self._conn.execute(
-            f"SELECT {_COLUMNS} FROM jobs WHERE id=?", (job_id,)
-        ).fetchone()
+        row = self._conn.execute(f"SELECT {_COLUMNS} FROM jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             raise NotFoundError(f"job {job_id} not found")
         return _row_to_job(row)
@@ -139,8 +135,7 @@ class JobRepository:
     def first_queued(self) -> JobRow | None:
         """Strict FIFO head: first Queued ordered by (queued_at, id)."""
         row = self._conn.execute(
-            f"SELECT {_COLUMNS} FROM jobs WHERE state='Queued' "
-            "ORDER BY queued_at, id LIMIT 1"
+            f"SELECT {_COLUMNS} FROM jobs WHERE state='Queued' ORDER BY queued_at, id LIMIT 1"
         ).fetchone()
         return _row_to_job(row) if row else None
 
@@ -238,9 +233,7 @@ class JobRepository:
             f"SELECT {_COLUMNS} FROM jobs WHERE state IN ('Running','Retrying')"
         ).fetchall()
         for row in rows:
-            self._conn.execute(
-                "UPDATE jobs SET state='Queued' WHERE id=?", (row["id"],)
-            )
+            self._conn.execute("UPDATE jobs SET state='Queued' WHERE id=?", (row["id"],))
         return [_row_to_job(r) for r in rows]
 
     def job_for_document(self, document_id: DocumentId) -> JobRow | None:

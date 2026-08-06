@@ -1,4 +1,4 @@
-﻿"""End-to-end integration: import -> pipeline -> export (17.3, IT-EF-008)."""
+"""End-to-end integration: import -> pipeline -> export (17.3, IT-EF-008)."""
 
 from __future__ import annotations
 
@@ -31,17 +31,18 @@ async def test_full_pipeline(services):
     taken = services["jobs"].take_next()
     assert taken is not None
 
-    service: TranslationService = make_translation_service(
-        services["conn"], services["data_dir"]
-    )
+    service: TranslationService = make_translation_service(services["conn"], services["data_dir"])
     result = await service.execute(taken.id)
     assert result.completed is True
 
     completed = services["jobs"].mark_completed(taken.id)
     assert completed.state.value == "Completed"
-    assert services["conn"].execute(
-        "SELECT status FROM projects WHERE id=?", (project_id,)
-    ).fetchone()[0] == "Completed"
+    assert (
+        services["conn"]
+        .execute("SELECT status FROM projects WHERE id=?", (project_id,))
+        .fetchone()[0]
+        == "Completed"
+    )
 
 
 @pytest.mark.asyncio
@@ -59,9 +60,12 @@ async def test_pipeline_writes_translated_file(services):
     translated = document_dir(services["data_dir"], project_id, document.id) / "translated.md"
     assert translated.exists()
     assert "Hello world." in translated.read_text(encoding="utf-8")
-    assert services["conn"].execute(
-        "SELECT translated_hash FROM documents WHERE id=?", (document.id,)
-    ).fetchone()[0] is not None
+    assert (
+        services["conn"]
+        .execute("SELECT translated_hash FROM documents WHERE id=?", (document.id,))
+        .fetchone()[0]
+        is not None
+    )
 
 
 @pytest.mark.asyncio
@@ -108,4 +112,3 @@ def test_pause_resume_flow(services):
     assert taken.state.value == "Paused"
     resumed = services["jobs"].resume(taken.id)
     assert resumed.state.value == "Queued"
-
