@@ -1,0 +1,14 @@
+# Streamlit base theme (SDD 13.2).
+# A fixed base palette prevents the browser dark-mode preference from
+# rendering widgets black before the runtime theme (light/dark/sepia) is
+# applied via ui/theme.py CSS variables.
+
+[theme]
+base = "light"
+primaryColor = "#0d9488"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f6f8"
+textColor = "#262730"
+
+[server]
+headless = true
