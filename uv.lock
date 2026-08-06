@@ -605,17 +605,15 @@ dependencies = [
     { name = "streamlit" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "pip-audit" },
     { name = "pip-licenses" },
+    { name = "playwright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
-]
-ui-tests = [
-    { name = "playwright" },
 ]
 
 [package.metadata]
@@ -630,16 +628,19 @@ requires-dist = [
     { name = "mammoth", specifier = "==1.12.0" },
     { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "pillow", specifier = "==12.3.0" },
-    { name = "pip-audit", marker = "extra == 'dev'", specifier = "==2.10.1" },
-    { name = "pip-licenses", marker = "extra == 'dev'", specifier = "==5.5.5" },
-    { name = "playwright", marker = "extra == 'ui-tests'", specifier = "==1.62.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = "==9.1.1" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = "==1.4.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = "==7.1.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.1" },
     { name = "streamlit", specifier = "==1.61.1" },
 ]
-provides-extras = ["dev", "ui-tests"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pip-audit", specifier = "==2.10.1" },
+    { name = "pip-licenses", specifier = "==5.5.5" },
+    { name = "playwright", specifier = "==1.62.0" },
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "pytest-asyncio", specifier = "==1.4.0" },
+    { name = "pytest-cov", specifier = "==7.1.0" },
+    { name = "ruff", specifier = "==0.16.1" },
+]
 
 [[package]]
 name = "numpy"
