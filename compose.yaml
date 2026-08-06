@@ -13,7 +13,11 @@ services:
     build:
       context: .
       args:
-        SOURCE_COMMIT: ${SOURCE_COMMIT:?set SOURCE_COMMIT to the git SHA (40 hex)}
+        # SOURCE_COMMIT is required for official image builds (SDD 6.11);
+        # a placeholder keeps ZimaOS/CasaOS interpolation working, since the
+        # app-management service does not provide this variable when it loads
+        # the compose file to build the UI tile.
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-0000000000000000000000000000000000000000}
     image: noveltrad:${SOURCE_COMMIT:-latest}
     container_name: noveltrad
     restart: unless-stopped
