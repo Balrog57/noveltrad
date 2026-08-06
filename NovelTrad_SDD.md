@@ -1,5 +1,7 @@
 # NovelTrad — SDD
 
+**Licence du projet et de l'implémentation : GNU Affero General Public License v3.0 uniquement (`AGPL-3.0-only`).**
+
 # Chapitre 1 — Vision, objectifs et périmètre
 
 ## 1.1 Vision
@@ -32,6 +34,7 @@ Création d'un projet représentant une œuvre ; import EPUB, DOCX, TXT, Markdow
 - Les exports sont temporaires.
 - Toute écriture de translated.md est atomique.
 - Les corrections humaines ne sont jamais écrasées automatiquement.
+- Le code source correspondant à toute version utilisée par interaction réseau reste accessible conformément à l'AGPL-3.0.
 
 ## 1.6 Objectifs qualité
 
@@ -55,7 +58,7 @@ Les évolutions futures ne doivent pas remettre en cause les principes fondateur
 
 **Préconditions.** L'installation locale est démarrée, `APP_PASSWORD` est défini et le volume `data` est accessible.
 
-**Postconditions.** Les contenus persistants se limitent à `source.md`, `translated.md` et aux images WebP ; les métadonnées sont dans SQLite.
+**Postconditions.** Les contenus persistants se limitent à `source.md`, `translated.md`, aux images WebP et, pendant un pipeline, aux checkpoints internes de segments ; les métadonnées et états de reprise sont dans SQLite.
 
 **Cas d'erreur.** Une opération incompatible avec le périmètre, un secret absent ou une ressource locale indisponible est refusé avec un message exploitable, sans altérer les données validées.
 
@@ -522,9 +525,9 @@ Journalisation structurée des erreurs.
 
 Le réemploi de code externe est encouragé lorsqu'il réduit le risque d'implémentation d'un comportement déjà exigé par ce SDD. Avant intégration, chaque emprunt doit être rattaché à un dépôt, un commit et un fichier précis, puis contrôlé sur cinq axes : pertinence pour une exigence existante, licence compatible, dépendances compatibles avec le conteneur unique, respect de l'architecture et des invariants NovelTrad, maturité démontrée par le code maintenu et des tests transposables.
 
-Le périmètre fonctionnel reste exclusivement défini par ce SDD : un composant externe ne peut introduire ni format, ni fournisseur, ni passe IA, ni cache de métadonnées, ni Worker, ni service ou option utilisateur supplémentaire. La licence de NovelTrad est **non spécifiée** par ce SDD. En l'absence d'une décision de licence explicite et compatible, le code GPL-3.0 ou AGPL-3.0 est une référence de conception et de tests uniquement ; il doit faire l'objet d'une réimplémentation indépendante. Le code sous licence permissive peut être adapté à condition de conserver les mentions d'auteur et de licence requises.
+Le périmètre fonctionnel reste exclusivement défini par ce SDD : un composant externe ne peut introduire ni format, ni fournisseur, ni passe IA, ni cache de métadonnées, ni Worker, ni service ou option utilisateur supplémentaire. NovelTrad et l'ensemble de son implémentation forment une œuvre distribuée sous `AGPL-3.0-only`. Le code AGPL-3.0 compatible peut être copié et adapté directement lorsque son unité est utile à une exigence existante. Du code GPL-3.0 peut être combiné avec NovelTrad dans les conditions de l'article 13 de l'AGPL-3.0 ; la partie GPL demeure régie par GPL-3.0. Le code sous licence permissive peut être adapté sous AGPL-3.0 à condition de conserver les mentions d'auteur et de licence requises.
 
-Ce contrôle s'applique aussi aux dépendances transitives et aux tests copiés : un projet permissif ne rend pas réutilisable une bibliothèque copyleft qu'il embarque ou appelle. Un dépôt sans licence explicite, inaccessible ou dont la licence ne permet pas l'usage envisagé ne fournit aucun code réutilisable ; seuls les comportements observables et les principes généraux peuvent alors alimenter une réimplémentation indépendante. Toute dépendance retenue doit être épinglée à une version vérifiée et son avis de licence doit être conservé dans la distribution.
+Ce contrôle s'applique aussi aux dépendances transitives et aux tests copiés : la compatibilité de la licence n'implique jamais la pertinence fonctionnelle ou architecturale. Un dépôt sans licence explicite, inaccessible ou dont la licence ne permet pas l'usage envisagé ne fournit aucun code réutilisable ; seuls les comportements observables et les principes généraux peuvent alors alimenter une réimplémentation indépendante. Toute dépendance ou unité de code retenue doit être épinglée à une version vérifiée ; ses avis de copyright et de licence sont conservés, les fichiers modifiés portent une indication de modification et une date, et la distribution inclut le texte de l'AGPL-3.0 ainsi que les sources correspondantes. L'interface comporte un accès visible aux mentions légales, à l'absence de garantie et au code source correspondant ; aucune clé, donnée de projet ou contenu traduit n'entre dans ces sources.
 
 ## 7.17 Conventions de tests
 
@@ -990,7 +993,7 @@ Les adaptateurs appliquent ce contrat aux cinq formats autorisés : arbre XHTML 
 
 Pour Markdown, l'analyse doit être pilotée par les jetons d'un parseur GFM en deux passes — collecte des frontières structurelles puis construction des unités — et non par des expressions régulières isolées. Les cas de test Apache-2.0 de `mdait` peuvent être transposés pour vérifier au minimum le front matter, les commentaires HTML, les blocs de code indentés ou clôturés, les marqueurs ressemblants placés dans un bloc de code et l'idempotence `analyser → reconstruire → analyser`. Le code TypeScript et les marqueurs persistants propres à `mdait` ne sont pas intégrés au runtime Python et ne créent aucun état extérieur à SQLite.
 
-La version inspectée d'EbookLib est AGPL-3.0-or-later : elle ne peut donc être copiée, vendoriée ni ajoutée comme dépendance tant que la licence de NovelTrad n'est pas explicitement déclarée compatible. Son parcours du manifeste, de la spine, des ressources et ses scénarios de lecture/écriture servent uniquement de référence comportementale pour une implémentation indépendante. Beautiful Soup, sous MIT, peut être employé comme parseur tolérant de fragments XHTML avec attribution, mais la reconstruction canonique reste soumise aux contrôles de structure, d'ordre et de ressources du présent contrat.
+La version inspectée d'EbookLib est AGPL-3.0-or-later. NovelTrad étant sous AGPL-3.0-only, cette version peut être utilisée directement en choisissant les termes de la version 3, uniquement pour le manifeste, la `spine`, la navigation, les ressources et la lecture/écriture EPUB exigés ici. Son API générale d'édition et ses exemples hors périmètre ne sont pas exposés. Beautiful Soup, sous MIT, peut être employé comme parseur tolérant de fragments XHTML avec attribution, mais la reconstruction canonique reste soumise aux contrôles de structure, d'ordre et de ressources du présent contrat.
 
 # Chapitre 11 — Pipeline IA
 
@@ -1301,7 +1304,11 @@ Création, renommage, suppression, recherche et ouverture d'un projet avec résu
 
 ## 13.5 Écran Projet
 
-Glisser-déposer, réorganisation des chapitres, aperçu des statistiques, lancement de la traduction et export.
+L'écran Projet porte un parcours principal unique et continu : créer l'œuvre avec son nom et sa langue cible, ou l'ouvrir → déposer les documents → convertir et contrôler chaque import → réordonner les chapitres si nécessaire → confirmer la langue cible et choisir fournisseur et modèle → valider le récapitulatif de préparation → lancer → suivre ou reprendre → éditer après finalisation → exporter. Les étapes déjà satisfaites restent visibles sans obliger l'utilisateur à changer de page ; une seule action primaire est proposée à chaque état.
+
+La zone de dépôt accepte plusieurs fichiers, affiche immédiatement leur conversion, leur ordre, leur langue source détectée, leurs statistiques et toute erreur actionnable. Le choix manuel de la langue source n'est pas ajouté. Avant lancement, un récapitulatif compact expose uniquement la langue cible, le fournisseur, le modèle, l'ordre des documents et les blocages issus des validations existantes. Il ne crée ni estimation de coût, ni glossaire, ni style, ni option de pipeline.
+
+Pendant le traitement, le même écran remplace l'action de lancement par la progression globale et par document, l'étape et le segment courants, l'état du Worker, le temps écoulé, l'estimation restante et les commandes autorisées de pause ou d'annulation. Après interruption ou redémarrage, l'action primaire devient « Reprendre » et indique le premier segment non validé ; le fournisseur et le modèle figés du job ne peuvent pas être changés à la reprise.
 
 Après la finalisation complète du pipeline, l'écran fournit un éditeur Markdown simple limité à `translated.md` et un aperçu rendu de son contenu courant. Chaque modification valide déclenche une autosauvegarde atomique de `translated.md` ; le délai exact, le moteur de rendu et les raccourcis sont **non spécifiés**. Avant la finalisation, l'éditeur reste en lecture seule et aucune autosauvegarde ne peut modifier le fichier.
 
@@ -1329,7 +1336,7 @@ Aucune logique métier dans Streamlit. Toutes les actions passent par les servic
 
 ## 13.11 Navigation et ergonomie
 
-La navigation doit limiter le nombre de clics et rendre les traitements longs compréhensibles.
+La navigation doit limiter le nombre de clics et rendre les traitements longs compréhensibles. Le parcours nominal reste sur l'écran Projet, des fichiers déposés jusqu'au téléchargement ; Paramètres et Journaux restent des vues secondaires ouvertes seulement pour configurer ou diagnostiquer. Les contrôles incompatibles avec l'état courant sont masqués ou désactivés avec une raison explicite. Le rafraîchissement de l'interface ne perd ni sélection, ni ordre, ni progression affichée et relit toujours l'état faisant autorité.
 
 ## 13.12 Composants réutilisables
 
@@ -1376,6 +1383,15 @@ RAFRAICHIR_PROGRESSION():
   lire périodiquement l'état via JobService et LogService
   rendre progression document, progression globale et état Worker
   ne jamais modifier l'état métier depuis le rafraîchissement
+
+RENDRE_ACTION_PRINCIPALE(project_id):
+  relire projet, documents, configuration et job actif via les services
+  si aucun document valide: proposer « Déposer des fichiers »
+  sinon si projet Draft: proposer « Valider la préparation » avec les blocages existants
+  sinon si job Paused ou Failed récupérable: proposer « Reprendre » au premier segment non validé
+  sinon si projet Ready sans job actif: proposer « Lancer la traduction »
+  sinon si projet Running: afficher progression et commandes autorisées sans second lancement
+  sinon si projet Completed: proposer l'édition puis « Exporter »
 ```
 
 La fréquence de rafraîchissement et les composants Streamlit exacts sont **non spécifiés**.
@@ -1390,11 +1406,11 @@ La fréquence de rafraîchissement et les composants Streamlit exacts sont **non
 
 **Cas d'erreur.** Authentification invalide, session expirée, action verrouillée, service indisponible et validation de formulaire échouée donnent un message FR/EN actionnable.
 
-**Invariants.** FR/EN, thèmes clair/sombre/sépia, fonctionnalités accessibles sur PC/tablette/smartphone, aucun SQL/fichier/appel IA direct. L'éditeur et l'autosauvegarde restent verrouillés avant finalisation ; tout remplacement global attend une confirmation explicite.
+**Invariants.** FR/EN, thèmes clair/sombre/sépia, fonctionnalités accessibles sur PC/tablette/smartphone, aucun SQL/fichier/appel IA direct. L'éditeur et l'autosauvegarde restent verrouillés avant finalisation ; tout remplacement global attend une confirmation explicite. Le parcours principal n'expose jamais deux lancements concurrents, ne permet pas de changer le modèle à la reprise et n'affiche aucune fonction hors périmètre provenant d'une source externe.
 
 **Contraintes.** Streamlit est l'unique technologie d'interface et ne devient pas une API métier.
 
-**Critères d'acceptation et références croisées.** EF-015 et EF-016 réussissent les tests 17.11 et 17.13 ; composant représenté en 18.11–18.13.
+**Critères d'acceptation et références croisées.** EF-001, EF-003, EF-007, EF-008, EF-010, EF-013, EF-015 et EF-016 réussissent les tests 17.11 et 17.13 dans le parcours continu de 13.5 ; composant représenté en 18.11–18.13. Un test de session Streamlit recharge chaque état du parcours et vérifie l'action primaire, les blocages et la conservation de l'ordre sans appeler directement repository, fichier ou fournisseur.
 
 # Chapitre 14 — Paramètres et fournisseurs IA
 
@@ -2309,6 +2325,7 @@ Historique des choix d'architecture majeurs et justification des arbitrages.
 | Date | Décision | Justification |
 |---|---|---|
 | 2026-08-05 | Inspecter les implémentations comparables et réemployer au maximum leurs mécanismes compatibles, sans importer leur périmètre fonctionnel | réduire les risques techniques tout en préservant les 16 EF, 12 RM et l'architecture simple de NovelTrad |
+| 2026-08-06 | Placer NovelTrad sous `AGPL-3.0-only` et faire de TranslateBooksWithLLMs la source prioritaire de code éprouvé pour les mécanismes déjà exigés | autoriser la reprise directe maximale tout en conservant le SDD comme frontière fonctionnelle et Streamlit comme interface unique |
 
 ## 20.6 Évolutions futures
 
@@ -2316,24 +2333,28 @@ Liste des améliorations envisageables sans remettre en cause l'architecture val
 
 ## 20.7 Références
 
-Références documentaires : Markdown GFM, SQLite, Docker, Streamlit et fournisseurs IA. Le PDF comparatif `Open Source AI Translation Tools.pdf` oriente l'étude mais n'est pas normatif. Les versions de code suivantes ont été inspectées ; leurs dépôts et commits ne deviennent jamais des dépendances d'exécution ni des sources d'exigences.
+Références documentaires : Markdown GFM, SQLite, Docker, Streamlit et fournisseurs IA. Le PDF comparatif `Open Source AI Translation Tools.pdf` oriente l'étude mais n'est pas normatif. Les versions de code suivantes ont été inspectées. Leur présence dans ce registre ne crée aucune exigence et ne les ajoute pas automatiquement aux dépendances ; seules les décisions explicites de la colonne « Réemploi autorisé » permettent une copie, une adaptation ou une dépendance dans les limites indiquées.
 
 | Projet inspecté et version | Fichiers de référence | Licence constatée | Réemploi autorisé dans NovelTrad | Éléments explicitement exclus |
 |---|---|---|---|---|
-| [TranslateBooksWithLLMs `0ae4704`](https://github.com/hydropix/TranslateBooksWithLLMs/tree/0ae47041ca8db486313765dbf8f9489c07610a29) | `src/core/common/translation_orchestrator.py`, `src/core/epub/epub_translation_adapter.py`, `src/core/epub/translator.py`, `tests/test_common/test_translation_orchestrator.py` | AGPL-3.0 | référence pour la frontière adaptateur, la protection par marqueurs, la reconstruction et les scénarios de reprise ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | Flask, parallélisme, glossaire, TTS, OCR, raffinement optionnel, rotation de clés, notifications et formats hors périmètre |
+| [TranslateBooksWithLLMs `0ae4704`](https://github.com/hydropix/TranslateBooksWithLLMs/tree/0ae47041ca8db486313765dbf8f9489c07610a29) | `src/core/adapters/{format_adapter,translation_unit,generic_translator,srt_adapter}.py`, `src/core/chunking/{token_chunker,reassembly}.py`, `src/core/progress/{snapshot,tracker}.py`, `src/core/epub/{tag_preservation,placeholder_validator,epub_translation_adapter}.py`, `src/persistence/{database,checkpoint_manager}.py`, `src/core/llm/{base,providers/ollama,providers/openai}.py` et tests associés ; parcours observé dans `src/web/templates/translation_interface.html` et `src/web/static/js/{files/file-upload,ui/preflight-zone,translation/progress-manager,translation/resume-manager}.js` | AGPL-3.0 | source prioritaire de reprise directe : extraire et adapter les unités Python et tests qui couvrent segmentation/réassemblage, marqueurs, validation, progression, reprise, secrets, SRT et normalisation Ollama/OpenAI-compatible ; conserver provenance et avis AGPL, puis soumettre chaque unité aux invariants NovelTrad. Le parcours web sert uniquement de contrat comportemental pour 13.5 | ne pas copier l'interface HTML/JavaScript ni les routes Flask dans Streamlit ; supprimer stockage du texte dans SQLite, retries internes aux fournisseurs, parallélisme, changement de modèle à la reprise, glossaire, styles, TTS, OCR, raffinement facultatif, rotation de clés, notifications, coûts et formats hors périmètre |
 | [bilingual_book_maker `fc1aea0`](https://github.com/yihong0618/bilingual_book_maker/tree/fc1aea0a582dfd2cdf75f991ade1ec75d8539fa3) | `book_maker/loader/epub_loader.py`, `book_maker/translator/chatgptapi_translator.py`, `tests/test_epub_loader_batch_translate.py` | MIT | adaptation directe possible des parcours DOM EPUB, tests d'extraction, validation de cardinalité/ordre et repli déterministe de réponse, avec mentions de licence | sortie bilingue, PDF, liseuse, cache `_temp.epub`, multi-clés, modèles/fournisseurs supplémentaires et passe facultative |
 | [Aphra `d5cdd49`](https://github.com/DavidLMS/aphra/tree/d5cdd49cfcd9805af8cca7befc64c0d01e1718ad) | `aphra/core/context.py`, `aphra/core/workflow.py`, `tests/test_core_prompts.py` | MIT | adaptation directe possible du contexte typé, du chargement de prompts et de leurs tests, avec mentions de licence | agents multiples, analyse préalable, recherche web, glossaire, critique séparée, notes du traducteur et cinquième passe |
-| [GalTransl `c1c470b`](https://github.com/GalTransl/GalTransl/tree/c1c470b55e6c60dea723f0da4670213f997715b7) | `GalTransl/Backend/BaseTranslate.py`, `GalTransl/Cache.py`, `tests/test_translate_refactor_regressions.py` | GPL-3.0 | référence de tests pour limite de retries, fermeture des flux et annulation coopérative ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | concurrence adaptative, cache JSON, dictionnaires/glossaires, formats de jeux et fournisseurs supplémentaires |
-| [PDFMathTranslate `44c4d5b`](https://github.com/PDFMathTranslate/PDFMathTranslate/tree/44c4d5b332705797c1df17fadde2022e7c49f5de) | `pdf2zh/translator.py` | AGPL-3.0 | référence pour une interface fournisseur uniforme et la normalisation des erreurs ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | PDF, vision, détection de mise en page, cache de traduction et services non prévus |
-| [AiNiee `ab567e3`](https://github.com/NEKOparapa/AiNiee/tree/ab567e36f315f7f4d399f4e21196cd58be4f64c5) | `ModuleFolders/Domain/ResponseChecker/ResponseChecker.py`, `ModuleFolders/Service/TaskExecutor/TranslatorTask.py`, `ModuleFolders/Domain/FileAccessor/EpubAccessor.py` | AGPL-3.0 | référence pour les invariants de réponse — vide, cardinalité, ordre, marqueurs — et la restauration structurelle ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | GUI de bureau, parallélisme, glossaires, filtres de jeux, PDF/PPT/ASS/VTT/LRC et passes ou options supplémentaires |
-| [EbookLib `693636f`](https://github.com/aerkalov/ebooklib/tree/693636fb4588af404fcf00cf74636726d8ac886c) | `ebooklib/epub.py`, `tests/test_ebook.py`, `tests/test_epub_html.py`, `tests/test_epub_item.py` | AGPL-3.0-or-later | référence comportementale pour manifeste, spine, navigation, ressources et scénarios de lecture/écriture EPUB ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | dépendance ou code vendorié AGPL, API générale d'édition d'ebooks et exemples hors import/export NovelTrad |
+| [GalTransl `c1c470b`](https://github.com/GalTransl/GalTransl/tree/c1c470b55e6c60dea723f0da4670213f997715b7) | `GalTransl/Backend/BaseTranslate.py`, `GalTransl/Cache.py`, `tests/test_translate_refactor_regressions.py` | GPL-3.0 | ne conserver que les tests de limite de retries, fermeture des flux et annulation coopérative si TBL ne couvre pas le cas ; combinaison permise, mais aucun module n'est prioritaire sur TBL | concurrence adaptative, cache JSON, dictionnaires/glossaires, formats de jeux et fournisseurs supplémentaires |
+| [PDFMathTranslate `44c4d5b`](https://github.com/PDFMathTranslate/PDFMathTranslate/tree/44c4d5b332705797c1df17fadde2022e7c49f5de) | `pdf2zh/translator.py` | AGPL-3.0 | aucune reprise retenue : l'abstraction TBL et le contrat 14.14 couvrent déjà le besoin sans importer une architecture PDF | PDF, vision, détection de mise en page, cache de traduction et services non prévus |
+| [AiNiee `ab567e3`](https://github.com/NEKOparapa/AiNiee/tree/ab567e36f315f7f4d399f4e21196cd58be4f64c5) | `ModuleFolders/Domain/ResponseChecker/ResponseChecker.py`, `ModuleFolders/Service/TaskExecutor/TranslatorTask.py`, `ModuleFolders/Domain/FileAccessor/EpubAccessor.py` | AGPL-3.0 | adaptation directe possible du seul validateur de réponse — vide, cardinalité, ordre, marqueurs — si ses tests complètent ceux de TBL ; orchestrateur et accesseur EPUB non retenus | GUI de bureau, parallélisme, glossaires, filtres de jeux, PDF/PPT/ASS/VTT/LRC et passes ou options supplémentaires |
+| [EbookLib `693636f`](https://github.com/aerkalov/ebooklib/tree/693636fb4588af404fcf00cf74636726d8ac886c) | `ebooklib/epub.py`, `tests/test_ebook.py`, `tests/test_epub_html.py`, `tests/test_epub_item.py` | AGPL-3.0-or-later | dépendance directe autorisée en choisissant AGPL-3.0, limitée au manifeste, à la spine, à la navigation, aux ressources et aux scénarios de lecture/écriture EPUB | API générale d'édition d'ebooks et exemples hors import/export NovelTrad |
 | [translation-agent `e0fc605`](https://github.com/andrewyng/translation-agent/tree/e0fc605acbb5d78cb7a58a98bc8bd8f0056df49c) | `src/translation_agent/utils.py`, `tests/test_agent.py` | MIT | adaptation possible des délimiteurs de prompts, de la séparation entre texte ciblé et contexte en lecture seule, et de tests unitaires de composition des messages | workflow à trois appels, glossaire, région/pays, découpage global sans structure GFM et client OpenAI global |
 | [mdait `3e784d4`](https://github.com/mochimochiki/mdait/tree/3e784d4efba5c2728cd5b2a07a470eb2a5a45580) | `src/core/markdown/parser.ts`, `src/core/markdown/code-block-lines.ts`, `src/test/unit/core/markdown/parser-code-block-marker.test.ts`, `src/test/unit/core/markdown/parser-html-comment.test.ts` | Apache-2.0 | transposition des tests et du patron d'analyse GFM en deux passes, avec conservation de l'avis de licence | extension VS Code, TypeScript au runtime, marqueurs persistants, glossaire, mémoire de traduction, synchronisation et fournisseurs supplémentaires |
 | [llm_text_splitter `c88f979`](https://github.com/MohamedElghobary/llm_text_splitter/tree/c88f9795c062c8abefd59f96fe742f7fe377cda8) | `llm_text_splitter/splitter.py`, `tests/test_splitter.py` | MIT | adaptation des validations d'arguments, de la hiérarchie de séparateurs et des tests de découpage récursif | lecteurs PDF/HTML, recouvrement recopié, découpe arbitraire par caractères, métadonnées RAG et formats hors périmètre |
-| [Ebook-Subtitle-Translator `627dc2f`](https://github.com/Mubumbutu/Ebook-Subtitle-Translator/tree/627dc2f41b452fe027ab344d6f92d92c9efb3593) | `file_processors.py`, `epub_creator_lxml.py`, `translation_engine.py` | AGPL-3.0 | référence pour la protection/restauration des balises EPUB, la préservation des horodatages SRT et la détection de marqueurs manquants ; réimplémentation indépendante tant que la licence NovelTrad n'est pas compatible | PyQt, PDF/Kindle/FB2, traduction rapide, alignement neuronal, sessions sur fichier, modes alternatifs et options utilisateur supplémentaires |
+| [Ebook-Subtitle-Translator `627dc2f`](https://github.com/Mubumbutu/Ebook-Subtitle-Translator/tree/627dc2f41b452fe027ab344d6f92d92c9efb3593) | `file_processors.py`, `epub_creator_lxml.py`, `translation_engine.py` | AGPL-3.0 | adaptation directe possible des cas EPUB/SRT et de la détection de marqueurs manquants seulement lorsqu'ils complètent les composants TBL retenus | PyQt, PDF/Kindle/FB2, traduction rapide, alignement neuronal, sessions sur fichier, modes alternatifs et options utilisateur supplémentaires |
 | [Beautiful Soup 4.15.0](https://www.crummy.com/software/BeautifulSoup/) | documentation officielle et distribution `beautifulsoup4` | MIT | dépendance ou adaptation possible pour l'analyse tolérante de fragments HTML/XHTML, avec attribution et validation structurelle NovelTrad | scraping web, réparation silencieuse utilisée comme validation, sérialisation non contrôlée et tout accès réseau |
 
-Toute réutilisation effective doit figer le commit inspecté, conserver les avis requis, supprimer les branches de code hors périmètre et repasser les tests NovelTrad. Une mise à jour amont n'est jamais absorbée automatiquement.
+Pour TranslateBooksWithLLMs, l'ordre de réemploi est obligatoire : (1) copier puis adapter les fonctions/classes Python isolables qui satisfont déjà le contrat NovelTrad ; (2) copier leurs tests et remplacer seulement les fixtures ou interfaces propres à Flask/TBL ; (3) extraire une fonction plus petite lorsque le module complet contient une branche interdite ; (4) transposer le comportement sans copier lorsque la technologie est incompatible, notamment pour l'interface Streamlit. `database.py` ne peut pas être repris comme schéma : seuls la suppression des secrets, les invariants d'index de reprise et leurs tests sont utilisables, car NovelTrad interdit le texte dans SQLite. De même, les clients fournisseurs ne conservent ni retries internes ni choix de fournisseur supplémentaire, l'orchestrateur du chapitre 11 restant l'unique propriétaire des tentatives.
+
+Les tests TBL à reprendre en priorité sont `tests/unit/test_token_chunker.py`, `tests/unit/test_checkpoint_resume_index.py`, `tests/unit/test_plain_text_checkpoint.py`, `tests/unit/test_checkpoint_secrets.py`, `tests/unit/test_progress_contract.py`, `tests/unit/test_srt_marker_retry.py`, `tests/unit/epub/test_placeholder_validator.py`, `tests/test_epub_interruption_integration.py` et `tests/test_xhtml_chunk_interruption.py`. Ils sont rattachés aux tests NovelTrad déjà définis pour EF-004, EF-008, EF-010, RM-007, RM-009 et RM-012 ; ils n'ajoutent aucune exigence.
+
+Toute réutilisation effective doit figer le commit inspecté, conserver les avis requis, marquer les modifications, supprimer les branches de code hors périmètre et repasser les tests NovelTrad. Une mise à jour amont n'est jamais absorbée automatiquement.
 
 Le corpus additionnel fourni le 5 août 2026 contient 57 entrées. Cinquante-quatre arbres Git ont été examinés localement à leur tête observée, Beautiful Soup a été contrôlé via sa distribution et sa documentation officielles, et deux liens n'ont fourni aucun code auditable : `BeowuIf/libretranslator` redirige vers une authentification GitLab et `thinh-vu/epub_to_text` répond `404`. Après application des cinq critères de 7.16, seules six sources de ce corpus sont conservées dans les références utiles ci-dessus : EbookLib, `translation-agent`, `mdait`, `llm_text_splitter`, `Ebook-Subtitle-Translator` et Beautiful Soup. Les clients LibreTranslate/Argos, SDK Go, bibliothèques d'interface ou de CLI, applications de bureau, skills de prompts et frameworks multi-agents restants n'apportent aucun mécanisme plus robuste ou directement intégrable au monolithe Python/Streamlit sans ajouter un fournisseur, un format, une interface, un service ou un workflow interdit ; ils ne sont donc pas des sources d'implémentation NovelTrad.
 
@@ -2341,10 +2362,10 @@ Le corpus secondaire de 29 outils communiqué le 5 août 2026 a été contrôlé
 
 | Outil et source observée | Nature, version ou licence constatée | Mécanisme techniquement pertinent déjà dans le périmètre | Décision de réemploi NovelTrad |
 |---|---|---|---|
-| [Ebook Translator — Calibre Plugin `2232a79`](https://github.com/bookfere/Ebook-Translator-Calibre-Plugin/tree/2232a7932ad51060611ae485c7d3fd17016dbef0) | Python/Calibre, GPL-3.0 | parcours EPUB, TOC, SRT, journalisation des retries | référence comportementale seulement ; code, cache, concurrence, mode bilingue, Calibre et fournisseurs supplémentaires exclus |
-| [AiNiee `ab567e3`](https://github.com/NEKOparapa/AiNiee/tree/ab567e36f315f7f4d399f4e21196cd58be4f64c5) | Python, AGPL-3.0 | validation de cardinalité, ordre, marqueurs et reconstruction EPUB/SRT | déjà enregistré ci-dessus ; réimplémentation indépendante seulement |
+| [Ebook Translator — Calibre Plugin `2232a79`](https://github.com/bookfere/Ebook-Translator-Calibre-Plugin/tree/2232a7932ad51060611ae485c7d3fd17016dbef0) | Python/Calibre, GPL-3.0 | `lib/element.py` et ses tests : extraction XHTML par blocs, espaces/`br`, namespaces, TOC et SRT ; `lib/translation.py` : journalisation des tentatives | combinaison juridiquement permise avec NovelTrad AGPL selon l'article 13 ; reprendre seulement les fonctions Python isolables et tests qui améliorent TBL, sans dépendance Calibre, cache, concurrence, mode bilingue ou fournisseur supplémentaire |
+| [AiNiee `ab567e3`](https://github.com/NEKOparapa/AiNiee/tree/ab567e36f315f7f4d399f4e21196cd58be4f64c5) | Python, AGPL-3.0 | validation de cardinalité, ordre, marqueurs et reconstruction EPUB/SRT | déjà enregistré ci-dessus ; reprise limitée au validateur si complémentaire à TBL |
 | [Glossarion `ed266ae`](https://github.com/Shirochi-stack/Glossarion/tree/ed266ae131425d3bc8e474d55232d7da4b2c01ca) | Python/PySide6, MIT | `src/subtitle_processor.py` et `tests/test_subtitle_processor.py` couvrent la conservation exacte des indices, horodatages, paramètres, balises et fins de ligne SRT | tests et fonctions SRT minimales adaptables avec avis MIT ; glossaire, OCR, PDF, manga, ASS/LRC, sessions JSON, GUI, parallélisme et fournisseurs supplémentaires supprimés |
-| [book-translator `9959f86`](https://github.com/KazKozDev/book-translator/tree/9959f8639ab4a4a86be4d3269a1978a9c5caaa48) | Python, AGPL-3.0 | `tests/test_long_run_resume.py` vérifie interruption, reprise au premier chunk incomplet et indépendance du Worker vis-à-vis du client UI | scénarios de test transposables par réimplémentation ; seconde base de cache, glossaire, Flask, PDF, modèles par rôle et pipeline à deux étapes exclus |
+| [book-translator `9959f86`](https://github.com/KazKozDev/book-translator/tree/9959f8639ab4a4a86be4d3269a1978a9c5caaa48) | Python, AGPL-3.0 | `tests/test_long_run_resume.py` vérifie interruption, reprise au premier chunk incomplet et indépendance du Worker vis-à-vis du client UI | test directement adaptable si TBL ne couvre pas le scénario ; seconde base de cache, glossaire, Flask, PDF, modèles par rôle et pipeline à deux étapes exclus |
 | [NovelTrans SaaS `2e6ee9c`](https://github.com/YuBing-link/noveltrans/tree/2e6ee9c7354a7416738cad204627c006615ebf28) | Java/React/Python, MIT | ports d'adaptateurs et tests de transitions d'état | aucune reprise directe : six conteneurs, MySQL, Redis/RAG, microservices, multi-agent, collaboration, Stripe et concurrence contredisent le SDD ; seules les idées génériques déjà spécifiées sont retenues |
 | `noveltrans` CLI TypeScript, dépôt `minseung07/NovelTrans` annoncé mais non résolu le 5 août 2026 | code et licence non auditables à la date du contrôle | reprise de projet revendiquée | aucun réemploi sans dépôt public résoluble, commit et licence ; ne pas confondre avec NovelTrans SaaS ou l'article WMT24 |
 | « Novel Translator » en ligne | identité non désambiguïsée et aucun dépôt officiel fourni ; des services homonymes EPUB/TXT/PDF existent | conservation déclarée de structure | aucune source de code exploitable ; aucune décision ne repose sur une allégation commerciale ambiguë |
@@ -2356,11 +2377,11 @@ Le corpus secondaire de 29 outils communiqué le 5 août 2026 a été contrôlé
 | [Immersive Translate `ba74c9c`](https://github.com/immersive-translate/immersive-translate/tree/ba74c9c624931f4e5d283f50d3a2ca854b990e13) | distribution d'extension sans fichier de licence à la révision contrôlée | styles EPUB et remplacement DOM | aucun code repris sans licence explicite ; traduction web, extension et affichage bilingue exclus |
 | [DeepL Document Translation](https://www.deepl.com/en/features/document-translation) | service/API propriétaire | catégories d'erreur et préservation SRT/DOCX déclarées | aucun réemploi, aucune dépendance et aucun nouveau fournisseur ; DeepL n'appartient pas aux trois adaptateurs autorisés |
 | [Google Translate Documents](https://support.google.com/translate/answer/2534559) | service propriétaire | validation de taille/format côté service | aucun réemploi ; Google Translate Documents n'appartient pas aux trois adaptateurs et n'ajoute aucun format |
-| [DocuTranslate `a8c0cc4`](https://github.com/xunbu/docutranslate/tree/a8c0cc4d938d9dc88238115f940460473163e6ba) | Python, MPL-2.0 | séparation reader/IR/translator/exporter et parcours SRT/EPUB | référence d'interface ; reprise d'un fichier MPL seulement après décision de licence explicite et maintien des avis/sources ; glossaire, MCP, API, concurrence, PDF/Office étendu et formats supplémentaires exclus |
+| [DocuTranslate `a8c0cc4`](https://github.com/xunbu/docutranslate/tree/a8c0cc4d938d9dc88238115f940460473163e6ba) | Python, MPL-2.0 | séparation reader/IR/translator/exporter et parcours SRT/EPUB | aucune reprise retenue : les composants TBL couvrent déjà le besoin ; une éventuelle reprise future d'un fichier MPL exigerait le maintien de ses avis et de son code source ; glossaire, MCP, API, concurrence, PDF/Office étendu et formats supplémentaires exclus |
 | [epub-translate `ad331bd`](https://github.com/Poyeyo/epub-translate/tree/ad331bd6050bcecde376fe34e6472c653b19bcb2) | script Python, Unlicense | recopie des entrées ZIP non textuelles | ne pas reprendre : analyse XHTML caractère par caractère, absence de validation structurelle et clés/exemples de fournisseurs rendent l'implémentation moins sûre que les sources retenues |
 | [epub-translator `1652567`](https://github.com/oomol-lab/epub-translator/tree/1652567fb057e7d711b65e71251d5b1cbd572bc1) | bibliothèque Python, MIT | `epub/spines.py`, `epub/zip.py`, segments inline et tests EPUB 2/3 : ordre de spine, migration des ressources, cardinalité/imbrication/attributs | adaptation directe possible avec avis MIT et tests transposés ; cache, concurrence, sortie bilingue, traduction TOC/métadonnées optionnelle et dépendances hors périmètre exclus |
 | [wenyi `8ec8a58`](https://github.com/BigDawnGhost/wenyi/tree/8ec8a58cc2e8feeed1c675b16aa94c4dea7b1dc4) | Python, MIT | extraction/reconstruction XHTML, segmentation aux frontières sûres, écritures atomiques et tests de classification des erreurs | fonctions isolées et tests adaptables avec avis MIT, mais l'état est porté dans SQLite/`translated.md` selon NovelTrad ; glossaire, préscan, PDF/FB2/HTML, sorties bilingues, étapes facultatives, parallélisme et fichiers d'état exclus |
-| [Lexora AI `a4afc91`](https://github.com/Lexora-Labs/lexora-ai/tree/a4afc91534c97b054edb397e3f4bba20896c8c40) | Python/Flet, AGPL-3.0 | jobs SQLite et pipeline EPUB | référence comportementale seulement ; code AGPL, Flet, CLI, MOBI, multi-fournisseur, modes bilingues et file concurrente exclus |
+| [Lexora AI `a4afc91`](https://github.com/Lexora-Labs/lexora-ai/tree/a4afc91534c97b054edb397e3f4bba20896c8c40) | Python/Flet, AGPL-3.0 | jobs SQLite et pipeline EPUB | aucune reprise retenue : TBL et le schéma NovelTrad couvrent déjà ces mécanismes ; Flet, CLI, MOBI, multi-fournisseur, modes bilingues et file concurrente exclus |
 | [BookTranslator.app](https://www.booktranslator.app/) | SaaS fermé | conservation déclarée des formats et traitement long | aucun code réutilisable ; OCR, PDF, comics, bibliothèque distante et formats supplémentaires exclus |
 | [EBook Libre — iOS](https://apps.apple.com/fr/app/ebook-libre-ai-traduire/id999865482) | application propriétaire | lecture responsive et reprise de position | aucune reprise ; lecteur, bibliothèque, résumé, analyse, publicité et synchronisation cloud exclus |
 | [eBook Translator: AI Translate — iOS](https://apps.apple.com/ci/app/ebook-translator-ai-translate/id6668259223) | application propriétaire | traduction intégrée à un lecteur | aucune source de code ni licence ; lecteur mobile natif hors architecture Streamlit |
@@ -2400,8 +2421,8 @@ Ce glossaire est exclusivement documentaire. NovelTrad ne fournit aucun glossair
 | Document / chapitre | Un élément ordonné du projet, toujours inclus dans l'export tant qu'il existe |
 | Worker | Boucle logique unique consommant séquentiellement la FIFO dans le conteneur applicatif |
 | Job | Unité persistée de traitement d'un document selon les états 12.15 |
-| Pipeline | Quatre appels obligatoires et ordonnés décrits au chapitre 11 |
-| Point validé | Dernière étape dont le contenu a été écrit atomiquement et l'état persisté |
+| Pipeline | Quatre passes obligatoires et ordonnées décrites au chapitre 11, chacune comportant un appel par segment |
+| Point validé | Dernier segment dont le checkpoint a été écrit atomiquement et l'état de passe persisté |
 | REQ | Terme collectif couvrant `EF` et `RM`, sans identifiant propre |
 | WebP lossless | Format persistant unique des images converties sans perte |
 | Export à la volée | Fichier généré temporairement pour téléchargement puis supprimé |
@@ -2447,7 +2468,7 @@ Les entrées et sorties sont limitées à EPUB, DOCX, TXT, Markdown et SRT. Le M
 | Streamlit seul | interface unique responsive | 5.12, 13 |
 | SQLite seul | source unique des métadonnées | 2.6, 8 |
 | Worker unique et FIFO sans priorité | exécution déterministe et simple | 12 |
-| Quatre appels au même modèle | qualité automatique obligatoire | 11 |
+| Quatre passes au même modèle | qualité automatique obligatoire | 11 |
 | Markdown et WebP persistants | stockage minimal et formats pivots | 10, 20.12 |
 | Aucun historique/glossaire métier/project.json, import ou export complet de projet | périmètre simple figé | 1.4, 20.12 |
 | Export temporaire de tous les documents | cohérence de l'œuvre et absence d'artefacts | 15 |
