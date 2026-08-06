@@ -6,7 +6,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .service import SystemRepository
+from .repository import SystemRepository
 
 _HEARTBEAT_MAX_AGE = 15.0
 

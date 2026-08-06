@@ -132,6 +132,8 @@ def render(container, session) -> None:
                 )
             except Exception as exc:  # noqa: BLE001
                 st.error(str(exc))
+        _render_editor(container, session, project_id, document_service)
+        _render_replace(container, session, project_id, document_service)
     elif project.status == ProjectStatus.FAILED:
         st.error(t("project.failed"))
         if st.button(t("project.resume"), key="resume_failed_btn"):
@@ -191,3 +193,79 @@ def _hash(settings) -> str:
         "seed": settings.seed,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _render_editor(container, session, project_id, document_service) -> None:
+    """One-chapter Markdown editor after final validation (13.5, EF-011)."""
+    language = session.language
+    t = lambda key: translate(key, language)  # noqa: E731
+    st.divider()
+    st.subheader(t("editor.title"))
+    documents = document_service.list(project_id)
+    if not documents:
+        return
+    chapter_options: dict[str, int] = {}
+    for doc in documents:
+        for chapter in document_service.list_chapters(doc.id):
+            title = chapter.title or t("editor.title")
+            label = f"{doc.display_name} — {title} (#{chapter.order_index})"
+            chapter_options[label] = chapter.id
+    if not chapter_options:
+        return
+    selected = st.selectbox(t("editor.title"), list(chapter_options.keys()), key="editor_chapter")
+    chapter_id = chapter_options[selected]
+    state_key = f"editor_text_{chapter_id}"
+    if state_key not in st.session_state:
+        try:
+            editable = document_service.load_editable_chapter(chapter_id)
+            st.session_state[state_key] = editable.markdown
+            st.session_state[f"editor_hash_{chapter_id}"] = editable.content_hash
+        except Exception as exc:  # noqa: BLE001
+            st.error(str(exc))
+            return
+    content = st.text_area(
+        t("editor.preview"),
+        value=st.session_state.get(state_key, ""),
+        height=400,
+        key=f"editor_area_{chapter_id}",
+    )
+    if content != st.session_state.get(state_key):
+        st.session_state[state_key] = content
+        st.caption(t("editor.autosaved"))
+    if st.button(t("editor.save"), key=f"editor_save_{chapter_id}"):
+        try:
+            expected = st.session_state.get(f"editor_hash_{chapter_id}", "")
+            editable = document_service.save_editable_chapter(chapter_id, content, expected)
+            st.session_state[f"editor_hash_{chapter_id}"] = editable.content_hash
+            st.success(t("editor.save"))
+            st.rerun()
+        except Exception as exc:  # noqa: BLE001
+            st.error(str(exc))
+
+
+def _render_replace(container, session, project_id, document_service) -> None:
+    """Global search & replace on finalized translated.md (13.5, EF-012)."""
+    language = session.language
+    t = lambda key: translate(key, language)  # noqa: E731
+    st.divider()
+    st.subheader(t("replace.preview"))
+    with st.container(border=True):
+        needle = st.text_input(t("replace.preview"), key="replace_needle")
+        replacement = st.text_input(t("replace.apply"), key="replace_replacement")
+        if st.button(t("replace.preview"), key="replace_preview_btn"):
+            try:
+                preview = document_service.preview_replace(project_id, needle, replacement)
+                session.replace_token = preview.token
+                st.info(f"{preview.occurrences} — {len(preview.document_ids)} {t('project.docs')}")
+            except Exception as exc:  # noqa: BLE001
+                st.error(str(exc))
+        confirmation = st.text_input(t("replace.token"), key="replace_token_input")
+        if st.button(t("replace.apply"), key="replace_apply_btn"):
+            try:
+                applied = document_service.apply_replace(
+                    project_id, session.replace_token or "", confirmation
+                )
+                st.success(f"{applied} {t('replace.apply')}")
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(str(exc))

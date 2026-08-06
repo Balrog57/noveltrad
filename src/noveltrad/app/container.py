@@ -26,8 +26,9 @@ from noveltrad.modules.projects.repository import ProjectRepository
 from noveltrad.modules.projects.service import ProjectService
 from noveltrad.modules.settings.repository import SettingsRepository
 from noveltrad.modules.settings.service import SettingsService
+from noveltrad.modules.system.cleanup import CleanupService
 from noveltrad.modules.system.health import HealthService
-from noveltrad.modules.system.service import CleanupService, SystemRepository
+from noveltrad.modules.system.repository import SystemRepository
 from noveltrad.modules.translation.pipeline import TranslationService
 from noveltrad.modules.translation.providers.factory import ProviderFactory
 from noveltrad.modules.verification.service import VerificationService
