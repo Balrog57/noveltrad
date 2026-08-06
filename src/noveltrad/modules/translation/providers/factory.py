@@ -18,6 +18,18 @@ class ProviderFactory:
     def set_api_key(self, api_key: str | None) -> None:
         self._api_key = api_key
 
+    def create_from_settings(self, settings: SettingsView):
+        """Build a provider from SettingsView directly (used by container)."""
+        if settings.provider == ProviderName.OLLAMA:
+            return OllamaProvider()
+        if settings.provider == ProviderName.LM_STUDIO:
+            return LMStudioProvider()
+        if settings.provider == ProviderName.OPENAI_COMPATIBLE:
+            provider = OpenAICompatibleProvider()
+            provider.set_api_key(self._api_key)
+            return provider
+        raise ValidationError(f"unknown provider: {settings.provider}")
+
     def create(self, settings: SettingsView):
         if settings.provider is None:
             raise ValidationError("no AI provider configured")
