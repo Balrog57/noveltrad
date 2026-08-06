@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from noveltrad.core.config import AppConfig, load_config
+from noveltrad.core.contracts import CompletionResponse, ValidationReport
 from noveltrad.core.database import initialize_schema
 from noveltrad.core.file_journal import FileJournal
 from noveltrad.core.logging import LogService, setup_logger
@@ -84,7 +85,8 @@ class Container:
     def build_worker(self) -> WorkerLoop:
         from noveltrad.modules.translation.prompt_loader import PromptLoader
 
-        provider = self.factory.create_from_settings(self.settings_service.get_masked())
+        settings = self.settings_service.get_masked()
+        provider = self._build_provider(settings)
         self._provider = provider
         self.translation_service = TranslationService(
             self.database.conn,
@@ -99,6 +101,22 @@ class Container:
             self.logs,
         )
 
+    def _build_provider(self, settings):
+        """Build the provider; returns a no-op stub when none is configured,
+        so the Worker stays healthy before the first configuration (6.10)."""
+        from noveltrad.modules.translation.providers.factory import ProviderFactory
+
+        factory = ProviderFactory()
+        if settings.provider is None or not settings.model:
+            return _UnconfiguredProvider()
+        if str(settings.provider) == "openai_compatible":
+            factory.set_api_key(self._settings_api_key())
+        return factory.create_from_settings(settings)
+
+    def _settings_api_key(self) -> str | None:
+
+        return self.settings_service._decrypt_api_key()
+
     def set_api_key(self, api_key: str | None) -> None:
         self.factory.set_api_key(api_key)
 
@@ -110,3 +128,21 @@ class Container:
             with contextlib.suppress(Exception):
                 asyncio.run(self._provider.close())  # type: ignore[attr-defined]
         self.database.close()
+
+
+class _UnconfiguredProvider:
+    """No-op provider stub: no model configured yet (healthy before config)."""
+
+    async def validate_configuration(self, snapshot) -> ValidationReport:
+        return ValidationReport(False, ("NO_PROVIDER",), ("no provider configured",))
+
+    async def list_models(self) -> tuple[str, ...]:
+        return ()
+
+    async def complete(self, request) -> CompletionResponse:
+        from noveltrad.core.exceptions import ProviderError
+
+        raise ProviderError("NO_PROVIDER", False)
+
+    async def close(self) -> None:
+        pass
