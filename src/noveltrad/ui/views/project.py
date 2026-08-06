@@ -42,6 +42,11 @@ def render(container, session) -> None:
 
     st.title(f"{project.name} — {project.status.value}")
 
+    # back to project list
+    if st.button("← " + t("nav.projects"), key="back_to_list_btn"):
+        session.current_project_id = None
+        st.rerun()
+
     # -- import zone ------------------------------------------------------
     if project.status in (ProjectStatus.DRAFT, ProjectStatus.READY, ProjectStatus.FAILED):
         with st.expander(t("project.upload"), expanded=True):

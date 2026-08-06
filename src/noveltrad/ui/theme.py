@@ -1,9 +1,9 @@
-"""Theme handling (SDD 13.2, 13.14): light, dark, sepia.
+"""Material Design theme handling (SDD 13.2, 13.14): light, dark, sepia.
 
-Streamlit renders its widgets with CSS variables; forcing plain CSS on
-.stApp leaves widgets in the browser-default palette. A complete theme must
-redefine the Streamlit variables and target the sidebar, header, inputs,
-selectboxes, buttons and text so every surface follows light/dark/sepia.
+Applies a complete Material Design palette — Roboto, elevation shadows,
+rounded corners, consistent inputs/buttons — by redefining every Streamlit
+CSS variable plus targeted overrides for widgets that ignore variables.
+Every surface follows the selected theme so no element stays unreadable.
 """
 
 from __future__ import annotations
@@ -11,36 +11,51 @@ from __future__ import annotations
 _THEMES = {
     "light": {
         "primary": "#0d9488",
-        "background": "#f7f8fa",
-        "secondary": "#ffffff",
-        "tertiary": "#eef1f4",
-        "text": "#262730",
-        "muted": "#6b7280",
+        "primary_dark": "#0f766e",
+        "background": "#f4f6f8",
+        "surface": "#ffffff",
+        "surface_variant": "#eef1f4",
+        "text": "#1a1c1e",
+        "text_secondary": "#5f6368",
+        "on_primary": "#ffffff",
         "border": "#d1d5db",
         "sidebar": "#ffffff",
         "hover": "#e5e7eb",
+        "error": "#b3261e",
+        "success": "#2e7d32",
+        "warning": "#b26a00",
     },
     "dark": {
-        "primary": "#2dd4bf",
-        "background": "#141420",
-        "secondary": "#1e1e2e",
-        "tertiary": "#2a2a3e",
-        "text": "#e5e7eb",
-        "muted": "#9ca3af",
+        "primary": "#4dd0c4",
+        "primary_dark": "#26a69a",
+        "background": "#121212",
+        "surface": "#1e1e2e",
+        "surface_variant": "#2a2a3e",
+        "text": "#e4e6eb",
+        "text_secondary": "#9aa0a6",
+        "on_primary": "#00332e",
         "border": "#3f3f56",
         "sidebar": "#181826",
         "hover": "#2f2f44",
+        "error": "#f2b8b5",
+        "success": "#81c995",
+        "warning": "#fdd663",
     },
     "sepia": {
         "primary": "#8a5a2b",
+        "primary_dark": "#6d4420",
         "background": "#f4ecd8",
-        "secondary": "#faf4e4",
-        "tertiary": "#e9ddc2",
+        "surface": "#faf4e4",
+        "surface_variant": "#e9ddc2",
         "text": "#3b2f1c",
-        "muted": "#7a6a4f",
+        "text_secondary": "#7a6a4f",
+        "on_primary": "#fff8ec",
         "border": "#cbbfa0",
         "sidebar": "#efe5cd",
         "hover": "#e3d5b4",
+        "error": "#9c3b2e",
+        "success": "#4d6b3a",
+        "warning": "#8a5a2b",
     },
 }
 
@@ -49,141 +64,239 @@ def _css(theme: str) -> str:
     c = _THEMES.get(theme, _THEMES["light"])
     return f"""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
     .stApp {{
         --primary-color: {c["primary"]};
         --background-color: {c["background"]};
-        --secondary-background-color: {c["secondary"]};
+        --secondary-background-color: {c["surface"]};
         --text-color: {c["text"]};
-        --font: "Source Sans Pro", sans-serif;
+        --font: 'Roboto', sans-serif;
         background-color: {c["background"]};
         color: {c["text"]};
+        font-family: 'Roboto', sans-serif;
     }}
 
-    /* sidebar */
+    /* ---------- global text ---------- */
+    .stApp * {{ font-family: 'Roboto', sans-serif; }}
+    .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown h1,
+    .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5,
+    .stCaption, .stTitle, .stSubheader, .stHeader {{
+        color: {c["text"]} !important;
+    }}
+    .stMarkdown a {{ color: {c["primary"]} !important; }}
+    code, .stCode, pre {{
+        background-color: {c["surface_variant"]} !important;
+        color: {c["text"]} !important;
+    }}
+
+    /* ---------- sidebar ---------- */
     [data-testid="stSidebar"] {{
         background-color: {c["sidebar"]};
         border-right: 1px solid {c["border"]};
     }}
     [data-testid="stSidebar"] * {{ color: {c["text"]} !important; }}
+    [data-testid="stSidebar"] .stMarkdown h1 {{
+        color: {c["primary"]} !important;
+        font-weight: 700;
+    }}
 
-    /* header */
+    /* ---------- header ---------- */
     [data-testid="stHeader"] {{
         background: transparent;
     }}
 
-    /* inputs, textareas, selectboxes, multiselect */
-    .stTextInput input, .stTextArea textarea,
-    .stSelectbox div[data-baseweb="select"] > div,
-    .stNumberInput input, .stDateInput input {{
-        background-color: {c["secondary"]};
-        color: {c["text"]};
-        border-color: {c["border"]};
+    /* ---------- text inputs / textareas ---------- */
+    .stTextInput input, .stTextArea textarea, .stNumberInput input {{
+        background-color: {c["surface"]} !important;
+        color: {c["text"]} !important;
+        border: 1px solid {c["border"]} !important;
+        border-radius: 4px !important;
+        caret-color: {c["primary"]};
+    }}
+    .stTextInput input:focus, .stTextArea textarea:focus, .stNumberInput input:focus {{
+        border-color: {c["primary"]} !important;
+        box-shadow: 0 0 0 1px {c["primary"]} !important;
     }}
     .stTextInput input::placeholder, .stTextArea textarea::placeholder {{
-        color: {c["muted"]};
+        color: {c["text_secondary"]} !important;
     }}
-    .stSelectbox div[data-baseweb="select"] * {{
-        color: {c["text"]};
+    input[type="password"] {{
+        background-color: {c["surface"]} !important;
+        color: {c["text"]} !important;
+        border: 1px solid {c["border"]} !important;
+        border-radius: 4px !important;
     }}
 
-    /* dropdown menu */
-    div[data-baseweb="popover"] ul, div[data-baseweb="menu"] {{
-        background-color: {c["secondary"]};
-        color: {c["text"]};
+    /* ---------- selectbox / dropdown ---------- */
+    .stSelectbox [data-baseweb="select"] > div {{
+        background-color: {c["surface"]} !important;
+        border-color: {c["border"]} !important;
+        border-radius: 4px !important;
+    }}
+    .stSelectbox [data-baseweb="select"] * {{
+        color: {c["text"]} !important;
+    }}
+    .stSelectbox [data-baseweb="select"] svg {{
+        fill: {c["text_secondary"]} !important;
+    }}
+    div[data-baseweb="popover"] ul, div[data-baseweb="menu"], div[data-baseweb="popover"] {{
+        background-color: {c["surface"]} !important;
+        color: {c["text"]} !important;
+    }}
+    div[data-baseweb="menu"] li {{
+        color: {c["text"]} !important;
     }}
     div[data-baseweb="menu"] li:hover {{
-        background-color: {c["hover"]};
+        background-color: {c["hover"]} !important;
+    }}
+    div[data-baseweb="menu"] li[aria-selected="true"] {{
+        background-color: {c["surface_variant"]} !important;
+        color: {c["primary"]} !important;
     }}
 
-    /* primary buttons */
-    .stButton button[kind="primary"] {{
-        background-color: {c["primary"]};
-        color: {c["secondary"]};
-        border: none;
+    /* ---------- multi-select / chips ---------- */
+    .stMultiSelect [data-baseweb="tag"] {{
+        background-color: {c["primary"]} !important;
+        color: {c["on_primary"]} !important;
+        border-radius: 16px !important;
     }}
-    .stButton button[kind="primary"]:hover {{
-        background-color: {c["primary"]};
-        filter: brightness(1.1);
-        color: {c["secondary"]};
-    }}
+    .stMultiSelect [data-baseweb="tag"] span {{ color: {c["on_primary"]} !important; }}
 
-    /* secondary buttons */
-    .stButton button[kind="secondary"] {{
-        background-color: {c["secondary"]};
+    /* ---------- buttons (Material) ---------- */
+    .stButton button, .stDownloadButton button {{
+        background-color: {c["surface"]};
         color: {c["primary"]};
         border: 1px solid {c["primary"]};
+        border-radius: 4px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        transition: box-shadow 0.2s ease, background-color 0.2s ease;
     }}
-    .stButton button[kind="secondary"]:hover {{
-        background-color: {c["tertiary"]};
-        color: {c["primary"]};
-    }}
-
-    /* generic buttons fallback */
-    .stButton button {{
-        background-color: {c["secondary"]};
-        color: {c["text"]};
-        border: 1px solid {c["border"]};
-    }}
-    .stButton button:hover {{
+    .stButton button:hover, .stDownloadButton button:hover {{
         background-color: {c["hover"]};
-        color: {c["text"]};
+        box-shadow: 0 2px 4px rgba(0,0,0,0.16);
+    }}
+    .stButton button:active, .stDownloadButton button:active {{
+        background-color: {c["surface_variant"]};
+        box-shadow: 0 1px 1px rgba(0,0,0,0.12);
+    }}
+    .stButton button[kind="primary"], .stDownloadButton button[kind="primary"] {{
+        background-color: {c["primary"]};
+        color: {c["on_primary"]};
+        border: none;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }}
+    .stButton button[kind="primary"]:hover, .stDownloadButton button[kind="primary"]:hover {{
+        background-color: {c["primary_dark"]};
+        color: {c["on_primary"]};
+        box-shadow: 0 3px 6px rgba(0,0,0,0.24);
     }}
 
-    /* checkboxes, radios */
-    .stCheckbox label, .stRadio label {{
-        color: {c["text"]};
+    /* ---------- radio / checkbox ---------- */
+    .stRadio label, .stCheckbox label {{
+        color: {c["text"]} !important;
+    }}
+    .stCheckbox [data-testid="stCheckbox"] label p {{ color: {c["text"]} !important; }}
+    .stRadio [data-testid="stRadio"] label p {{ color: {c["text"]} !important; }}
+    .stRadio div[role="radiogroup"] > label > div:first-child > div {{
+        background-color: {c["surface"]} !important;
+        border-color: {c["primary"]} !important;
     }}
 
-    /* expanders and containers */
+    /* ---------- slider ---------- */
+    .stSlider [data-testid="stSliderThumbValue"] {{
+        background-color: {c["primary"]} !important;
+        color: {c["on_primary"]} !important;
+    }}
+    .stSlider [role="slider"] {{ background-color: {c["primary"]} !important; }}
+    .stSlider [data-testid="stSlider"] > div > div > div:nth-child(1) {{
+        background: {c["primary"]} !important;
+    }}
+
+    /* ---------- file uploader ---------- */
+    [data-testid="stFileUploader"] {{
+        background-color: {c["surface"]} !important;
+        border: 1px dashed {c["primary"]} !important;
+        border-radius: 4px !important;
+        color: {c["text"]} !important;
+    }}
+    [data-testid="stFileUploader"] * {{ color: {c["text"]} !important; }}
+    [data-testid="stFileUploaderDropzone"] {{
+        background-color: {c["surface"]} !important;
+    }}
+    [data-testid="stFileUploaderDropzone"]:hover {{
+        background-color: {c["hover"]} !important;
+    }}
+
+    /* ---------- expanders / cards ---------- */
     .stExpander, [data-testid="stExpander"] {{
-        background-color: {c["secondary"]};
+        background-color: {c["surface"]};
         border: 1px solid {c["border"]};
         border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.06);
     }}
     .stExpander summary, [data-testid="stExpander"] summary {{
-        color: {c["text"]};
+        color: {c["text"]} !important;
+        font-weight: 500;
     }}
     [data-testid="stVerticalBlockBorderWrapper"] {{
-        background-color: {c["secondary"]};
+        background-color: {c["surface"]};
         border-color: {c["border"]};
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }}
 
-    /* captions, info, code */
-    .stCaption, .stMarkdown p, .stMarkdown li, .stMarkdown h1,
-    .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5 {{
-        color: {c["text"]};
-    }}
-    .stMarkdown {{ color: {c["text"]}; }}
-
-    /* progress bars */
-    .stProgress div[role="progressbar"] > div {{
-        background-color: {c["primary"]};
-    }}
-
-    /* metrics */
-    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {{
-        color: {c["text"]};
-    }}
-
-    /* tabs */
+    /* ---------- tabs ---------- */
     .stTabs [data-baseweb="tab-list"] button {{
-        color: {c["muted"]};
+        color: {c["text_secondary"]} !important;
     }}
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{
-        color: {c["primary"]};
-        border-bottom-color: {c["primary"]};
+        color: {c["primary"]} !important;
+        border-bottom-color: {c["primary"]} !important;
     }}
 
-    /* success/error/info toasts keep readable text */
-    .stAlert {{
-        color: {c["text"]};
+    /* ---------- progress / metric ---------- */
+    .stProgress div[role="progressbar"] > div {{
+        background-color: {c["primary"]} !important;
+    }}
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"], [data-testid="stMetricDelta"] {{
+        color: {c["text"]} !important;
+    }}
+
+    /* ---------- alerts ---------- */
+    .stAlert {{ color: {c["text"]} !important; }}
+    [data-testid="stAlert"] {{ color: {c["text"]} !important; }}
+
+    /* ---------- dataframes ---------- */
+    [data-testid="stDataFrame"], [data-testid="stTable"] {{
+        color: {c["text"]} !important;
+    }}
+    [data-testid="stDataFrame"] * {{ color: {c["text"]} !important; }}
+
+    /* ---------- spinner ---------- */
+    [data-testid="stSpinner"] {{ color: {c["text"]} !important; }}
+    [data-testid="stSpinner"] * {{ color: {c["text"]} !important; }}
+
+    /* ---------- horizontal rule ---------- */
+    hr {{ border-color: {c["border"]} !important; }}
+
+    /* ---------- tooltips ---------- */
+    [data-testid="stTooltip"] {{ color: {c["text"]} !important; }}
+
+    /* ---------- toast ---------- */
+    [data-testid="stToast"] {{
+        background-color: {c["surface"]} !important;
+        color: {c["text"]} !important;
     }}
     </style>
     """
 
 
 def apply_theme(theme: str) -> None:
-    """Inject the complete theme CSS into the running Streamlit page."""
+    """Inject the Material Design theme CSS into the running Streamlit page."""
     import streamlit as st
 
     st.markdown(_css(theme), unsafe_allow_html=True)
