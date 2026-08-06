@@ -37,7 +37,7 @@ class WorkerLoop:
         self._translation_service = translation_service
         self._logs = logs
         self._poll = poll_seconds
-        self._heartbeat = heartbeat_seconds
+        self._heartbeat_interval = heartbeat_seconds
         self._system_repo = system_repo
         self._stop_requested = False
         self._runtime = WorkerRuntime(started_at=utc_now().isoformat())
@@ -96,6 +96,9 @@ class WorkerLoop:
         import time as _time
 
         now = _time.monotonic()
-        if self._system_repo is not None and now - self._last_persist >= self._heartbeat:
+        if (
+            self._system_repo is not None
+            and now - self._last_persist >= self._heartbeat_interval
+        ):
             self._system_repo.heartbeat(self._runtime.state)
             self._last_persist = now
