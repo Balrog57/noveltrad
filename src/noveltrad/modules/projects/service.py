@@ -17,6 +17,7 @@ from noveltrad.core.contracts import (
     ValidationReport,
 )
 from noveltrad.core.exceptions import (
+    ConflictError,
     LockedError,
     ValidationError,
 )
@@ -118,6 +119,24 @@ class ProjectService:
             error_codes=tuple(errors),
             safe_messages=tuple(messages),
         )
+
+    def mark_ready(self, project_id: ProjectId) -> Project:
+        """Transition Draft -> Ready once validation passes (SDD 9.13)."""
+        report = self.validate(project_id)
+        if not report.valid:
+            raise ValidationError("; ".join(report.safe_messages) or "validation failed")
+        row = self._repo.get_by_id(project_id)
+        if row.status is not ProjectStatus.DRAFT:
+            raise ConflictError(f"project {project_id} is not in Draft state")
+        with UnitOfWork(self._conn):
+            self._repo.update_status(project_id, ProjectStatus.READY.value)
+            self._logs.record(
+                "INFO",
+                "project.validate",
+                "project marked ready",
+                _ctx(project_id),
+            )
+        return to_contract(self._repo.get_by_id(project_id))
 
     def delete(self, project_id: ProjectId, confirmation: str) -> None:
         row = self._repo.get_by_id(project_id)

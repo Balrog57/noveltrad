@@ -12,16 +12,19 @@ import streamlit as st
 from noveltrad.core.contracts import ProviderName, SettingsUpdate
 from noveltrad.ui.i18n import translate
 
-_PROVIDERS = {
-    "Ollama": "ollama",
-    "LM Studio": "lm_studio",
-    "API OpenAI-compatible": "openai_compatible",
-}
-
 # Providers that require an API key to work at all
 _REQUIRE_KEY = frozenset({"openai_compatible"})
 # Providers with local auto-detection of installed models
 _AUTO_DETECT = frozenset({"ollama", "lm_studio"})
+
+# Preset provider labels mapped to (adapter code, default URL)
+_PRESETS = {
+    "Ollama": ("ollama", "http://host.docker.internal:11434"),
+    "LM Studio": ("lm_studio", "http://host.docker.internal:1234/v1"),
+    "OpenAI (ChatGPT)": ("openai_compatible", "https://api.openai.com/v1"),
+    "Google Gemini": ("openai_compatible", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    "DeepSeek": ("openai_compatible", "https://api.deepseek.com/v1"),
+}
 
 
 def render(container, session) -> None:
@@ -39,25 +42,31 @@ def render(container, session) -> None:
     theme = st.radio(t("settings.theme"), themes, index=themes.index(current.theme))
     sound = st.checkbox(t("settings.sound"), value=current.completion_sound_enabled)
 
-    provider_names = list(_PROVIDERS.keys())
-    current_provider = next(
-        (name for name, code in _PROVIDERS.items() if code == str(current.provider)),
-        provider_names[0],
+    preset_names = list(_PRESETS.keys())
+    current_label = next(
+        (name for name, (code, _url) in _PRESETS.items()
+         if code == str(current.provider)
+         and (current.base_url or "") == (_url if _url else "")),
+        None,
     )
+    if current_label is None:
+        # fall back on matching the adapter code alone
+        current_label = next(
+            (name for name, (code, _url) in _PRESETS.items()
+             if code == str(current.provider)),
+            preset_names[0],
+        )
     provider_label = st.selectbox(
-        t("settings.provider"), provider_names, index=provider_names.index(current_provider)
+        t("settings.provider"), preset_names, index=preset_names.index(current_label)
     )
-    provider_code = _PROVIDERS[provider_label]
+    provider_code, preset_url = _PRESETS[provider_label]
 
     # -- provider section -------------------------------------------------
     st.subheader(provider_label)
-    default_urls = {
-        "ollama": "http://host.docker.internal:11434",
-        "lm_studio": "http://host.docker.internal:1234/v1",
-        "openai_compatible": "https://api.openai.com/v1",
-    }
     base_url = st.text_input(
-        t("settings.url"), value=current.base_url or default_urls[provider_code]
+        t("settings.url"),
+        value=current.base_url or preset_url,
+        key="provider_url",
     )
 
     api_key_enabled = st.checkbox(

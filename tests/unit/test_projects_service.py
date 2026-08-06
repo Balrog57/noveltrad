@@ -120,6 +120,33 @@ def test_validate_ok(conn: sqlite3.Connection, project_service: ProjectService):
     assert report.error_codes == ()
 
 
+def test_mark_ready_transitions_draft_to_ready(
+    conn: sqlite3.Connection, project_service: ProjectService
+):
+    """SDD 9.13: Draft -> Ready after complete validation (fix "nothing happens")."""
+    project = project_service.create("X", LanguageCode("fr"))
+    now = "2026-01-01T00:00:00Z"
+    conn.execute(
+        "INSERT INTO documents (project_id, display_name, import_format, order_index, "
+        "source_path, source_hash, status, detected_language, updated_at) "
+        "VALUES (?, 'd', 'txt', 0, 'p', 'h', 'ToTranslate', 'en', ?)",
+        (project.id, now),
+    )
+    conn.commit()
+    updated = project_service.mark_ready(project.id)
+    assert updated.status == ProjectStatus.READY
+    reloaded = project_service.get(project.id)
+    assert reloaded.status == ProjectStatus.READY
+
+
+def test_mark_ready_rejects_invalid_project(project_service: ProjectService):
+    from noveltrad.core.exceptions import ValidationError
+
+    project = project_service.create("X", LanguageCode("fr"))
+    with pytest.raises(ValidationError):
+        project_service.mark_ready(project.id)
+
+
 def test_delete_requires_confirmation(project_service: ProjectService):
     project = project_service.create("X", LanguageCode("fr"))
     with pytest.raises(ValidationError):

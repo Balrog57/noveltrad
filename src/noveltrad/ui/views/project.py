@@ -72,19 +72,7 @@ def render(container, session) -> None:
     documents = document_service.list(project_id)
     if documents:
         st.subheader(t("project.docs"))
-        for doc in documents:
-            with st.container(border=True):
-                cols = st.columns([3, 2, 1, 1, 1])
-                cols[0].markdown(f"**{doc.display_name}**")
-                cols[1].markdown(f"{t('doc.status')}: {doc.status.value} ({doc.progress:.0f}%)")
-                cols[2].markdown(f"{doc.word_count} {t('doc.words')}")
-                cols[3].markdown(doc.detected_language or "?")
-                if cols[4].button(t("doc.delete"), key=f"del_{doc.id}"):
-                    try:
-                        document_service.delete(doc.id, None)
-                        st.rerun()
-                    except Exception as exc:  # noqa: BLE001
-                        st.error(str(exc))
+        _render_documents(container, session, project_id, documents)
 
     # -- primary action ---------------------------------------------------
     settings = settings_service.get_masked()
@@ -92,8 +80,11 @@ def render(container, session) -> None:
         report = project_service.validate(project_id)
         if report.valid:
             if st.button(t("project.validate"), key="validate_btn"):
-                project_service.validate(project_id)
-                st.rerun()
+                try:
+                    project_service.mark_ready(project_id)
+                    st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(str(exc))
         else:
             for message in report.safe_messages:
                 st.warning(message)
@@ -269,3 +260,95 @@ def _render_replace(container, session, project_id, document_service) -> None:
                 st.rerun()
             except Exception as exc:  # noqa: BLE001
                 st.error(str(exc))
+
+
+def _render_documents(container, session, project_id, documents) -> None:
+    """Documents table: headers, reorder arrows, multi-select delete (9.4-9.8)."""
+    language = session.language
+    t = lambda key: translate(key, language)  # noqa: E731
+    document_service = container.document_service
+
+    if "selected_docs" not in st.session_state:
+        st.session_state.selected_docs = set()
+
+    # header row
+    header = st.columns([1, 4, 2, 1, 1, 1, 1, 1])
+    header[0].markdown("")
+    header[1].markdown(f"**{t('doc.name')}**")
+    header[2].markdown(f"**{t('doc.status')}**")
+    header[3].markdown(f"**{t('doc.words')}**")
+    header[4].markdown(f"**{t('doc.lang')}**")
+    header[5].markdown("")
+    header[6].markdown("")
+    header[7].markdown("")
+
+    ids = [doc.id for doc in documents]
+    for index, doc in enumerate(documents):
+        cols = st.columns([1, 4, 2, 1, 1, 1, 1, 1])
+        checked = cols[0].checkbox(
+            t("doc.delete"),
+            value=doc.id in st.session_state.selected_docs,
+            key=f"sel_{doc.id}",
+            label_visibility="collapsed",
+        )
+        if checked:
+            st.session_state.selected_docs.add(doc.id)
+        else:
+            st.session_state.selected_docs.discard(doc.id)
+        cols[1].markdown(doc.display_name)
+        cols[2].markdown(f"{doc.status.value} ({doc.progress:.0f}%)")
+        cols[3].markdown(str(doc.word_count))
+        cols[4].markdown(doc.detected_language or "?")
+        up_disabled = index == 0 or project_locked(container, project_id)
+        down_disabled = index == len(documents) - 1 or project_locked(container, project_id)
+        if cols[5].button("↑", key=f"up_{doc.id}", disabled=up_disabled):
+            new_ids = list(ids)
+            new_ids[index - 1], new_ids[index] = new_ids[index], new_ids[index - 1]
+            try:
+                document_service.reorder(project_id, new_ids)
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(str(exc))
+        if cols[6].button("↓", key=f"down_{doc.id}", disabled=down_disabled):
+            new_ids = list(ids)
+            new_ids[index + 1], new_ids[index] = new_ids[index], new_ids[index + 1]
+            try:
+                document_service.reorder(project_id, new_ids)
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(str(exc))
+        if cols[7].button("🗑", key=f"del_{doc.id}"):
+            try:
+                document_service.delete(doc.id, None)
+                st.session_state.selected_docs.discard(doc.id)
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(str(exc))
+
+    if st.session_state.selected_docs:
+        st.button(
+            f"{t('doc.delete')} ({len(st.session_state.selected_docs)})",
+            key="delete_selected_btn",
+            on_click=_delete_selected,
+            args=(container, project_id, tuple(st.session_state.selected_docs)),
+        )
+
+
+def _delete_selected(container, project_id, document_ids: tuple) -> None:
+    import contextlib
+
+    document_service = container.document_service
+    for document_id in document_ids:
+        with contextlib.suppress(Exception):
+            document_service.delete(document_id, None)
+    st.session_state.selected_docs = set()
+    st.rerun()
+
+
+def project_locked(container, project_id) -> bool:
+    """True when the project is running/paused (reorder disabled, RM-007)."""
+    try:
+        project = container.project_service.get(project_id)
+        return project.status in (ProjectStatus.RUNNING, ProjectStatus.PAUSED)
+    except Exception:  # noqa: BLE001
+        return True
