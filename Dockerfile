@@ -31,6 +31,7 @@ WORKDIR /app
 COPY --from=builder /build/.venv /app/.venv
 COPY pyproject.toml uv.lock README.md LICENSE THIRD_PARTY_NOTICES.md ./
 COPY src/ ./src/
+COPY .streamlit/ ./.streamlit/
 
 RUN mkdir -p /data && \
     printf 'SOURCE_COMMIT = %s\n' "'${SOURCE_COMMIT}'" > src/noveltrad/core/_build_env.py && \
