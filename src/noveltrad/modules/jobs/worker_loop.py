@@ -31,14 +31,17 @@ class WorkerLoop:
         logs: LogService,
         poll_seconds: float = 1.0,
         heartbeat_seconds: float = 5.0,
+        system_repo=None,
     ) -> None:
         self._job_service = job_service
         self._translation_service = translation_service
         self._logs = logs
         self._poll = poll_seconds
         self._heartbeat = heartbeat_seconds
+        self._system_repo = system_repo
         self._stop_requested = False
         self._runtime = WorkerRuntime(started_at=utc_now().isoformat())
+        self._last_persist = 0.0
 
     @property
     def runtime(self) -> WorkerRuntime:
@@ -90,3 +93,9 @@ class WorkerLoop:
 
     def _heartbeat(self) -> None:
         self._runtime.heartbeat_at = utc_now().isoformat()
+        import time as _time
+
+        now = _time.monotonic()
+        if self._system_repo is not None and now - self._last_persist >= self._heartbeat:
+            self._system_repo.heartbeat(self._runtime.state)
+            self._last_persist = now

@@ -99,6 +99,7 @@ class Container:
             self.job_service,
             self.translation_service,
             self.logs,
+            system_repo=self.system_repo,
         )
 
     def _build_provider(self, settings):
