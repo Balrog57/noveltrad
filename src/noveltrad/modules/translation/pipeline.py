@@ -434,8 +434,8 @@ class TranslationService:
 
         next_at = next_at + timedelta(seconds=wait)
         self._conn.execute(
-            "UPDATE jobs SET state='Retrying', next_retry_at=?, updated_at=? WHERE id=?",
-            (next_at.isoformat(), utc_now().isoformat(), job_id),
+            "UPDATE jobs SET state='Retrying', next_retry_at=? WHERE id=?",
+            (next_at.isoformat(), job_id),
         )
         self._conn.commit()
         self._logs.record(
