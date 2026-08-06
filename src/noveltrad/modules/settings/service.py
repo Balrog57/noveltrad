@@ -121,6 +121,94 @@ class SettingsService:
         finally:
             await provider.close()
 
+    async def list_models_for(
+        self,
+        provider: ProviderName | None,
+        base_url: str | None,
+        api_key: str | None,
+        model: str | None = None,
+    ) -> tuple[str, ...]:
+        """Auto-detect installed models for the form values (14.5), without
+        persisting anything. Works for Ollama and LM Studio; the
+        OpenAI-compatible adapter lists models only when an API key is set."""
+        if provider is None or not base_url:
+            return ()
+        if self._factory is None:
+            return ()
+        self._factory.set_api_key(api_key)
+        snapshot = settings_to_snapshot(
+            SettingsView(
+                ui_language="fr",
+                theme="light",
+                completion_sound_enabled=True,
+                provider=provider,
+                base_url=base_url,
+                api_key_configured=bool(api_key),
+                model=model or "",
+                context_window_tokens=8192,
+                temperature=0.2,
+                max_output_tokens=2048,
+                seed=None,
+            )
+        )
+        try:
+            provider_instance = self._factory.create_from_settings(
+                _view_from_snapshot(snapshot)
+            )
+            try:
+                return await provider_instance.list_models()
+            finally:
+                await provider_instance.close()
+        except Exception:  # noqa: BLE001 - detection is best effort
+            return ()
+
+    async def validate_configuration_for(
+        self,
+        provider: ProviderName | None,
+        base_url: str | None,
+        api_key: str | None,
+        model: str | None,
+    ) -> ValidationReport:
+        """Validate the form values against the provider without saving."""
+        if provider is None or not base_url or not model:
+            return ValidationReport(
+                False,
+                ("INCOMPLETE_CONFIG",),
+                ("provider, base URL and model are required",),
+            )
+        if self._factory is None:
+            return ValidationReport(False, ("NO_FACTORY",), ("provider factory missing",))
+        if provider == ProviderName.OPENAI_COMPATIBLE and not api_key:
+            return ValidationReport(
+                False, ("API_KEY_MISSING",), ("API key required for this provider",)
+            )
+        self._factory.set_api_key(api_key)
+        view = SettingsView(
+            ui_language="fr",
+            theme="light",
+            completion_sound_enabled=True,
+            provider=provider,
+            base_url=base_url,
+            api_key_configured=bool(api_key),
+            model=model,
+            context_window_tokens=8192,
+            temperature=0.2,
+            max_output_tokens=2048,
+            seed=None,
+        )
+        try:
+            provider_instance = self._factory.create_from_settings(view)
+            try:
+                return await provider_instance.validate_configuration(
+                    settings_to_snapshot(view)
+                )
+            finally:
+                await provider_instance.close()
+        except Exception as exc:  # noqa: BLE001
+            return ValidationReport(
+                False, ("PROVIDER_ERROR",), (f"configuration invalid: {exc}",)
+            )
+
     # -- mutation ---------------------------------------------------------
 
     def update(self, values: SettingsUpdate) -> SettingsView:
@@ -210,4 +298,21 @@ def settings_to_snapshot(settings: SettingsView):
         prompt_bundle_version="v1",
         response_schema_version="v1",
         snapshot_hash="",
+    )
+
+
+def _view_from_snapshot(snapshot) -> SettingsView:
+    """Build a SettingsView from a PipelineSnapshot (list_models_for)."""
+    return SettingsView(
+        ui_language="fr",
+        theme="light",
+        completion_sound_enabled=True,
+        provider=snapshot.provider,
+        base_url=snapshot.base_url,
+        api_key_configured=False,
+        model=snapshot.model,
+        context_window_tokens=snapshot.context_window_tokens,
+        temperature=snapshot.temperature,
+        max_output_tokens=snapshot.max_output_tokens,
+        seed=snapshot.seed,
     )

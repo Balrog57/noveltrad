@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 
 from noveltrad.core.clock import utc_now
-from noveltrad.core.contracts import LanguageCode, ProjectId
+from noveltrad.core.contracts import LanguageCode, ProjectId, ProjectStatus
 from noveltrad.core.exceptions import IntegrityError
 
 from .models import ProjectRow
@@ -22,7 +22,7 @@ def _row_to_project(row: sqlite3.Row) -> ProjectRow:
         name=row["name"],
         source_language=row["source_language"],
         target_language=row["target_language"],
-        status=row["status"],
+        status=ProjectStatus(row["status"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         completion_notice_claimed_at=row["completion_notice_claimed_at"],

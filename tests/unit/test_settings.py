@@ -101,3 +101,95 @@ def test_plaintext_secret_refused(conn: sqlite3.Connection):
     repo = SettingsRepository(conn)
     with pytest.raises(IntegrityError):
         repo.set("api_key", "plaintext", is_secret=True)
+
+
+class _FakeFactory:
+    """Records set_api_key and returns a fake provider."""
+
+    def __init__(self) -> None:
+        self.api_key: str | None = None
+
+    def set_api_key(self, api_key: str | None) -> None:
+        self.api_key = api_key
+
+    def create_from_settings(self, view):
+        return _FakeProvider()
+
+    def create(self, view):
+        return _FakeProvider()
+
+
+class _FakeProvider:
+    def __init__(self) -> None:
+        self._base = "http://fake"
+
+    def set_base_url(self, base_url: str) -> None:
+        self._base = base_url
+
+    async def list_models(self) -> tuple[str, ...]:
+        return ("model-a", "model-b")
+
+    async def validate_configuration(self, snapshot):
+        from noveltrad.core.contracts import ValidationReport
+
+        return ValidationReport(True, (), ())
+
+    async def close(self) -> None:
+        pass
+
+
+def test_list_models_for(conn: sqlite3.Connection):
+    import pytest_asyncio  # noqa: F401  (pytest-asyncio auto mode)
+
+    logs = LogService(conn)
+    repo = SettingsRepository(conn)
+    key = derive_key("test-password-for-settings", b"\x01" * 16)
+    factory = _FakeFactory()
+    service = SettingsService(conn, repo, logs, key, factory)
+
+    async def run() -> tuple[str, ...]:
+        return await service.list_models_for(
+            ProviderName("ollama"), "http://localhost:11434", None, "model-a"
+        )
+
+    import asyncio
+
+    models = asyncio.run(run())
+    assert models == ("model-a", "model-b")
+
+
+def test_validate_configuration_for(conn: sqlite3.Connection):
+    import asyncio
+
+    logs = LogService(conn)
+    repo = SettingsRepository(conn)
+    key = derive_key("test-password-for-settings", b"\x01" * 16)
+    factory = _FakeFactory()
+    service = SettingsService(conn, repo, logs, key, factory)
+
+    async def run():
+        return await service.validate_configuration_for(
+            ProviderName("ollama"), "http://localhost:11434", None, "model-a"
+        )
+
+    report = asyncio.run(run())
+    assert report.valid
+
+
+def test_validate_configuration_for_missing_fields(conn: sqlite3.Connection):
+    import asyncio
+
+    logs = LogService(conn)
+    repo = SettingsRepository(conn)
+    key = derive_key("test-password-for-settings", b"\x01" * 16)
+    factory = _FakeFactory()
+    service = SettingsService(conn, repo, logs, key, factory)
+
+    async def run():
+        return await service.validate_configuration_for(
+            ProviderName("ollama"), None, None, None
+        )
+
+    report = asyncio.run(run())
+    assert not report.valid
+    assert "INCOMPLETE_CONFIG" in report.error_codes

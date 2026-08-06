@@ -27,6 +27,14 @@ def test_create_draft(project_service: ProjectService):
     assert project.name == "Les Misérables"
 
 
+def test_get_after_create_status_is_enum(project_service: ProjectService):
+    """Regression: the project view crashed on str.status.value (SDD 13.5)."""
+    project = project_service.create("Book", LanguageCode("fr"))
+    reloaded = project_service.get(project.id)
+    assert reloaded.status == ProjectStatus.DRAFT
+    assert reloaded.status.value == "Draft"
+
+
 def test_create_rejects_bad_language(project_service: ProjectService):
     with pytest.raises(ValidationError):
         project_service.create("x", LanguageCode("und"))

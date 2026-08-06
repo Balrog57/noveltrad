@@ -1,4 +1,9 @@
-"""Settings view (SDD 13.6, 14)."""
+"""Settings view (SDD 13.6, 14).
+
+Each provider exposes URL, optional API key (enabled explicitly) and
+auto-detection of installed models using the current form values. The
+connection test also uses the form values, without saving anything.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,11 @@ _PROVIDERS = {
     "LM Studio": "lm_studio",
     "API OpenAI-compatible": "openai_compatible",
 }
+
+# Providers that require an API key to work at all
+_REQUIRE_KEY = frozenset({"openai_compatible"})
+# Providers with local auto-detection of installed models
+_AUTO_DETECT = frozenset({"ollama", "lm_studio"})
 
 
 def render(container, session) -> None:
@@ -37,54 +47,97 @@ def render(container, session) -> None:
     provider_label = st.selectbox(
         t("settings.provider"), provider_names, index=provider_names.index(current_provider)
     )
-    base_url = st.text_input(t("settings.url"), value=current.base_url or "")
-    placeholder = "••••••••" if current.api_key_configured else ""
-    api_key = st.text_input(
-        t("settings.api_key"), value="", type="password", placeholder=placeholder
+    provider_code = _PROVIDERS[provider_label]
+
+    # -- provider section -------------------------------------------------
+    st.subheader(provider_label)
+    default_urls = {
+        "ollama": "http://host.docker.internal:11434",
+        "lm_studio": "http://host.docker.internal:1234/v1",
+        "openai_compatible": "https://api.openai.com/v1",
+    }
+    base_url = st.text_input(
+        t("settings.url"), value=current.base_url or default_urls[provider_code]
     )
+
+    api_key_enabled = st.checkbox(
+        t("settings.api_key"),
+        value=current.api_key_configured or provider_code in _REQUIRE_KEY,
+        help=t("settings.api_key") + " (optional)",
+    )
+    api_key = ""
+    if api_key_enabled:
+        placeholder = "••••••••" if current.api_key_configured else ""
+        api_key = st.text_input(
+            t("settings.api_key"), value="", type="password", placeholder=placeholder
+        )
+
     model = st.text_input(t("settings.model"), value=current.model or "")
-    window = st.number_input(
-        t("settings.window"),
-        min_value=2048,
-        max_value=1048576,
-        value=current.context_window_tokens or 8192,
-        step=1024,
-    )
-    temperature = st.slider(t("settings.temperature"), 0.0, 2.0, current.temperature, 0.1)
-    max_output = st.number_input(
-        t("settings.max_output"), min_value=512, value=current.max_output_tokens or 2048, step=256
-    )
+
+    if provider_code in _AUTO_DETECT:
+        if st.button(t("settings.models"), key="list_models_btn"):
+            with st.spinner("..."):
+                models = settings_service.list_models_for(
+                    ProviderName(provider_code),
+                    base_url,
+                    api_key if api_key else None,
+                    model,
+                )
+            if models:
+                st.write(", ".join(models))
+            else:
+                st.warning("—")
+    else:
+        st.caption(t("settings.models") + ": manual")
+
+    # -- advanced section -------------------------------------------------
+    window = current.context_window_tokens or 8192
+    temperature = current.temperature
+    max_output = current.max_output_tokens or 2048
     seed_value = current.seed if current.seed is not None else 0
-    seed = st.number_input(t("settings.seed"), value=seed_value, step=1)
+    with st.expander(t("settings.window")):
+        window = st.number_input(
+            t("settings.window"),
+            min_value=2048,
+            max_value=1048576,
+            value=int(window),
+            step=1024,
+        )
+        temperature = st.slider(t("settings.temperature"), 0.0, 2.0, temperature, 0.1)
+        max_output = st.number_input(
+            t("settings.max_output"), min_value=512, value=int(max_output), step=256
+        )
+        seed = st.number_input(t("settings.seed"), value=int(seed_value), step=1)
 
     api_key_action = "KEEP"
     if api_key:
         api_key_action = "REPLACE"
+    elif api_key_enabled and not current.api_key_configured and not api_key:
+        api_key_action = "DELETE"
 
-    if st.button(t("settings.test"), key="test_conn_btn"):
+    col_test, col_save = st.columns(2)
+    if col_test.button(t("settings.test"), key="test_conn_btn"):
         with st.spinner("..."):
-            report = settings_service.validate_configuration()
-            if report.valid:
-                st.success("OK")
-            else:
-                for message in report.safe_messages:
-                    st.error(message)
+            report = settings_service.validate_configuration_for(
+                ProviderName(provider_code),
+                base_url,
+                api_key or None,
+                model,
+            )
+        if report.valid:
+            st.success("OK")
+        else:
+            for message in report.safe_messages:
+                st.error(message)
 
-    if st.button(t("settings.models"), key="list_models_btn"):
-        try:
-            models = settings_service.list_models()
-            st.write(", ".join(models) if models else "—")
-        except Exception as exc:  # noqa: BLE001
-            st.error(str(exc))
-
-    if st.button(t("settings.save"), key="save_settings_btn"):
+    if col_save.button(t("settings.save"), key="save_settings_btn"):
         try:
             settings_service.update(
                 SettingsUpdate(
                     ui_language=ui_language,
                     theme=theme,
                     completion_sound_enabled=sound,
-                    provider=ProviderName(_PROVIDERS[provider_label]),
+                    provider=ProviderName(provider_code),
                     base_url=base_url or None,
                     model=model or None,
                     context_window_tokens=int(window),
