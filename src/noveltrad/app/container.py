@@ -128,7 +128,15 @@ class Container:
             import contextlib
 
             with contextlib.suppress(Exception):
-                asyncio.run(self._provider.close())  # type: ignore[attr-defined]
+                coro = self._provider.close()  # type: ignore[attr-defined]
+                try:
+                    asyncio.get_running_loop()
+                except RuntimeError:
+                    asyncio.run(coro)
+                else:
+                    # a loop is already running (Worker/Streamlit): schedule the
+                    # coroutine instead of nesting a second loop
+                    asyncio.ensure_future(coro)
         self.database.close()
 
 
