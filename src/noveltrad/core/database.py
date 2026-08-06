@@ -144,8 +144,7 @@ class Database:
     def _backup(self, version: int) -> None:
         self.backups_dir.mkdir(parents=True, exist_ok=True)
         backup_path = (
-            self.backups_dir
-            / f"database-{utc_now().strftime('%Y%m%dT%H%M%S%z')}-v{version}.sqlite"
+            self.backups_dir / f"database-{utc_now().strftime('%Y%m%dT%H%M%S%z')}-v{version}.sqlite"
         )
         try:
             dest = sqlite3.connect(backup_path)

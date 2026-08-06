@@ -94,6 +94,4 @@ def ensure_free_space(path: Path, required_bytes: int) -> None:
     except OSError as exc:
         raise StorageError(f"cannot stat disk usage: {exc}") from exc
     if free < required_bytes:
-        raise StorageError(
-            f"insufficient disk space: {free} bytes free, {required_bytes} required"
-        )
+        raise StorageError(f"insufficient disk space: {free} bytes free, {required_bytes} required")

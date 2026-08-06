@@ -46,7 +46,15 @@ class IntegrityError(StorageError):
 
 
 class ImportConversionError(StorageError):
-    """Import conversion or validation failed."""
+    """Import conversion or validation failed.
+
+    Carries a stable error_code and a safe_message without content.
+    """
+
+    def __init__(self, error_code: str, safe_message: str) -> None:
+        self.error_code = error_code
+        self.safe_message = safe_message
+        super().__init__(f"{error_code}: {safe_message}")
 
 
 class ContextWindowError(StorageError):

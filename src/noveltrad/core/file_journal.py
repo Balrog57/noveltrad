@@ -139,8 +139,7 @@ class FileJournal:
                     )
                 self.remove(operation_id)
                 messages.append(
-                    f"operation {operation_id} compensated: "
-                    "staged batch missing or corrupt"
+                    f"operation {operation_id} compensated: staged batch missing or corrupt"
                 )
         for row in self.pending("PREPARED"):
             operation_id = int(row["id"])

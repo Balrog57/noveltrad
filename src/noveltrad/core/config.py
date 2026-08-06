@@ -38,9 +38,7 @@ def _validate_password(password: str | None) -> str | None:
         raise ValidationError("APP_PASSWORD contains a NUL character")
     code_points = len(password)
     if code_points < 16 or code_points > 256:
-        raise ValidationError(
-            "APP_PASSWORD must contain between 16 and 256 Unicode code points"
-        )
+        raise ValidationError("APP_PASSWORD must contain between 16 and 256 Unicode code points")
     if len(password.encode("utf-8")) > 1024:
         raise ValidationError("APP_PASSWORD must not exceed 1024 UTF-8 bytes")
     return password

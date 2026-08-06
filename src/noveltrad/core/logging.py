@@ -113,9 +113,7 @@ class LogService:
             self._conn.commit()
         except sqlite3.Error as exc:
             raise StorageError(f"cannot persist log entry: {exc}") from exc
-        getattr(self._logger, str(level).lower(), self._logger.info)(
-            "%s: %s", event, safe_message
-        )
+        getattr(self._logger, str(level).lower(), self._logger.info)("%s: %s", event, safe_message)
 
     def query(
         self,

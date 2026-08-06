@@ -67,9 +67,7 @@ def test_rename_blocked_during_translation(
     conn: sqlite3.Connection, project_service: ProjectService
 ):
     project = project_service.create("X", LanguageCode("fr"))
-    conn.execute(
-        "UPDATE projects SET status='Running' WHERE id=?", (project.id,)
-    )
+    conn.execute("UPDATE projects SET status='Running' WHERE id=?", (project.id,))
     conn.commit()
     with pytest.raises(LockedError):
         project_service.rename(project.id, "Y")

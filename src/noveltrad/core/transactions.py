@@ -76,8 +76,6 @@ class UnitOfWork:
             else:
                 self._conn.rollback()
         except sqlite3.Error as rollback_exc:
-            raise StorageError(
-                f"cannot finalize transaction: {rollback_exc}"
-            ) from rollback_exc
+            raise StorageError(f"cannot finalize transaction: {rollback_exc}") from rollback_exc
         finally:
             self._active = False

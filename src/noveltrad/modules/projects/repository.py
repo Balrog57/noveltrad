@@ -119,8 +119,7 @@ class ProjectRepository:
 
     def completed_documents(self, project_id: ProjectId) -> int:
         row = self._conn.execute(
-            "SELECT COUNT(*) AS c FROM documents "
-            "WHERE project_id=? AND status='Completed'",
+            "SELECT COUNT(*) AS c FROM documents WHERE project_id=? AND status='Completed'",
             (project_id,),
         ).fetchone()
         return int(row["c"])
