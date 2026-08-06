@@ -1,0 +1,36 @@
+# NovelTrad Compose (SDD 6.3, 6.11).
+# Publish exactly ${NOVELTRAD_BIND_ADDRESS:-127.0.0.1}:${NOVELTRAD_PORT:-8501}:8501.
+# The address designates the HOST interface, never the internal process one.
+# 0.0.0.0 is an explicit activation of network access, only supported behind
+# a VPN or an external TLS termination (never plain HTTP on LAN/Internet).
+# To reach Ollama or LM Studio on the host, host.docker.internal is mapped
+# via host-gateway.
+
+name: noveltrad
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:?set SOURCE_COMMIT to the git SHA (40 hex)}
+    image: noveltrad:${SOURCE_COMMIT:-latest}
+    container_name: noveltrad
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NOVELTRAD_DATA_DIR: /data
+      NOVELTRAD_BIND_ADDRESS: ${NOVELTRAD_BIND_ADDRESS:-127.0.0.1}
+      NOVELTRAD_PORT: ${NOVELTRAD_PORT:-8501}
+      NOVELTRAD_LOG_LEVEL: ${NOVELTRAD_LOG_LEVEL:-INFO}
+    ports:
+      - "${NOVELTRAD_BIND_ADDRESS:-127.0.0.1}:${NOVELTRAD_PORT:-8501}:8501"
+    volumes:
+      - data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    stop_grace_period: 360s
+
+volumes:
+  data:

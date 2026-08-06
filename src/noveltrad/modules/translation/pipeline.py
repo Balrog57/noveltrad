@@ -40,6 +40,7 @@ from .prompt_loader import PromptLoader
 from .providers.base import AIProvider
 from .response_parser import build_envelope, parse_segment_response, validate_finish_reason
 from .retry import MAX_RETRIES, compute_wait, is_permanent_code
+from .segmentation import count_tokens, segment_document
 
 _STAGE_TRANSITIONS = {
     PipelineStage.TRANSLATE: ("PENDING", "TRANSLATED"),
@@ -71,6 +72,7 @@ class TranslationService:
         job = self._job_row(job_id)
         document = self._document_row(job["document_id"])
         snapshot = self._snapshot(job)
+        self._ensure_segments(document, snapshot)
         segments = self._segments(job["document_id"])
         if not segments:
             raise StorageError("document has no segments")
@@ -83,6 +85,8 @@ class TranslationService:
             PipelineStage.POLISH,
         ):
             entry_state, exit_state = _STAGE_TRANSITIONS[stage]
+            # Reload per pass: the previous pass advanced segment states.
+            segments = self._segments(job["document_id"])
             stage_segments = [s for s in segments if s["state"] == entry_state]
             not_finished = any(s["state"] not in (exit_state, "POLISHED") for s in segments)
             if not stage_segments and not_finished:
@@ -208,9 +212,9 @@ class TranslationService:
                 (exit_state, relative, digest, utc_now().isoformat(), segment["id"]),
             )
             self._conn.execute(
-                "UPDATE jobs SET current_stage=?, current_segment_id=?, progress=?, updated_at=? "
+                "UPDATE jobs SET current_stage=?, current_segment_id=?, progress=? "
                 "WHERE id=?",
-                (None, None, self._progress_of(document, segment), utc_now().isoformat(), job_id),
+                (None, None, self._progress_of(document, segment), job_id),
             )
         self._logs.record(
             "INFO",
@@ -239,9 +243,54 @@ class TranslationService:
         return row
 
     def _snapshot(self, job):
-        from .repository import deserialize_snapshot
+        from noveltrad.modules.jobs.repository import deserialize_snapshot
 
         return deserialize_snapshot(job["snapshot_json"], job["snapshot_hash"])
+
+    def _ensure_segments(self, document, snapshot) -> None:
+        """Segmentation (11.2): create PENDING segments per chapter when
+        none exist yet (first run or RESTART_DOCUMENT reset)."""
+        existing = self._conn.execute(
+            "SELECT COUNT(*) AS c FROM segments WHERE chapter_id IN "
+            "(SELECT id FROM chapters WHERE document_id=?)",
+            (document["id"],),
+        ).fetchone()
+        if existing["c"] > 0:
+            return
+        chapters = self._conn.execute(
+            "SELECT * FROM chapters WHERE document_id=? ORDER BY order_index",
+            (document["id"],),
+        ).fetchall()
+        source_path = resolve(self._data_dir, document["source_path"])
+        source_bytes = source_path.read_bytes()
+        system_prompt = self._prompts.load(PipelineStage.TRANSLATE)
+        prompt_tokens = count_tokens(system_prompt, "utf8-bytes-v1") + 128
+        for chapter in chapters:
+            chunk = source_bytes[chapter["source_start"] : chapter["source_end"]]
+            text = chunk.decode("utf-8", errors="replace")
+            segments = segment_document(
+                text,
+                window_tokens=snapshot.context_window_tokens,
+                prompt_tokens=prompt_tokens,
+                max_output_tokens=snapshot.max_output_tokens,
+                tokenizer_mode="utf8-bytes-v1",
+            )
+            with UnitOfWork(self._conn, immediate=True):
+                for index, segment in enumerate(segments):
+                    raw = segment.text.encode("utf-8")
+                    self._conn.execute(
+                        "INSERT INTO segments (chapter_id, order_index, source_start, "
+                        "source_end, source_hash, state, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, 'PENDING', ?)",
+                        (
+                            chapter["id"],
+                            index,
+                            segment.offset_start,
+                            segment.offset_end,
+                            hashlib.sha256(raw).hexdigest(),
+                            utc_now().isoformat(),
+                        ),
+                    )
 
     def _segments(self, document_id: int):
         rows = self._conn.execute(

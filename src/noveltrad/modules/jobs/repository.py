@@ -25,15 +25,19 @@ _COLUMNS = (
 
 
 def _row_to_job(row: sqlite3.Row) -> JobRow:
+    from noveltrad.core.contracts import JobState, PipelineStage
+
     return JobRow(
         id=row["id"],
         document_id=row["document_id"],
-        state=row["state"],
+        state=JobState(row["state"]),
         provider=row["provider"],
         model=row["model"],
         snapshot_json=row["snapshot_json"],
         snapshot_hash=row["snapshot_hash"],
-        current_stage=row["current_stage"],
+        current_stage=(
+            PipelineStage(row["current_stage"]) if row["current_stage"] else None
+        ),
         current_segment_id=row["current_segment_id"],
         progress=row["progress"],
         last_message=row["last_message"],
