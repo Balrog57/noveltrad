@@ -22,9 +22,13 @@ class LMStudioProvider:
         self._owns_client = client is None
         self._base = "http://localhost:1234/v1"
 
+    def set_base_url(self, base_url: str) -> None:
+        self._base = base_url.rstrip("/")
+
     async def validate_configuration(self, snapshot: PipelineSnapshot) -> ValidationReport:
+        self._base = snapshot.base_url.rstrip("/")
         try:
-            response = await self._client.get(f"{snapshot.base_url}/models")
+            response = await self._client.get(f"{self._base}/models")
         except httpx.HTTPError as exc:
             return ValidationReport(
                 False, ("PROVIDER_UNREACHABLE",), (f"provider unreachable: {exc}",)

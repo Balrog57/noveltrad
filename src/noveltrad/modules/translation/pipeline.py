@@ -72,6 +72,7 @@ class TranslationService:
         job = self._job_row(job_id)
         document = self._document_row(job["document_id"])
         snapshot = self._snapshot(job)
+        self._apply_provider_url(snapshot)
         self._ensure_segments(document, snapshot)
         segments = self._segments(job["document_id"])
         if not segments:
@@ -245,6 +246,12 @@ class TranslationService:
         from noveltrad.modules.jobs.repository import deserialize_snapshot
 
         return deserialize_snapshot(job["snapshot_json"], job["snapshot_hash"])
+
+    def _apply_provider_url(self, snapshot) -> None:
+        """Pin the provider base URL from the frozen snapshot (14.15)."""
+        setter = getattr(self._provider, "set_base_url", None)
+        if setter is not None:
+            setter(snapshot.base_url)
 
     def _ensure_segments(self, document, snapshot) -> None:
         """Segmentation (11.2): create PENDING segments per chapter when

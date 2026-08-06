@@ -17,13 +17,17 @@ from .base import build_client
 
 
 class OllamaProvider:
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self, client: httpx.AsyncClient | None = None, base_url: str | None = None
+    ) -> None:
         self._client = client or build_client()
         self._owns_client = client is None
+        self._base_url_value = base_url or "http://localhost:11434"
 
     async def validate_configuration(self, snapshot: PipelineSnapshot) -> ValidationReport:
+        self._base_url_value = snapshot.base_url
         try:
-            response = await self._client.get(f"{snapshot.base_url}/api/tags")
+            response = await self._client.get(f"{self._base_url_value}/api/tags")
         except httpx.HTTPError as exc:
             return ValidationReport(
                 False, ("PROVIDER_UNREACHABLE",), (f"provider unreachable: {exc}",)
@@ -45,15 +49,12 @@ class OllamaProvider:
 
     async def list_models(self) -> tuple[str, ...]:
         try:
-            response = await self._client.get(f"{self._base_url()}/api/tags")
+            response = await self._client.get(f"{self._base_url_value}/api/tags")
         except httpx.HTTPError as exc:
             raise ProviderError("PROVIDER_UNREACHABLE", False) from exc
         if response.status_code != 200:
             raise ProviderError("LIST_MODELS_FAILED", False)
         return tuple(m.get("name") for m in response.json().get("models", []))
-
-    def _base_url(self) -> str:
-        return self._snapshot_base if hasattr(self, "_snapshot_base") else "http://localhost:11434"
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         payload = {
@@ -69,7 +70,9 @@ class OllamaProvider:
         if request.max_output_tokens:
             payload["options"]["num_predict"] = request.max_output_tokens
         try:
-            response = await self._client.post(f"{self._base_url()}/api/chat", json=payload)
+            response = await self._client.post(
+                f"{self._base_url_value}/api/chat", json=payload
+            )
         except httpx.HTTPError as exc:
             raise ProviderError("NETWORK_ERROR", True) from exc
         if response.status_code != 200:

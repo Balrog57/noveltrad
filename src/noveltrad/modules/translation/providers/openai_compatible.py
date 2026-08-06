@@ -30,6 +30,9 @@ class OpenAICompatibleProvider:
         self._base = "https://api.openai.com/v1"
         self._api_key: str | None = None
 
+    def set_base_url(self, base_url: str) -> None:
+        self._base = base_url.rstrip("/")
+
     def set_api_key(self, api_key: str | None) -> None:
         self._api_key = api_key
 
@@ -40,9 +43,10 @@ class OpenAICompatibleProvider:
         return headers
 
     async def validate_configuration(self, snapshot: PipelineSnapshot) -> ValidationReport:
+        self._base = snapshot.base_url.rstrip("/")
         try:
             response = await self._client.get(
-                f"{snapshot.base_url}/models", headers=self._headers()
+                f"{self._base}/models", headers=self._headers()
             )
         except httpx.HTTPError as exc:
             return ValidationReport(

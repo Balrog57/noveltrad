@@ -20,25 +20,21 @@ class ProviderFactory:
 
     def create_from_settings(self, settings: SettingsView):
         """Build a provider from SettingsView directly (used by container)."""
+        base_url = settings.base_url or ""
         if settings.provider == ProviderName.OLLAMA:
-            return OllamaProvider()
+            return OllamaProvider(base_url=base_url)
         if settings.provider == ProviderName.LM_STUDIO:
-            return LMStudioProvider()
+            provider = LMStudioProvider()
+            if base_url:
+                provider.set_base_url(base_url)
+            return provider
         if settings.provider == ProviderName.OPENAI_COMPATIBLE:
             provider = OpenAICompatibleProvider()
             provider.set_api_key(self._api_key)
+            if base_url:
+                provider.set_base_url(base_url)
             return provider
         raise ValidationError(f"unknown provider: {settings.provider}")
 
     def create(self, settings: SettingsView):
-        if settings.provider is None:
-            raise ValidationError("no AI provider configured")
-        if settings.provider == ProviderName.OLLAMA:
-            return OllamaProvider()
-        if settings.provider == ProviderName.LM_STUDIO:
-            return LMStudioProvider()
-        if settings.provider == ProviderName.OPENAI_COMPATIBLE:
-            provider = OpenAICompatibleProvider()
-            provider.set_api_key(self._api_key)
-            return provider
-        raise ValidationError(f"unknown provider: {settings.provider}")
+        return self.create_from_settings(settings)
