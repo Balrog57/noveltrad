@@ -166,7 +166,7 @@ EF-013 --- Exporter l'œuvre complète en EPUB, DOCX, Markdown, TXT ou SRT.
 
 EF-014 --- Générer l'export à la volée et le supprimer après téléchargement.
 
-EF-015 --- Fournir une interface FR/EN, claire/sombre/sépia et responsive.
+EF-015 --- Fournir une interface FR/EN, claire/sombre/sépia et responsive, avec une notification locale unique à la fin d'une traduction automatique.
 
 EF-016 --- Afficher et filtrer les journaux dans l'interface.
 
@@ -455,7 +455,11 @@ Un projet Python unique, structuré en modules métier simples et testables.
 
 ## 7.2 Environnement
 
-Python 3.12 minimum, type hints, Ruff et Pytest. Les dépendances sont gérées par uv ou pip.
+Python 3.12 minimum, type hints, Ruff et Pytest. `pyproject.toml` est l'unique manifeste de dépendances directes et `uv.lock`, versionné, est l'unique résolution exacte ; l'installation et l'exécution utilisent `uv` en mode verrouillé. Aucun second manifeste `requirements*.txt`, Poetry, Pipenv ou Conda ne peut définir un graphe concurrent.
+
+La base d'implémentation minimise le graphe : bibliothèque standard `sqlite3` pour SQLite, un seul client HTTP applicatif asynchrone pour les trois adaptateurs, et une seule chaîne responsable par format ou structure. EbookLib gère le conteneur EPUB ; l'analyse XML/XHTML stricte et le repli tolérant ont des rôles distincts et testés ; une seconde bibliothèque couvrant le même rôle est refusée sans défaut reproductible que la chaîne retenue ne peut corriger. Les versions compatibles sont déclarées dans `pyproject.toml`, les versions exactes et empreintes proviennent de `uv.lock`, et aucune dépendance Git non épinglée n'est autorisée.
+
+Les manifestes des dépôts sources ne sont jamais copiés en bloc. En particulier, Flask, Flask-SocketIO, python-socketio, `edge-tts`, PyTorch, torchaudio, LiteLLM, PyQt, Calibre et les runtimes Node des interfaces comparées ne sont pas des dépendances NovelTrad. Playwright peut exister uniquement dans le groupe de tests d'interface, jamais au runtime. Une dépendance transitive présente mais non utilisée directement ne peut être importée par le code NovelTrad.
 
 ## 7.3 Arborescence
 
@@ -529,6 +533,10 @@ Le périmètre fonctionnel reste exclusivement défini par ce SDD : un composant
 
 Ce contrôle s'applique aussi aux dépendances transitives et aux tests copiés : la compatibilité de la licence n'implique jamais la pertinence fonctionnelle ou architecturale. Un dépôt sans licence explicite, inaccessible ou dont la licence ne permet pas l'usage envisagé ne fournit aucun code réutilisable ; seuls les comportements observables et les principes généraux peuvent alors alimenter une réimplémentation indépendante. Toute dépendance ou unité de code retenue doit être épinglée à une version vérifiée ; ses avis de copyright et de licence sont conservés, les fichiers modifiés portent une indication de modification et une date, et la distribution inclut le texte de l'AGPL-3.0 ainsi que les sources correspondantes. L'interface comporte un accès visible aux mentions légales, à l'absence de garantie et au code source correspondant ; aucune clé, donnée de projet ou contenu traduit n'entre dans ces sources.
 
+Avant tout code applicatif puis à chaque changement du graphe, la porte de dépendances exécute au minimum `uv lock --check`, une synchronisation propre avec `uv sync --locked`, le contrôle de cohérence de l'environnement, l'inventaire des licences et l'audit des vulnérabilités connues. Elle vérifie Python 3.12 et les cibles Linux/Windows/NAS retenues, refuse deux versions simultanément installables d'un même paquet sur une cible, toute licence incompatible ou absente, toute vulnérabilité non traitée et toute dépendance directe sans responsabilité unique reliée à un module de 7.18. Une exception temporaire doit être documentée avec propriétaire, risque, mesure compensatoire et date d'expiration ; aucune exception ouverte n'autorise le démarrage de l'implémentation stable.
+
+La dette technique est contrôlée dès la création : aucun code copié non utilisé, aucun adaptateur fournisseur en double, aucun retry dans les SDK ou clients lorsque l'orchestrateur le possède, aucune persistance parallèle à SQLite, aucun fichier métier dépassant une responsabilité de 7.18 sans décision explicite. L'optimisation suit la mesure : les seuils non spécifiés restent configurables ou différés, et aucun cache, parallélisme, préchargement ou index supplémentaire n'est introduit sans scénario 17.10 démontrant un goulot tout en préservant le Worker unique et la fidélité des formats.
+
 ## 7.17 Conventions de tests
 
 Chaque module possède son propre dossier de tests. Les tests utilisent des doubles (mocks/fakes) pour les fournisseurs IA et le système de fichiers lorsque nécessaire.
@@ -539,7 +547,7 @@ Chaque module possède son propre dossier de tests. Les tests utilisent des doub
 |---|---|---|---|---|
 | `core` | transactions, chemins relatifs, logs, écritures atomiques | objets de connexion, chemins, octets/texte → résultat atomique | rollback et nettoyage sur échec ; aucun métier | SQLite, système de fichiers |
 | `authentication` | vérifier le mot de passe | saisie utilisateur → booléen/session authentifiée | secret absent ou invalide ; aucune persistance du mot de passe | environnement uniquement |
-| `projects` | opérations de `ProjectService` | commandes projet → projet/état | états de 9.13 ; une œuvre par projet | repository de projets |
+| `projects` | opérations de `ProjectService` | commandes projet → projet/état/avis de fin à acquitter | états de 9.13 ; une œuvre par projet ; avis de fin réclamé au plus une fois après tous les documents | repository de projets |
 | `documents` | opérations de `DocumentService` | fichiers/commandes → documents/statistiques | formats fermés ; `source.md` immuable | repository de documents, `core` |
 | `jobs` | opérations de `JobService` et boucle Worker | commandes/jobs → transitions/progression | états de 12.15 ; un seul job actif | repository de jobs, services métier |
 | `translation` | segmenter, appeler, reconstruire, reprendre | Markdown/configuration/contexte → Markdown validé | pipeline de 11.13 ; même modèle | abstraction fournisseur, `core` |
@@ -551,15 +559,15 @@ Chaque module possède son propre dossier de tests. Les tests utilisent des doub
 
 ## 7.19 Préconditions, postconditions et acceptation
 
-**Règles et contraintes.** Les frontières 7.18, Python 3.12 minimum, les types publics et l'injection des dépendances sont obligatoires.
+**Règles et contraintes.** Les frontières 7.18, Python 3.12 minimum, les types publics, l'injection des dépendances et le graphe unique verrouillé de 7.2/7.16 sont obligatoires.
 
 **Préconditions.** Python 3.12 minimum et les dépendances déclarées sont installés ; SQLite et le volume sont disponibles.
 
 **Postconditions.** Les API publiques sont typées, les erreurs métier sont explicites et les dépendances sont injectables.
 
-**Cas d'erreur.** Toute violation de couche, type public absent ou dépendance non simulable est un défaut d'architecture.
+**Cas d'erreur.** Toute violation de couche, type public absent, dépendance non simulable, doublon de responsabilité, conflit de résolution, licence non vérifiée ou dépendance hors périmètre est un défaut d'architecture bloquant.
 
-**Critères d'acceptation et références croisées.** Ruff et Pytest réussissent ; les contrats 7.18 sont couverts par 17.13. Les noms exacts des fichiers au-delà de l'arborescence 7.3 sont **non spécifiés** jusqu'à leur définition par l'implémentation.
+**Critères d'acceptation et références croisées.** Ruff et Pytest réussissent ; `uv lock --check`, `uv sync --locked`, le contrôle de cohérence, l'inventaire des licences et l'audit de vulnérabilités réussissent depuis un environnement propre ; les contrats 7.18 sont couverts par 17.13. Les noms exacts des fichiers au-delà de l'arborescence 7.3 sont **non spécifiés** jusqu'à leur définition par l'implémentation.
 
 # Chapitre 8 — Modèle de données SQLite
 
@@ -590,6 +598,8 @@ Les clés étrangères sont activées. Toutes les dates sont stockées au format
 | `status` | TEXT | non nul | `Draft`, `Ready`, `Running`, `Paused`, `Completed` ou `Failed` |
 | `created_at` | TEXT | non nul | UTC ISO-8601 |
 | `updated_at` | TEXT | non nul | UTC ISO-8601 |
+| `completion_notice_claimed_at` | TEXT | nul | UTC ISO-8601 ; posé atomiquement par `ProjectService` lors de la première réclamation après `Completed` |
+| `completion_notice_acknowledged_at` | TEXT | nul | UTC ISO-8601 ; posé seulement lorsque l'utilisateur ferme le popup persistant |
 
 Le choix de langue cible est immuable pendant une traduction active. L'unicité du nom n'est pas exigée et reste **non spécifiée**.
 
@@ -675,7 +685,7 @@ Un document ne peut avoir qu'un job non terminal. La méthode exacte d'applicati
 | `value` | TEXT | nul selon le paramètre | valeur sérialisée ; jamais `APP_PASSWORD` |
 | `updated_at` | TEXT | non nul | UTC ISO-8601 |
 
-Les clés couvrent la langue, le thème, le niveau de journalisation, le fournisseur, l'URL, la clé API éventuelle, le modèle et les options compatibles. Le format de chiffrement au repos des clés API est **non spécifié** ; elles doivent au minimum être masquées à l'affichage et exclues des journaux et exports.
+Les clés couvrent la langue, le thème, le niveau de journalisation, le fournisseur, l'URL, la clé API éventuelle, le modèle, les options compatibles et `completion_sound_enabled`, booléen vrai par défaut. Le format de chiffrement au repos des clés API est **non spécifié** ; elles doivent au minimum être masquées à l'affichage et exclues des journaux et exports.
 
 ### 8.8.2 Table logs
 
@@ -710,6 +720,7 @@ Index obligatoires :
 - contrainte/index unique `uq_segments_chapter_order` sur `segments(chapter_id, order_index)` ;
 - `idx_segments_resume` sur `segments(state, chapter_id, order_index)` ;
 - `idx_jobs_fifo` sur `jobs(state, queued_at, id)` ;
+- `idx_projects_completion_notice` sur `projects(status, completion_notice_acknowledged_at, id)` ;
 - `idx_logs_created_at` sur `logs(created_at)` ;
 - `idx_logs_project` sur `logs(project_id, created_at)`.
 
@@ -895,7 +906,11 @@ La protection structurelle des blocs GFM reconnus est garantie pendant la conver
 
 ## 10.6 Contrôles
 
-Détection de la langue, comptage des mots et caractères, validation des images, vérification de la structure Markdown.
+Détection de la langue, comptage des mots et caractères, validation des images, vérification de la structure Markdown et concordance entre extension autorisée, signature et structure réelle du format.
+
+EPUB et DOCX sont traités comme des archives non fiables. Avant toute extraction, toutes leurs entrées sont validées sans écrire un octet : nom non vide et sans caractère de contrôle, chemin relatif normalisé, absence de racine, préfixe de lecteur, composant `..`, lien symbolique ou matériel, chiffrement, collision après normalisation et type inattendu. Chaque chemin résolu doit rester sous un répertoire temporaire isolé ; l'extraction globale directe par `extractall` est interdite. Le nombre d'entrées, la taille décompressée cumulée, la taille d'une entrée, le ratio de compression et l'espace disque disponible sont contrôlés en flux afin de rejeter les bombes de décompression sans imposer une limite arbitraire à la longueur littéraire. Les seuils techniques exacts sont **non spécifiés**, mais doivent être testables, configurés de manière sûre et évalués avant allocation ou écriture.
+
+Les parseurs XML/XHTML désactivent DTD, entités externes, XInclude et accès réseau. Une ressource ou relation externe n'est jamais déréférencée pendant l'import. Une archive ou un XML refusé ne laisse aucun fichier hors du temporaire isolé ni aucun état SQLite validé.
 
 ## 10.7 Gestion des erreurs
 
@@ -907,7 +922,7 @@ Aucun fichier d'origine n'est conservé. source.md est immuable. Les chemins enr
 
 ## 10.9 Pipeline de conversion détaillé
 
-Chaque import suit systématiquement les étapes : copie temporaire, analyse du format, extraction du contenu, conversion en GitHub Flavored Markdown, conversion des images en WebP lossless, validation de la structure, création de source.md puis suppression des fichiers temporaires.
+Chaque import suit systématiquement les étapes : copie temporaire, analyse du format et contrôles de sécurité complets, extraction confinée du contenu, conversion en GitHub Flavored Markdown, conversion des images en WebP lossless, validation de la structure, création de source.md puis suppression des fichiers temporaires.
 
 ## 10.10 Validation de la conversion
 
@@ -952,6 +967,8 @@ IMPORTER_LOT(project_id, fichiers_ordonnes):
 ```text
 CONVERTIR_ET_VALIDER(fichier_temporaire):
   détecter le format depuis l'extension autorisée et le contenu
+  si archive: prévalider toutes les entrées, budgets de décompression et chemins puis extraire en flux dans un temporaire isolé
+  si XML/XHTML: analyser sans DTD, entité externe, XInclude ni réseau
   extraire texte, structure et images selon le format
   convertir la structure en GitHub Flavored Markdown
   identifier et protéger les blocs GFM reconnus pendant la conversion
@@ -971,13 +988,13 @@ La bibliothèque de conversion, la méthode de détection de langue et la normal
 
 ## 10.14 Contrat d'import et conversion
 
-**Responsabilités et règles.** Valider chaque fichier indépendamment, convertir immédiatement les formats autorisés et ne publier un document qu'après validation complète.
+**Responsabilités et règles.** Valider chaque fichier indépendamment, confiner toute archive ou structure active, convertir immédiatement les formats autorisés et ne publier un document qu'après validation complète.
 
 **Entrées / sorties.** Un projet non verrouillé et une liste ordonnée de fichiers → zéro ou plusieurs documents validés avec `source.md`, WebP et métadonnées.
 
-**Exceptions.** Format non supporté, archive corrompue, extraction impossible, Markdown invalide, image manquante, espace ou permissions insuffisants.
+**Exceptions.** Format non supporté, signature incohérente, archive corrompue ou hostile, budget de décompression dépassé, chemin non confiné, XML actif ou externe, extraction impossible, Markdown invalide, image manquante, espace ou permissions insuffisants.
 
-**Invariants.** Aucun original après validation ; aucun fichier partiel après échec ; ordre de dépôt conservé ; aucune dépendance au fournisseur IA.
+**Invariants.** Aucun original après validation ; aucun fichier partiel ou chemin écrit hors du temporaire isolé après échec ; ordre de dépôt conservé ; aucune dépendance au fournisseur IA ; aucune ressource externe déréférencée.
 
 **Contraintes.** Formats fermés, GFM obligatoire, images WebP lossless et chemins relatifs.
 
@@ -993,7 +1010,7 @@ Les adaptateurs appliquent ce contrat aux cinq formats autorisés : arbre XHTML 
 
 Pour Markdown, l'analyse doit être pilotée par les jetons d'un parseur GFM en deux passes — collecte des frontières structurelles puis construction des unités — et non par des expressions régulières isolées. Les cas de test Apache-2.0 de `mdait` peuvent être transposés pour vérifier au minimum le front matter, les commentaires HTML, les blocs de code indentés ou clôturés, les marqueurs ressemblants placés dans un bloc de code et l'idempotence `analyser → reconstruire → analyser`. Le code TypeScript et les marqueurs persistants propres à `mdait` ne sont pas intégrés au runtime Python et ne créent aucun état extérieur à SQLite.
 
-La version inspectée d'EbookLib est AGPL-3.0-or-later. NovelTrad étant sous AGPL-3.0-only, cette version peut être utilisée directement en choisissant les termes de la version 3, uniquement pour le manifeste, la `spine`, la navigation, les ressources et la lecture/écriture EPUB exigés ici. Son API générale d'édition et ses exemples hors périmètre ne sont pas exposés. Beautiful Soup, sous MIT, peut être employé comme parseur tolérant de fragments XHTML avec attribution, mais la reconstruction canonique reste soumise aux contrôles de structure, d'ordre et de ressources du présent contrat.
+La version inspectée d'EbookLib est AGPL-3.0-or-later. NovelTrad étant sous AGPL-3.0-only, cette version peut être utilisée directement en choisissant les termes de la version 3, uniquement pour le manifeste, la `spine`, la navigation, les ressources et la lecture/écriture EPUB exigés ici. Le commit `693636f` déclare la version 0.21 mais n'est pas publié comme distribution 0.21 sur l'index contrôlé le 6 août 2026 : l'implémentation ne doit donc jamais déclarer une contrainte d'index impossible `ebooklib>=0.21`. Elle choisit soit les unités exactes vendoriées avec provenance, notices et audit source, soit une source VCS verrouillée à ce commit ; dans ce second cas, tout skip de l'auditeur de vulnérabilités est compensé par une revue source et des avis amont explicites avant validation. Son API générale d'édition et ses exemples hors périmètre ne sont pas exposés. Beautiful Soup, sous MIT, peut être employé comme parseur tolérant de fragments XHTML avec attribution, mais la reconstruction canonique reste soumise aux contrôles de structure, d'ordre et de ressources du présent contrat.
 
 # Chapitre 11 — Pipeline IA
 
@@ -1234,8 +1251,8 @@ BOUCLE_WORKER():
       transitionner atomiquement job vers Running
       exécuter le pipeline depuis le premier segment non validé de la passe la moins avancée
       après chaque appel IA, appliquer pause ou annulation demandée
-      sur succès final: transitionner vers Completed
-      sur tentatives épuisées: transitionner vers Failed
+      sur succès final: transitionner le job vers Completed; si tous les documents le sont, transitionner le projet vers Completed avec avis de fin non réclamé
+      sur tentatives épuisées: transitionner le job et le projet vers Failed
 ```
 
 Le mécanisme local de réveil du Worker et l'intervalle de scrutation sont **non spécifiés** ; ils ne peuvent introduire ni Redis ni service supplémentaire.
@@ -1310,13 +1327,17 @@ La zone de dépôt accepte plusieurs fichiers, affiche immédiatement leur conve
 
 Pendant le traitement, le même écran remplace l'action de lancement par la progression globale et par document, l'étape et le segment courants, l'état du Worker, le temps écoulé, l'estimation restante et les commandes autorisées de pause ou d'annulation. Après interruption ou redémarrage, l'action primaire devient « Reprendre » et indique le premier segment non validé ; le fournisseur et le modèle figés du job ne peuvent pas être changés à la reprise.
 
+Lorsque le projet automatique atteint `Completed` après la réussite de tous ses jobs FIFO, l'interface réclame atomiquement son avis de fin via `ProjectService`. Si l'onglet est encore connecté et si le navigateur l'autorise, elle émet une notification système générique « Traduction terminée », puis joue une seule fois un signal court lorsque `completion_sound_enabled` vaut vrai. Le même événement affiche un popup Streamlit persistant jusqu'à acquittement. Si l'utilisateur revient après la fin du projet, le popup reste disponible et l'émission non encore réclamée se produit alors ; fermer l'onglet ou le navigateur ne crée aucun service d'arrière-plan et ne garantit donc pas une notification système immédiate.
+
+Un rafraîchissement ne rejoue ni notification système ni son : la réclamation atomique est identifiée par `project_id` et `completion_notice_claimed_at`, tandis que le popup reste affiché tant que `completion_notice_acknowledged_at` est nul. Un job ou projet `Failed` affiche un popup visuel actionnable sans notification ni son de réussite. Une permission navigateur refusée, une API de notification indisponible ou une lecture audio bloquée dégrade silencieusement vers le popup et ne modifie jamais l'état du pipeline. Les titres système ne contiennent ni texte traduit, ni clé, ni diagnostic. Aucun webhook, service push, démon natif, fichier audio persistant ou mécanisme TTS n'est ajouté.
+
 Après la finalisation complète du pipeline, l'écran fournit un éditeur Markdown simple limité à `translated.md` et un aperçu rendu de son contenu courant. Chaque modification valide déclenche une autosauvegarde atomique de `translated.md` ; le délai exact, le moteur de rendu et les raccourcis sont **non spécifiés**. Avant la finalisation, l'éditeur reste en lecture seule et aucune autosauvegarde ne peut modifier le fichier.
 
 La recherche et le remplacement global définis par `EF-012` portent uniquement sur les `translated.md` finalisés du projet. L'interface affiche le nombre et les emplacements des occurrences, puis exige une confirmation explicite avant toute écriture atomique. Une annulation ou l'absence de confirmation ne modifie aucun fichier ; `source.md` reste toujours exclu.
 
 ## 13.6 Paramètres
 
-Configuration du fournisseur IA, du modèle, de l'URL, de la clé API, de la langue et du thème. Paramètres verrouillés pendant un traitement.
+Configuration du fournisseur IA, du modèle, de l'URL, de la clé API, de la langue, du thème et du signal sonore de fin. Une action explicite déclenchée par l'utilisateur demande au navigateur l'autorisation de notification ; le navigateur reste l'autorité de cette permission. Paramètres verrouillés pendant un traitement conformément à RM-012.
 
 ## 13.7 Journaux
 
@@ -1346,7 +1367,7 @@ Barres de progression par document et globales.
 
 Panneaux d'état du Worker et du fournisseur IA.
 
-Notifications de succès, avertissement et erreur.
+Notifications de succès, avertissement et erreur ; le succès terminal combine popup persistant, notification navigateur conditionnelle et signal court désactivable selon 13.5.
 
 ## 13.13 Glisser-déposer
 
@@ -1384,6 +1405,15 @@ RAFRAICHIR_PROGRESSION():
   rendre progression document, progression globale et état Worker
   ne jamais modifier l'état métier depuis le rafraîchissement
 
+TRAITER_AVIS_FIN(project_id):
+  relire le projet et son éventuel job Failed via ProjectService et JobService
+  si projet Completed et avis non acquitté: afficher le popup persistant
+  si projet Completed et réclamation atomique obtenue via ProjectService:
+    demander au navigateur une notification générique si permission déjà accordée
+    jouer un signal court si completion_sound_enabled et lecture autorisée
+  si projet ou job Failed: afficher un popup actionnable sans son ni notification de réussite
+  à la fermeture explicite du popup de succès: acquitter l'avis via ProjectService
+
 RENDRE_ACTION_PRINCIPALE(project_id):
   relire projet, documents, configuration et job actif via les services
   si aucun document valide: proposer « Déposer des fichiers »
@@ -1404,13 +1434,13 @@ La fréquence de rafraîchissement et les composants Streamlit exacts sont **non
 
 **Postconditions.** L'état affiché provient des services ; les fichiers téléchargés sont remis au navigateur puis nettoyés selon le chapitre 15.
 
-**Cas d'erreur.** Authentification invalide, session expirée, action verrouillée, service indisponible et validation de formulaire échouée donnent un message FR/EN actionnable.
+**Cas d'erreur.** Authentification invalide, session expirée, action verrouillée, service indisponible et validation de formulaire échouée donnent un message FR/EN actionnable. Le refus ou l'indisponibilité d'une notification navigateur ou audio ne fait jamais échouer un job et conserve le popup.
 
-**Invariants.** FR/EN, thèmes clair/sombre/sépia, fonctionnalités accessibles sur PC/tablette/smartphone, aucun SQL/fichier/appel IA direct. L'éditeur et l'autosauvegarde restent verrouillés avant finalisation ; tout remplacement global attend une confirmation explicite. Le parcours principal n'expose jamais deux lancements concurrents, ne permet pas de changer le modèle à la reprise et n'affiche aucune fonction hors périmètre provenant d'une source externe.
+**Invariants.** FR/EN, thèmes clair/sombre/sépia, fonctionnalités accessibles sur PC/tablette/smartphone, aucun SQL/fichier/appel IA direct. L'éditeur et l'autosauvegarde restent verrouillés avant finalisation ; tout remplacement global attend une confirmation explicite. Le parcours principal n'expose jamais deux lancements concurrents, ne permet pas de changer le modèle à la reprise et n'affiche aucune fonction hors périmètre provenant d'une source externe. Un même `project_id` ne déclenche au plus qu'une notification système et un signal sonore après la réussite de tous ses documents, et son popup reste visible jusqu'à acquittement.
 
 **Contraintes.** Streamlit est l'unique technologie d'interface et ne devient pas une API métier.
 
-**Critères d'acceptation et références croisées.** EF-001, EF-003, EF-007, EF-008, EF-010, EF-013, EF-015 et EF-016 réussissent les tests 17.11 et 17.13 dans le parcours continu de 13.5 ; composant représenté en 18.11–18.13. Un test de session Streamlit recharge chaque état du parcours et vérifie l'action primaire, les blocages et la conservation de l'ordre sans appeler directement repository, fichier ou fournisseur.
+**Critères d'acceptation et références croisées.** EF-001, EF-003, EF-007, EF-008, EF-010, EF-013, EF-015 et EF-016 réussissent les tests 17.11 et 17.13 dans le parcours continu de 13.5 ; composant représenté en 18.11–18.13. Un test de session Streamlit recharge chaque état du parcours et vérifie l'action primaire, les blocages, la conservation de l'ordre et l'idempotence des avis terminaux sans appeler directement repository, fichier ou fournisseur.
 
 # Chapitre 14 — Paramètres et fournisseurs IA
 
@@ -1747,8 +1777,8 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 |---|---|---|---|---|
 | EF-001 | `UT-EF-001` valide nom/langue | `IT-EF-001` persiste projet vide | `FT-EF-001` crée le projet depuis Streamlit | projet `Draft`, une langue cible, aucune œuvre mélangée |
 | EF-002 | `UT-EF-002` interprète une détection | `IT-EF-002` écrit la langue du document/projet | `FT-EF-002` affiche la langue détectée après import | aucune saisie de langue source demandée |
-| EF-003 | `UT-EF-003` accepte seulement cinq extensions | `IT-EF-003` route chaque convertisseur | `FT-EF-003` accepte les cinq formats et refuse un sixième | EPUB/DOCX/TXT/MD/SRT seuls |
-| EF-004 | `UT-EF-004` valide GFM, front matter, commentaires, blocs de code, spine EPUB, balises inline, cues SRT et WebP lossless | `IT-EF-004` convertit puis reconstruit texte, images et structures EPUB/SRT de façon idempotente | `FT-EF-004` importe un document illustré contenant les structures GFM protégées | `source.md` GFM et WebP lossless valides, ordre EPUB et métadonnées SRT préservés, aucune structure interprétée comme marqueur |
+| EF-003 | `UT-EF-003` accepte seulement cinq extensions et vérifie signature/structure | `IT-EF-003` route chaque convertisseur et refuse extension trompeuse, archive hostile ou XML actif | `FT-EF-003` accepte les cinq formats et refuse un sixième ou un fichier maquillé | EPUB/DOCX/TXT/MD/SRT seuls ; aucune extraction non confinée |
+| EF-004 | `UT-EF-004` valide GFM, front matter, commentaires, blocs de code, spine EPUB, balises inline, cues SRT, WebP lossless, chemins ZIP et budgets de décompression | `IT-EF-004` convertit puis reconstruit texte, images et structures EPUB/SRT de façon idempotente, puis injecte Zip-Slip, bombe, lien et XXE sans sortie partielle | `FT-EF-004` importe un document illustré contenant les structures GFM protégées et rejette les variantes hostiles | `source.md` GFM et WebP lossless valides, ordre EPUB et métadonnées SRT préservés, aucune structure interprétée comme marqueur, aucun accès fichier/réseau hors périmètre |
 | EF-005 | `UT-EF-005` décide le nettoyage après validation | `IT-EF-005` supprime original/temporaire | `FT-EF-005` constate leur absence après import | aucun original ; échec conservant les données validées |
 | EF-006 | `UT-EF-006` calcule un ordre contigu | `IT-EF-006` persiste le glisser-déposer | `FT-EF-006` réordonne avant traduction | ordre de dépôt initial puis ordre utilisateur stable |
 | EF-007 | `UT-EF-007` évalue les gardes | `IT-EF-007` contrôle fichiers/configuration/disque | `FT-EF-007` bloque puis autorise le lancement | `Ready` seulement si tous les contrôles réussissent |
@@ -1759,7 +1789,7 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 | EF-012 | `UT-EF-012` calcule la prévisualisation des remplacements | `IT-EF-012` exige confirmation puis écrit atomiquement les `translated.md` terminés | `FT-EF-012` annule puis confirme un remplacement global | aucune écriture sans confirmation, aucune source modifiée |
 | EF-013 | `UT-EF-013` accepte cinq sorties et valide la structure propre à chacune | `IT-EF-013` génère chacune depuis tous les documents et contrôle le round-trip EPUB/SRT | `FT-EF-013` télécharge chaque format | EPUB/DOCX/MD/TXT/SRT complets et ordonnés ; spine, ressources et cues préservés |
 | EF-014 | `UT-EF-014` planifie le nettoyage | `IT-EF-014` supprime succès/erreur | `FT-EF-014` vérifie l'absence après téléchargement | aucun export conservé |
-| EF-015 | `UT-EF-015` couvre traductions/thèmes | `IT-EF-015` rend les variantes | `FT-EF-015` parcourt FR/EN, 3 thèmes et 3 tailles | aucune fonction inaccessible ni information perdue |
+| EF-015 | `UT-EF-015` couvre traductions, thèmes et décision d'avis de fin par état/permission/réclamation | `IT-EF-015` rend les variantes et persiste réclamation/acquittement par `project_id` après le dernier job seulement | `FT-EF-015` parcourt FR/EN, 3 thèmes, 3 tailles, projet multi-document réussi, échec, permission refusée et rafraîchissement | aucune fonction inaccessible ni information perdue ; un seul popup/son après toute l'œuvre, succès sonore désactivable, échec sans son |
 | EF-016 | `UT-EF-016` filtre événements/niveaux | `IT-EF-016` lit SQLite sans fuite | `FT-EF-016` consulte et filtre les journaux | filtres exacts, messages sûrs et actionnables |
 
 ## 17.12 Catalogue de tests des règles métier
@@ -1783,7 +1813,7 @@ Chaque ligne impose les trois tests indiqués. Les doubles IA doivent reproduire
 
 | ID | Niveau | Objet | Critère de réussite |
 |---|---|---|---|
-| `UT-ARCH-001` | unitaire | dépendances de couches | aucune dépendance interdite de 2.5 |
+| `UT-ARCH-001` | unitaire | dépendances de couches et graphe verrouillé | aucune dépendance interdite de 2.5 ; manifeste/lock uniques, aucun import ou paquet runtime TBL hors périmètre, aucun retry fournisseur en double, licences et vulnérabilités contrôlées |
 | `IT-DB-001` | intégration | schéma, FK, CHECK, index et cascades | schéma 8.5–8.9 conforme, tables `chapters`/`segments`, états fermés et `foreign_keys` actif |
 | `IT-DB-002` | intégration | rollback et cohérence checkpoint/base | aucun état de segment avancé si écriture atomique ou transaction échoue ; orphelin ignoré |
 | `IT-MIG-001` | intégration | montée, rollback et reprise de migration | version inscrite seulement après succès |
@@ -1940,7 +1970,12 @@ loop chaque job FIFO
       TranslationService --> Worker: checkpoint + état atomiques
     end
   end
+  Worker -> JobService: complete(job)
 end
+JobService -> ProjectService: complete_if_all_documents()
+Streamlit -> ProjectService: claim_completion_notice(project_id)
+ProjectService --> Streamlit: projet + réclamation atomique
+Streamlit --> Utilisateur: popup persistant + avis local unique
 Utilisateur -> Streamlit: exporter(format)
 Streamlit -> ExportService: generate(project, format)
 ExportService --> Streamlit: temporary_download
@@ -2083,6 +2118,8 @@ entity projects {
   status : TEXT
   created_at : TEXT
   updated_at : TEXT
+  completion_notice_claimed_at : TEXT?
+  completion_notice_acknowledged_at : TEXT?
 }
 entity documents {
   * id : INTEGER <<PK>>
@@ -2271,7 +2308,7 @@ Cette historisation est documentaire dans le SDD et ne crée ni historique de ve
 | EF-012 | 3, 4.2 | `documents`, `core` | UT/IT/FT-EF-012 | 18.12, 18.14 |
 | EF-013 | 3, 15.3–15.4, 15.12 | `export` | UT/IT/FT-EF-013 | 18.12–18.13 |
 | EF-014 | 3, 15.6, 15.12 | `export`, `core` | UT/IT/FT-EF-014 | 18.13 |
-| EF-015 | 3, 13.2, 13.9, 13.14 | `ui`, `settings` | UT/IT/FT-EF-015 | 18.11–18.13 |
+| EF-015 | 3, 8.5, 8.8–8.9, 9.13, 13.2, 13.5, 13.9, 13.12, 13.14–13.16 | `ui`, `projects`, `jobs`, `settings` | UT/IT/FT-EF-015 | 18.11–18.14, 18.18 |
 | EF-016 | 3, 13.7, 16.13 | `ui`, `system` | UT/IT/FT-EF-016 | 18.11–18.13, 18.18 |
 | RM-001 | 4, 9.9 | `projects` | UT/IT/FT-RM-001 | 18.14, 18.18 |
 | RM-002 | 4, 15.9, 15.12 | `export` | UT/IT/FT-RM-002 | 18.13 |
@@ -2326,6 +2363,8 @@ Historique des choix d'architecture majeurs et justification des arbitrages.
 |---|---|---|
 | 2026-08-05 | Inspecter les implémentations comparables et réemployer au maximum leurs mécanismes compatibles, sans importer leur périmètre fonctionnel | réduire les risques techniques tout en préservant les 16 EF, 12 RM et l'architecture simple de NovelTrad |
 | 2026-08-06 | Placer NovelTrad sous `AGPL-3.0-only` et faire de TranslateBooksWithLLMs la source prioritaire de code éprouvé pour les mécanismes déjà exigés | autoriser la reprise directe maximale tout en conservant le SDD comme frontière fonctionnelle et Streamlit comme interface unique |
+| 2026-08-06 | Ajouter à EF-015 un avis local de fin réussi, unique et désactivable, sans glossaire, style réutilisable ni TTS | permettre de laisser une traduction automatique s'exécuter puis revenir sur un résultat signalé, sans service externe ni nouvelle exigence |
+| 2026-08-06 | Imposer `pyproject.toml`/`uv.lock`, une résolution propre et des portes de licences, vulnérabilités, doublons et dépendances | empêcher que le réemploi maximal de TBL importe son graphe Flask/TTS/GPU ou crée une dette avant le premier code applicatif |
 
 ## 20.6 Évolutions futures
 
@@ -2337,13 +2376,13 @@ Références documentaires : Markdown GFM, SQLite, Docker, Streamlit et fourniss
 
 | Projet inspecté et version | Fichiers de référence | Licence constatée | Réemploi autorisé dans NovelTrad | Éléments explicitement exclus |
 |---|---|---|---|---|
-| [TranslateBooksWithLLMs `0ae4704`](https://github.com/hydropix/TranslateBooksWithLLMs/tree/0ae47041ca8db486313765dbf8f9489c07610a29) | `src/core/adapters/{format_adapter,translation_unit,generic_translator,srt_adapter}.py`, `src/core/chunking/{token_chunker,reassembly}.py`, `src/core/progress/{snapshot,tracker}.py`, `src/core/epub/{tag_preservation,placeholder_validator,epub_translation_adapter}.py`, `src/persistence/{database,checkpoint_manager}.py`, `src/core/llm/{base,providers/ollama,providers/openai}.py` et tests associés ; parcours observé dans `src/web/templates/translation_interface.html` et `src/web/static/js/{files/file-upload,ui/preflight-zone,translation/progress-manager,translation/resume-manager}.js` | AGPL-3.0 | source prioritaire de reprise directe : extraire et adapter les unités Python et tests qui couvrent segmentation/réassemblage, marqueurs, validation, progression, reprise, secrets, SRT et normalisation Ollama/OpenAI-compatible ; conserver provenance et avis AGPL, puis soumettre chaque unité aux invariants NovelTrad. Le parcours web sert uniquement de contrat comportemental pour 13.5 | ne pas copier l'interface HTML/JavaScript ni les routes Flask dans Streamlit ; supprimer stockage du texte dans SQLite, retries internes aux fournisseurs, parallélisme, changement de modèle à la reprise, glossaire, styles, TTS, OCR, raffinement facultatif, rotation de clés, notifications, coûts et formats hors périmètre |
+| [TranslateBooksWithLLMs `0ae4704`](https://github.com/hydropix/TranslateBooksWithLLMs/tree/0ae47041ca8db486313765dbf8f9489c07610a29) | `src/core/adapters/{format_adapter,translation_unit,generic_translator,srt_adapter}.py`, `src/core/chunking/{token_chunker,reassembly}.py`, `src/core/progress/{snapshot,tracker}.py`, `src/core/epub/{tag_preservation,placeholder_validator,epub_translation_adapter}.py`, `src/persistence/{database,checkpoint_manager}.py`, `src/core/llm/{base,providers/ollama,providers/openai}.py`, `src/utils/security.py`, `tests/unit/test_zip_slip.py`, placement des événements terminaux dans `src/api/handlers.py`, invariants de non-propagation de `src/utils/notifier.py` et tests associés ; parcours observé dans `src/web/templates/translation_interface.html` et `src/web/static/js/{files/file-upload,ui/preflight-zone,translation/progress-manager,translation/resume-manager}.js` | AGPL-3.0 | source prioritaire de reprise directe : extraire et adapter les unités Python et tests qui couvrent segmentation/réassemblage, marqueurs, validation, progression, reprise, secrets, SRT, confinement des chemins ZIP et normalisation Ollama/OpenAI-compatible ; renforcer le garde d'archive avec budgets, liens et XML sûr de 10.6 ; adapter seulement le placement du hook terminal et les tests garantissant qu'une erreur de notification ne casse pas la traduction, la livraison restant celle de 13.5 ; conserver provenance et avis AGPL, puis soumettre chaque unité aux invariants NovelTrad. Le parcours web sert uniquement de contrat comportemental pour 13.5 | ne copier ni l'interface HTML/JavaScript, ni les routes Flask, ni `requirements*.txt` dans Streamlit ; supprimer stockage du texte dans SQLite, retries internes aux fournisseurs, parallélisme, changement de modèle à la reprise, glossaire, styles, TTS, OCR, raffinement facultatif, rotation de clés, webhook/HTTP de notification, coûts et formats hors périmètre ; exclure Flask/Socket.IO, `edge-tts`, piles GPU, LiteLLM et tout runtime non requis |
 | [bilingual_book_maker `fc1aea0`](https://github.com/yihong0618/bilingual_book_maker/tree/fc1aea0a582dfd2cdf75f991ade1ec75d8539fa3) | `book_maker/loader/epub_loader.py`, `book_maker/translator/chatgptapi_translator.py`, `tests/test_epub_loader_batch_translate.py` | MIT | adaptation directe possible des parcours DOM EPUB, tests d'extraction, validation de cardinalité/ordre et repli déterministe de réponse, avec mentions de licence | sortie bilingue, PDF, liseuse, cache `_temp.epub`, multi-clés, modèles/fournisseurs supplémentaires et passe facultative |
 | [Aphra `d5cdd49`](https://github.com/DavidLMS/aphra/tree/d5cdd49cfcd9805af8cca7befc64c0d01e1718ad) | `aphra/core/context.py`, `aphra/core/workflow.py`, `tests/test_core_prompts.py` | MIT | adaptation directe possible du contexte typé, du chargement de prompts et de leurs tests, avec mentions de licence | agents multiples, analyse préalable, recherche web, glossaire, critique séparée, notes du traducteur et cinquième passe |
 | [GalTransl `c1c470b`](https://github.com/GalTransl/GalTransl/tree/c1c470b55e6c60dea723f0da4670213f997715b7) | `GalTransl/Backend/BaseTranslate.py`, `GalTransl/Cache.py`, `tests/test_translate_refactor_regressions.py` | GPL-3.0 | ne conserver que les tests de limite de retries, fermeture des flux et annulation coopérative si TBL ne couvre pas le cas ; combinaison permise, mais aucun module n'est prioritaire sur TBL | concurrence adaptative, cache JSON, dictionnaires/glossaires, formats de jeux et fournisseurs supplémentaires |
 | [PDFMathTranslate `44c4d5b`](https://github.com/PDFMathTranslate/PDFMathTranslate/tree/44c4d5b332705797c1df17fadde2022e7c49f5de) | `pdf2zh/translator.py` | AGPL-3.0 | aucune reprise retenue : l'abstraction TBL et le contrat 14.14 couvrent déjà le besoin sans importer une architecture PDF | PDF, vision, détection de mise en page, cache de traduction et services non prévus |
 | [AiNiee `ab567e3`](https://github.com/NEKOparapa/AiNiee/tree/ab567e36f315f7f4d399f4e21196cd58be4f64c5) | `ModuleFolders/Domain/ResponseChecker/ResponseChecker.py`, `ModuleFolders/Service/TaskExecutor/TranslatorTask.py`, `ModuleFolders/Domain/FileAccessor/EpubAccessor.py` | AGPL-3.0 | adaptation directe possible du seul validateur de réponse — vide, cardinalité, ordre, marqueurs — si ses tests complètent ceux de TBL ; orchestrateur et accesseur EPUB non retenus | GUI de bureau, parallélisme, glossaires, filtres de jeux, PDF/PPT/ASS/VTT/LRC et passes ou options supplémentaires |
-| [EbookLib `693636f`](https://github.com/aerkalov/ebooklib/tree/693636fb4588af404fcf00cf74636726d8ac886c) | `ebooklib/epub.py`, `tests/test_ebook.py`, `tests/test_epub_html.py`, `tests/test_epub_item.py` | AGPL-3.0-or-later | dépendance directe autorisée en choisissant AGPL-3.0, limitée au manifeste, à la spine, à la navigation, aux ressources et aux scénarios de lecture/écriture EPUB | API générale d'édition d'ebooks et exemples hors import/export NovelTrad |
+| [EbookLib `693636f`](https://github.com/aerkalov/ebooklib/tree/693636fb4588af404fcf00cf74636726d8ac886c) | `ebooklib/epub.py`, `tests/test_ebook.py`, `tests/test_epub_html.py`, `tests/test_epub_item.py` | AGPL-3.0-or-later | dépendance VCS strictement épinglée ou unités vendoriées autorisées en choisissant AGPL-3.0, limitées au manifeste, à la spine, à la navigation, aux ressources et aux scénarios de lecture/écriture EPUB ; version 0.21 non disponible sur l'index contrôlé, donc audit source obligatoire si l'auditeur ignore la source Git | contrainte d'index non résoluble `ebooklib>=0.21`, mise à jour flottante, API générale d'édition d'ebooks et exemples hors import/export NovelTrad |
 | [translation-agent `e0fc605`](https://github.com/andrewyng/translation-agent/tree/e0fc605acbb5d78cb7a58a98bc8bd8f0056df49c) | `src/translation_agent/utils.py`, `tests/test_agent.py` | MIT | adaptation possible des délimiteurs de prompts, de la séparation entre texte ciblé et contexte en lecture seule, et de tests unitaires de composition des messages | workflow à trois appels, glossaire, région/pays, découpage global sans structure GFM et client OpenAI global |
 | [mdait `3e784d4`](https://github.com/mochimochiki/mdait/tree/3e784d4efba5c2728cd5b2a07a470eb2a5a45580) | `src/core/markdown/parser.ts`, `src/core/markdown/code-block-lines.ts`, `src/test/unit/core/markdown/parser-code-block-marker.test.ts`, `src/test/unit/core/markdown/parser-html-comment.test.ts` | Apache-2.0 | transposition des tests et du patron d'analyse GFM en deux passes, avec conservation de l'avis de licence | extension VS Code, TypeScript au runtime, marqueurs persistants, glossaire, mémoire de traduction, synchronisation et fournisseurs supplémentaires |
 | [llm_text_splitter `c88f979`](https://github.com/MohamedElghobary/llm_text_splitter/tree/c88f9795c062c8abefd59f96fe742f7fe377cda8) | `llm_text_splitter/splitter.py`, `tests/test_splitter.py` | MIT | adaptation des validations d'arguments, de la hiérarchie de séparateurs et des tests de découpage récursif | lecteurs PDF/HTML, recouvrement recopié, découpe arbitraire par caractères, métadonnées RAG et formats hors périmètre |
