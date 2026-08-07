@@ -8,6 +8,7 @@ one primary action per state.
 
 from __future__ import annotations
 
+import contextlib
 import io
 
 import streamlit as st
@@ -77,6 +78,7 @@ def render(container, session) -> None:
     documents = document_service.list(project_id)
     if documents:
         st.subheader(t("project.docs"))
+        _handle_reorder_param(container, session, project_id, documents)
         _render_documents(container, session, project_id, documents)
 
     # -- primary action ---------------------------------------------------
@@ -94,7 +96,9 @@ def render(container, session) -> None:
             for message in report.safe_messages:
                 st.warning(message)
     elif project.status == ProjectStatus.READY:
-        if st.button(t("project.launch"), key="launch_btn"):
+        if settings.provider is None or not settings.base_url or not settings.model:
+            st.warning(t("settings.title") + ": " + t("project.need_ai_config"))
+        elif st.button(t("project.launch"), key="launch_btn"):
             snapshot = _snapshot_from_settings(settings)
             job_service.enqueue_project(project_id, snapshot)
             st.rerun()
@@ -267,76 +271,75 @@ def _render_replace(container, session, project_id, document_service) -> None:
                 st.error(str(exc))
 
 
+def _handle_reorder_param(container, session, project_id, documents) -> None:
+    """Apply the drag & drop order communicated via ?nt_order=id1,id2,..."""
+    del session
+    raw = st.query_params.get("nt_order")
+    if not raw:
+        return
+    try:
+        new_ids = [int(x) for x in str(raw).split(",")]
+    except ValueError:
+        return
+    existing = [doc.id for doc in documents]
+    if sorted(new_ids) == sorted(existing) and len(new_ids) == len(existing):
+        with contextlib.suppress(Exception):
+            container.document_service.reorder(project_id, new_ids)
+    with contextlib.suppress(Exception):
+        del st.query_params["nt_order"]
+    st.rerun()
+
+
 def _render_documents(container, session, project_id, documents) -> None:
-    """Documents table: headers, reorder arrows, multi-select delete (9.4-9.8)."""
+    """Documents table: drag & drop order + multi-select delete (9.4-9.8)."""
     language = session.language
     t = lambda key: translate(key, language)  # noqa: E731
-    document_service = container.document_service
 
     if "selected_docs" not in st.session_state:
         st.session_state.selected_docs = set()
 
-    # header row
-    header = st.columns([1, 4, 2, 1, 1, 1, 1, 1])
-    header[0].markdown("")
-    header[1].markdown(f"**{t('doc.name')}**")
-    header[2].markdown(f"**{t('doc.status')}**")
-    header[3].markdown(f"**{t('doc.words')}**")
-    header[4].markdown(f"**{t('doc.lang')}**")
-    header[5].markdown("")
-    header[6].markdown("")
-    header[7].markdown("")
+    locked = project_locked(container, project_id)
 
-    ids = [doc.id for doc in documents]
+    # select-all + delete-selected bar
+    bar_cols = st.columns([1, 3, 1])
+    all_checked = len(st.session_state.selected_docs) == len(documents) and bool(documents)
+    select_all = bar_cols[0].checkbox(t("doc.select_all"), value=all_checked, key="select_all_docs")
+    if select_all and not all_checked:
+        st.session_state.selected_docs = {doc.id for doc in documents}
+        st.rerun()
+    elif not select_all and all_checked:
+        st.session_state.selected_docs = set()
+        st.rerun()
+    if st.session_state.selected_docs and bar_cols[2].button(
+        f"🗑 {t('doc.delete')} ({len(st.session_state.selected_docs)})",
+        key="delete_selected_btn",
+    ):
+        _delete_selected(container, project_id, tuple(st.session_state.selected_docs))
+
+    # draggable table
+    from noveltrad.ui.dnd import document_table
+
+    document_table(
+        documents,
+        theme=session.theme,
+        locked=locked,
+        t=t,
+    )
+
+    # per-row selection below the table
+    st.caption(t("doc.select_hint"))
+    row_cols = st.columns(4)
     for index, doc in enumerate(documents):
-        cols = st.columns([1, 4, 2, 1, 1, 1, 1, 1])
-        checked = cols[0].checkbox(
-            t("doc.delete"),
+        col = row_cols[index % 4]
+        checked = col.checkbox(
+            doc.display_name,
             value=doc.id in st.session_state.selected_docs,
             key=f"sel_{doc.id}",
-            label_visibility="collapsed",
         )
         if checked:
             st.session_state.selected_docs.add(doc.id)
         else:
             st.session_state.selected_docs.discard(doc.id)
-        cols[1].markdown(doc.display_name)
-        cols[2].markdown(f"{doc.status.value} ({doc.progress:.0f}%)")
-        cols[3].markdown(str(doc.word_count))
-        cols[4].markdown(doc.detected_language or "?")
-        up_disabled = index == 0 or project_locked(container, project_id)
-        down_disabled = index == len(documents) - 1 or project_locked(container, project_id)
-        if cols[5].button("↑", key=f"up_{doc.id}", disabled=up_disabled):
-            new_ids = list(ids)
-            new_ids[index - 1], new_ids[index] = new_ids[index], new_ids[index - 1]
-            try:
-                document_service.reorder(project_id, new_ids)
-                st.rerun()
-            except Exception as exc:  # noqa: BLE001
-                st.error(str(exc))
-        if cols[6].button("↓", key=f"down_{doc.id}", disabled=down_disabled):
-            new_ids = list(ids)
-            new_ids[index + 1], new_ids[index] = new_ids[index], new_ids[index + 1]
-            try:
-                document_service.reorder(project_id, new_ids)
-                st.rerun()
-            except Exception as exc:  # noqa: BLE001
-                st.error(str(exc))
-        if cols[7].button("🗑", key=f"del_{doc.id}"):
-            try:
-                document_service.delete(doc.id, None)
-                st.session_state.selected_docs.discard(doc.id)
-                st.rerun()
-            except Exception as exc:  # noqa: BLE001
-                st.error(str(exc))
-
-    if st.session_state.selected_docs:
-        st.button(
-            f"{t('doc.delete')} ({len(st.session_state.selected_docs)})",
-            key="delete_selected_btn",
-            on_click=_delete_selected,
-            args=(container, project_id, tuple(st.session_state.selected_docs)),
-        )
 
 
 def _delete_selected(container, project_id, document_ids: tuple) -> None:

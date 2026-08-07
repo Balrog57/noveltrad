@@ -45,9 +45,7 @@ class OpenAICompatibleProvider:
     async def validate_configuration(self, snapshot: PipelineSnapshot) -> ValidationReport:
         self._base = snapshot.base_url.rstrip("/")
         try:
-            response = await self._client.get(
-                f"{self._base}/models", headers=self._headers()
-            )
+            response = await self._client.get(f"{self._base}/models", headers=self._headers())
         except httpx.HTTPError as exc:
             return ValidationReport(
                 False, ("PROVIDER_UNREACHABLE",), (f"provider unreachable: {exc}",)

@@ -75,6 +75,21 @@ class Container:
         self.settings_service = SettingsService(
             conn, self.settings_repo, self.logs, self.encryption_key, self.factory
         )
+
+        def _ai_ready() -> tuple[bool, str]:
+            try:
+                view = self.settings_service.get_masked()
+            except Exception:  # noqa: BLE001
+                return False, "AI configuration unavailable"
+            if view.provider is None:
+                return False, "configure an AI provider in the settings first"
+            if not view.base_url:
+                return False, "the AI provider URL is missing"
+            if not view.model:
+                return False, "choose an AI model in the settings first"
+            return True, ""
+
+        self.project_service.set_ai_ready(_ai_ready)
         self.verification_service = VerificationService(conn)
         self.export_service = ExportService(conn, self.logs, self.data_dir)
         self.health_service = HealthService(conn, self.data_dir, self.system_repo)

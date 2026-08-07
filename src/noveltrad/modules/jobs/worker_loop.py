@@ -96,9 +96,6 @@ class WorkerLoop:
         import time as _time
 
         now = _time.monotonic()
-        if (
-            self._system_repo is not None
-            and now - self._last_persist >= self._heartbeat_interval
-        ):
+        if self._system_repo is not None and now - self._last_persist >= self._heartbeat_interval:
             self._system_repo.heartbeat(self._runtime.state)
             self._last_persist = now

@@ -97,9 +97,7 @@ class SegmentRepository:
         return self.get(SegmentId(int(cur.lastrowid)))
 
     def get(self, segment_id: SegmentId) -> SegmentRow:
-        row = self._conn.execute(
-            "SELECT * FROM segments WHERE id=?", (segment_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM segments WHERE id=?", (segment_id,)).fetchone()
         if row is None:
             raise KeyError(f"segment {segment_id} not found")
         return _to_row(row)

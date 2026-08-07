@@ -24,10 +24,7 @@ class Router:
         language = session.language
         t = lambda key: translate(key, language)  # noqa: E731
         with st.sidebar:
-            from noveltrad.ui.logo import logo_data_uri
-
-            st.image(logo_data_uri(), width=64)
-            st.title(t("app.title"))
+            _render_sidebar_header(session.theme, t("app.title"))
             page = st.radio(
                 "Navigation",
                 [t("nav.projects"), t("nav.settings"), t("nav.logs"), t("nav.about")],
@@ -90,3 +87,21 @@ class Router:
             except Exception as exc:  # noqa: BLE001
                 st.error(str(exc))
         return False
+
+
+def _render_sidebar_header(theme: str, title: str) -> None:
+    """Logo next to the app name inside a darker header band (theme-aware)."""
+    import streamlit as st
+
+    from noveltrad.ui.logo import logo_data_uri
+    from noveltrad.ui.theme import header_style
+
+    st.markdown(
+        f"""
+        <div style="{header_style(theme)}">
+            <img src="{logo_data_uri()}" style="width:40px;height:40px;border-radius:8px;"/>
+            <span style="font-size:20px;font-weight:700;color:inherit;">{title}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )

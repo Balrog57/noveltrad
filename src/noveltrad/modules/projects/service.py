@@ -36,11 +36,19 @@ class ProjectService:
         repository: ProjectRepository,
         logs: LogService,
         data_dir=None,
+        ai_ready: object | None = None,
     ) -> None:
         self._conn = conn
         self._repo = repository
         self._logs = logs
         self._data_dir = data_dir
+        # ai_ready: callable() -> tuple[bool, str] reporting whether the AI
+        # provider configuration is usable (SDD 9.6). Injected by the container.
+        self._ai_ready = ai_ready
+
+    def set_ai_ready(self, ai_ready: object | None) -> None:
+        """Wire the AI configuration check (called by the container)."""
+        self._ai_ready = ai_ready
 
     # -- queries ----------------------------------------------------------
 
@@ -106,6 +114,11 @@ class ProjectService:
         if row.status == ProjectStatus.RUNNING:
             errors.append("ALREADY_RUNNING")
             messages.append("a translation is already active")
+        if self._ai_ready is not None:
+            ready, reason = self._ai_ready()
+            if not ready:
+                errors.append("AI_CONFIG_MISSING")
+                messages.append(reason)
         valid = not errors
         self._logs.record(
             "INFO" if valid else "WARNING",

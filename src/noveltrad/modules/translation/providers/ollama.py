@@ -70,9 +70,7 @@ class OllamaProvider:
         if request.max_output_tokens:
             payload["options"]["num_predict"] = request.max_output_tokens
         try:
-            response = await self._client.post(
-                f"{self._base_url_value}/api/chat", json=payload
-            )
+            response = await self._client.post(f"{self._base_url_value}/api/chat", json=payload)
         except httpx.HTTPError as exc:
             raise ProviderError("NETWORK_ERROR", True) from exc
         if response.status_code != 200:

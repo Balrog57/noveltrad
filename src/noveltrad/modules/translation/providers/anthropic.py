@@ -105,9 +105,7 @@ class AnthropicProvider:
             )
         data = response.json()
         blocks = data.get("content", [])
-        text = "".join(
-            block.get("text", "") for block in blocks if block.get("type") == "text"
-        )
+        text = "".join(block.get("text", "") for block in blocks if block.get("type") == "text")
         stop_reason = data.get("stop_reason")
         finish = FinishReason.STOP if stop_reason == "end_turn" else FinishReason.OTHER
         usage = data.get("usage", {})

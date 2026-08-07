@@ -38,16 +38,15 @@ _PRESETS: dict[str, tuple[str, str, bool, tuple[str, ...]]] = {
         "https://api.openai.com/v1",
         True,
         (
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
             "gpt-5",
             "gpt-5-mini",
             "gpt-4.1",
             "gpt-4.1-mini",
             "gpt-4o",
             "gpt-4o-mini",
-            "gpt-4-turbo",
-            "o4-mini",
-            "o3",
-            "o3-mini",
         ),
     ),
     "Google Gemini": (
@@ -57,6 +56,7 @@ _PRESETS: dict[str, tuple[str, str, bool, tuple[str, ...]]] = {
         (
             "gemini-2.5-pro",
             "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
             "gemini-2.0-flash",
             "gemini-1.5-pro",
             "gemini-1.5-flash",
@@ -67,13 +67,22 @@ _PRESETS: dict[str, tuple[str, str, bool, tuple[str, ...]]] = {
         "openai_compatible",
         "https://api.deepseek.com/v1",
         True,
-        ("deepseek-chat", "deepseek-reasoner", "deepseek-coder"),
+        ("deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"),
     ),
     "Grok (xAI)": (
         "openai_compatible",
         "https://api.x.ai/v1",
         True,
-        ("grok-3", "grok-3-mini", "grok-3-mini-fast", "grok-2", "grok-2-latest"),
+        (
+            "grok-4.5",
+            "grok-4.3",
+            "grok-4.20-0309-reasoning",
+            "grok-4.20-0309-non-reasoning",
+            "grok-3",
+            "grok-3-mini",
+            "grok-2",
+            "grok-2-latest",
+        ),
     ),
     "Claude (Anthropic)": (
         "anthropic",
@@ -112,15 +121,20 @@ def render(container, session) -> None:
 
     preset_names = list(_PRESETS.keys())
     current_label = next(
-        (name for name, (code, _url, _key, _models) in _PRESETS.items()
-         if code == str(current.provider)
-         and (current.base_url or "") == (_url if _url else "")),
+        (
+            name
+            for name, (code, _url, _key, _models) in _PRESETS.items()
+            if code == str(current.provider) and (current.base_url or "") == (_url if _url else "")
+        ),
         None,
     )
     if current_label is None:
         current_label = next(
-            (name for name, (code, _url, _key, _models) in _PRESETS.items()
-             if code == str(current.provider)),
+            (
+                name
+                for name, (code, _url, _key, _models) in _PRESETS.items()
+                if code == str(current.provider)
+            ),
             preset_names[0],
         )
     provider_label = st.selectbox(
@@ -170,9 +184,7 @@ def render(container, session) -> None:
     model_options = st.session_state.detected_models or known_models
     if model_options:
         current_model = current.model or model_options[0]
-        model_index = (
-            model_options.index(current_model) if current_model in model_options else 0
-        )
+        model_index = model_options.index(current_model) if current_model in model_options else 0
         model = st.selectbox(
             t("settings.model"), list(model_options), index=model_index, key="model_select"
         )

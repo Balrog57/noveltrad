@@ -373,5 +373,21 @@ def apply_theme(theme: str) -> None:
     st.markdown(_css(theme), unsafe_allow_html=True)
 
 
+def header_style(theme: str) -> str:
+    """Inline style for the sidebar header band: darker than the surface,
+    with text color adapting to the theme."""
+    header_colors = {
+        "light": {"bg": "#0f766e", "text": "#ffffff"},
+        "dark": {"bg": "#0b3d38", "text": "#e0f2f1"},
+        "sepia": {"bg": "#6d4420", "text": "#fff8ec"},
+    }
+    colors = header_colors.get(theme, header_colors["light"])
+    return (
+        "display:flex;align-items:center;gap:10px;padding:12px 16px;"
+        f"background-color:{colors['bg']};color:{colors['text']};"
+        "border-radius:10px;margin-bottom:8px;"
+    )
+
+
 def valid_theme(value: str) -> bool:
     return value in _THEMES

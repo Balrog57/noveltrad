@@ -186,9 +186,7 @@ def test_validate_configuration_for_missing_fields(conn: sqlite3.Connection):
     service = SettingsService(conn, repo, logs, key, factory)
 
     async def run():
-        return await service.validate_configuration_for(
-            ProviderName("ollama"), None, None, None
-        )
+        return await service.validate_configuration_for(ProviderName("ollama"), None, None, None)
 
     report = asyncio.run(run())
     assert not report.valid

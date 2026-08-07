@@ -152,9 +152,7 @@ class SettingsService:
             )
         )
         try:
-            provider_instance = self._factory.create_from_settings(
-                _view_from_snapshot(snapshot)
-            )
+            provider_instance = self._factory.create_from_settings(_view_from_snapshot(snapshot))
             try:
                 return await provider_instance.list_models()
             finally:
@@ -199,15 +197,11 @@ class SettingsService:
         try:
             provider_instance = self._factory.create_from_settings(view)
             try:
-                return await provider_instance.validate_configuration(
-                    settings_to_snapshot(view)
-                )
+                return await provider_instance.validate_configuration(settings_to_snapshot(view))
             finally:
                 await provider_instance.close()
         except Exception as exc:  # noqa: BLE001
-            return ValidationReport(
-                False, ("PROVIDER_ERROR",), (f"configuration invalid: {exc}",)
-            )
+            return ValidationReport(False, ("PROVIDER_ERROR",), (f"configuration invalid: {exc}",))
 
     # -- mutation ---------------------------------------------------------
 
