@@ -236,6 +236,13 @@ def _css(theme: str) -> str:
         background: {c["primary"]} !important;
     }}
 
+    /* ---------- "Press Enter to apply" tooltip: hide it ---------- */
+    [data-testid="stWidgetHelp"] span,
+    [data-testid="stTooltipContent"] span,
+    div[data-testid="stTooltipContent"] {{
+        display: none !important;
+    }}
+
     /* ---------- file uploader ---------- */
     [data-testid="stFileUploader"] {{
         background-color: {c["surface"]} !important;

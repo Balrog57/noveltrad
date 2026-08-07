@@ -54,13 +54,17 @@ _PRESETS: dict[str, tuple[str, str, bool, tuple[str, ...]]] = {
         "https://generativelanguage.googleapis.com/v1beta/openai",
         True,
         (
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.6-flash",
+            "gemini-3.1-pro",
+            "gemini-3.1-flash-lite",
+            "gemini-3-flash",
             "gemini-2.5-pro",
             "gemini-2.5-flash",
             "gemini-2.5-flash-lite",
             "gemini-2.0-flash",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
-            "gemini-pro",
+            "gemini-2.0-flash-lite",
         ),
     ),
     "DeepSeek": (
@@ -144,10 +148,17 @@ def render(container, session) -> None:
 
     # -- provider section -------------------------------------------------
     st.subheader(provider_label)
+
+    # The URL field keeps a distinct session key per preset so switching
+    # presets shows the preset default instead of the previous value.
+    url_key = f"provider_url_{provider_label}"
+    url_value = st.session_state.get(url_key)
+    if url_value is None:
+        url_value = current.base_url or preset_url
     base_url = st.text_input(
         t("settings.url"),
-        value=current.base_url or preset_url,
-        key="provider_url",
+        value=url_value,
+        key=url_key,
     )
 
     api_key_enabled = st.checkbox(
