@@ -306,7 +306,7 @@ def _render_documents(container, session, project_id, documents) -> None:
         cols[4].markdown(doc.detected_language or "?")
         up_disabled = index == 0 or project_locked(container, project_id)
         down_disabled = index == len(documents) - 1 or project_locked(container, project_id)
-        if cols[5].button("↑", key=f"up_{doc.id}", disabled=up_disabled):
+        if cols[5].button("↑", key=f"up_{doc.id}", help=t("doc.move_up"), disabled=up_disabled):
             new_ids = list(ids)
             new_ids[index - 1], new_ids[index] = new_ids[index], new_ids[index - 1]
             try:
@@ -314,7 +314,9 @@ def _render_documents(container, session, project_id, documents) -> None:
                 st.rerun()
             except Exception as exc:  # noqa: BLE001
                 st.error(str(exc))
-        if cols[6].button("↓", key=f"down_{doc.id}", disabled=down_disabled):
+        if cols[6].button(
+            "↓", key=f"down_{doc.id}", help=t("doc.move_down"), disabled=down_disabled
+        ):
             new_ids = list(ids)
             new_ids[index + 1], new_ids[index] = new_ids[index], new_ids[index + 1]
             try:
@@ -322,7 +324,7 @@ def _render_documents(container, session, project_id, documents) -> None:
                 st.rerun()
             except Exception as exc:  # noqa: BLE001
                 st.error(str(exc))
-        if cols[7].button("🗑", key=f"del_{doc.id}"):
+        if cols[7].button("🗑", key=f"del_{doc.id}", help=t("doc.delete")):
             try:
                 document_service.delete(doc.id, None)
                 st.session_state.selected_docs.discard(doc.id)
