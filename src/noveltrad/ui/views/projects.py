@@ -28,7 +28,12 @@ def render(container, session) -> None:
             key="new_project_target",
         )
         target_code = next(c for c, label in target_options if label == target_label)
-        if st.button(t("project.create_btn"), key="create_project_btn"):
+        if st.button(
+            t("project.create_btn"),
+            key="create_project_btn",
+            disabled=not name.strip(),
+            help=t("project.name_req") if not name.strip() else None,
+        ):
             try:
                 project = project_service.create(name, LanguageCode(target_code))
                 session.current_project_id = project.id
