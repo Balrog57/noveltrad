@@ -252,7 +252,8 @@ class DocumentService:
         if document.translated_path is None:
             raise LockedError("translation not published yet")
         target = resolve(self._data_dir, document.translated_path)
-        content = _read_range(target, chapter.translated_start, chapter.translated_end)
+        target_bytes = target.read_bytes()
+        content = target_bytes[chapter.translated_start:chapter.translated_end].decode("utf-8", errors="replace")
         return EditableChapter(
             chapter_id=chapter.id,
             markdown=content,
@@ -363,10 +364,13 @@ class DocumentService:
             if doc.status.value != "Completed" or doc.translated_path is None:
                 continue
             target = resolve(self._data_dir, doc.translated_path)
+            # Optimization: Load file bytes once outside the loop to avoid O(N) repetitive reads.
+            target_bytes = target.read_bytes()
             for chapter in self._repo.list_chapters(doc.id):
                 if chapter.translated_hash is None:
                     continue
-                text = _read_range(target, chapter.translated_start, chapter.translated_end)
+                start, end = chapter.translated_start, chapter.translated_end
+                text = target_bytes[start:end].decode("utf-8", errors="replace")
                 if needle in text:
                     occurrence += text.count(needle)
                     doc_ids.append(doc.id)
@@ -403,6 +407,8 @@ class DocumentService:
             if doc.status.value != "Completed" or doc.translated_path is None:
                 continue
             target = resolve(self._data_dir, doc.translated_path)
+            # Optimization: Load file bytes once outside the loop to avoid O(N) repetitive reads.
+            target_bytes = target.read_bytes()
             content = target.read_text(encoding="utf-8")
             changed = False
             for chapter in self._repo.list_chapters(doc.id):
@@ -411,7 +417,7 @@ class DocumentService:
                 if chapter_hashes[chapter.id] != chapter.translated_hash:
                     raise ConflictError("chapter changed since preview")
                 start, end = chapter.translated_start, chapter.translated_end
-                text = _read_range(target, start, end)
+                text = target_bytes[start:end].decode("utf-8", errors="replace")
                 if needle in text:
                     new_text = text.replace(needle, replacement)
                     content = content[:start] + new_text + content[end:]
@@ -478,8 +484,3 @@ def _copy_stream_to_file(stream, target: Path) -> None:
             if not chunk:
                 break
             out.write(chunk)
-
-
-def _read_range(path: Path, start: int | None, end: int | None) -> str:
-    data = path.read_bytes()
-    return data[start:end].decode("utf-8", errors="replace")
