@@ -77,6 +77,18 @@ _SUBTITLE_FORMAT_RULES = (
     "\n9. Preserve inline tags (<i>, <b>, <u>, <font ...>, {\\an8}, etc.) and any \\n line breaks INSIDE a subtitle exactly as in the source"
 )
 
+# Numbering starts at 6 because rules 1-5 are emitted by _get_output_format_section.
+# Emitted only in Plain Text Mode (has_placeholders is False): the paragraph-count
+# reconciliation downstream cannot absorb a model that merges or splits paragraphs,
+# so the contract is stated explicitly here instead of left implicit.
+_PLAIN_TEXT_FORMAT_RULES = (
+    "\n6. The input contains paragraphs separated by ONE BLANK LINE"
+    "\n7. Output EXACTLY the same number of paragraphs, in the same order"
+    "\n8. Separate every output paragraph with ONE BLANK LINE - never a single newline"
+    "\n9. Do NOT merge two paragraphs into one, and do NOT split one paragraph into two"
+    "\n10. An empty input paragraph stays empty - do not fill it"
+)
+
 
 # ============================================================================
 # OPTIONAL PROMPT SECTIONS
@@ -105,8 +117,18 @@ The source text may contain OCR errors, formatting artifacts, or typographic def
 
 **DO NOT** add content, remove meaningful text, or alter the author's style."""
 
+# Plain Text Mode variant of TEXT_CLEANUP_SECTION: the downstream pipeline reassembles
+# a segment's paragraphs by position (see plain_text_pipeline.py), so it cannot absorb
+# a model that merges or splits paragraphs. Derived with .replace() rather than a second
+# hand-written block so the two constants can never drift apart on everything but that
+# one bullet.
+TEXT_CLEANUP_SECTION_PLAIN = TEXT_CLEANUP_SECTION.replace(
+    "- **Paragraph flow**: Merge incorrectly split paragraphs, preserve intentional breaks",
+    "- **Paragraph flow**: Keep the paragraph breaks exactly as they are - never merge or split paragraphs",
+)
 
-def _build_optional_prompt_sections(prompt_options: dict) -> str:
+
+def _build_optional_prompt_sections(prompt_options: dict, *, plain_text: bool = False) -> str:
     """
     Build optional prompt sections based on the provided options.
 
@@ -115,6 +137,9 @@ def _build_optional_prompt_sections(prompt_options: dict) -> str:
             - preserve_technical_content: DEPRECATED - Technical content is now protected
               via placeholder system (no prompt section needed)
             - text_cleanup: Include OCR/typographic defect correction instructions
+        plain_text: If True, use the Plain Text Mode variant of the text-cleanup section,
+            which forbids merging/splitting paragraphs instead of encouraging it. Keyword-only
+            so existing callers (e.g. generate_refinement_prompt) keep today's behavior unchanged.
 
     Returns:
         str: Concatenated optional sections to include in the system prompt
@@ -133,7 +158,7 @@ def _build_optional_prompt_sections(prompt_options: dict) -> str:
 
     # Text cleanup for OCR or poorly formatted sources
     if prompt_options.get('text_cleanup', False):
-        sections.append(TEXT_CLEANUP_SECTION)
+        sections.append(TEXT_CLEANUP_SECTION_PLAIN if plain_text else TEXT_CLEANUP_SECTION)
 
     # Join sections with double newline for proper separation
     return '\n\n'.join(sections)
@@ -205,13 +230,15 @@ def generate_translation_prompt(
     target_lang_lower = normalize_lang_key(target_language)
     example_format_text = example_texts.get(target_lang_lower, "Your translated text here")
 
-    # Build the output format section outside the f-string to avoid backslash issues in Python 3.11
+    # Build the output format section outside the f-string to avoid backslash issues in Python 3.11.
+    # The paragraph-structure contract is only emitted in Plain Text Mode (has_placeholders is
+    # False): the placeholder path has its own structural contract and must not be perturbed.
     output_format_section = _get_output_format_section(
         translate_tag_in,
         translate_tag_out,
         INPUT_TAG_IN,
         INPUT_TAG_OUT,
-        additional_rules="",
+        additional_rules=_PLAIN_TEXT_FORMAT_RULES if not has_placeholders else "",
         example_format=example_format_text
     )
 
@@ -222,7 +249,7 @@ def generate_translation_prompt(
         placeholder_section = ""
 
     # Build optional prompt sections based on prompt_options
-    optional_sections = _build_optional_prompt_sections(prompt_options)
+    optional_sections = _build_optional_prompt_sections(prompt_options, plain_text=not has_placeholders)
 
     # Build custom instructions section.
     #

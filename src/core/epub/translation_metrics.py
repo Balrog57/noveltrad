@@ -51,6 +51,10 @@ class TranslationMetrics:
     _last_reported_token_alignment: int = 0
     _last_reported_fallback: int = 0
 
+    # === Plain Text Mode paragraph alignment (issue #253) ===
+    paragraph_count_mismatches: int = 0  # Segments the LLM returned with the wrong paragraph count
+    paragraph_repair_failed: int = 0  # Segments still misaligned after the per-paragraph repair
+
     # === Phase 2: Token Alignment Fallback ===
     token_alignment_used: int = 0  # Phase 2: Token alignment fallback used
     token_alignment_success: int = 0  # Phase 2: Token alignment succeeded
@@ -302,6 +306,8 @@ class TranslationMetrics:
             "fallback_warning_fired": self.fallback_warning_fired,
             "token_alignment_used": self.token_alignment_used,
             "token_alignment_success": self.token_alignment_success,
+            "paragraph_count_mismatches": self.paragraph_count_mismatches,
+            "paragraph_repair_failed": self.paragraph_repair_failed,
             "correction_attempts": self.correction_attempts,
             "correction_success": self.correction_success,
             "total_time_seconds": self.total_time_seconds,
@@ -359,6 +365,10 @@ class TranslationMetrics:
         # Phase 2: Token alignment
         metrics.token_alignment_used = data.get("token_alignment_used", 0)
         metrics.token_alignment_success = data.get("token_alignment_success", 0)
+
+        # Plain Text Mode paragraph alignment
+        metrics.paragraph_count_mismatches = data.get("paragraph_count_mismatches", 0)
+        metrics.paragraph_repair_failed = data.get("paragraph_repair_failed", 0)
 
         # LLM correction
         metrics.correction_attempts = data.get("correction_attempts", 0)
@@ -528,6 +538,8 @@ class TranslationMetrics:
         self.fallback_warning_fired = self.fallback_warning_fired or other.fallback_warning_fired
         self.token_alignment_used += other.token_alignment_used
         self.token_alignment_success += other.token_alignment_success
+        self.paragraph_count_mismatches += other.paragraph_count_mismatches
+        self.paragraph_repair_failed += other.paragraph_repair_failed
         self.correction_attempts += other.correction_attempts
         self.correction_success += other.correction_success
         self.total_tokens_processed += other.total_tokens_processed
