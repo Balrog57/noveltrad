@@ -96,9 +96,15 @@ def render(container, session) -> None:
             for message in report.safe_messages:
                 st.warning(message)
     elif project.status == ProjectStatus.READY:
-        if settings.provider is None or not settings.base_url or not settings.model:
+        missing_ai = settings.provider is None or not settings.base_url or not settings.model
+        if missing_ai:
             st.warning(t("settings.title") + ": " + t("project.need_ai_config"))
-        elif st.button(t("project.launch"), key="launch_btn"):
+        if st.button(
+            t("project.launch"),
+            key="launch_btn",
+            disabled=missing_ai,
+            help=t("settings.title") + ": " + t("project.need_ai_config") if missing_ai else None,
+        ) and not missing_ai:
             snapshot = _snapshot_from_settings(settings)
             job_service.enqueue_project(project_id, snapshot)
             st.rerun()
