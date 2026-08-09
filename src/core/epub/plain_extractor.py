@@ -314,6 +314,17 @@ def replace_body_with_paragraphs(
             src_block.text = source_text
             source_emitted = True
 
+        # A block is flagged untranslated whenever its output text IS its source
+        # text. Keying on text identity rather than on the empty-slot branch
+        # below is what keeps the marker working now that the plain-text
+        # pipeline substitutes source text itself when a paragraph-level repair
+        # fails (issue #253); it also finally marks whole chunks that fell back
+        # to source, which were invisible before. A paragraph whose correct
+        # translation happens to equal its source (a bare name, a numeral) is
+        # flagged too — a cosmetic class on a correct block is a cheaper price
+        # than losing the marker on the blocks that matter.
+        untranslated = bool(source_text) and text == source_text
+
         # An empty translation must never delete the block.
         if text:
             emit_target = True
@@ -323,8 +334,10 @@ def replace_body_with_paragraphs(
             emit_target = False
         elif source_text:
             # Untranslated but not deleted: the paragraph survives carrying its
-            # source text, which keeps the failure visible instead of silent.
+            # source text, and the class below is what actually makes that
+            # failure findable in the output (issue #253).
             emit_target = True
+            untranslated = True
         else:
             # Nothing to say at all. Keep an empty block so the source's spacer
             # <p></p> survives and the output block count matches the input —
@@ -335,7 +348,12 @@ def replace_body_with_paragraphs(
 
         if emit_target:
             block = etree.SubElement(body_element, tag)
-            if bilingual:
+            if untranslated:
+                # Replaces plain-text-target rather than adding to it: a block
+                # carries one class, and "this is still source text" is the more
+                # important of the two.
+                block.set("class", "plain-text-untranslated")
+            elif bilingual:
                 block.set("class", "plain-text-target")
             block.text = text or source_text
 

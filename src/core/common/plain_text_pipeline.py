@@ -13,7 +13,7 @@ oversized block).
 Used by the EPUB and DOCX adapters when prompt_options['plain_text_mode'] is True.
 """
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from src.core.chunking.token_chunker import TokenChunker
 from src.core.translator import generate_translation_request
@@ -47,6 +47,23 @@ def _split_translated_back_to_paragraphs(translated_text: str) -> List[str]:
     return [p.strip() for p in _RESPLIT_REGEX.split(translated_text) if p.strip()]
 
 
+def _paragraph_count_mismatch(
+    translated_text: str,
+    expected_count: int,
+) -> Optional[Tuple[int, int]]:
+    """Return (got, expected) when the model's paragraph count differs, else None.
+
+    Counting goes through _split_translated_back_to_paragraphs so detection and
+    _reconcile_paragraph_counts can never disagree on what a paragraph is: a
+    mismatch reported here is exactly a case where the reconciliation below
+    pads or merges, which is what silently injects source text (issue #253).
+    """
+    got = len(_split_translated_back_to_paragraphs(translated_text))
+    if got == expected_count:
+        return None
+    return got, expected_count
+
+
 def _reconcile_paragraph_counts(
     translated_paragraphs: List[str],
     expected_count: int,
@@ -67,6 +84,69 @@ def _reconcile_paragraph_counts(
     head = translated_paragraphs[:expected_count - 1]
     tail = " ".join(translated_paragraphs[expected_count - 1:])
     return head + [tail]
+
+
+async def _repair_segment_by_paragraph(
+    segment: Dict[str, Any],
+    source_paragraphs: List[str],
+    *,
+    translate_one: Callable[[str, str, str], Awaitable[Optional[str]]],
+    log_callback: Optional[Callable],
+    segment_index: int,
+    context_before: str = "",
+    context_after: str = "",
+) -> Tuple[str, int]:
+    """Re-translate each paragraph of a segment individually.
+
+    Returns (joined_text, failed_count). joined_text contains exactly
+    len(segment['indices']) paragraphs separated by PARAGRAPH_SEPARATOR.
+    A paragraph whose translation fails or comes back empty contributes its
+    source text and increments failed_count.
+
+    One LLM call per paragraph is what makes the alignment exact: the mapping
+    is positional by construction, so nothing has to guess which output
+    paragraph belongs to which input one (issue #253).
+
+    translate_one(text, context_before, context_after) is injected so this stays
+    testable without an LLM client. The neighbouring source paragraphs of the
+    same segment are the context; at the edges the segment's own context is
+    used, which is why it is passed in rather than read from the segment dict
+    (that dict is what the checkpoint serializes and its shape must not move).
+    """
+    indices = segment['indices']
+    texts = [source_paragraphs[idx] for idx in indices]
+
+    repaired: List[str] = []
+    failed = 0
+    for j, text in enumerate(texts):
+        before = texts[j - 1] if j > 0 else context_before
+        after = texts[j + 1] if j + 1 < len(texts) else context_after
+
+        translated = await translate_one(text, before, after)
+        cleaned = ""
+        if translated:
+            cleaned = clean_translated_text(translated)
+            cleaned = strip_hallucinated_markup(cleaned, text)
+            # One paragraph in, one paragraph out, always: a model that split
+            # this single paragraph would otherwise re-introduce the very
+            # misalignment the repair exists to remove. Never recurse.
+            cleaned = " ".join(_split_translated_back_to_paragraphs(cleaned))
+
+        if not cleaned:
+            # The only remaining path that puts source text in the output, so
+            # it is counted and logged instead of silently padded.
+            cleaned = text
+            failed += 1
+        repaired.append(cleaned)
+
+    if failed and log_callback:
+        log_callback(
+            "plain_text_paragraph_repair_failed",
+            f"⚠️ Segment {segment_index + 1}: {failed} of {len(texts)} paragraph(s) "
+            "could not be re-translated - they keep their source text"
+        )
+
+    return PARAGRAPH_SEPARATOR.join(repaired), failed
 
 
 def build_plain_segments(
@@ -286,17 +366,14 @@ async def translate_paragraphs_plain(
     if stats_callback:
         stats_callback(stats.to_dict())
 
-    async def _translate_chunk(i):
-        """Translate one chunk. Reads previous_translation_context only in
-        sequential mode (parallel runs have no stable previous chunk)."""
-        main_content = chunks[i].get('main_content', '')
-        if not main_content.strip():
-            return ('empty', main_content)
-        translated = await generate_translation_request(
+    async def _request(main_content, context_before, context_after, previous):
+        """Single Plain Text Mode LLM call, shared by the segment loop and the
+        per-paragraph repair so the two can never drift apart."""
+        return await generate_translation_request(
             main_content=main_content,
-            context_before=chunks[i].get('context_before', ''),
-            context_after=chunks[i].get('context_after', ''),
-            previous_translation_context=(previous_translation_context if sequential else ""),
+            context_before=context_before,
+            context_after=context_after,
+            previous_translation_context=previous,
             source_language=source_language,
             target_language=target_language,
             model=model_name,
@@ -307,7 +384,29 @@ async def translate_paragraphs_plain(
             context_manager=context_manager,
             placeholder_format=None,
         )
+
+    async def _translate_chunk(i):
+        """Translate one chunk. Reads previous_translation_context only in
+        sequential mode (parallel runs have no stable previous chunk)."""
+        main_content = chunks[i].get('main_content', '')
+        if not main_content.strip():
+            return ('empty', main_content)
+        translated = await _request(
+            main_content,
+            chunks[i].get('context_before', ''),
+            chunks[i].get('context_after', ''),
+            previous_translation_context if sequential else "",
+        )
         return ('done', translated)
+
+    async def _translate_one_paragraph(text, context_before, context_after):
+        """Repair call for a single paragraph.
+
+        previous_translation_context is empty on purpose: the repair replays
+        paragraphs the sequential chain has already moved past, so feeding it
+        the running context would describe the wrong position in the text.
+        """
+        return await _request(text, context_before, context_after, "")
 
     def _fill_remaining_with_source():
         for j in range(len(chunks)):
@@ -378,6 +477,76 @@ async def translate_paragraphs_plain(
                         cleaned, chunks[i].get('main_content', ''))
                     translated_parts[i] = cleaned
                     stats.successful_first_try += 1
+                    # A wrong paragraph count is reconciled silently at
+                    # reassembly time (padding with empty slots, which then fall
+                    # back to source text). Count it, report it, and repair it
+                    # here, where the segment is still identifiable.
+                    # Partial segments are pieces of one oversized paragraph:
+                    # they are joined back by design and have no count contract.
+                    if not segments[i]['partial']:
+                        expected = len(segments[i]['indices'])
+                        mismatch = _paragraph_count_mismatch(cleaned, expected)
+                        if mismatch is not None:
+                            got, _ = mismatch
+                            # Counted whether or not the repair runs, so the
+                            # metric measures model behaviour, not our reaction.
+                            stats.paragraph_count_mismatches += 1
+                            if got > expected and expected == 1:
+                                # Benign: the model split the one paragraph this
+                                # segment owns, and _reconcile_paragraph_counts
+                                # merges the surplus straight back into its
+                                # single slot - no source text can survive. The
+                                # plan asks for debug level; log_callback has no
+                                # level parameter, so the level maps to a quiet
+                                # event id instead of the mismatch warning.
+                                if log_callback:
+                                    log_callback(
+                                        "plain_text_paragraph_split_benign",
+                                        f"Chunk {i + 1}/{len(chunks)} (segment {i}): the model "
+                                        f"split the paragraph into {got} parts - merged back "
+                                        "into its single slot"
+                                    )
+                            else:
+                                if log_callback:
+                                    log_callback(
+                                        "plain_text_paragraph_mismatch",
+                                        f"⚠️ Chunk {i + 1}/{len(chunks)} (segment {i}): the model "
+                                        f"returned {got} paragraph(s) instead of {expected} - "
+                                        "re-translating this segment paragraph by paragraph"
+                                    )
+                                # Repaired here, inside the ordered consumer
+                                # loop and before the checkpoint hook below, so
+                                # the persisted prefix always holds the repaired
+                                # text. Never inside _translate_chunk: that runs
+                                # under the worker semaphore and would deadlock.
+                                repaired, repair_failed = await _repair_segment_by_paragraph(
+                                    segments[i],
+                                    source,
+                                    translate_one=_translate_one_paragraph,
+                                    log_callback=log_callback,
+                                    segment_index=i,
+                                    context_before=chunks[i].get('context_before', ''),
+                                    context_after=chunks[i].get('context_after', ''),
+                                )
+                                if _paragraph_count_mismatch(repaired, expected) is None:
+                                    # Single joined string, as the checkpoint
+                                    # format and _reassemble both expect.
+                                    cleaned = repaired
+                                    translated_parts[i] = repaired
+                                    if repair_failed:
+                                        stats.paragraph_repair_failed += 1
+                                else:
+                                    # Forbidden by the helper's contract; keep
+                                    # the pre-repair value and say so. Attempted
+                                    # once per segment - no second round.
+                                    stats.paragraph_repair_failed += 1
+                                    if log_callback:
+                                        log_callback(
+                                            "plain_text_paragraph_repair_failed",
+                                            f"⚠️ Chunk {i + 1}/{len(chunks)} (segment {i}): the "
+                                            "per-paragraph repair still returned the wrong count - "
+                                            "keeping the original translation"
+                                        )
                     if sequential:
                         words = cleaned.split()
                         previous_translation_context = (
