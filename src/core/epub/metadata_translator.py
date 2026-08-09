@@ -34,8 +34,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from lxml import etree
 
 from src.config import (
-    GENERATOR_NAME,
-    GENERATOR_SOURCE,
     INPUT_TAG_IN,
     INPUT_TAG_OUT,
     NAMESPACES,
@@ -97,43 +95,6 @@ _MAX_CONTEXT_TOKENS = 32768
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------
-
-def _attribution_signature() -> str:
-    """The exact signature `_update_epub_metadata` appends to dc:description.
-
-    Kept byte-identical with `src/core/epub/translator.py`'s
-    `_update_epub_metadata` (the source of truth) by building it from the same
-    two config constants. Never hardcode the sentence.
-    """
-    return f"\n\nTranslated using {GENERATOR_NAME}\n{GENERATOR_SOURCE}"
-
-
-def _split_signature(raw: str) -> Tuple[str, str]:
-    """Split a dc:description into (body, signature) with `raw == body + sig`.
-
-    `_update_epub_metadata` appends the signature in two shapes: as-is after an
-    existing description, and `.strip()`ed when the description was empty or
-    absent (in which case the whole element text *is* the signature and the body
-    is empty). Both are recognized; anything else yields an empty signature,
-    which is the ATTRIBUTION_ENABLED=false case.
-    """
-    if not raw:
-        return "", ""
-    signature = _attribution_signature()
-    if raw.endswith(signature):
-        return raw[:-len(signature)], signature
-    stripped = signature.strip()
-    if raw.endswith(stripped):
-        body = raw[:-len(stripped)]
-        if not body.strip():
-            # The whole element text is the signature: the book had no
-            # description of its own, so there is nothing to translate.
-            return "", raw
-        # A body followed by the stripped form is not a shape
-        # `_update_epub_metadata` produces; normalize it to the canonical one
-        # so the re-appended signature keeps its blank-line separator.
-        return body.rstrip(), signature
-    return raw, ""
 
 
 def _extract_field(payload: str, tag_in: str, tag_out: str) -> Optional[str]:
@@ -383,7 +344,7 @@ async def translate_opf_metadata(
 
     source_title = (title_el.text or "").strip() if title_el is not None else ""
     raw_description = desc_el.text or "" if desc_el is not None else ""
-    description_body, signature = _split_signature(raw_description)
+    description_body = raw_description
 
     requested_title: Optional[str] = source_title or None
     requested_description: Optional[str] = description_body.strip() or None
@@ -445,9 +406,7 @@ async def translate_opf_metadata(
         reason = _rejection_reason(candidate, requested_description,
                                    target_language, single_line=False)
         if reason is None:
-            # The attribution signature was stripped before the request and is
-            # re-appended verbatim here, so it survives exactly once.
-            desc_el.text = candidate.strip() + signature
+            desc_el.text = candidate.strip()
             result['description_translated'] = True
             changed = True
         else:

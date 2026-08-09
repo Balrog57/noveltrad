@@ -32,7 +32,6 @@ from src.core.epub.plain_extractor import (
 )
 
 from tests.unit.epub.conftest import (
-    _disable_attribution,
     _echo_llm_client,
     _read,
 )
@@ -461,7 +460,6 @@ class TestPlainModeCoverPage:
         fix the output cover page was `<body/>`.
         """
         monkeypatch.setattr(translator_module, "_create_llm_client", _stub_create_llm_client)
-        _disable_attribution(monkeypatch)
         output_epub = tmp_path / "output_plain.epub"
 
         await translate_epub_file(

@@ -166,12 +166,6 @@ class DocxHtmlConverter:
                 for element in body:
                     self._convert_html_element_to_docx(doc, element, metadata)
 
-        # Attribution stamp: identical for every install, disabled by the
-        # ATTRIBUTION_ENABLED switch. Left untouched when attribution is off.
-        import src.config as cfg
-        if cfg.ATTRIBUTION_ENABLED:
-            doc.core_properties.last_modified_by = cfg.GENERATOR_NAME
-
         # Save
         doc.save(output_path)
 

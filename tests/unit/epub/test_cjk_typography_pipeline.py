@@ -5,7 +5,7 @@ step 6.6, behind `EPUB_SCRIPT_NORMALIZATION_ENABLED`, and make sure it can
 never fail an otherwise-successful job.
 
 Reuses the container-shape builder (`_build_cjk_epub_dir`) and the real
-`main.css` fixture, plus the echo-LLM/zip/attribution harness, from
+`main.css` fixture, plus the echo-LLM/zip harness, from
 `tests/unit/epub/conftest.py`. The container is packaged into a real .epub zip
 here, since `translate_epub_file` extracts its input itself (step 1).
 
@@ -24,7 +24,7 @@ import src.core.epub.translator as translator_module
 from src.core.epub.translator import translate_epub_file
 from src.utils.file_utils import find_partial_output_paths
 
-from tests.unit.epub.conftest import REAL_CSS, _disable_attribution, _echo_llm_client, _read
+from tests.unit.epub.conftest import REAL_CSS, _echo_llm_client, _read
 
 
 # `input_epub` is a fixture defined in conftest.py -- pytest injects it
@@ -41,7 +41,6 @@ async def _translate(input_path: Path, output_path: Path, monkeypatch, **overrid
     Returns the list of (event, message) pairs the pipeline logged.
     """
     monkeypatch.setattr(translator_module, "_create_llm_client", _stub_create_llm_client)
-    _disable_attribution(monkeypatch)
 
     events = []
 

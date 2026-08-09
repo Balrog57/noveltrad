@@ -137,12 +137,6 @@ services:
       # - TTS_BITRATE=64k
       # - TTS_OUTPUT_FORMAT=opus
 
-      # -----------------------------------------------------------------------
-      # Attribution (please consider keeping enabled to support the project)
-      # -----------------------------------------------------------------------
-      - ATTRIBUTION_ENABLED=true
-      - ATTRIBUTION_PAGE_ENABLED=true
-
     # Uncomment on Linux so the container can reach Ollama on the host:
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"

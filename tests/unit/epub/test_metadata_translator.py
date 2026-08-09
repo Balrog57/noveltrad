@@ -13,7 +13,7 @@ Two layers:
     tree). Swap the two steps and one of the halves is silently lost.
 
 The integration layer reuses the Phase 5 harness (echo LLM client, EPUB
-zipping, attribution toggle) and the container builder
+zipping) and the container builder
 (`_build_cjk_epub_dir`), both shared through `tests/unit/epub/conftest.py`
 rather than a cross-module import chain.
 
@@ -27,8 +27,6 @@ from lxml import etree
 
 import src.core.epub.translator as translator_module
 from src.config import (
-    GENERATOR_NAME,
-    GENERATOR_SOURCE,
     INPUT_TAG_IN,
     INPUT_TAG_OUT,
     TRANSLATE_TAG_IN,
@@ -42,7 +40,7 @@ from src.core.epub.translator import translate_epub_file
 from src.core.llm.base import LLMResponse
 from src.core.llm.utils.extraction import TranslationExtractor
 
-from tests.unit.epub.conftest import _disable_attribution, _echo_llm_client, _read
+from tests.unit.epub.conftest import _echo_llm_client, _read
 
 
 SOURCE_TITLE = "被渣后和前夫破镜重圆了"
@@ -130,11 +128,6 @@ def _tagged_answer(title: str = None, description: str = None) -> str:
     if description is not None:
         body += f"<BOOK_DESCRIPTION>{description}</BOOK_DESCRIPTION>\n"
     return f"{TRANSLATE_TAG_IN}\n{body}{TRANSLATE_TAG_OUT}"
-
-
-def _signature() -> str:
-    """The signature `_update_epub_metadata` appends, built from the same constants."""
-    return f"\n\nTranslated using {GENERATOR_NAME}\n{GENERATOR_SOURCE}"
 
 
 class Book:
@@ -357,44 +350,8 @@ async def test_no_response_preserves_everything(book):
 
 
 # ---------------------------------------------------------------------------
-# Criterion 5 -- the attribution signature round-trips exactly once
+# Missing description element
 # ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_signature_is_stripped_before_the_call_and_reappended_once(tmp_path):
-    signature = _signature()
-    book = Book(tmp_path / "signed", description=SOURCE_DESCRIPTION + signature)
-    client = StubClient(_tagged_answer(FRENCH_TITLE, FRENCH_DESCRIPTION))
-    result = await book.run(client)
-
-    assert result['description_translated'] is True
-
-    # It was not sent to the model...
-    prompt = client.calls[0][0]
-    assert GENERATOR_NAME not in prompt
-    assert GENERATOR_SOURCE not in prompt
-
-    # ...and it came back verbatim, appended exactly once.
-    description = book.field("description")
-    assert description == FRENCH_DESCRIPTION + signature
-    assert description.count(GENERATOR_SOURCE) == 1
-    assert description.count("Translated using") == 1
-
-
-@pytest.mark.asyncio
-async def test_signature_only_description_is_not_sent_at_all(tmp_path):
-    """`_update_epub_metadata` writes the bare signature when a book had no
-    description. There is nothing to translate then -- only the title is."""
-    signature_only = _signature().strip()
-    book = Book(tmp_path / "sig_only", description=signature_only)
-    client = StubClient(_tagged_answer(FRENCH_TITLE))
-    result = await book.run(client)
-
-    assert result['title_translated'] is True
-    assert result['description_translated'] is False
-    assert book.field("description") == signature_only
-    assert "BOOK_DESCRIPTION" not in client.calls[0][0]
-
 
 @pytest.mark.asyncio
 async def test_missing_description_element_translates_the_title_only(tmp_path):
@@ -546,22 +503,10 @@ def _pipeline_client():
 # automatically, no import needed.
 
 
-async def _translate(input_path: Path, output_path: Path, monkeypatch, client,
-                     attribution: bool = False):
-    """Drive translate_epub_file with `client` as the pipeline's LLM client.
-
-    Attribution is off by default (it defaults from the developer's local .env,
-    so pinning it keeps the assertions deterministic); one test turns it on to
-    exercise the real `_update_epub_metadata` signature interplay.
-    """
+async def _translate(input_path: Path, output_path: Path, monkeypatch, client):
+    """Drive translate_epub_file with `client` as the pipeline's LLM client."""
     monkeypatch.setattr(translator_module, "_create_llm_client",
                         lambda **kwargs: client)
-    if attribution:
-        monkeypatch.setattr(translator_module, "ATTRIBUTION_ENABLED", True)
-        monkeypatch.setattr(
-            "src.core.epub.attribution_page.ATTRIBUTION_ENABLED", False)
-    else:
-        _disable_attribution(monkeypatch)
 
     events = []
 
@@ -629,30 +574,6 @@ async def test_pipeline_flag_off_makes_no_llm_call_and_keeps_the_source_title(
     assert "<dc:title>被渣后和前夫破镜重圆了</dc:title>" in opf
     assert not any(event.startswith("epub_metadata") for event, _ in events)
     assert any(event == "epub_save_success" for event, _ in events)
-
-
-@pytest.mark.asyncio
-async def test_pipeline_signature_only_description_survives_untouched(
-    tmp_path, input_epub, monkeypatch
-):
-    """End-to-end version of the signature round-trip.
-
-    The fixture book has no dc:description, so the real `_update_epub_metadata`
-    creates one holding nothing but the attribution signature. Step 5.5 must
-    recognize that shape, translate the title only, and leave the signature in
-    place exactly once.
-    """
-    monkeypatch.setattr(translator_module, "EPUB_TRANSLATE_METADATA_ENABLED", True)
-    client = _pipeline_client()
-    output_epub = tmp_path / "output_signed.epub"
-    await _translate(input_epub, output_epub, monkeypatch, client,
-                     attribution=True)
-
-    opf = _read(output_epub, "OEBPS/content.opf")
-    assert f"<dc:title>{FRENCH_TITLE}</dc:title>" in opf
-    assert opf.count("Translated using") == 1
-    assert opf.count(GENERATOR_SOURCE) == 1
-    assert f"<dc:description>{_signature().strip()}</dc:description>" in opf
 
 
 @pytest.mark.asyncio

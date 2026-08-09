@@ -50,7 +50,6 @@ from src.core.epub.translator import translate_epub_file
 from tests.unit.epub.conftest import (
     REAL_CSS,
     _build_cjk_epub_dir,
-    _disable_attribution,
     _echo_llm_client,
     _write,
     _zip_dir_as_epub,
@@ -91,7 +90,6 @@ def _count_p_elements(xhtml_text: str) -> int:
 
 async def _translate(input_epub: Path, output_epub: Path, monkeypatch, **overrides) -> None:
     monkeypatch.setattr(translator_module, "_create_llm_client", _stub_create_llm_client)
-    _disable_attribution(monkeypatch)
     kwargs = dict(
         input_filepath=str(input_epub),
         output_filepath=str(output_epub),

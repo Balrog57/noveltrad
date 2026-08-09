@@ -507,33 +507,6 @@ For orchestration, consider:
 4. **Network isolation** - Use Docker networks to isolate services
 5. **Regular updates** - Keep base images and dependencies updated
 
-## Translation Features
-
-### Translation Signatures
-
-All translations include a discrete signature for attribution:
-
-- **EPUB**: Adds Dublin Core metadata (`dc:contributor` with role "trl", `dc:description`) and appends a short attribution page at the end of the book
-- **Text Files**: Adds footer with project name and GitHub link
-- **SRT Files**: Adds comment at end with attribution
-
-**Configuration:**
-
-Enable/disable via `.env`:
-
-```env
-# Enable signatures (default)
-SIGNATURE_ENABLED=true
-
-# Disable signatures
-SIGNATURE_ENABLED=false
-
-# Keep the OPF metadata attribution but drop the visible EPUB end page
-ATTRIBUTION_PAGE_ENABLED=false
-```
-
-See [TRANSLATION_SIGNATURE.md](../TRANSLATION_SIGNATURE.md) for details.
-
 ## Performance Optimization
 
 ### Increase Context Window

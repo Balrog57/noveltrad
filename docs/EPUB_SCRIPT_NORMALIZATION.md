@@ -77,8 +77,8 @@ and propagates the accepted title to every `*.ncx` `docTitle/text`.
 - A description longer than 4000 characters is **not sent at all** (most CJK
   web-novel descriptions duplicate the already-translated intro page); the
   title is still translated in that case.
-- The pipeline's attribution signature is stripped from the description before
-  the request and re-appended verbatim afterward, exactly once.
+- The description is sent to the model **as-is** and the translated result
+  replaces it verbatim.
 - A candidate translation is **rejected** — keeping the original — when it is
   empty/whitespace-only, still contains CJK characters while the target isn't
   CJK, is more than ~4x the source length (runaway output), or — for the title

@@ -86,21 +86,10 @@ def _install_fakes(monkeypatch, fail_at_index: int):
 def _reference_finalization(parts, structured_chunks) -> str:
     """The finalization sequence exactly as it was before the extraction.
 
-    Frozen oracle for the `_write_refined_output` refactor: join, then the
-    optional attribution footer. Any drift in the helper shows up as a diff
-    here.
+    Frozen oracle for the `_write_refined_output` refactor: join only, with no
+    attribution footer. Any drift in the helper shows up as a diff here.
     """
-    from src.config import ATTRIBUTION_ENABLED, GENERATOR_NAME, GENERATOR_SOURCE
-
-    final_text = join_translated_chunks(parts, structured_chunks)
-    if ATTRIBUTION_ENABLED:
-        footer = f"\n\n{'=' * 60}\n"
-        footer += f"Refined with {GENERATOR_NAME}\n"
-        footer += f"{GENERATOR_SOURCE}\n"
-        footer += f"{'=' * 60}\n"
-        final_text += footer
-
-    return final_text
+    return join_translated_chunks(parts, structured_chunks)
 
 
 async def _run_refine_txt_file(tmp_path, log_events=None):

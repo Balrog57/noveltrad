@@ -275,10 +275,4 @@ def build_minimal_docx(
         for image in content.images_by_paragraph.get(i, []):
             _add_image(doc, image)
 
-    # Attribution stamp: identical for every install, disabled by the
-    # ATTRIBUTION_ENABLED switch. Left untouched when attribution is off.
-    import src.config as cfg
-    if cfg.ATTRIBUTION_ENABLED:
-        doc.core_properties.last_modified_by = cfg.GENERATOR_NAME
-
     doc.save(output_path)

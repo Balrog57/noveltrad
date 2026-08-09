@@ -5,7 +5,7 @@ modules (Phase 3-7 of plan/PLAN_CjkSourceRendering.md).
 Consolidated here (Phase 7, Task 1) from what used to be a cross-module import
 chain: `test_cjk_typography_apply.py` originally defined `_build_cjk_epub_dir`,
 `cjk_epub_dir` and the container-shape constants; `test_cjk_typography_pipeline.py`
-imported them and added the echo-LLM/zip/attribution helpers;
+imported them and added the echo-LLM/zip helpers;
 `test_metadata_translator.py` imported from both. Every piece below is used by
 at least two of those three modules -- anything used by only one of them was
 deliberately left in that module instead of being moved here.
@@ -137,7 +137,7 @@ def cjk_epub_dir(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline harness: identity-echo LLM client, EPUB zipping, attribution toggle
+# Pipeline harness: identity-echo LLM client, EPUB zipping
 # ---------------------------------------------------------------------------
 
 def _echo_llm_client() -> MagicMock:
@@ -187,16 +187,6 @@ def _zip_dir_as_epub(root: Path, dest: Path) -> Path:
 def _read(epub_path, arcname: str) -> str:
     with zipfile.ZipFile(epub_path) as archive:
         return archive.read(arcname).decode("utf-8")
-
-
-def _disable_attribution(monkeypatch):
-    """Keep the attribution page/signature out of the picture.
-
-    Unrelated to this phase, and its flags default from the developer's local
-    .env -- pinning them off keeps the test deterministic regardless of that.
-    """
-    monkeypatch.setattr(translator_module, "ATTRIBUTION_ENABLED", False)
-    monkeypatch.setattr("src.core.epub.attribution_page.ATTRIBUTION_ENABLED", False)
 
 
 @pytest.fixture

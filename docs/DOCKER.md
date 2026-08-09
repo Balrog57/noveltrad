@@ -129,8 +129,6 @@ Docker automatically pulls the correct architecture for your system.
 | `OLLAMA_NUM_CTX` | Context window size | `2048` |
 | `REQUEST_TIMEOUT` | API timeout (seconds) | `900` |
 | `MAX_TOKENS_PER_CHUNK` | Tokens per translation chunk | `400` |
-| `SIGNATURE_ENABLED` | Add signature to translations | `true` |
-| `ATTRIBUTION_PAGE_ENABLED` | Append an attribution page to translated EPUBs | `true` |
 
 ## Volume Mounts
 

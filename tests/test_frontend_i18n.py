@@ -149,12 +149,12 @@ _JINJA_RE = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
 _HARDCODE_ALLOWLIST: set[tuple[str, str, str]] = {
     # --- brand / product identity ----------------------------------------
     ("img", "alt", "TBL Logo"),
-    ("h2", "<text>", "TBL"),
+    ("h2", "<text>", "NovelTrad"),
     # `v` prefix in front of the Jinja-rendered app version (e.g. "v1.2.3").
     # Universal version-number convention, not user-translatable. Both
     # entries cover the visible content and the tooltip on #appVersion.
     ("span", "<text>", "v"),
-    ("span", "title", "TBL v"),
+    ("span", "title", "NovelTrad v"),
 
     # --- dynamic placeholders replaced by JS at runtime ------------------
     ("span", "<text>", "EN"),     # #uiLocaleDisplay — short locale code

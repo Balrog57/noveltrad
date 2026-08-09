@@ -28,14 +28,7 @@ async def _write_refined_output(
     so both produce byte-identical output for the same parts. Returns True when
     the file was written; logs and returns False otherwise.
     """
-    from src.config import ATTRIBUTION_ENABLED, GENERATOR_NAME, GENERATOR_SOURCE
     final_text = join_translated_chunks(refined_parts, structured_chunks)
-    if ATTRIBUTION_ENABLED:
-        footer = f"\n\n{'=' * 60}\n"
-        footer += f"Refined with {GENERATOR_NAME}\n"
-        footer += f"{GENERATOR_SOURCE}\n"
-        footer += f"{'=' * 60}\n"
-        final_text += footer
 
     try:
         async with aiofiles.open(output_filepath, 'w', encoding='utf-8') as f:

@@ -207,8 +207,6 @@ class SrtAdapter(FormatAdapter):
             Hello, how are you?
             Bonjour, comment allez-vous ?
         """
-        from src.config import ATTRIBUTION_ENABLED, GENERATOR_NAME, GENERATOR_SOURCE
-
         srt_blocks = []
 
         for idx, subtitle in enumerate(self.subtitles):
@@ -221,12 +219,6 @@ class SrtAdapter(FormatAdapter):
             block += f"{translated_text}\n"
 
             srt_blocks.append(block)
-
-        # Add signature as comment at the end if enabled
-        if ATTRIBUTION_ENABLED:
-            signature = f"\n# Translated with {GENERATOR_NAME} (Bilingual)\n"
-            signature += f"# {GENERATOR_SOURCE}\n"
-            srt_blocks.append(signature)
 
         return '\n'.join(srt_blocks)
 

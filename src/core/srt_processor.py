@@ -74,8 +74,6 @@ class SRTProcessor:
         return subtitles
 
     def reconstruct_srt(self, subtitles: List[Dict[str, str]]) -> str:
-        from src.config import ATTRIBUTION_ENABLED, GENERATOR_NAME, GENERATOR_SOURCE
-
         srt_content = []
 
         for subtitle in subtitles:
@@ -84,12 +82,6 @@ class SRTProcessor:
             block += f"{subtitle['text']}\n"
 
             srt_content.append(block)
-
-        # Add signature as comment at the end if enabled
-        if ATTRIBUTION_ENABLED:
-            signature = f"\n# Translated with {GENERATOR_NAME}\n"
-            signature += f"# {GENERATOR_SOURCE}\n"
-            srt_content.append(signature)
 
         return '\n'.join(srt_content)
 

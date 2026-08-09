@@ -9,7 +9,7 @@
       "OEBPS/ch04.xhtml": "3d40a939c268af98db4c695c29da0820f6dee04960334145a288b55494362976",
       "OEBPS/ch05.xhtml": "23a8899fd4ffb2afdff2e126c15e70141fa7248c76c9b7542d02fcd9f3165f9a",
       "OEBPS/ch06.xhtml": "5cdd65457729b717a2c73a567c16b74e8599917996e02f6901bd2e0aea967fd2",
-      "OEBPS/content.opf": "3eed4640688a3d66ac1402ae3254165434a60f0e10df316e623cd941e51a1e85",
+      "OEBPS/content.opf": "3bbfee8597785de31fc04f3af8896bbc7b061e54c4162cd3d4b1e18f46c8f6f7",
       "OEBPS/cover.xhtml": "b105ef79cb2079b54a7bfb582fec41ae560b3a9f48b10784ab77dc2c52f13512",
       "OEBPS/foreword.xhtml": "68d8d7a0ca49b97683bd19cbabca6571b329a3b2166d87783087c2159ea90d9e",
       "OEBPS/glossary.xhtml": "a4f302126c9dcb4da672268c6780967643be5b91685669a725da56ea146cf43c",
@@ -17,7 +17,6 @@
       "OEBPS/images/illustration.png": "c6e7af79250bb55144619f2b7896ddc20cedfac1a656b613c01eef7adb7b16cf",
       "OEBPS/nav.xhtml": "fc2c0101befc1ada466db0872309db4abbad378eed097e8940ca22ef901f4498",
       "OEBPS/styles/main.css": "071772d127e65d75e657f5ca2daba7ec2be51891c17f8788f9343828870947ed",
-      "OEBPS/tbl-attribution.xhtml": "167280f8da5a855281134a3d88636499462053dfc062d0b3db2c1272630935a6",
       "OEBPS/title.xhtml": "5398c7eec1b27c9bfd2392200841fa431481e7667cf19cba63f93749cfacf36a",
       "OEBPS/toc.ncx": "fd01b8ae79c6fab0524aa13037d2934dbd207bb78cd8d734c02b024590d701b6",
       "mimetype": "e468e350d1143eb648f60c7b0bd6031101ec0544a361ca74ecef256ac901f48b"
@@ -32,7 +31,7 @@
       "processed_chunks": 0,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -43,7 +42,7 @@
       "processed_chunks": 1,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -54,7 +53,7 @@
       "processed_chunks": 1,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -65,7 +64,7 @@
       "processed_chunks": 1,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -76,7 +75,7 @@
       "processed_chunks": 2,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -87,7 +86,7 @@
       "processed_chunks": 2,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -98,7 +97,7 @@
       "processed_chunks": 2,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -109,7 +108,7 @@
       "processed_chunks": 3,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -120,7 +119,7 @@
       "processed_chunks": 3,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -131,7 +130,7 @@
       "processed_chunks": 3,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -142,29 +141,7 @@
       "processed_chunks": 4,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
-      "total_tokens": 0
-    },
-    {
-      "completed_chunks": 4,
-      "failed_chunks": 0,
-      "fallback_used": 0,
-      "placeholder_errors": 0,
-      "processed_chunks": 4,
-      "successful_after_retry": 0,
-      "token_alignment_used": 0,
-      "total_chunks": 10,
-      "total_tokens": 0
-    },
-    {
-      "completed_chunks": 4,
-      "failed_chunks": 0,
-      "fallback_used": 0,
-      "placeholder_errors": 0,
-      "processed_chunks": 4,
-      "successful_after_retry": 0,
-      "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -175,7 +152,7 @@
       "processed_chunks": 5,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -186,7 +163,7 @@
       "processed_chunks": 5,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -197,7 +174,7 @@
       "processed_chunks": 5,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -208,7 +185,7 @@
       "processed_chunks": 6,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -219,7 +196,7 @@
       "processed_chunks": 6,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -230,7 +207,7 @@
       "processed_chunks": 6,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -241,7 +218,7 @@
       "processed_chunks": 7,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -252,7 +229,7 @@
       "processed_chunks": 7,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -263,7 +240,7 @@
       "processed_chunks": 7,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -274,29 +251,7 @@
       "processed_chunks": 8,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
-      "total_tokens": 0
-    },
-    {
-      "completed_chunks": 8,
-      "failed_chunks": 0,
-      "fallback_used": 0,
-      "placeholder_errors": 0,
-      "processed_chunks": 8,
-      "successful_after_retry": 0,
-      "token_alignment_used": 0,
-      "total_chunks": 10,
-      "total_tokens": 0
-    },
-    {
-      "completed_chunks": 8,
-      "failed_chunks": 0,
-      "fallback_used": 0,
-      "placeholder_errors": 0,
-      "processed_chunks": 8,
-      "successful_after_retry": 0,
-      "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -307,7 +262,7 @@
       "processed_chunks": 9,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -318,7 +273,7 @@
       "processed_chunks": 9,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -329,7 +284,7 @@
       "processed_chunks": 9,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -340,7 +295,7 @@
       "processed_chunks": 10,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
       "total_tokens": 0
     },
     {
@@ -351,7 +306,73 @@
       "processed_chunks": 10,
       "successful_after_retry": 0,
       "token_alignment_used": 0,
-      "total_chunks": 10,
+      "total_chunks": 12,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 10,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 10,
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 12,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 11,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 11,
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 12,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 11,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 11,
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 12,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 11,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 11,
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 12,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 12,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 12,
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 12,
+      "total_tokens": 0
+    },
+    {
+      "completed_chunks": 12,
+      "failed_chunks": 0,
+      "fallback_used": 0,
+      "placeholder_errors": 0,
+      "processed_chunks": 12,
+      "successful_after_retry": 0,
+      "token_alignment_used": 0,
+      "total_chunks": 12,
       "total_tokens": 0
     }
   ]

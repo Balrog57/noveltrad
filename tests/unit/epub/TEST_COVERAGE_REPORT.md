@@ -227,7 +227,7 @@ Counts measured by running each file individually with
 
 Shared fixtures for the four CJK-typography-and-metadata files
 (`_build_cjk_epub_dir`/`cjk_epub_dir`, the real `main.css` fixture, the
-identity-echo LLM client, EPUB zipping, the attribution toggle, the
+identity-echo LLM client, EPUB zipping, the
 `input_epub` fixture) live in [conftest.py](conftest.py) — no test module in
 this directory imports from another.
 
@@ -303,15 +303,14 @@ Two layers, both against a small OPF+NCX pair or the full pipeline:
   and the NCX title while leaving `dc:creator` untouched; exactly one LLM call
   for both fields; a still-CJK / empty / unparseable / multi-line-title /
   runaway answer is rejected per field; a raising client and a no-content
-  response both preserve everything; the attribution signature round-trips
-  exactly once (including the signature-only-description case); an over-long
+  response both preserve everything; an over-long
   description is skipped but the title still translates; a broken NCX and an
   unwritable OPF are handled without corrupting the reported result; every NCX
   under the OPF directory is updated.
 - Integration tests through `translate_epub_file`: the step-ordering
   invariant (5.5's in-memory title write must survive 6.6's re-parsed OPF
-  write, and vice versa), the flag disabling the LLM call entirely, the
-  signature-only-description end-to-end case, and a raising metadata pass
+  write, and vice versa), the flag disabling the LLM call entirely,
+  and a raising metadata pass
   never failing the job.
 
 #### test_paragraph_count_drift.py — Phase 7 (F6 detection)

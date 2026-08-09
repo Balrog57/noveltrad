@@ -35,7 +35,6 @@ from src.core.epub.translator import translate_epub_file
 from tests.unit.epub.conftest import (
     REAL_CSS,
     _build_cjk_epub_dir,
-    _disable_attribution,
     _echo_llm_client,
     _write,
     _zip_dir_as_epub,
@@ -217,7 +216,6 @@ async def test_hr_survives_the_full_plain_text_epub_pipeline(hr_chapter_epub, tm
         translator_module, "_create_llm_client",
         lambda **kwargs: _recording_llm_client(requests),
     )
-    _disable_attribution(monkeypatch)
 
     output_epub = tmp_path / "output_plain.epub"
     await translate_epub_file(

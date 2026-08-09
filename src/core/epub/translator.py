@@ -22,7 +22,7 @@ from lxml import etree
 from src.config import (
     NAMESPACES, DEFAULT_MODEL, API_ENDPOINT,
     MAX_TOKENS_PER_CHUNK, THINKING_MODELS, ADAPTIVE_CONTEXT_INITIAL_THINKING,
-    MAX_TRANSLATION_ATTEMPTS, ATTRIBUTION_ENABLED, GENERATOR_NAME, GENERATOR_SOURCE,
+    MAX_TRANSLATION_ATTEMPTS,
     EPUB_SCRIPT_NORMALIZATION_ENABLED, EPUB_TRANSLATE_METADATA_ENABLED
 )
 from ..common.translation_orchestrator import GenericTranslationOrchestrator
@@ -31,7 +31,6 @@ from ..post_processor import clean_residual_tag_placeholders
 from ..context_optimizer import AdaptiveContextManager, INITIAL_CONTEXT_SIZE, CONTEXT_STEP, MAX_CONTEXT_SIZE
 from .rtl_support import apply_rtl_to_epub_directory, is_rtl_language
 from .lang_support import apply_target_language_to_xhtml_directory, get_language_code
-from .attribution_page import add_attribution_page
 from .cjk_typography import apply_script_normalization_to_epub_directory
 from .metadata_translator import translate_opf_metadata
 from src.utils.security import safe_extract_zip
@@ -236,17 +235,6 @@ async def translate_epub_file(
                 log_callback=log_callback
             )
 
-            # 4.7. Append the attribution page to the end of the spine. Runs before
-            # the metadata write (step 5) so the manifest and spine edits are
-            # persisted by that single OPF write, and before RTL (6) and the lang
-            # pass (6.5) so the new page inherits RTL CSS and the target lang
-            # attribute like any other document in the book.
-            add_attribution_page(
-                opf_tree=manifest_data['opf_tree'],
-                opf_dir=manifest_data['opf_dir'],
-                log_callback=log_callback
-            )
-
             # 5. Update metadata
             _update_epub_metadata(
                 opf_tree=manifest_data['opf_tree'],
@@ -259,10 +247,10 @@ async def translate_epub_file(
             # and in the book-information panel.
             #
             # Ordering rationale — DO NOT REORDER THIS AND STEP 6.6:
-            #   - after 5 (_update_epub_metadata): that call appends the
-            #     attribution signature to dc:description, and this pass has to
-            #     strip it before sending and re-append it afterwards, so the
-            #     signature must already be there.
+            #   - after 5 (_update_epub_metadata): that call writes the OPF with
+            #     the translated title/description, and this pass has to read
+            #     them and re-apply its translations on a rewritten tree, so
+            #     the metadata must already be on disk before this pass.
             #   - BEFORE 6.6 (apply_script_normalization_to_epub_directory):
             #     both passes write the OPF, from two *different* trees — 6.6
             #     re-parses the OPF from disk. Writing our in-memory
@@ -1595,7 +1583,7 @@ def _update_epub_metadata(
     opf_path: str,
     target_language: str
 ) -> None:
-    """Update EPUB metadata with target language and translation signature."""
+    """Update EPUB metadata with the target language."""
     opf_root = opf_tree.getroot()
     metadata = opf_root.find('.//opf:metadata', namespaces=NAMESPACES)
     if metadata is not None:
@@ -1608,31 +1596,5 @@ def _update_epub_metadata(
             lang_code = get_language_code(target_language)
             if lang_code:
                 lang_el.text = lang_code
-
-        # Add translation signature if enabled
-        if ATTRIBUTION_ENABLED:
-            # Add contributor (translator)
-            contributor_el = etree.SubElement(
-                metadata,
-                '{http://purl.org/dc/elements/1.1/}contributor'
-            )
-            contributor_el.text = GENERATOR_NAME
-            contributor_el.set('{http://www.idpf.org/2007/opf}role', 'trl')
-
-            # Add or update description with signature
-            desc_el = metadata.find('.//dc:description', namespaces=NAMESPACES)
-            signature_text = f"\n\nTranslated using {GENERATOR_NAME}\n{GENERATOR_SOURCE}"
-
-            if desc_el is None:
-                desc_el = etree.SubElement(
-                    metadata,
-                    '{http://purl.org/dc/elements/1.1/}description'
-                )
-                desc_el.text = signature_text.strip()
-            else:
-                if desc_el.text:
-                    desc_el.text += signature_text
-                else:
-                    desc_el.text = signature_text.strip()
 
     opf_tree.write(opf_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
