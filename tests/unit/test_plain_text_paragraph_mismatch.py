@@ -24,6 +24,7 @@ from src.core.epub.plain_extractor import (
     replace_body_with_paragraphs,
 )
 from src.core.epub.translation_metrics import TranslationMetrics
+from src.prompts.prompts import PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION
 
 
 MERGED = ["Alpha paragraph.", "Beta paragraph."]
@@ -100,8 +101,38 @@ def _fake_always_splitting_llm(prefix="T::"):
     return fake_request
 
 
+def _fake_count_aware_llm(prefix="T::"):
+    """Merges on a first attempt, obeys the count once the retry states it.
+
+    Models the behaviour the count-stating retry exists to exploit: the model
+    can produce the right paragraph count, it just did not on the first pass.
+    Every call records the prompt_options it was given so a test can prove the
+    count hint reaches exactly one call.
+    """
+    calls = []
+
+    async def fake_request(*, main_content, prompt_options=None, **kwargs):
+        calls.append({'main': main_content, 'options': prompt_options})
+        paragraphs = [p.strip() for p in re.split(r"\n{2,}", main_content) if p.strip()]
+        expected = (prompt_options or {}).get(PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION)
+        if expected is None and len(paragraphs) > 1:
+            return prefix + " ".join(paragraphs)
+        return "\n\n".join(prefix + p for p in paragraphs)
+
+    fake_request.calls = calls
+    return fake_request
+
+
 def _repair_failure_logs(logs):
     return [msg for key, msg in logs if key == "plain_text_paragraph_repair_failed"]
+
+
+def _repair_started_logs(logs):
+    return [msg for key, msg in logs if key == "plain_text_paragraph_repair_started"]
+
+
+def _retry_recovered_logs(logs):
+    return [msg for key, msg in logs if key == "plain_text_paragraph_retry_recovered"]
 
 
 async def _run(paragraphs, max_tokens=1000, workers=1, **overrides):
@@ -292,14 +323,18 @@ async def test_merged_segment_is_repaired_paragraph_by_paragraph(monkeypatch):
 
     assert out == ["T::First one.", "T::Second one.", "T::Third one."]
     assert stats.paragraph_count_mismatches == 1
+    assert stats.paragraph_retry_recovered == 0
     assert stats.paragraph_repair_failed == 0
     assert _repair_failure_logs(logs) == []
 
-    # One segment call, then exactly one call per paragraph: 1 + 3.
-    assert [call['main'] for call in fake.calls] == ["\n\n".join(THREE)] + THREE
+    # One segment call, one count-stating retry of the same segment (this LLM
+    # merges whatever it is told), then exactly one call per paragraph: 1 + 1 + 3.
+    joined = "\n\n".join(THREE)
+    assert [call['main'] for call in fake.calls] == [joined, joined] + THREE
+    assert len(_repair_started_logs(logs)) == 1
     # Each repair call is positioned by its neighbours inside the segment; the
     # segment's own (empty) context fills the two edges.
-    assert [(call['before'], call['after']) for call in fake.calls[1:]] == [
+    assert [(call['before'], call['after']) for call in fake.calls[2:]] == [
         ("", THREE[1]),
         (THREE[0], THREE[2]),
         (THREE[1], ""),
@@ -353,9 +388,10 @@ async def test_repair_is_attempted_only_once(monkeypatch):
     assert out == [f"T::{p} EXTRA" for p in THREE]
     assert stats.paragraph_count_mismatches == 1
     assert stats.paragraph_repair_failed == 0
-    # Still 1 + 3: the surplus paragraph of each repair answer is folded back
-    # into its single slot rather than triggering a second repair round.
-    assert len(fake.calls) == 4
+    # 1 segment + 1 retry (this LLM splits that one too) + 3 repair calls: the
+    # surplus paragraph of each repair answer is folded back into its single
+    # slot rather than triggering a second repair round.
+    assert len(fake.calls) == 5
 
 
 @pytest.mark.asyncio
@@ -395,7 +431,8 @@ async def test_repair_result_is_checkpointed(monkeypatch):
     reference, _, _ = await _run(CHECKPOINT_SOURCE, max_tokens=CHECKPOINT_TOKENS)
     assert reference == expected
 
-    # 2. Same run, paused once the first segment has been repaired (1 + 3 calls).
+    # 2. Same run, paused once the first segment has been repaired
+    #    (1 segment + 1 count-stating retry + 3 per-paragraph calls).
     fake = _recording_merging_llm()
     monkeypatch.setattr(plain_pipeline, "generate_translation_request", fake)
     hook = _HookRecorder()
@@ -409,7 +446,7 @@ async def test_repair_result_is_checkpointed(monkeypatch):
         parallel_workers=1,
         checkpoint_hook=hook,
         checkpoint_every=1,
-        check_interruption_callback=lambda: len(fake.calls) >= 4,
+        check_interruption_callback=lambda: len(fake.calls) >= 5,
     )
 
     assert interrupted is True
@@ -474,7 +511,192 @@ async def test_oversized_and_merged_combined(monkeypatch):
     assert out[2:] == ["T::Tail A.", "T::Tail B.", "T::Tail C."]
     assert stats.paragraph_count_mismatches == 1
     assert stats.paragraph_repair_failed == 0
-    assert len(fake.calls) == len(segments) + 3
+    # One retry of the merged segment (refused by this LLM) plus its 3 repair calls.
+    assert len(fake.calls) == len(segments) + 4
+
+
+# ---------------------------------------------------------------------------
+# The count-stating retry that runs before the per-paragraph repair
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_retry_recovers_the_segment_in_one_call(monkeypatch):
+    """A model that obeys the stated count costs 2 calls, not 1 + N."""
+    fake = _fake_count_aware_llm()
+    monkeypatch.setattr(plain_pipeline, "generate_translation_request", fake)
+    monkeypatch.setattr(plain_pipeline, "clean_translated_text", lambda s: s)
+
+    out, stats, logs = await _run(THREE)
+
+    assert out == [f"T::{p}" for p in THREE]
+    # The mismatch still counts: the metric measures model behaviour, not our
+    # reaction to it. What changed is how the alignment was restored.
+    assert stats.paragraph_count_mismatches == 1
+    assert stats.paragraph_retry_recovered == 1
+    assert stats.paragraph_repair_failed == 0
+
+    joined = "\n\n".join(THREE)
+    assert [call['main'] for call in fake.calls] == [joined, joined]
+    assert len(_retry_recovered_logs(logs)) == 1
+    assert _repair_started_logs(logs) == []
+    assert _repair_failure_logs(logs) == []
+
+
+@pytest.mark.asyncio
+async def test_retry_hint_reaches_exactly_one_call(monkeypatch):
+    """The count hint is set on the retry only, and never leaks to a neighbour."""
+    fake = _fake_count_aware_llm()
+    monkeypatch.setattr(plain_pipeline, "generate_translation_request", fake)
+    monkeypatch.setattr(plain_pipeline, "clean_translated_text", lambda s: s)
+
+    shared_options = {'plain_text_mode': True, 'text_cleanup': False}
+    segments = plain_pipeline.build_plain_segments(CHECKPOINT_SOURCE, CHECKPOINT_TOKENS)
+    assert [len(segment['indices']) for segment in segments] == [3, 3, 3]
+
+    out, stats, _ = await _run(
+        CHECKPOINT_SOURCE,
+        max_tokens=CHECKPOINT_TOKENS,
+        prompt_options=shared_options,
+    )
+
+    assert out == [f"T::{p}" for p in CHECKPOINT_SOURCE]
+    assert stats.paragraph_retry_recovered == 3
+
+    hints = [(call['options'] or {}).get(PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION)
+             for call in fake.calls]
+    # Three segments, each: first attempt without the hint, retry with it.
+    assert hints == [None, 3, None, 3, None, 3]
+    # The caller's dict is shared by the whole run and must come back untouched.
+    assert shared_options == {'plain_text_mode': True, 'text_cleanup': False}
+    # The retry carries everything else the first attempt carried.
+    retry_options = fake.calls[1]['options']
+    assert retry_options['plain_text_mode'] is True
+    assert retry_options['text_cleanup'] is False
+
+
+@pytest.mark.asyncio
+async def test_retry_is_skipped_for_a_one_paragraph_segment(monkeypatch):
+    """With one paragraph expected, the repair is already a single call."""
+    calls = []
+
+    async def fake_request(*, main_content, prompt_options=None, **kwargs):
+        calls.append({'main': main_content, 'options': prompt_options})
+        # Empty answer on the segment call, real answer on the repair call.
+        return "" if len(calls) == 1 else "T::" + main_content.strip()
+
+    monkeypatch.setattr(plain_pipeline, "generate_translation_request", fake_request)
+    monkeypatch.setattr(plain_pipeline, "clean_translated_text", lambda s: s)
+
+    out, stats, logs = await _run(["Solo paragraph."])
+
+    assert out == ["T::Solo paragraph."]
+    assert stats.paragraph_count_mismatches == 1
+    assert stats.paragraph_retry_recovered == 0
+    assert stats.paragraph_repair_failed == 0
+    # Segment call + one repair call, with no retry wedged in between.
+    assert len(calls) == 2
+    assert [(call['options'] or {}).get(PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION)
+            for call in calls] == [None, None]
+    assert len(_repair_started_logs(logs)) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_answer_is_rejected_unless_the_count_matches(monkeypatch):
+    """A retry that is merely different, not aligned, must not be accepted."""
+    async def fake_request(*, main_content, prompt_options=None, **kwargs):
+        paragraphs = [p.strip() for p in re.split(r"\n{2,}", main_content) if p.strip()]
+        if len(paragraphs) == 1:
+            return "T::" + paragraphs[0]
+        expected = (prompt_options or {}).get(PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION)
+        if expected is None:
+            return "T::" + " ".join(paragraphs)          # merged into one
+        return "T::A\n\nT::B"                            # 2 back, 3 expected
+
+    monkeypatch.setattr(plain_pipeline, "generate_translation_request", fake_request)
+    monkeypatch.setattr(plain_pipeline, "clean_translated_text", lambda s: s)
+
+    out, stats, logs = await _run(THREE)
+
+    # The near-miss retry is discarded; the per-paragraph repair produces the
+    # output, so no slot can hold a paragraph that belongs to another one.
+    assert out == [f"T::{p}" for p in THREE]
+    assert stats.paragraph_count_mismatches == 1
+    assert stats.paragraph_retry_recovered == 0
+    assert stats.paragraph_repair_failed == 0
+    assert _retry_recovered_logs(logs) == []
+    assert len(_repair_started_logs(logs)) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_result_survives_a_pause_and_resume(monkeypatch):
+    """A segment realigned by the retry is what the checkpoint replays."""
+    from tests.unit.test_plain_text_checkpoint import _HookRecorder
+
+    monkeypatch.setattr(plain_pipeline, "clean_translated_text", lambda s: s)
+    expected = [f"T::{p}" for p in CHECKPOINT_SOURCE]
+
+    fake = _fake_count_aware_llm()
+    monkeypatch.setattr(plain_pipeline, "generate_translation_request", fake)
+    hook = _HookRecorder()
+    _, stats, interrupted = await plain_pipeline.translate_paragraphs_plain(
+        paragraphs=CHECKPOINT_SOURCE,
+        source_language="English",
+        target_language="French",
+        model_name="m",
+        llm_client=object(),
+        max_tokens_per_chunk=CHECKPOINT_TOKENS,
+        parallel_workers=1,
+        checkpoint_hook=hook,
+        checkpoint_every=1,
+        check_interruption_callback=lambda: len(fake.calls) >= 2,
+    )
+
+    assert interrupted is True
+    assert stats.paragraph_retry_recovered == 1
+    assert hook.last['prefix'][0] == "\n\n".join(expected[:3])
+
+    resumed, _, _ = await _run(
+        CHECKPOINT_SOURCE,
+        max_tokens=CHECKPOINT_TOKENS,
+        resume_segments=hook.last['segments'],
+        resume_translated=hook.last['prefix'],
+    )
+    assert resumed == expected
+
+
+@pytest.mark.asyncio
+async def test_retry_works_under_parallel_workers(monkeypatch):
+    """The retry lives in the ordered consumer loop, not under the semaphore."""
+    fake = _fake_count_aware_llm()
+    monkeypatch.setattr(plain_pipeline, "generate_translation_request", fake)
+    monkeypatch.setattr(plain_pipeline, "clean_translated_text", lambda s: s)
+
+    out, stats, logs = await _run(
+        CHECKPOINT_SOURCE, max_tokens=CHECKPOINT_TOKENS, workers=4
+    )
+
+    assert out == [f"T::{p}" for p in CHECKPOINT_SOURCE]
+    assert stats.paragraph_count_mismatches == 3
+    assert stats.paragraph_retry_recovered == 3
+    assert stats.paragraph_repair_failed == 0
+    # Three concurrent first attempts, then three retries: 6 calls, no repair.
+    assert len(fake.calls) == 6
+    assert _repair_started_logs(logs) == []
+
+
+@pytest.mark.asyncio
+async def test_retry_is_never_issued_without_a_mismatch(monkeypatch):
+    """The happy path costs exactly one call per segment, as before."""
+    fake = _fake_count_aware_llm()
+    monkeypatch.setattr(plain_pipeline, "generate_translation_request", fake)
+    monkeypatch.setattr(plain_pipeline, "clean_translated_text", lambda s: s)
+
+    out, stats, logs = await _run(["Only paragraph here."])
+
+    assert out == ["T::Only paragraph here."]
+    assert stats.paragraph_count_mismatches == 0
+    assert stats.paragraph_retry_recovered == 0
+    assert len(fake.calls) == 1
+    assert _mismatch_logs(logs) == [] and _retry_recovered_logs(logs) == []
 
 
 # ---------------------------------------------------------------------------
@@ -483,18 +705,61 @@ async def test_oversized_and_merged_combined(monkeypatch):
 def test_metrics_roundtrip_and_merge():
     metrics = TranslationMetrics()
     assert metrics.paragraph_count_mismatches == 0
+    assert metrics.paragraph_retry_recovered == 0
     assert metrics.paragraph_repair_failed == 0
 
     metrics.paragraph_count_mismatches = 3
+    metrics.paragraph_retry_recovered = 2
     metrics.paragraph_repair_failed = 1
 
     restored = TranslationMetrics.from_dict(metrics.to_dict())
     assert restored.paragraph_count_mismatches == 3
+    assert restored.paragraph_retry_recovered == 2
     assert restored.paragraph_repair_failed == 1
 
     other = TranslationMetrics()
     other.paragraph_count_mismatches = 4
+    other.paragraph_retry_recovered = 1
     other.paragraph_repair_failed = 2
     metrics.merge(other)
     assert metrics.paragraph_count_mismatches == 7
+    assert metrics.paragraph_retry_recovered == 3
     assert metrics.paragraph_repair_failed == 3
+
+
+def test_counters_reach_the_cross_file_stats_payload():
+    """The counters must survive the EPUB aggregation, or nobody ever sees them."""
+    from src.core.epub.translator import (
+        _global_stats_payload,
+        _restore_accumulated_stats,
+        _snapshot_accumulated_stats,
+    )
+
+    acc = TranslationMetrics()
+    acc.paragraph_count_mismatches = 5
+    acc.paragraph_retry_recovered = 3
+    acc.paragraph_repair_failed = 1
+
+    file_stats = {
+        'paragraph_count_mismatches': 2,
+        'paragraph_retry_recovered': 1,
+        'paragraph_repair_failed': 1,
+    }
+    payload = _global_stats_payload(10, 4, acc, file_stats)
+    assert payload['paragraph_count_mismatches'] == 7
+    assert payload['paragraph_retry_recovered'] == 4
+    assert payload['paragraph_repair_failed'] == 2
+
+    # A run that never went through Plain Text Mode reports zeros, not absence:
+    # the web UI reads these keys unconditionally.
+    empty = _global_stats_payload(1, 1, TranslationMetrics())
+    assert empty['paragraph_count_mismatches'] == 0
+    assert empty['paragraph_retry_recovered'] == 0
+    assert empty['paragraph_repair_failed'] == 0
+
+    # ...and a pause in the middle of a book must not reset them to zero.
+    restored = TranslationMetrics()
+    _restore_accumulated_stats(_snapshot_accumulated_stats(acc), restored)
+    assert restored.paragraph_count_mismatches == 5
+    assert restored.paragraph_retry_recovered == 3
+    assert restored.paragraph_repair_failed == 1

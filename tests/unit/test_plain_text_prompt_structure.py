@@ -9,7 +9,10 @@ future change cannot leak the paragraph-structure rules onto the placeholder
 """
 import pytest
 
-from src.prompts.prompts import generate_translation_prompt
+from src.prompts.prompts import (
+    PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION,
+    generate_translation_prompt,
+)
 
 
 def _prompt(has_placeholders, prompt_options=None):
@@ -48,6 +51,52 @@ def test_placeholder_cleanup_still_merges():
     """The non-plain path keeps today's cleanup wording unchanged."""
     result = _prompt(has_placeholders=True, prompt_options={"text_cleanup": True})
     assert "Merge incorrectly split paragraphs" in result.system
+
+
+def test_first_attempt_never_carries_the_retry_rules():
+    """Without the count option the prompt is exactly the contract it always was."""
+    for options in (None, {}, {"text_cleanup": True}, {"plain_text_mode": True}):
+        system = _prompt(has_placeholders=False, prompt_options=options).system
+        assert "RETRY:" not in system
+        assert "Count the paragraphs before answering" not in system
+
+
+def test_retry_states_the_expected_count():
+    """The retry names the number and defends the blocks models drop (#253)."""
+    system = _prompt(
+        has_placeholders=False,
+        prompt_options={PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION: 7},
+    ).system
+    # The base contract is still there; the retry rules are added to it.
+    assert "Output EXACTLY the same number of paragraphs" in system
+    assert "RETRY:" in system
+    assert "EXACTLY 7 paragraph(s)" in system
+    assert "author's note" in system
+
+
+def test_retry_rules_never_reach_the_placeholder_path():
+    """The placeholder pipeline has its own structural contract; leave it alone."""
+    system = _prompt(
+        has_placeholders=True,
+        prompt_options={PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION: 7},
+    ).system
+    assert "RETRY:" not in system
+    assert "EXACTLY 7 paragraph(s)" not in system
+
+
+@pytest.mark.parametrize("value", [0, -1, None, "3", 3.0, True, False])
+def test_a_non_positive_int_count_is_ignored(value):
+    """A malformed hint degrades to the base contract instead of a broken rule.
+
+    `True` is in the list on purpose: bool is an int subclass, and 'EXACTLY True
+    paragraph(s)' is not an instruction.
+    """
+    system = _prompt(
+        has_placeholders=False,
+        prompt_options={PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION: value},
+    ).system
+    assert "Output EXACTLY the same number of paragraphs" in system
+    assert "RETRY:" not in system
 
 
 def test_other_sections_and_their_order_are_unchanged():

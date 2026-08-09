@@ -1,4 +1,4 @@
-from typing import List, NamedTuple, Tuple, Optional
+from typing import Any, Dict, List, NamedTuple, Tuple, Optional
 
 from src.prompts.examples import (build_placeholder_section,
                               get_output_format_example, get_subtitle_example,
@@ -88,6 +88,34 @@ _PLAIN_TEXT_FORMAT_RULES = (
     "\n9. Do NOT merge two paragraphs into one, and do NOT split one paragraph into two"
     "\n10. An empty input paragraph stays empty - do not fill it"
 )
+
+# prompt_options key carrying the paragraph count of the segment being retried.
+# Set by the plain-text pipeline on the single retry it issues after a
+# paragraph-count mismatch, and never on a first attempt (issue #253).
+PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION = 'plain_text_expected_paragraphs'
+
+
+def _plain_text_format_rules(prompt_options: Optional[Dict[str, Any]] = None) -> str:
+    """Return the Plain Text Mode paragraph contract, hardened on a retry.
+
+    The base contract is what every Plain Text Mode call carries. When the
+    caller sets PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION, the model has already
+    answered this exact text with the wrong paragraph count, so the retry names
+    the number it must produce and spells out the failure observed in practice:
+    disclaimers, author's notes and headings folded away as if they were
+    metadata (issue #253). Numbering continues from the base rules.
+    """
+    expected = (prompt_options or {}).get(PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION)
+    if not isinstance(expected, int) or isinstance(expected, bool) or expected < 1:
+        return _PLAIN_TEXT_FORMAT_RULES
+    return _PLAIN_TEXT_FORMAT_RULES + (
+        "\n11. RETRY: your previous answer for this exact text had the WRONG number of paragraphs"
+        f"\n12. This input contains EXACTLY {expected} paragraph(s); your output MUST contain "
+        f"EXACTLY {expected} paragraph(s), separated by ONE BLANK LINE"
+        "\n13. Count the paragraphs before answering. A disclaimer, an author's note, a chapter "
+        "heading or any short standalone line IS a paragraph and IS content: translate each one "
+        "as its own paragraph - never drop it, never fold it into the next one, never summarize it"
+    )
 
 
 # ============================================================================
@@ -238,7 +266,7 @@ def generate_translation_prompt(
         translate_tag_out,
         INPUT_TAG_IN,
         INPUT_TAG_OUT,
-        additional_rules=_PLAIN_TEXT_FORMAT_RULES if not has_placeholders else "",
+        additional_rules=_plain_text_format_rules(prompt_options) if not has_placeholders else "",
         example_format=example_format_text
     )
 

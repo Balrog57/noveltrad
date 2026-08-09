@@ -53,6 +53,7 @@ class TranslationMetrics:
 
     # === Plain Text Mode paragraph alignment (issue #253) ===
     paragraph_count_mismatches: int = 0  # Segments the LLM returned with the wrong paragraph count
+    paragraph_retry_recovered: int = 0  # ...of which one count-stating retry realigned, for 1 call
     paragraph_repair_failed: int = 0  # Segments still misaligned after the per-paragraph repair
 
     # === Phase 2: Token Alignment Fallback ===
@@ -307,6 +308,7 @@ class TranslationMetrics:
             "token_alignment_used": self.token_alignment_used,
             "token_alignment_success": self.token_alignment_success,
             "paragraph_count_mismatches": self.paragraph_count_mismatches,
+            "paragraph_retry_recovered": self.paragraph_retry_recovered,
             "paragraph_repair_failed": self.paragraph_repair_failed,
             "correction_attempts": self.correction_attempts,
             "correction_success": self.correction_success,
@@ -368,6 +370,7 @@ class TranslationMetrics:
 
         # Plain Text Mode paragraph alignment
         metrics.paragraph_count_mismatches = data.get("paragraph_count_mismatches", 0)
+        metrics.paragraph_retry_recovered = data.get("paragraph_retry_recovered", 0)
         metrics.paragraph_repair_failed = data.get("paragraph_repair_failed", 0)
 
         # LLM correction
@@ -539,6 +542,7 @@ class TranslationMetrics:
         self.token_alignment_used += other.token_alignment_used
         self.token_alignment_success += other.token_alignment_success
         self.paragraph_count_mismatches += other.paragraph_count_mismatches
+        self.paragraph_retry_recovered += other.paragraph_retry_recovered
         self.paragraph_repair_failed += other.paragraph_repair_failed
         self.correction_attempts += other.correction_attempts
         self.correction_success += other.correction_success
