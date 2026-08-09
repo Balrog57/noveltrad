@@ -799,6 +799,14 @@ export const TranslationTracker = {
             ? 0
             : (stats.placeholder_errors || 0);
 
+        // Plain Text Mode paragraph alignment (issue #253). Zero on every other
+        // path, so no gating by file type is needed: a segment the model
+        // returned with the wrong paragraph count was re-translated until the
+        // count matched, and whatever is left over stayed misaligned.
+        const paragraphMismatches = stats.paragraph_count_mismatches || 0;
+        const paragraphRepairFailed = stats.paragraph_repair_failed || 0;
+        const paragraphRealigned = Math.max(0, paragraphMismatches - paragraphRepairFailed);
+
         const cost = stats.openrouter_cost || 0;
         const promptTokens = stats.openrouter_prompt_tokens || 0;
         const completionTokens = stats.openrouter_completion_tokens || 0;
@@ -820,6 +828,14 @@ export const TranslationTracker = {
 
         if (placeholderErrors > 0) {
             items.push(`<span class="completion-card__stat--warn">${t('translation:completion_placeholder_errors', { count: placeholderErrors })}</span>`);
+        }
+
+        if (paragraphRealigned > 0) {
+            items.push(t('translation:completion_paragraph_realigned', { count: paragraphRealigned }));
+        }
+
+        if (paragraphRepairFailed > 0) {
+            items.push(`<span class="completion-card__stat--warn">${t('translation:completion_paragraph_repair_failed', { count: paragraphRepairFailed })}</span>`);
         }
 
         if (cost > 0 || totalTokens > 0) {

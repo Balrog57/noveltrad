@@ -110,6 +110,8 @@
   "completion_failed_chunks": "{{count}} failed",
   "completion_fallback_chunks": "{{count}} formatting fallback(s)",
   "completion_placeholder_errors": "{{count}} formatting issue(s)",
+  "completion_paragraph_realigned": "{{count}} paragraph realignment(s)",
+  "completion_paragraph_repair_failed": "{{count}} segment(s) still misaligned",
   "completion_warning_heading": "Translations are correct — only the formatting may need attention",
   "completion_warning_heading_untranslated": "Some chunks could not be translated and remain in the source language",
   "completion_warning_token_alignment": "{{count}} chunk(s) with approximate tag placement",

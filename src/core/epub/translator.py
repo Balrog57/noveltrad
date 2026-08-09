@@ -925,6 +925,15 @@ def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None):
         'processed_chunks': acc.processed_chunks + fs.get('processed_chunks', 0),
         'successful_after_retry': acc.successful_after_retry + fs.get('successful_after_retry', 0),
         'quality_warning_fired': acc.quality_warning_fired or fs.get('quality_warning_fired', False),
+        # Plain Text Mode paragraph alignment (issue #253). Emitted for every
+        # format: they are 0 on any path that is not Plain Text Mode, and a
+        # counter nobody can read is a counter that does not exist.
+        'paragraph_count_mismatches': (acc.paragraph_count_mismatches
+                                       + fs.get('paragraph_count_mismatches', 0)),
+        'paragraph_retry_recovered': (acc.paragraph_retry_recovered
+                                      + fs.get('paragraph_retry_recovered', 0)),
+        'paragraph_repair_failed': (acc.paragraph_repair_failed
+                                    + fs.get('paragraph_repair_failed', 0)),
         'total_tokens': (acc.total_tokens_processed + acc.total_tokens_generated
                          + fs.get('total_tokens_processed', 0) + fs.get('total_tokens_generated', 0)),
     }
@@ -1163,6 +1172,9 @@ def _snapshot_accumulated_stats(metrics) -> Dict:
         'retry_attempts': metrics.retry_attempts,
         'quality_warning_fired': metrics.quality_warning_fired,
         'fallback_warning_fired': metrics.fallback_warning_fired,
+        'paragraph_count_mismatches': metrics.paragraph_count_mismatches,
+        'paragraph_retry_recovered': metrics.paragraph_retry_recovered,
+        'paragraph_repair_failed': metrics.paragraph_repair_failed,
         'correction_attempts': metrics.correction_attempts,
         'correction_success': metrics.correction_success,
         'total_tokens_processed': metrics.total_tokens_processed,
@@ -1186,6 +1198,9 @@ def _restore_accumulated_stats(snapshot: Dict, metrics) -> None:
     metrics.retry_attempts = snapshot.get('retry_attempts', 0)
     metrics.quality_warning_fired = snapshot.get('quality_warning_fired', False)
     metrics.fallback_warning_fired = snapshot.get('fallback_warning_fired', False)
+    metrics.paragraph_count_mismatches = snapshot.get('paragraph_count_mismatches', 0)
+    metrics.paragraph_retry_recovered = snapshot.get('paragraph_retry_recovered', 0)
+    metrics.paragraph_repair_failed = snapshot.get('paragraph_repair_failed', 0)
     metrics.correction_attempts = snapshot.get('correction_attempts', 0)
     metrics.correction_success = snapshot.get('correction_success', 0)
     metrics.total_tokens_processed = snapshot.get('total_tokens_processed', 0)
