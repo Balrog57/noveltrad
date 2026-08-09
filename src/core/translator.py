@@ -37,6 +37,8 @@ def _build_chunk_glossary_block(
     prompt_options: Optional[dict],
     log_callback=None,
     runtime_state: Optional[dict] = None,
+    *,
+    target_language: str = "",
 ) -> str:
     """
     Filter the active glossary against the current chunk and render a prompt block.
@@ -57,6 +59,13 @@ def _build_chunk_glossary_block(
     owned by the caller) so it never leaks into the persisted prompt_options
     snapshot. If runtime_state is None, a fresh local dict is used (warning
     won't be deduped across calls — fine for ad-hoc uses).
+
+    Keyword-only args:
+        target_language: the job's target language, forwarded to
+            `build_glossary_block`. It selects the target-side inflection
+            instruction, emitted only for the languages listed in
+            `INFLECTED_TARGET_LANGUAGES` (see src/core/glossary/inflection.py).
+            Defaults to "" so existing callers keep the previous output.
     """
     if not prompt_options:
         return ""
@@ -106,7 +115,9 @@ def _build_chunk_glossary_block(
             )
 
     glossary_block = (
-        build_glossary_block(filtered, term_metadata=metadata) if filtered else ""
+        build_glossary_block(
+            filtered, target_language=target_language, term_metadata=metadata
+        ) if filtered else ""
     )
 
     if not cast_block and not glossary_block:
@@ -227,7 +238,7 @@ async def _make_llm_request_with_adaptive_context(
             # Build the per-chunk glossary block (empty if no glossary configured)
             glossary_block = _build_chunk_glossary_block(
                 current_content, prompt_options, log_callback=log_callback,
-                runtime_state=runtime_state,
+                runtime_state=runtime_state, target_language=target_language,
             )
 
             # Generate prompts
@@ -555,7 +566,7 @@ async def _make_refinement_request(
     # the first pass are the ones we want to keep stable through refinement.
     glossary_block = _build_chunk_glossary_block(
         draft_translation, prompt_options, log_callback=log_callback,
-        runtime_state=runtime_state,
+        runtime_state=runtime_state, target_language=target_language,
     )
 
     # Generate refinement prompts

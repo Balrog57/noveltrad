@@ -308,7 +308,7 @@ async def refine_subtitle_translations(
         block_text_for_glossary = "\n".join(text for _, text in local_subtitle_tuples)
         glossary_block = _build_chunk_glossary_block(
             block_text_for_glossary, prompt_options, log_callback=log_callback,
-            runtime_state=runtime_state,
+            runtime_state=runtime_state, target_language=target_language,
         )
 
         block_refined: Dict[int, str] = {}
@@ -551,7 +551,7 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
             block_text_for_glossary = "\n".join(text for _, text in local_subtitle_tuples)
             glossary_block = _build_chunk_glossary_block(
                 block_text_for_glossary, prompt_options, log_callback=log_callback,
-                runtime_state=runtime_state,
+                runtime_state=runtime_state, target_language=target_language,
             )
 
             # Generate system and user prompts for this block with local indices

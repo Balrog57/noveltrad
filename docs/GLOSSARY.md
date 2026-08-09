@@ -265,6 +265,27 @@ The NER prompt asks the model to return the **base form** of each entity. After 
 
 Or add the base form first, then edit it later in the editor table by clicking the source cell.
 
+### Target-side inflection: what the model is told about the translation
+
+Everything above is about matching *source* forms. The target you store is still a single string: the citation / dictionary form of the term. For a target language with grammatical case, agreement or derived forms, a running sentence rarely uses that exact form — a literal "use this exact translation" instruction and the target language's grammar are in tension.
+
+For a fixed set of target languages, `build_glossary_block` adds one line right after "Do NOT paraphrase, transliterate differently, or invent alternatives." (it is a single line in the prompt; wrapped here for readability):
+
+```text
+Each target above is given in its dictionary form. Apply whatever morphological changes {target_language}
+grammar requires — case, number, agreement, derived forms, and the regular stem alternations these
+entail. What must never change is the choice of rendering: do not substitute a different translation,
+a different transliteration, or a more familiar variant of the term.
+```
+
+`{target_language}` is filled in with the job's target language. The line grants the model the target language's *whole* morphology — not just a change of ending: this deliberately covers regular stem alternations (Russian fluid vowels, Finnish consonant gradation, Turkish final-consonant voicing, German plural umlaut, ...) and derived forms (a denominal adjective, e.g. `Muggle` -> `магловский`), which an "inflect the ending, keep the stem" rule would not permit and would in fact misdescribe for several of these languages. What the line locks down instead is the *choice of rendering*: whichever translation or transliteration you put in the glossary must not be swapped for a different one, even a more familiar or more established one the model recalls from training.
+
+The line is only emitted when the job's target language is in `INFLECTED_TARGET_LANGUAGES`, a frozenset defined in `src/core/glossary/inflection.py` (checked via `target_language_is_inflected()`). The inclusion criterion: case/number inflection changes the *written* form of the term, so the citation form stored in the glossary is routinely not the form that appears in a running sentence. That criterion is also why some richly-inflected languages are deliberately excluded — Arabic marks case with unwritten short-vowel diacritics, and Bulgarian/Macedonian lost nominal case declension, so the written term does not change the way it does for the included languages.
+
+If your target language is not in that set — including Chinese, Japanese, Korean, English, French, Spanish, Bulgarian and Arabic — nothing changes: the block is emitted exactly as it was before this instruction existed, with no extra line. Absence from the list is not an error condition, just the previous behavior.
+
+This is a prompt instruction, not a guarantee: it documents what the model is told, not what it will reliably do. For a term that has a well-established competing rendering in the target language, expect the instruction to reduce, not eliminate, occasional reversion to that memorized form.
+
 ---
 
 ## Character gender (Chinese, Japanese, Korean, ...)
