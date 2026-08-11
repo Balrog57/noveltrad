@@ -477,6 +477,8 @@ export const ProviderManager = {
             this.loadDeepSeekModels();
         } else if (provider === 'nim') {
             this.loadNimModels();
+        } else if (['anthropic', 'xai', 'nexum'].includes(provider)) {
+            this.loadGenericCloudModels(provider);
         }
     },
 
@@ -489,7 +491,11 @@ export const ProviderManager = {
         const fallback = {
             anthropic: [{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }],
             xai: [{ value: 'grok-4.5', label: 'Grok 4.5' }],
-            nexum: [{ value: 'qwen-3.7-max', label: 'Qwen 3.7 Max' }, { value: 'deepseek-v4', label: 'DeepSeek V4' }],
+            nexum: [
+                { value: 'qwen-3.7-max', label: 'Qwen 3.7 Max' },
+                { value: 'deepseek-v4', label: 'DeepSeek V4' },
+                { value: 'xiaomi-mimo-2.5', label: 'Xiaomi Mimo 2.5' },
+            ],
         }[provider];
         try {
             const data = await ApiClient.getModels(provider, { apiKey: ApiKeyUtils.getValue(field) });

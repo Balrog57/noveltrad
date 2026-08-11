@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">NovelTrad</title>
+  <desc id="desc">A translated book with a bright N monogram</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#102a43"/><stop offset="1" stop-color="#0b7285"/></linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#d9f3f0"/></linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <path d="M24 32c15-7 29-5 40 5v57c-11-10-25-12-40-5V32Z" fill="url(#page)"/>
+  <path d="M104 32c-15-7-29-5-40 5v57c11-10 25-12 40-5V32Z" fill="#b8e7e2"/>
+  <path d="M64 37v57" stroke="#0b7285" stroke-width="4" stroke-linecap="round"/>
+  <path d="M33 47h19M33 58h19M76 47h19M76 58h19" stroke="#71c7c0" stroke-width="4" stroke-linecap="round"/>
+  <path d="M42 80 54 68l10 10 19-24" fill="none" stroke="#f4a261" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m78 54 5 0-1 6" fill="none" stroke="#f4a261" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="96" cy="91" r="11" fill="#f4a261"/><path d="M91 91h10M96 86v10" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+</svg>
