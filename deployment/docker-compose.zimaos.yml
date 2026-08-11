@@ -1,0 +1,55 @@
+name: noveltrad
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+      args:
+        PORT: 8501
+    image: noveltrad:${SOURCE_COMMIT:-latest}
+    container_name: noveltrad
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      PORT: 8501
+      HOST: 0.0.0.0
+      OUTPUT_DIR: /app/translated_files
+      API_ENDPOINT: ${API_ENDPOINT:-http://host.docker.internal:11434/api/generate}
+      OLLAMA_API_ENDPOINT: ${OLLAMA_API_ENDPOINT:-http://host.docker.internal:11434/api/generate}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-qwen2.5:1.5b}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-900}
+      MAX_TRANSLATION_ATTEMPTS: ${MAX_TRANSLATION_ATTEMPTS:-3}
+      AUTO_ADJUST_CONTEXT: ${AUTO_ADJUST_CONTEXT:-true}
+      MAX_TOKENS_PER_CHUNK: ${MAX_TOKENS_PER_CHUNK:-450}
+      SOFT_LIMIT_RATIO: ${SOFT_LIMIT_RATIO:-0.8}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      XAI_MODEL: ${XAI_MODEL:-grok-4.5}
+      NEXUM_API_KEY: ${NEXUM_API_KEY:-}
+      NEXUM_MODEL: ${NEXUM_MODEL:-qwen-3.7-max}
+    ports:
+      - "0.0.0.0:8501:8501"
+    volumes:
+      - noveltrad_data:/app/data
+      - noveltrad_files:/app/translated_files
+      - noveltrad_logs:/app/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  noveltrad_data:
+    external: true
+  noveltrad_files:
+    external: true
+  noveltrad_logs:
+    external: true
