@@ -746,6 +746,35 @@ async def refine_chunks(
     Returns:
         List of refined text strings
     """
+    # The four-phase workflow is shared by translation+refine and refine-only.
+    # Keep the original single-pass implementation below as the default, but
+    # explicitly route opted-in jobs through the three refinement passes.
+    if (prompt_options or {}).get("four_pass_refinement"):
+        return await _refine_chunks_four_pass(
+            translated_chunks=translated_chunks,
+            original_chunks=original_chunks,
+            target_language=target_language,
+            model_name=model_name,
+            api_endpoint=api_endpoint,
+            log_callback=log_callback,
+            stats_callback=stats_callback,
+            check_interruption_callback=check_interruption_callback,
+            llm_provider=llm_provider,
+            gemini_api_key=gemini_api_key,
+            openai_api_key=openai_api_key,
+            openrouter_api_key=openrouter_api_key,
+            mistral_api_key=mistral_api_key,
+            deepseek_api_key=deepseek_api_key,
+            poe_api_key=poe_api_key,
+            nim_api_key=nim_api_key,
+            anthropic_api_key=anthropic_api_key,
+            xai_api_key=xai_api_key,
+            nexum_api_key=nexum_api_key,
+            context_window=context_window,
+            auto_adjust_context=auto_adjust_context,
+            prompt_options=prompt_options,
+        )
+
     total_chunks = len(translated_chunks)
     refined_parts = []
     last_refined_context = ""
@@ -942,7 +971,7 @@ async def refine_chunks(
 # Subtitle translation functions moved to subtitle_translator.py
 
 
-async def _refine_chunks_legacy(
+async def _refine_chunks_four_pass(
     translated_chunks: List[str],
     original_chunks: List[Dict],
     target_language: str,
@@ -975,19 +1004,6 @@ async def _refine_chunks_legacy(
     """
     if not translated_chunks:
         return []
-    if not (prompt_options or {}).get("four_pass_refinement"):
-        return await _refine_chunks_legacy(
-            translated_chunks=translated_chunks, original_chunks=original_chunks,
-            target_language=target_language, model_name=model_name, api_endpoint=api_endpoint,
-            log_callback=log_callback, stats_callback=stats_callback,
-            check_interruption_callback=check_interruption_callback, llm_provider=llm_provider,
-            gemini_api_key=gemini_api_key, openai_api_key=openai_api_key,
-            openrouter_api_key=openrouter_api_key, mistral_api_key=mistral_api_key,
-            deepseek_api_key=deepseek_api_key, poe_api_key=poe_api_key, nim_api_key=nim_api_key,
-            anthropic_api_key=anthropic_api_key, xai_api_key=xai_api_key,
-            nexum_api_key=nexum_api_key, context_window=context_window,
-            auto_adjust_context=auto_adjust_context, prompt_options=prompt_options,
-        )
     is_thinking = any(tm in model_name.lower() for tm in THINKING_MODELS)
     initial_context = max(context_window, 4096) if not auto_adjust_context else max(
         ADAPTIVE_CONTEXT_INITIAL_THINKING if is_thinking else INITIAL_CONTEXT_SIZE * 2, 4096
@@ -1024,21 +1040,28 @@ async def _refine_chunks_legacy(
                     before = original_chunks[index].get("context_before", "")
                 if not after and index < len(original_chunks):
                     after = original_chunks[index].get("context_after", "")
-                refined, response = await _make_refinement_request(
-                    draft_translation=draft,
-                    context_before=before,
-                    context_after=after,
-                    previous_refined_context=current[index - 1] if index else "",
-                    target_language=target_language,
-                    model=model_name,
-                    llm_client=client,
-                    log_callback=log_callback,
-                    has_placeholders=False,
-                    prompt_options=prompt_options,
-                    context_manager=None,
-                    runtime_state={},
-                    refinement_phase=phase,
-                )
+                try:
+                    refined, response = await _make_refinement_request(
+                        draft_translation=draft,
+                        context_before=before,
+                        context_after=after,
+                        previous_refined_context=current[index - 1] if index else "",
+                        target_language=target_language,
+                        model=model_name,
+                        llm_client=client,
+                        log_callback=log_callback,
+                        has_placeholders=False,
+                        prompt_options=prompt_options,
+                        context_manager=None,
+                        runtime_state={},
+                        refinement_phase=phase,
+                    )
+                except RateLimitError as exc:
+                    # Preserve the completed prefix and the untouched suffix so
+                    # the caller can save a resumable output before propagating
+                    # the pause to the job runner.
+                    exc.partial_result = next_parts + current[index:]
+                    raise
                 next_parts.append(clean_translated_text(refined) if refined else draft)
                 if stats_callback:
                     stats_callback({
