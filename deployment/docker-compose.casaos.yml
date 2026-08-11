@@ -1,0 +1,48 @@
+name: noveltrad
+
+services:
+  app:
+    image: noveltrad:latest
+    container_name: noveltrad
+    restart: unless-stopped
+    env_file:
+      - /DATA/AppData/noveltrad/.env
+    environment:
+      PORT: 8501
+      HOST: 0.0.0.0
+      OUTPUT_DIR: /app/translated_files
+      API_ENDPOINT: http://host.docker.internal:11434/api/generate
+      OLLAMA_API_ENDPOINT: http://host.docker.internal:11434/api/generate
+      DEFAULT_MODEL: qwen2.5:1.5b
+      LLM_PROVIDER: ollama
+    ports:
+      - "0.0.0.0:8501:8501"
+    volumes:
+      - noveltrad_data:/app/data
+      - noveltrad_files:/app/translated_files
+      - noveltrad_logs:/app/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  noveltrad_data:
+    external: true
+  noveltrad_files:
+    external: true
+  noveltrad_logs:
+    external: true
+
+x-casaos:
+  author: self
+  category: Books
+  hostname: 192.168.1.98
+  icon: https://github.com/hydropix/TranslateBooksWithLLMs/raw/main/src/web/static/TBL-Logo.png
+  index: /
+  is_uncontrolled: false
+  main: app
+  port_map: "8501"
+  scheme: http
+  store_app_id: noveltrad
+  title:
+    custom: "NovelTrad"
+    en_us: "NovelTrad"
