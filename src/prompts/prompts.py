@@ -634,7 +634,10 @@ def generate_refinement_prompt(
     placeholder_format: Optional[Tuple[str, str]] = None,
     additional_instructions: str = "",
     glossary_block: str = "",
-    refinement_phase: int = 4,
+    refinement_phase: int = 3,
+    source_translation: str = "",
+    initial_translation: str = "",
+    previous_refined_translation: str = "",
 ) -> PromptPair:
     """
     Generate a refinement prompt to polish a draft translation.
@@ -708,10 +711,10 @@ def generate_refinement_prompt(
 {additional_instructions.strip()}"""
 
     phase_guidance = {
-        2: "First, review the draft against its neighboring paragraphs and identify context, continuity, terminology, and tone issues. Return a corrected working version that incorporates those contextual decisions.",
-        3: "Now perform a rigorous orthography and grammar correction. Fix agreement, punctuation, spelling, syntax, and awkward phrasing while preserving meaning and the contextual decisions already present.",
-        4: "Finally, synthesize the best final literary version. Keep the corrected meaning and context, remove any remaining roughness, and output publication-ready prose.",
-    }.get(refinement_phase, "Polish the draft into fluent, literary prose.")
+        1: "First, anchor the draft to the source when it is available. Resolve context, continuity, terminology, omissions, additions, character relationships, tense, and point of view. Return a corrected working version.",
+        2: "Now perform a rigorous orthography, grammar, syntax, punctuation, and fluency correction while preserving the source meaning and the contextual decisions already established.",
+        3: "Finally, integrate the initial translation and all previous revisions into one publication-ready literary version. Keep the best corrections, remove regressions, and preserve every fact, name, number, relation, and placeholder.",
+    }.get(refinement_phase, "Polish the draft into fluent, literary prose while preserving meaning.")
 
     # SYSTEM PROMPT for refinement
     system_prompt = f"""You are an elite {target_language} literary editor and prose stylist.
@@ -721,7 +724,7 @@ def generate_refinement_prompt(
 You will receive a DRAFT {target_language} translation that needs significant improvement.
 Your job is to REWRITE it with perfect literary {target_language} style.
 
-**CURRENT REFINEMENT STAGE (pass {refinement_phase}/4):**
+**CURRENT REFINEMENT STAGE (pass {refinement_phase}/3):**
 {phase_guidance}
 
 **THE INPUT IS:**
@@ -785,6 +788,14 @@ For consistency and natural flow, here's what came immediately before:
     # stays cacheable across chunks.
     glossary_section = f"{glossary_block}\n" if glossary_block and glossary_block.strip() else ""
 
+    source_section = ""
+    if source_translation and source_translation.strip():
+        source_section += f"# SOURCE TEXT (meaning anchor)\n{source_translation.strip()}\n\n"
+    if initial_translation and initial_translation.strip() and initial_translation.strip() != draft_translation.strip():
+        source_section += f"# INITIAL TRANSLATION\n{initial_translation.strip()}\n\n"
+    if previous_refined_translation and previous_refined_translation.strip() and previous_refined_translation.strip() != draft_translation.strip():
+        source_section += f"# PREVIOUS REFINEMENT\n{previous_refined_translation.strip()}\n\n"
+
     neighbor_block = ""
     if context_before.strip() or context_after.strip():
         neighbor_block = f"""# NEIGHBORING BLOCK CONTEXT
@@ -796,7 +807,7 @@ Next block:
 
 """
 
-    user_prompt = f"""{previous_context_block}{neighbor_block}{glossary_section}# DRAFT TO REFINE
+    user_prompt = f"""{previous_context_block}{neighbor_block}{source_section}{glossary_section}# DRAFT TO REFINE
 
 The following is a rough {target_language} translation that needs significant improvement.
 Rewrite it with elegant, literary-quality {target_language} prose:
@@ -812,7 +823,7 @@ your refined text here
 
 Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
 
-Provide your refined version for pass {refinement_phase}/4 now:"""
+Provide your refined version for pass {refinement_phase}/3 now:"""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
@@ -1219,6 +1230,9 @@ def generate_post_processing_prompt(
     prompt_options: dict = None,
     placeholder_format: Optional[Tuple[str, str]] = None,
     glossary_block: str = "",
+    source_translation: str = "",
+    initial_translation: str = "",
+    previous_refined_translation: str = "",
 ) -> PromptPair:
     """
     Alias for generate_refinement_prompt with parameter name mapping.
@@ -1250,4 +1264,7 @@ def generate_post_processing_prompt(
         placeholder_format=placeholder_format,
         additional_instructions=additional_instructions,
         glossary_block=glossary_block,
+        source_translation=source_translation,
+        initial_translation=initial_translation,
+        previous_refined_translation=previous_refined_translation,
     )

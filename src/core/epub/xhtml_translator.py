@@ -1435,11 +1435,11 @@ async def _refine_epub_chunks_once(
 
         # Extract refinement instructions from prompt_options
         refinement_instructions = prompt_options.get('refinement_instructions', '') if prompt_options else ''
-        phase = (prompt_options or {}).get('refinement_phase', 4)
+        phase = (prompt_options or {}).get('refinement_phase', 3)
         phase_guidance = {
-            2: 'Prioritize continuity with neighboring blocks and terminology decisions.',
-            3: 'Prioritize orthography, grammar, agreement, punctuation, and syntax correction.',
-            4: 'Synthesize the final publication-ready literary version.',
+            1: 'Anchor the draft to the source and prioritize continuity, terminology, omissions, and character relationships.',
+            2: 'Prioritize orthography, grammar, agreement, punctuation, syntax, and fluency correction.',
+            3: 'Synthesize the final publication-ready literary version from all available revisions.',
         }.get(phase, '')
         if phase_guidance:
             refinement_instructions = f"{refinement_instructions}\n{phase_guidance}".strip()
@@ -1476,7 +1476,10 @@ async def _refine_epub_chunks_once(
             additional_instructions=refinement_instructions,
             has_placeholders=True,
             placeholder_format=placeholder_format,
-            prompt_options=prompt_options
+            prompt_options=prompt_options,
+            source_translation=chunk_dict.get('main_content', ''),
+            initial_translation=chunk_dict.get('translated_content', ''),
+            previous_refined_translation=context_before,
         )
 
         # Make refinement request
@@ -1877,18 +1880,38 @@ async def _refine_epub_chunks(
 ) -> List[str]:
     """Run the EPUB refiner through contextual, correction, and final passes."""
     current = list(translated_chunks)
-    for phase in (2, 3, 4):
+    base_total = len(current)
+    for phase in (1, 2, 3):
         if log_callback:
-            log_callback("refinement_phase_start", f"Starting refinement pass {phase}/4 ({len(current)} EPUB chunks)...")
+            log_callback("refinement_phase_start", f"Starting refinement pass {phase}/3 ({len(current)} EPUB chunks)...")
+        def phase_stats(payload):
+            if not stats_callback:
+                return
+            if stats is not None:
+                stats_callback(payload)
+                return
+            item = dict(payload or {})
+            local_total = max(1, int(item.get('total_chunks', base_total)))
+            local_done = int(item.get('completed_chunks', 0))
+            item['total_chunks'] = local_total * 3
+            item['completed_chunks'] = (phase - 1) * local_total + local_done
+            item['refinement_pass'] = phase
+            item['refinement_total_passes'] = 3
+            stats_callback(item)
+
         current = await _refine_epub_chunks_once(
             translated_chunks=current, chunks=chunks, target_language=target_language,
             model_name=model_name, llm_client=llm_client, context_manager=context_manager,
             placeholder_format=placeholder_format, log_callback=log_callback,
             prompt_options={**(prompt_options or {}), "refinement_phase": phase},
-            stats_callback=stats_callback, stats=stats,
+            stats_callback=phase_stats, stats=stats,
         )
         if stats_callback:
-            stats_callback({"current_phase": phase, "total_phases": 4,
-                            "total_chunks": len(current), "completed_chunks": len(current),
-                            "failed_chunks": 0})
+            stats_callback({
+                "total_chunks": base_total * 3,
+                "completed_chunks": phase * base_total,
+                "failed_chunks": 0,
+                "refinement_pass": phase,
+                "refinement_total_passes": 3,
+            })
     return current

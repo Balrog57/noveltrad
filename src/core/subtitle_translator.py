@@ -325,11 +325,11 @@ async def _refine_subtitle_translations_once(
 
             # On retry, reinforce the reminder with the exact missing indices.
             extra_instructions = post_processing_instructions or ''
-            phase = (prompt_options or {}).get('refinement_phase', 4)
+            phase = (prompt_options or {}).get('refinement_phase', 3)
             phase_guidance = {
-                2: 'Prioritize continuity with neighboring subtitle blocks and terminology.',
-                3: 'Prioritize orthography, grammar, agreement, punctuation, and syntax correction.',
-                4: 'Synthesize the final publication-ready subtitle text.',
+                1: 'Anchor the subtitles to the source context and prioritize continuity and terminology.',
+                2: 'Prioritize orthography, grammar, agreement, punctuation, syntax, and fluency correction.',
+                3: 'Synthesize the final publication-ready subtitle text from all revisions.',
             }.get(phase, '')
             if phase_guidance:
                 extra_instructions = f"{extra_instructions}\n{phase_guidance}".strip()
@@ -447,15 +447,29 @@ async def refine_subtitle_translations(
 ) -> Dict[int, str]:
     """Run subtitle refinement through contextual, correction, and final passes."""
     current = dict(translations)
-    for phase in (2, 3, 4):
+    for phase in (1, 2, 3):
         if log_callback:
-            log_callback("refinement_phase_start", f"Starting refinement pass {phase}/4 ({len(current)} subtitles)...")
+            log_callback("refinement_phase_start", f"Starting refinement pass {phase}/3 ({len(current)} subtitles)...")
+        base_total = len(current)
+
+        def phase_stats(stats):
+            if not stats_callback:
+                return
+            payload = dict(stats or {})
+            local_total = max(1, int(payload.get('total_chunks', base_total)))
+            local_done = int(payload.get('completed_chunks', 0))
+            payload['total_chunks'] = local_total * 3
+            payload['completed_chunks'] = (phase - 1) * local_total + local_done
+            payload['refinement_pass'] = phase
+            payload['refinement_total_passes'] = 3
+            stats_callback(payload)
+
         current = await _refine_subtitle_translations_once(
             translations=current, target_language=target_language, model_name=model_name,
             llm_client=llm_client, log_callback=log_callback,
             prompt_options={**(prompt_options or {}), "refinement_phase": phase},
             post_processing_instructions=post_processing_instructions,
-            stats_callback=stats_callback,
+            stats_callback=phase_stats,
             check_interruption_callback=check_interruption_callback,
             subtitle_blocks=subtitle_blocks, subtitle_positions=subtitle_positions,
         )

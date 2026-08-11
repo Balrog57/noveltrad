@@ -505,17 +505,31 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         })
 
     def _refine_after_stats_callback(new_stats_dict):
-        _emit_progress(new_stats_dict, {
+        # The refiner reports one monotonic counter across its three passes;
+        # project it back to the current workflow phase for the four-phase UI.
+        stats = dict(new_stats_dict)
+        refinement_pass = stats.get('refinement_pass')
+        if refinement_pass:
+            base_total = max(1, int(stats.get('total_chunks', 0) / 3))
+            stats['total_chunks'] = base_total
+            stats['completed_chunks'] = max(0, int(stats.get('completed_chunks', 0)) - (int(refinement_pass) - 1) * base_total)
+        _emit_progress(stats, {
             'enable_refinement': True,
-            'current_phase': new_stats_dict.get('current_phase', 2),
+            'current_phase': (int(refinement_pass) + 1) if refinement_pass else 2,
             'total_phases': 4,
         })
 
     def _refine_only_stats_callback(new_stats_dict):
-        # Refine-only executes passes 2-4.
-        _emit_progress(new_stats_dict, {
+        # Refine-only executes the same three passes, exposed as phases 2-4.
+        stats = dict(new_stats_dict)
+        refinement_pass = stats.get('refinement_pass')
+        if refinement_pass:
+            base_total = max(1, int(stats.get('total_chunks', 0) / 3))
+            stats['total_chunks'] = base_total
+            stats['completed_chunks'] = max(0, int(stats.get('completed_chunks', 0)) - (int(refinement_pass) - 1) * base_total)
+        _emit_progress(stats, {
             'enable_refinement': False, 'refine_only': True,
-            'current_phase': new_stats_dict.get('current_phase', 2),
+            'current_phase': (int(refinement_pass) + 1) if refinement_pass else 2,
             'total_phases': 4,
         })
 

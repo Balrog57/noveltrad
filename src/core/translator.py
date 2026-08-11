@@ -537,7 +537,10 @@ async def _make_refinement_request(
     prompt_options: dict = None,
     context_manager: AdaptiveContextManager = None,
     runtime_state: Optional[dict] = None,
-    refinement_phase: int = 4,
+    refinement_phase: int = 3,
+    source_translation: str = "",
+    initial_translation: str = "",
+    previous_refined_translation: str = "",
 ) -> Tuple[Optional[str], Optional[LLMResponse]]:
     """
     Make LLM request for refinement pass.
@@ -582,6 +585,9 @@ async def _make_refinement_request(
         additional_instructions=refinement_instructions,
         glossary_block=glossary_block,
         refinement_phase=refinement_phase,
+        source_translation=source_translation,
+        initial_translation=initial_translation,
+        previous_refined_translation=previous_refined_translation,
     )
 
     client = llm_client or default_client
@@ -995,10 +1001,10 @@ async def _refine_chunks_four_pass(
     auto_adjust_context=True,
     prompt_options=None,
 ) -> List[str]:
-    """Run the refinement workflow as three explicit passes (2, 3, 4).
+    """Run the refinement workflow as three explicit post-translation passes.
 
-    Pass 2 uses neighboring blocks for continuity decisions, pass 3 performs
-    orthography/grammar correction, and pass 4 synthesizes the final prose.
+    Pass 1 uses source and neighboring blocks for continuity decisions, pass 2
+    performs orthography/grammar correction, and pass 3 synthesizes the final prose.
     The same client/model is reused for every pass and a rate-limit error
     carries the partial result so the caller can save a resumable checkpoint.
     """
@@ -1021,10 +1027,11 @@ async def _refine_chunks_four_pass(
         return list(translated_chunks)
     current = list(translated_chunks)
     try:
-        for phase in (2, 3, 4):
+        for phase in (1, 2, 3):
             if log_callback:
-                log_callback("refinement_phase_start", f"Starting refinement pass {phase}/4 ({len(current)} blocks)...")
+                log_callback("refinement_phase_start", f"Starting refinement pass {phase}/3 ({len(current)} blocks)...")
             next_parts = []
+            base_total = len(current)
             for index, draft in enumerate(current):
                 if check_interruption_callback and check_interruption_callback():
                     remaining = current[index:]
@@ -1040,6 +1047,10 @@ async def _refine_chunks_four_pass(
                     before = original_chunks[index].get("context_before", "")
                 if not after and index < len(original_chunks):
                     after = original_chunks[index].get("context_after", "")
+                source_text = ""
+                if index < len(original_chunks):
+                    source_text = original_chunks[index].get("source_text", "") or original_chunks[index].get("original_text", "")
+                initial_text = translated_chunks[index] if index < len(translated_chunks) else draft
                 try:
                     refined, response = await _make_refinement_request(
                         draft_translation=draft,
@@ -1055,6 +1066,9 @@ async def _refine_chunks_four_pass(
                         context_manager=None,
                         runtime_state={},
                         refinement_phase=phase,
+                        source_translation=source_text,
+                        initial_translation=initial_text,
+                        previous_refined_translation=current[index - 1] if index else "",
                     )
                 except RateLimitError as exc:
                     # Preserve the completed prefix and the untouched suffix so
@@ -1065,15 +1079,18 @@ async def _refine_chunks_four_pass(
                 next_parts.append(clean_translated_text(refined) if refined else draft)
                 if stats_callback:
                     stats_callback({
-                        "total_chunks": len(current),
-                        "completed_chunks": index + 1,
+                        # Report one monotonic refinement stream across all
+                        # three passes. Consumers that expose workflow phases
+                        # can still use refinement_pass for labels.
+                        "total_chunks": base_total * 3,
+                        "completed_chunks": (phase - 1) * base_total + index + 1,
                         "failed_chunks": 0 if refined else 1,
-                        "current_phase": phase,
-                        "total_phases": 4,
+                        "refinement_pass": phase,
+                        "refinement_total_passes": 3,
                     })
             current = next_parts
             if log_callback:
-                log_callback("refinement_phase_complete", f"Completed refinement pass {phase}/4.")
+                log_callback("refinement_phase_complete", f"Completed refinement pass {phase}/3.")
     except RateLimitError as exc:
         if not hasattr(exc, "partial_result") or exc.partial_result is None:
             exc.partial_result = current
