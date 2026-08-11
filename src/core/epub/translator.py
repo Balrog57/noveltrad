@@ -55,6 +55,9 @@ async def translate_epub_file(
     deepseek_api_key: Optional[str] = None,
     poe_api_key: Optional[str] = None,
     nim_api_key: Optional[str] = None,
+    anthropic_api_key: Optional[str] = None,
+    xai_api_key: Optional[str] = None,
+    nexum_api_key: Optional[str] = None,
     context_window: int = 2048,
     auto_adjust_context: bool = True,
     min_chunk_size: int = 5,
@@ -99,6 +102,9 @@ async def translate_epub_file(
         deepseek_api_key: DeepSeek API key
         poe_api_key: Poe API key
         nim_api_key: NVIDIA NIM API key
+        anthropic_api_key: Anthropic API key
+        xai_api_key: xAI API key
+        nexum_api_key: Nexum Router API key
         context_window: Context window size for LLM
         auto_adjust_context: Auto-adjust context based on model
         min_chunk_size: Minimum chunk size
@@ -148,6 +154,9 @@ async def translate_epub_file(
         deepseek_api_key=deepseek_api_key,
         poe_api_key=poe_api_key,
         nim_api_key=nim_api_key,
+        anthropic_api_key=anthropic_api_key,
+        xai_api_key=xai_api_key,
+        nexum_api_key=nexum_api_key,
         cli_api_endpoint=cli_api_endpoint,
         initial_context=initial_context,
         log_callback=log_callback
@@ -555,6 +564,9 @@ def _create_llm_client(
     deepseek_api_key: Optional[str],
     poe_api_key: Optional[str],
     nim_api_key: Optional[str],
+    anthropic_api_key: Optional[str],
+    xai_api_key: Optional[str],
+    nexum_api_key: Optional[str],
     cli_api_endpoint: str,
     initial_context: int,
     log_callback: Optional[Callable] = None
@@ -567,6 +579,9 @@ def _create_llm_client(
         openai_api_key, openrouter_api_key, mistral_api_key, deepseek_api_key,
         poe_api_key=poe_api_key,
         nim_api_key=nim_api_key,
+        anthropic_api_key=anthropic_api_key,
+        xai_api_key=xai_api_key,
+        nexum_api_key=nexum_api_key,
         context_window=initial_context,
         log_callback=log_callback
     )
