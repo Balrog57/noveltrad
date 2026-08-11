@@ -20,9 +20,9 @@ export const PROVIDER_LOGOS = {
     openai: '/static/img/providers/openai.png',
     openrouter: '/static/img/providers/openrouter.png',
     nim: '/static/img/providers/nvidia.png',
-    anthropic: '/static/img/providers/anthropic.png',
-    xai: '/static/img/providers/xai.png',
-    nexum: '/static/img/providers/openai.png',
+    anthropic: '/static/img/providers/anthropic.svg',
+    xai: '/static/img/providers/xai.svg',
+    nexum: '/static/img/providers/nexum.svg',
 };
 
 export const PROVIDER_META = {
