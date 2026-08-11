@@ -32,6 +32,9 @@
   "api_key_placeholder_poe": "Schlüssel unter poe.com/api_key abrufen",
   "api_key_placeholder_nim": "Schlüssel unter build.nvidia.com abrufen",
 
+  "api_key_placeholder_anthropic": "Anthropic-API-Schlüssel eingeben",
+  "api_key_placeholder_xai": "xAI-API-Schlüssel eingeben",
+  "api_key_placeholder_nexum": "Nexum-API-Schlüssel eingeben",
   "refresh_models_title": "Modellliste aktualisieren",
   "refresh_list_title": "Liste aktualisieren",
   "open_folder_title": "Ordner öffnen",

@@ -240,6 +240,11 @@ async def _apply_auto_prep(config, log_callback, progress_callback=None):
                 source_language = target_language
 
             llm_provider = config.get('llm_provider', 'ollama')
+            extra_provider_keys = {
+                key: config.get(key, '') for key in (
+                    'anthropic_api_key', 'xai_api_key', 'nexum_api_key'
+                ) if config.get(key, '')
+            }
             client = create_llm_client(
                 llm_provider,
                 config.get('gemini_api_key', ''),
@@ -251,6 +256,7 @@ async def _apply_auto_prep(config, log_callback, progress_callback=None):
                 deepseek_api_key=config.get('deepseek_api_key', ''),
                 poe_api_key=config.get('poe_api_key', ''),
                 nim_api_key=config.get('nim_api_key', ''),
+                **extra_provider_keys,
                 context_window=auto_prep.AUTO_PREP_CONTEXT_WINDOW,
             )
             if client is None:
@@ -491,21 +497,26 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             logger.update_progress(completed, total)
 
     def _translate_stats_callback(new_stats_dict):
-        # Phase 1. enable_refinement advertises the two-phase bar up-front when
-        # a refine-after pass will follow, so phase 1 maps to the [0, 50] band.
+        # Phase 1 of the four-phase workflow (translation + three refinements).
         _emit_progress(new_stats_dict, {
             'enable_refinement': bool(config.get('refine_after')),
             'current_phase': 1,
+            'total_phases': 4,
         })
 
     def _refine_after_stats_callback(new_stats_dict):
-        # Phase 2 of a refine-after workflow: maps to the [50, 100] band.
-        _emit_progress(new_stats_dict, {'enable_refinement': True, 'current_phase': 2})
+        _emit_progress(new_stats_dict, {
+            'enable_refinement': True,
+            'current_phase': new_stats_dict.get('current_phase', 2),
+            'total_phases': 4,
+        })
 
     def _refine_only_stats_callback(new_stats_dict):
-        # Single-phase refine-only: the whole bar is the refinement pass.
+        # Refine-only executes passes 2-4.
         _emit_progress(new_stats_dict, {
-            'enable_refinement': False, 'refine_only': True, 'current_phase': 1,
+            'enable_refinement': False, 'refine_only': True,
+            'current_phase': new_stats_dict.get('current_phase', 2),
+            'total_phases': 4,
         })
 
     def _finalize_stats_callback(new_stats_dict):
@@ -650,6 +661,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             if refinement_instructions:
                 config['prompt_options']['refinement_instructions'] = refinement_instructions
 
+        if config.get('refine_after') or config.get('refine_only'):
+            config.setdefault('prompt_options', {})['four_pass_refinement'] = True
+
         # Surface glossary load result (snapshot was taken earlier, before start_job).
         glossary_terms_snapshot = config.get('prompt_options', {}).get('glossary_terms')
         glossary_load_error = config.get('prompt_options', {}).pop('glossary_load_error', None)
@@ -701,6 +715,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 deepseek_api_key=config.get('deepseek_api_key', ''),
                 poe_api_key=config.get('poe_api_key', ''),
                 nim_api_key=config.get('nim_api_key', ''),
+                anthropic_api_key=config.get('anthropic_api_key', ''),
+                xai_api_key=config.get('xai_api_key', ''),
+                nexum_api_key=config.get('nexum_api_key', ''),
                 context_window=config.get('context_window', 2048),
                 auto_adjust_context=config.get('auto_adjust_context', True),
                 max_tokens_per_chunk=config.get('max_tokens_per_chunk'),
@@ -731,6 +748,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 deepseek_api_key=config.get('deepseek_api_key', ''),
                 poe_api_key=config.get('poe_api_key', ''),
                 nim_api_key=config.get('nim_api_key', ''),
+                anthropic_api_key=config.get('anthropic_api_key', ''),
+                xai_api_key=config.get('xai_api_key', ''),
+                nexum_api_key=config.get('nexum_api_key', ''),
                 context_window=config.get('context_window', 2048),
                 auto_adjust_context=config.get('auto_adjust_context', True),
                 min_chunk_size=config.get('min_chunk_size', 5),
@@ -779,6 +799,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     deepseek_api_key=config.get('deepseek_api_key', ''),
                     poe_api_key=config.get('poe_api_key', ''),
                     nim_api_key=config.get('nim_api_key', ''),
+                    anthropic_api_key=config.get('anthropic_api_key', ''),
+                    xai_api_key=config.get('xai_api_key', ''),
+                    nexum_api_key=config.get('nexum_api_key', ''),
                     context_window=config.get('context_window', 2048),
                     auto_adjust_context=config.get('auto_adjust_context', True),
                     max_tokens_per_chunk=config.get('max_tokens_per_chunk'),

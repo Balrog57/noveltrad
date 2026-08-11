@@ -31,7 +31,10 @@ const PROVIDER_FIELD_MAP = {
     'mistral': 'mistralApiKey',
     'deepseek': 'deepseekApiKey',
     'poe': 'poeApiKey',
-    'nim': 'nimApiKey'
+    'nim': 'nimApiKey',
+    'anthropic': 'anthropicApiKey',
+    'xai': 'xaiApiKey',
+    'nexum': 'nexumApiKey'
 };
 
 export const ApiKeyUtils = {

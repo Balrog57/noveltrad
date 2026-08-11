@@ -963,6 +963,9 @@
                                     <option value="openai">OpenAI-Compatible</option>
                                     <option value="openrouter">OpenRouter (200+ models)</option>
                                     <option value="nim">NVIDIA NIM (Cloud API)</option>
+                                    <option value="anthropic">Anthropic (Claude)</option>
+                                    <option value="xai">xAI (Grok)</option>
+                                    <option value="nexum">Nexum Router</option>
                                 </select>
                             </div>
                         </div>
@@ -1035,6 +1038,19 @@
                             <div class="neu-inset-light">
                                 <input type="password" class="form-control" id="nimApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_nim;title:settings:api_key_rotation_tip" placeholder="Get key at build.nvidia.com" autocomplete="new-password" title="Tip: enter several keys separated by commas to enable automatic rotation on rate-limit (HTTP 429) — useful to chain free-tier accounts.">
                             </div>
+                        </div>
+
+                        <div class="form-group" id="anthropicSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span></label>
+                            <div class="neu-inset-light"><input type="password" class="form-control" id="anthropicApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_anthropic" placeholder="Anthropic API key" autocomplete="new-password"></div>
+                        </div>
+                        <div class="form-group" id="xaiSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span></label>
+                            <div class="neu-inset-light"><input type="password" class="form-control" id="xaiApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_xai" placeholder="xAI API key" autocomplete="new-password"></div>
+                        </div>
+                        <div class="form-group" id="nexumSettings" style="display: none; margin-bottom: 0;">
+                            <label><span data-i18n="settings:api_key">API Key</span></label>
+                            <div class="neu-inset-light"><input type="password" class="form-control" id="nexumApiKey" data-i18n-attr="placeholder:settings:api_key_placeholder_nexum" placeholder="Nexum API key" autocomplete="new-password"></div>
                         </div>
                     </div>
 

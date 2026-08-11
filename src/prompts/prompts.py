@@ -634,6 +634,7 @@ def generate_refinement_prompt(
     placeholder_format: Optional[Tuple[str, str]] = None,
     additional_instructions: str = "",
     glossary_block: str = "",
+    refinement_phase: int = 4,
 ) -> PromptPair:
     """
     Generate a refinement prompt to polish a draft translation.
@@ -706,6 +707,12 @@ def generate_refinement_prompt(
 
 {additional_instructions.strip()}"""
 
+    phase_guidance = {
+        2: "First, review the draft against its neighboring paragraphs and identify context, continuity, terminology, and tone issues. Return a corrected working version that incorporates those contextual decisions.",
+        3: "Now perform a rigorous orthography and grammar correction. Fix agreement, punctuation, spelling, syntax, and awkward phrasing while preserving meaning and the contextual decisions already present.",
+        4: "Finally, synthesize the best final literary version. Keep the corrected meaning and context, remove any remaining roughness, and output publication-ready prose.",
+    }.get(refinement_phase, "Polish the draft into fluent, literary prose.")
+
     # SYSTEM PROMPT for refinement
     system_prompt = f"""You are an elite {target_language} literary editor and prose stylist.
 
@@ -713,6 +720,9 @@ def generate_refinement_prompt(
 
 You will receive a DRAFT {target_language} translation that needs significant improvement.
 Your job is to REWRITE it with perfect literary {target_language} style.
+
+**CURRENT REFINEMENT STAGE (pass {refinement_phase}/4):**
+{phase_guidance}
 
 **THE INPUT IS:**
 - A amator, literal, or awkward {target_language} translation
@@ -775,7 +785,18 @@ For consistency and natural flow, here's what came immediately before:
     # stays cacheable across chunks.
     glossary_section = f"{glossary_block}\n" if glossary_block and glossary_block.strip() else ""
 
-    user_prompt = f"""{previous_context_block}{glossary_section}# DRAFT TO REFINE
+    neighbor_block = ""
+    if context_before.strip() or context_after.strip():
+        neighbor_block = f"""# NEIGHBORING BLOCK CONTEXT
+Previous block:
+{context_before or '(none)'}
+
+Next block:
+{context_after or '(none)'}
+
+"""
+
+    user_prompt = f"""{previous_context_block}{neighbor_block}{glossary_section}# DRAFT TO REFINE
 
 The following is a rough {target_language} translation that needs significant improvement.
 Rewrite it with elegant, literary-quality {target_language} prose:
@@ -791,7 +812,7 @@ your refined text here
 
 Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
 
-Provide your refined version now:"""
+Provide your refined version for pass {refinement_phase}/4 now:"""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 

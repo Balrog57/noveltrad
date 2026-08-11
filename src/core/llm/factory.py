@@ -17,7 +17,10 @@ from src.config import (
     POE_API_KEY, POE_MODEL, POE_API_ENDPOINT,
     POE_DISABLE_THINKING, POE_DISABLE_WEB_SEARCH,
     NIM_API_KEY, NIM_MODEL, NIM_API_ENDPOINT,
-    LITELLM_MODEL
+    LITELLM_MODEL,
+    ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_API_ENDPOINT,
+    XAI_API_KEY, XAI_MODEL, XAI_API_ENDPOINT,
+    NEXUM_API_KEY, NEXUM_MODEL, NEXUM_API_ENDPOINT
 )
 from .base import LLMProvider, normalize_api_keys
 from .providers.ollama import OllamaProvider
@@ -28,6 +31,9 @@ from .providers.mistral import MistralProvider
 from .providers.deepseek import DeepSeekProvider
 from .providers.poe import PoeProvider
 from .providers.litellm import LiteLLMProvider
+from .providers.anthropic import AnthropicProvider
+from .providers.xai import XAIProvider
+from .providers.nexum import NexumProvider
 
 
 def _require_key(raw, error_message: str):
@@ -173,6 +179,18 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
             api_endpoint=kwargs.get("api_endpoint", NIM_API_ENDPOINT),
             provider_name="nim",
         )
+
+    elif provider_type.lower() == "anthropic":
+        api_key = _require_key(kwargs.get("api_key") or kwargs.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY", ANTHROPIC_API_KEY), "Anthropic provider requires an API key.")
+        return AnthropicProvider(api_key=api_key, model=kwargs.get("model", ANTHROPIC_MODEL), api_endpoint=kwargs.get("api_endpoint") or ANTHROPIC_API_ENDPOINT)
+
+    elif provider_type.lower() == "xai":
+        api_key = _require_key(kwargs.get("api_key") or kwargs.get("xai_api_key") or os.getenv("XAI_API_KEY", XAI_API_KEY), "xAI provider requires an API key.")
+        return XAIProvider(api_key=api_key, model=kwargs.get("model", XAI_MODEL), api_endpoint=kwargs.get("api_endpoint") or XAI_API_ENDPOINT)
+
+    elif provider_type.lower() == "nexum":
+        api_key = _require_key(kwargs.get("api_key") or kwargs.get("nexum_api_key") or os.getenv("NEXUM_API_KEY", NEXUM_API_KEY), "Nexum provider requires an API key.")
+        return NexumProvider(api_key=api_key, model=kwargs.get("model", NEXUM_MODEL), api_endpoint=kwargs.get("api_endpoint") or NEXUM_API_ENDPOINT)
 
     elif provider_type.lower() == "litellm":
         # LiteLLM reads credentials from each provider's native env var, so no

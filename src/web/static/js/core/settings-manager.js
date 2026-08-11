@@ -468,6 +468,15 @@ export const SettingsManager = {
             } else if (provider === 'nim') {
                 const key = DomHelpers.getValue('nimApiKey');
                 if (key) envSettings['NIM_API_KEY'] = key;
+            } else if (provider === 'anthropic') {
+                const key = DomHelpers.getValue('anthropicApiKey');
+                if (key) envSettings['ANTHROPIC_API_KEY'] = key;
+            } else if (provider === 'xai') {
+                const key = DomHelpers.getValue('xaiApiKey');
+                if (key) envSettings['XAI_API_KEY'] = key;
+            } else if (provider === 'nexum') {
+                const key = DomHelpers.getValue('nexumApiKey');
+                if (key) envSettings['NEXUM_API_KEY'] = key;
             }
 
             // Save endpoints to .env
@@ -544,6 +553,12 @@ export const SettingsManager = {
                     envSettings['POE_MODEL'] = model;
                 } else if (provider === 'nim') {
                     envSettings['NIM_MODEL'] = model;
+                } else if (provider === 'anthropic') {
+                    envSettings['ANTHROPIC_MODEL'] = model;
+                } else if (provider === 'xai') {
+                    envSettings['XAI_MODEL'] = model;
+                } else if (provider === 'nexum') {
+                    envSettings['NEXUM_MODEL'] = model;
                 } else {
                     // Ollama and OpenAI use DEFAULT_MODEL
                     envSettings['DEFAULT_MODEL'] = model;

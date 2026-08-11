@@ -32,6 +32,9 @@
   "api_key_placeholder_poe": "Obtén la clave en poe.com/api_key",
   "api_key_placeholder_nim": "Obtén la clave en build.nvidia.com",
 
+  "api_key_placeholder_anthropic": "Introduzca la clave API de Anthropic",
+  "api_key_placeholder_xai": "Introduzca la clave API de xAI",
+  "api_key_placeholder_nexum": "Introduzca la clave API de Nexum",
   "refresh_models_title": "Actualizar lista de modelos",
   "refresh_list_title": "Actualizar lista",
   "open_folder_title": "Abrir carpeta",

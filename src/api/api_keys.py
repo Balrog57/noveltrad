@@ -26,6 +26,9 @@ PROVIDER_ENV_VARS = {
     'deepseek': 'DEEPSEEK_API_KEY',
     'poe': 'POE_API_KEY',
     'nim': 'NIM_API_KEY',
+    'anthropic': 'ANTHROPIC_API_KEY',
+    'xai': 'XAI_API_KEY',
+    'nexum': 'NEXUM_API_KEY',
 }
 
 

@@ -31,6 +31,9 @@
   "api_key_placeholder_deepseek": "Enter DeepSeek API key",
   "api_key_placeholder_poe": "Get key at poe.com/api_key",
   "api_key_placeholder_nim": "Get key at build.nvidia.com",
+  "api_key_placeholder_anthropic": "Enter Anthropic API key",
+  "api_key_placeholder_xai": "Enter xAI API key",
+  "api_key_placeholder_nexum": "Enter Nexum API key",
 
   "refresh_models_title": "Refresh model list",
   "refresh_list_title": "Refresh list",

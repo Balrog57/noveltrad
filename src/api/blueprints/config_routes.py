@@ -172,6 +172,12 @@ def create_config_blueprint(server_session_id=None):
             return _get_poe_models(api_key)
         elif provider == 'nim':
             return _get_nim_models(api_key)
+        elif provider == 'anthropic':
+            return _get_anthropic_models(api_key)
+        elif provider == 'xai':
+            return _get_xai_models(api_key)
+        elif provider == 'nexum':
+            return _get_nexum_models(api_key)
         elif provider == 'openai':
             # Get endpoint from request for LM Studio support
             if request.method == 'POST':
@@ -203,12 +209,21 @@ def create_config_blueprint(server_session_id=None):
         deepseek_mask, deepseek_count = mask_api_key(_config.DEEPSEEK_API_KEY)
         poe_mask, poe_count = mask_api_key(_config.POE_API_KEY)
         nim_mask, nim_count = mask_api_key(_config.NIM_API_KEY)
+        anthropic_mask, anthropic_count = mask_api_key(_config.ANTHROPIC_API_KEY)
+        xai_mask, xai_count = mask_api_key(_config.XAI_API_KEY)
+        nexum_mask, nexum_count = mask_api_key(_config.NEXUM_API_KEY)
 
         config_response = {
             "api_endpoint": _config.API_ENDPOINT,
             "ollama_api_endpoint": _config.OLLAMA_API_ENDPOINT,
             "openai_api_endpoint": _config.OPENAI_API_ENDPOINT,
             "default_model": _config.DEFAULT_MODEL,
+            "anthropic_model": _config.ANTHROPIC_MODEL,
+            "xai_model": _config.XAI_MODEL,
+            "nexum_model": _config.NEXUM_MODEL,
+            "anthropic_api_endpoint": _config.ANTHROPIC_API_ENDPOINT,
+            "xai_api_endpoint": _config.XAI_API_ENDPOINT,
+            "nexum_api_endpoint": _config.NEXUM_API_ENDPOINT,
             "default_source_language": _config.DEFAULT_SOURCE_LANGUAGE,
             "default_target_language": _config.DEFAULT_TARGET_LANGUAGE,
             "timeout": _config.REQUEST_TIMEOUT,
@@ -223,6 +238,9 @@ def create_config_blueprint(server_session_id=None):
             "deepseek_api_key": deepseek_mask,
             "poe_api_key": poe_mask,
             "nim_api_key": nim_mask,
+            "anthropic_api_key": anthropic_mask,
+            "xai_api_key": xai_mask,
+            "nexum_api_key": nexum_mask,
             "gemini_api_key_count": gemini_count,
             "openai_api_key_count": openai_count,
             "openrouter_api_key_count": openrouter_count,
@@ -230,6 +248,9 @@ def create_config_blueprint(server_session_id=None):
             "deepseek_api_key_count": deepseek_count,
             "poe_api_key_count": poe_count,
             "nim_api_key_count": nim_count,
+            "anthropic_api_key_count": anthropic_count,
+            "xai_api_key_count": xai_count,
+            "nexum_api_key_count": nexum_count,
             "gemini_api_key_configured": gemini_count > 0,
             "openai_api_key_configured": openai_count > 0,
             "openrouter_api_key_configured": openrouter_count > 0,
@@ -237,6 +258,9 @@ def create_config_blueprint(server_session_id=None):
             "deepseek_api_key_configured": deepseek_count > 0,
             "poe_api_key_configured": poe_count > 0,
             "nim_api_key_configured": nim_count > 0,
+            "anthropic_api_key_configured": anthropic_count > 0,
+            "xai_api_key_configured": xai_count > 0,
+            "nexum_api_key_configured": nexum_count > 0,
             "output_filename_pattern": _config.OUTPUT_FILENAME_PATTERN,
             "max_tokens_per_chunk": int(_config.MAX_TOKENS_PER_CHUNK),
             "parallel_translations": int(_config.PARALLEL_TRANSLATIONS),
@@ -529,6 +553,18 @@ def create_config_blueprint(server_session_id=None):
                 "count": 0,
                 "error": f"Error connecting to NVIDIA NIM API: {str(e)}"
             })
+
+    def _get_anthropic_models(provided_api_key=None):
+        from src.core.llm import AnthropicProvider
+        return _fetch_provider_models(provided_api_key=provided_api_key, env_var='ANTHROPIC_API_KEY', config_api_key=_config.ANTHROPIC_API_KEY, config_default_model=_config.ANTHROPIC_MODEL, provider_class=AnthropicProvider, fallback_model='claude-sonnet-4-6', status_prefix='anthropic', display_name='Anthropic', api_key_missing_message='Anthropic API key is required.')
+
+    def _get_xai_models(provided_api_key=None):
+        from src.core.llm import XAIProvider
+        return _fetch_provider_models(provided_api_key=provided_api_key, env_var='XAI_API_KEY', config_api_key=_config.XAI_API_KEY, config_default_model=_config.XAI_MODEL, provider_class=XAIProvider, fallback_model='grok-4.5', status_prefix='xai', display_name='xAI', api_key_missing_message='xAI API key is required.')
+
+    def _get_nexum_models(provided_api_key=None):
+        from src.core.llm import NexumProvider
+        return _fetch_provider_models(provided_api_key=provided_api_key, env_var='NEXUM_API_KEY', config_api_key=_config.NEXUM_API_KEY, config_default_model=_config.NEXUM_MODEL, provider_class=NexumProvider, fallback_model='qwen-3.7-max', status_prefix='nexum', display_name='Nexum', api_key_missing_message='Nexum API key is required.')
 
     def _get_openai_models(provided_api_key=None, api_endpoint=None):
         """Get available models from OpenAI-compatible API.
@@ -889,6 +925,12 @@ def create_config_blueprint(server_session_id=None):
             'POE_MODEL',
             'NIM_API_KEY',
             'NIM_MODEL',
+            'ANTHROPIC_API_KEY',
+            'ANTHROPIC_MODEL',
+            'XAI_API_KEY',
+            'XAI_MODEL',
+            'NEXUM_API_KEY',
+            'NEXUM_MODEL',
             'DEFAULT_MODEL',
             'LLM_PROVIDER',
             'OLLAMA_API_ENDPOINT',
@@ -1040,6 +1082,9 @@ def create_config_blueprint(server_session_id=None):
             "deepseek_api_key_configured": bool(_config.DEEPSEEK_API_KEY),
             "poe_api_key_configured": bool(_config.POE_API_KEY),
             "nim_api_key_configured": bool(_config.NIM_API_KEY),
+            "anthropic_api_key_configured": bool(_config.ANTHROPIC_API_KEY),
+            "xai_api_key_configured": bool(_config.XAI_API_KEY),
+            "nexum_api_key_configured": bool(_config.NEXUM_API_KEY),
             "default_model": _config.DEFAULT_MODEL or "",
             "llm_provider": _config.LLM_PROVIDER,
             "api_endpoint": _config.API_ENDPOINT or "",

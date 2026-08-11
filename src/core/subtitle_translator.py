@@ -173,7 +173,7 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
     return translations
 
 
-async def refine_subtitle_translations(
+async def _refine_subtitle_translations_once(
     translations: Dict[int, str],
     target_language: str,
     model_name: str,
@@ -313,6 +313,11 @@ async def refine_subtitle_translations(
 
         block_refined: Dict[int, str] = {}
         expected_local_indices = list(range(len(local_subtitle_tuples)))
+        next_block_context = ""
+        if block_idx + 1 < len(index_groups):
+            next_block_context = "\n".join(
+                f"[{i}] {translations[g]}" for i, g in enumerate(index_groups[block_idx + 1][:5])
+            )
 
         for attempt in range(max_block_attempts):
             if check_interruption_callback and check_interruption_callback():
@@ -320,6 +325,14 @@ async def refine_subtitle_translations(
 
             # On retry, reinforce the reminder with the exact missing indices.
             extra_instructions = post_processing_instructions or ''
+            phase = (prompt_options or {}).get('refinement_phase', 4)
+            phase_guidance = {
+                2: 'Prioritize continuity with neighboring subtitle blocks and terminology.',
+                3: 'Prioritize orthography, grammar, agreement, punctuation, and syntax correction.',
+                4: 'Synthesize the final publication-ready subtitle text.',
+            }.get(phase, '')
+            if phase_guidance:
+                extra_instructions = f"{extra_instructions}\n{phase_guidance}".strip()
             if attempt > 0:
                 missing_local = [li for li in expected_local_indices
                                  if local_to_global[li] not in block_refined]
@@ -336,7 +349,10 @@ async def refine_subtitle_translations(
             try:
                 prompt_pair = generate_subtitle_refinement_block_prompt(
                     subtitle_blocks=local_subtitle_tuples,
-                    previous_refined_block=previous_refined_block,
+                    previous_refined_block=(
+                        previous_refined_block
+                        + (f"\n\nNext block context:\n{next_block_context}" if next_block_context else "")
+                    ),
                     target_language=target_language,
                     additional_instructions=extra_instructions,
                     glossary_block=glossary_block,
@@ -420,6 +436,30 @@ async def refine_subtitle_translations(
         previous_refined_block = "\n".join(last_items)
 
     return refined_translations
+
+
+async def refine_subtitle_translations(
+    translations: Dict[int, str], target_language: str, model_name: str, llm_client,
+    log_callback=None, prompt_options=None, post_processing_instructions="",
+    stats_callback=None, check_interruption_callback=None,
+    subtitle_blocks: Optional[List[List[Dict[str, str]]]] = None,
+    subtitle_positions: Optional[Dict[int, int]] = None,
+) -> Dict[int, str]:
+    """Run subtitle refinement through contextual, correction, and final passes."""
+    current = dict(translations)
+    for phase in (2, 3, 4):
+        if log_callback:
+            log_callback("refinement_phase_start", f"Starting refinement pass {phase}/4 ({len(current)} subtitles)...")
+        current = await _refine_subtitle_translations_once(
+            translations=current, target_language=target_language, model_name=model_name,
+            llm_client=llm_client, log_callback=log_callback,
+            prompt_options={**(prompt_options or {}), "refinement_phase": phase},
+            post_processing_instructions=post_processing_instructions,
+            stats_callback=stats_callback,
+            check_interruption_callback=check_interruption_callback,
+            subtitle_blocks=subtitle_blocks, subtitle_positions=subtitle_positions,
+        )
+    return current
 
 
 async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str]]],

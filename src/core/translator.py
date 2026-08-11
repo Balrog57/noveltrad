@@ -537,6 +537,7 @@ async def _make_refinement_request(
     prompt_options: dict = None,
     context_manager: AdaptiveContextManager = None,
     runtime_state: Optional[dict] = None,
+    refinement_phase: int = 4,
 ) -> Tuple[Optional[str], Optional[LLMResponse]]:
     """
     Make LLM request for refinement pass.
@@ -580,6 +581,7 @@ async def _make_refinement_request(
         prompt_options=prompt_options,
         additional_instructions=refinement_instructions,
         glossary_block=glossary_block,
+        refinement_phase=refinement_phase,
     )
 
     client = llm_client or default_client
@@ -711,6 +713,9 @@ async def refine_chunks(
     deepseek_api_key=None,
     poe_api_key=None,
     nim_api_key=None,
+    anthropic_api_key=None,
+    xai_api_key=None,
+    nexum_api_key=None,
     context_window=2048,
     auto_adjust_context=True,
     prompt_options=None,
@@ -786,6 +791,9 @@ async def refine_chunks(
         deepseek_api_key=deepseek_api_key,
         poe_api_key=poe_api_key,
         nim_api_key=nim_api_key,
+        anthropic_api_key=anthropic_api_key,
+        xai_api_key=xai_api_key,
+        nexum_api_key=nexum_api_key,
         context_window=initial_context, log_callback=log_callback
     )
 
@@ -932,3 +940,121 @@ async def refine_chunks(
 
 
 # Subtitle translation functions moved to subtitle_translator.py
+
+
+async def _refine_chunks_legacy(
+    translated_chunks: List[str],
+    original_chunks: List[Dict],
+    target_language: str,
+    model_name: str,
+    api_endpoint: str,
+    log_callback=None,
+    stats_callback=None,
+    check_interruption_callback=None,
+    llm_provider="ollama",
+    gemini_api_key=None,
+    openai_api_key=None,
+    openrouter_api_key=None,
+    mistral_api_key=None,
+    deepseek_api_key=None,
+    poe_api_key=None,
+    nim_api_key=None,
+    anthropic_api_key=None,
+    xai_api_key=None,
+    nexum_api_key=None,
+    context_window=2048,
+    auto_adjust_context=True,
+    prompt_options=None,
+) -> List[str]:
+    """Run the refinement workflow as three explicit passes (2, 3, 4).
+
+    Pass 2 uses neighboring blocks for continuity decisions, pass 3 performs
+    orthography/grammar correction, and pass 4 synthesizes the final prose.
+    The same client/model is reused for every pass and a rate-limit error
+    carries the partial result so the caller can save a resumable checkpoint.
+    """
+    if not translated_chunks:
+        return []
+    if not (prompt_options or {}).get("four_pass_refinement"):
+        return await _refine_chunks_legacy(
+            translated_chunks=translated_chunks, original_chunks=original_chunks,
+            target_language=target_language, model_name=model_name, api_endpoint=api_endpoint,
+            log_callback=log_callback, stats_callback=stats_callback,
+            check_interruption_callback=check_interruption_callback, llm_provider=llm_provider,
+            gemini_api_key=gemini_api_key, openai_api_key=openai_api_key,
+            openrouter_api_key=openrouter_api_key, mistral_api_key=mistral_api_key,
+            deepseek_api_key=deepseek_api_key, poe_api_key=poe_api_key, nim_api_key=nim_api_key,
+            anthropic_api_key=anthropic_api_key, xai_api_key=xai_api_key,
+            nexum_api_key=nexum_api_key, context_window=context_window,
+            auto_adjust_context=auto_adjust_context, prompt_options=prompt_options,
+        )
+    is_thinking = any(tm in model_name.lower() for tm in THINKING_MODELS)
+    initial_context = max(context_window, 4096) if not auto_adjust_context else max(
+        ADAPTIVE_CONTEXT_INITIAL_THINKING if is_thinking else INITIAL_CONTEXT_SIZE * 2, 4096
+    )
+    client = create_llm_client(
+        llm_provider, gemini_api_key, api_endpoint, model_name,
+        openai_api_key=openai_api_key, openrouter_api_key=openrouter_api_key,
+        mistral_api_key=mistral_api_key, deepseek_api_key=deepseek_api_key,
+        poe_api_key=poe_api_key, nim_api_key=nim_api_key,
+        anthropic_api_key=anthropic_api_key, xai_api_key=xai_api_key,
+        nexum_api_key=nexum_api_key, context_window=initial_context,
+        log_callback=log_callback,
+    )
+    if not client:
+        return list(translated_chunks)
+    current = list(translated_chunks)
+    try:
+        for phase in (2, 3, 4):
+            if log_callback:
+                log_callback("refinement_phase_start", f"Starting refinement pass {phase}/4 ({len(current)} blocks)...")
+            next_parts = []
+            for index, draft in enumerate(current):
+                if check_interruption_callback and check_interruption_callback():
+                    remaining = current[index:]
+                    exc = RateLimitError("Refinement interrupted")
+                    exc.partial_result = next_parts + remaining
+                    raise exc
+                if not draft or len(draft.strip()) <= 1:
+                    next_parts.append(draft)
+                    continue
+                before = current[index - 1] if index else ""
+                after = current[index + 1] if index + 1 < len(current) else ""
+                if not before and index < len(original_chunks):
+                    before = original_chunks[index].get("context_before", "")
+                if not after and index < len(original_chunks):
+                    after = original_chunks[index].get("context_after", "")
+                refined, response = await _make_refinement_request(
+                    draft_translation=draft,
+                    context_before=before,
+                    context_after=after,
+                    previous_refined_context=current[index - 1] if index else "",
+                    target_language=target_language,
+                    model=model_name,
+                    llm_client=client,
+                    log_callback=log_callback,
+                    has_placeholders=False,
+                    prompt_options=prompt_options,
+                    context_manager=None,
+                    runtime_state={},
+                    refinement_phase=phase,
+                )
+                next_parts.append(clean_translated_text(refined) if refined else draft)
+                if stats_callback:
+                    stats_callback({
+                        "total_chunks": len(current),
+                        "completed_chunks": index + 1,
+                        "failed_chunks": 0 if refined else 1,
+                        "current_phase": phase,
+                        "total_phases": 4,
+                    })
+            current = next_parts
+            if log_callback:
+                log_callback("refinement_phase_complete", f"Completed refinement pass {phase}/4.")
+    except RateLimitError as exc:
+        if not hasattr(exc, "partial_result") or exc.partial_result is None:
+            exc.partial_result = current
+        raise
+    finally:
+        await client.close()
+    return current

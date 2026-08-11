@@ -346,6 +346,10 @@ export const ProviderManager = {
         const deepseekSettings = DomHelpers.getElement('deepseekSettings');
         const poeSettings = DomHelpers.getElement('poeSettings');
         const nimSettings = DomHelpers.getElement('nimSettings');
+        const anthropicSettings = DomHelpers.getElement('anthropicSettings');
+        const xaiSettings = DomHelpers.getElement('xaiSettings');
+        const nexumSettings = DomHelpers.getElement('nexumSettings');
+        [anthropicSettings, xaiSettings, nexumSettings].forEach(el => { if (el) el.style.display = 'none'; });
 
         // Show/hide provider-specific settings (use inline style for elements with inline display:none)
         if (provider === 'ollama') {
@@ -436,6 +440,9 @@ export const ProviderManager = {
             if (poeSettings) poeSettings.style.display = 'none';
             if (nimSettings) nimSettings.style.display = 'block';
             if (loadModels) this.loadNimModels();
+        } else if (['anthropic', 'xai', 'nexum'].includes(provider)) {
+            DomHelpers.hide('ollamaSettings');
+            if (loadModels) this.loadGenericCloudModels(provider);
         }
 
         // Parallel translation is only useful for cloud providers; a single
@@ -470,6 +477,28 @@ export const ProviderManager = {
             this.loadDeepSeekModels();
         } else if (provider === 'nim') {
             this.loadNimModels();
+        }
+    },
+
+    async loadGenericCloudModels(provider) {
+        const modelSelect = DomHelpers.getElement('model');
+        if (!modelSelect) return;
+        const field = `${provider}ApiKey`;
+        const setting = DomHelpers.getElement(`${provider}Settings`);
+        if (setting) setting.style.display = 'block';
+        const fallback = {
+            anthropic: [{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }],
+            xai: [{ value: 'grok-4.5', label: 'Grok 4.5' }],
+            nexum: [{ value: 'qwen-3.7-max', label: 'Qwen 3.7 Max' }, { value: 'deepseek-v4', label: 'DeepSeek V4' }],
+        }[provider];
+        try {
+            const data = await ApiClient.getModels(provider, { apiKey: ApiKeyUtils.getValue(field) });
+            const models = (data.models || []).map(m => ({ value: m.id, label: m.name || m.id, context_length: m.context_length }));
+            populateModelSelect(models.length ? models : fallback, data.default || fallback[0].value, provider);
+            StatusManager.setConnected(provider, models.length || fallback.length);
+        } catch (error) {
+            populateModelSelect(fallback, fallback[0].value, provider);
+            StatusManager.setConnected(provider, fallback.length);
         }
     },
 

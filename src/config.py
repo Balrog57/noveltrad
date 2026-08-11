@@ -71,6 +71,12 @@ _RELOADABLE_ENV_SETTINGS = (
     ('POE_MODEL',           'POE_MODEL',           'Claude-Sonnet-4'),
     ('NIM_API_KEY',         'NIM_API_KEY',         ''),
     ('NIM_MODEL',           'NIM_MODEL',           'meta/llama-3.1-8b-instruct'),
+    ('ANTHROPIC_API_KEY',   'ANTHROPIC_API_KEY',   ''),
+    ('ANTHROPIC_MODEL',     'ANTHROPIC_MODEL',     'claude-sonnet-4-6'),
+    ('XAI_API_KEY',         'XAI_API_KEY',         ''),
+    ('XAI_MODEL',           'XAI_MODEL',           'grok-4.5'),
+    ('NEXUM_API_KEY',       'NEXUM_API_KEY',       ''),
+    ('NEXUM_MODEL',         'NEXUM_MODEL',         'qwen-3.7-max'),
     # LiteLLM gateway (CLI-only). Provider-prefixed model name, e.g.
     # "anthropic/claude-sonnet-4-6". Keys are read from each provider's native
     # env var (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), not from a single key.
@@ -376,6 +382,9 @@ POE_DISABLE_THINKING = os.getenv('POE_DISABLE_THINKING', 'true').lower() == 'tru
 # needs. Set to 'false' to allow retrieval.
 POE_DISABLE_WEB_SEARCH = os.getenv('POE_DISABLE_WEB_SEARCH', 'true').lower() == 'true'
 NIM_API_ENDPOINT = os.getenv('NIM_API_ENDPOINT', 'https://integrate.api.nvidia.com/v1/chat/completions')
+ANTHROPIC_API_ENDPOINT = os.getenv('ANTHROPIC_API_ENDPOINT', 'https://api.anthropic.com/v1')
+XAI_API_ENDPOINT = os.getenv('XAI_API_ENDPOINT', 'https://api.x.ai/v1')
+NEXUM_API_ENDPOINT = os.getenv('NEXUM_API_ENDPOINT', 'https://dialagram.me/router/v1')
 
 # SRT-specific configuration
 # Single knob for both translate and refine: every SRT block sent to the
@@ -685,6 +694,9 @@ class TranslationConfig:
     deepseek_api_key: str = DEEPSEEK_API_KEY
     poe_api_key: str = POE_API_KEY
     nim_api_key: str = NIM_API_KEY
+    anthropic_api_key: str = ANTHROPIC_API_KEY
+    xai_api_key: str = XAI_API_KEY
+    nexum_api_key: str = NEXUM_API_KEY
 
     # LLM parameters
     timeout: int = REQUEST_TIMEOUT
@@ -728,6 +740,9 @@ class TranslationConfig:
             deepseek_api_key=getattr(args, 'deepseek_api_key', DEEPSEEK_API_KEY),
             poe_api_key=getattr(args, 'poe_api_key', POE_API_KEY),
             nim_api_key=getattr(args, 'nim_api_key', NIM_API_KEY),
+            anthropic_api_key=getattr(args, 'anthropic_api_key', ANTHROPIC_API_KEY),
+            xai_api_key=getattr(args, 'xai_api_key', XAI_API_KEY),
+            nexum_api_key=getattr(args, 'nexum_api_key', NEXUM_API_KEY),
             max_tokens_per_chunk=getattr(args, 'max_tokens_per_chunk', MAX_TOKENS_PER_CHUNK),
             soft_limit_ratio=getattr(args, 'soft_limit_ratio', SOFT_LIMIT_RATIO),
             parallel_workers=getattr(args, 'parallel', PARALLEL_TRANSLATIONS)
@@ -777,6 +792,9 @@ class TranslationConfig:
             deepseek_api_key=request_data.get('deepseek_api_key', DEEPSEEK_API_KEY),
             poe_api_key=request_data.get('poe_api_key', POE_API_KEY),
             nim_api_key=request_data.get('nim_api_key', NIM_API_KEY),
+            anthropic_api_key=request_data.get('anthropic_api_key', ANTHROPIC_API_KEY),
+            xai_api_key=request_data.get('xai_api_key', XAI_API_KEY),
+            nexum_api_key=request_data.get('nexum_api_key', NEXUM_API_KEY),
             max_tokens_per_chunk=clamped_max_tokens,
             soft_limit_ratio=request_data.get('soft_limit_ratio', SOFT_LIMIT_RATIO),
             parallel_workers=clamped_workers
@@ -801,6 +819,9 @@ class TranslationConfig:
             'deepseek_api_key': self.deepseek_api_key,
             'poe_api_key': self.poe_api_key,
             'nim_api_key': self.nim_api_key,
+            'anthropic_api_key': self.anthropic_api_key,
+            'xai_api_key': self.xai_api_key,
+            'nexum_api_key': self.nexum_api_key,
             'max_tokens_per_chunk': self.max_tokens_per_chunk,
             'soft_limit_ratio': self.soft_limit_ratio,
             'parallel_workers': self.parallel_workers

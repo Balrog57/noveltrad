@@ -1378,7 +1378,7 @@ def _report_statistics(
     if log_callback:
         log_callback("translation_complete", "Body translation complete")
 
-async def _refine_epub_chunks(
+async def _refine_epub_chunks_once(
     translated_chunks: List[str],
     chunks: List[Dict],
     target_language: str,
@@ -1435,6 +1435,14 @@ async def _refine_epub_chunks(
 
         # Extract refinement instructions from prompt_options
         refinement_instructions = prompt_options.get('refinement_instructions', '') if prompt_options else ''
+        phase = (prompt_options or {}).get('refinement_phase', 4)
+        phase_guidance = {
+            2: 'Prioritize continuity with neighboring blocks and terminology decisions.',
+            3: 'Prioritize orthography, grammar, agreement, punctuation, and syntax correction.',
+            4: 'Synthesize the final publication-ready literary version.',
+        }.get(phase, '')
+        if phase_guidance:
+            refinement_instructions = f"{refinement_instructions}\n{phase_guidance}".strip()
 
         # Get local tag map and global indices from chunk
         local_tag_map = chunk_dict.get('local_tag_map', {})
@@ -1858,3 +1866,29 @@ async def translate_xhtml_simplified(
     _report_statistics(stats, log_callback)
 
     return xml_success, stats
+
+
+async def _refine_epub_chunks(
+    translated_chunks: List[str], chunks: List[Dict], target_language: str,
+    model_name: str, llm_client: Any, context_manager: Optional[AdaptiveContextManager],
+    placeholder_format: Tuple[str, str], log_callback: Optional[Callable],
+    prompt_options: Optional[Dict], stats_callback: Optional[Callable] = None,
+    stats: Optional['TranslationMetrics'] = None,
+) -> List[str]:
+    """Run the EPUB refiner through contextual, correction, and final passes."""
+    current = list(translated_chunks)
+    for phase in (2, 3, 4):
+        if log_callback:
+            log_callback("refinement_phase_start", f"Starting refinement pass {phase}/4 ({len(current)} EPUB chunks)...")
+        current = await _refine_epub_chunks_once(
+            translated_chunks=current, chunks=chunks, target_language=target_language,
+            model_name=model_name, llm_client=llm_client, context_manager=context_manager,
+            placeholder_format=placeholder_format, log_callback=log_callback,
+            prompt_options={**(prompt_options or {}), "refinement_phase": phase},
+            stats_callback=stats_callback, stats=stats,
+        )
+        if stats_callback:
+            stats_callback({"current_phase": phase, "total_phases": 4,
+                            "total_chunks": len(current), "completed_chunks": len(current),
+                            "failed_chunks": 0})
+    return current

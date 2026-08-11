@@ -171,6 +171,9 @@ def create_llm_client(llm_provider: str, gemini_api_key: Optional[str],
                       deepseek_api_key: Optional[str] = None,
                       poe_api_key: Optional[str] = None,
                       nim_api_key: Optional[str] = None,
+                      anthropic_api_key: Optional[str] = None,
+                      xai_api_key: Optional[str] = None,
+                      nexum_api_key: Optional[str] = None,
                       context_window: Optional[int] = None,
                       log_callback: Optional[callable] = None) -> Optional[LLMClient]:
     """
@@ -208,6 +211,12 @@ def create_llm_client(llm_provider: str, gemini_api_key: Optional[str],
         return LLMClient(provider_type="poe", model=model_name, api_key=poe_api_key)
     if llm_provider == "nim":
         return LLMClient(provider_type="nim", model=model_name, api_key=nim_api_key)
+    if llm_provider == "anthropic":
+        return LLMClient(provider_type="anthropic", model=model_name, api_key=anthropic_api_key)
+    if llm_provider == "xai":
+        return LLMClient(provider_type="xai", model=model_name, api_key=xai_api_key)
+    if llm_provider == "nexum":
+        return LLMClient(provider_type="nexum", model=model_name, api_key=nexum_api_key)
     if llm_provider == "ollama":
         # Always create a new client for Ollama to ensure proper configuration
         return LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name,

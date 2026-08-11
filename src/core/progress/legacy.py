@@ -45,11 +45,23 @@ def snapshot_from_legacy_stats(stats: Dict[str, Any]) -> ProgressSnapshot:
     refine_only = bool(stats.get("refine_only"))
     phase_num = stats.get("current_phase") or 1
 
+    # Legacy callers without the new field retain the historical two-phase
+    # mapping; the live handler always supplies total_phases=4.
+    total_phases = _as_int(stats.get("total_phases")) or (2 if enable_refinement else 1)
     if enable_refinement:
-        # Two-phase refine-after: translation in [0, 50], refinement in [50, 100].
-        phase = Phase.REFINING if phase_num == 2 else Phase.TRANSLATING
-        percent = global_percent(phase, done, total, True, _REFINE_SPLIT)
+        # Four-phase workflow: translation plus contextual, correction and final passes.
+        if phase_num <= 1:
+            phase = Phase.TRANSLATING
+            percent = (done / total if total else 0.0) * (100.0 / total_phases)
+        else:
+            phase = Phase.REFINING
+            percent = ((phase_num - 1) + (done / total if total else 0.0)) * (100.0 / total_phases)
         refinement_enabled = True
+    elif refine_only and total_phases > 1:
+        phase = Phase.REFINING
+        # Refine-only starts at pass 2, so its three passes occupy the full bar.
+        percent = ((max(phase_num, 2) - 2) + (done / total if total else 0.0)) * (100.0 / (total_phases - 1))
+        refinement_enabled = False
     else:
         phase = Phase.REFINING if refine_only else Phase.TRANSLATING
         progress_percent = stats.get("progress_percent")
