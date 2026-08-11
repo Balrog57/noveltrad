@@ -1,12 +1,14 @@
 """Unit tests for the resume model/provider override logic (issue #183).
 
 Covers `_apply_resume_overrides`: backward compatibility (empty body), field
-merging, generic API-key routing through `_resolve_api_key`, and the
-key/endpoint validation guards.
+merging, generic API-key routing through `_resolve_api_key`, the
+key/endpoint validation guards, and refreshing `auto_pause_on_rate_limit`
+from `src.config.DISABLE_AUTO_PAUSE` on every resume.
 """
 import pytest
 from flask import Flask
 
+import src.api.blueprints.translation_routes as translation_routes
 from src.api.blueprints.translation_routes import _apply_resume_overrides
 
 
@@ -26,16 +28,47 @@ def _base_config():
     }
 
 
-def test_empty_overrides_leaves_config_untouched(app_ctx):
+def test_empty_overrides_leaves_model_provider_endpoint_untouched(app_ctx, monkeypatch):
+    """model/provider/endpoint stay a snapshot; only auto_pause is refreshed."""
+    monkeypatch.setattr(translation_routes._config, 'DISABLE_AUTO_PAUSE', 'false')
     config = _base_config()
-    snapshot = dict(config)
+    snapshot = {k: v for k, v in config.items()}
     assert _apply_resume_overrides(config, {}) is None
-    assert config == snapshot
+    for key, value in snapshot.items():
+        assert config[key] == value
 
 
-def test_none_overrides_is_noop(app_ctx):
+def test_none_overrides_is_noop_for_model_provider_endpoint(app_ctx, monkeypatch):
+    monkeypatch.setattr(translation_routes._config, 'DISABLE_AUTO_PAUSE', 'false')
     config = _base_config()
+    snapshot = {k: v for k, v in config.items()}
     assert _apply_resume_overrides(config, None) is None
+    for key, value in snapshot.items():
+        assert config[key] == value
+
+
+def test_auto_pause_refreshed_from_live_setting_when_not_overridden(app_ctx, monkeypatch):
+    """A job created while DISABLE_AUTO_PAUSE=false must pick up a later flip
+    to true (e.g. saved via /api/settings, which already refreshes this
+    module attribute) on resume, even with an empty request body."""
+    config = _base_config()
+    config['auto_pause_on_rate_limit'] = True  # snapshot taken at job creation
+
+    monkeypatch.setattr(translation_routes._config, 'DISABLE_AUTO_PAUSE', 'true')
+    assert _apply_resume_overrides(config, {}) is None
+    assert config['auto_pause_on_rate_limit'] is False
+
+    monkeypatch.setattr(translation_routes._config, 'DISABLE_AUTO_PAUSE', 'false')
+    assert _apply_resume_overrides(config, None) is None
+    assert config['auto_pause_on_rate_limit'] is True
+
+
+def test_auto_pause_explicit_override_wins_over_live_setting(app_ctx, monkeypatch):
+    monkeypatch.setattr(translation_routes._config, 'DISABLE_AUTO_PAUSE', 'false')  # live setting says auto-pause ON
+    config = _base_config()
+    err = _apply_resume_overrides(config, {'auto_pause_on_rate_limit': False})
+    assert err is None
+    assert config['auto_pause_on_rate_limit'] is False
 
 
 def test_simple_model_provider_override(app_ctx, monkeypatch):

@@ -195,10 +195,31 @@ def _apply_resume_overrides(config, overrides):
     persist API keys (issue #213), so every resume must find its key in .env
     or in the request.
 
+    auto_pause_on_rate_limit isn't a secret, but a job's config is otherwise a
+    snapshot taken at creation time, so it has the same staleness problem as
+    the credentials above: without refreshing it here, flipping "Disable
+    Auto-Pause" in Settings after a job started would never take effect on
+    that job's resumes. Refreshed from the live setting on every resume,
+    unless this specific resume overrides it.
+
+    Note: this reads `_config.DISABLE_AUTO_PAUSE` as already refreshed by
+    `/api/settings` (which calls `reload_config()` itself after writing to
+    .env) rather than calling `reload_config()` here. `reload_config()` does
+    `load_dotenv(..., override=True)`, which would clobber any provider API
+    key set via a real environment variable (docker/shell) rather than via
+    the .env file -- not something a routine resume should ever do.
+
     Returns a Flask (response, status) tuple to abort with on validation failure,
     or None on success.
     """
     raw_key = None
+
+    if isinstance(overrides, dict) and overrides.get('auto_pause_on_rate_limit') is not None:
+        config['auto_pause_on_rate_limit'] = bool(overrides['auto_pause_on_rate_limit'])
+    else:
+        config['auto_pause_on_rate_limit'] = not (
+            str(_config.DISABLE_AUTO_PAUSE).strip().lower() == 'true'
+        )
 
     if isinstance(overrides, dict) and overrides:
         if overrides.get('model'):
