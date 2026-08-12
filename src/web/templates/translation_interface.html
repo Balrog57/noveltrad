@@ -229,10 +229,10 @@
         <header class="header">
             <div class="logo-section">
                 <div class="logo-icon">
-                    <img src="/static/noveltrad-logo.svg" alt="NovelTrad" style="width: 100%; height: 100%; object-fit: contain;">
+                    <img src="/static/noveltrad-logo.svg" alt="NovelTrad" data-i18n-attr="alt:common:app_name" style="width: 100%; height: 100%; object-fit: contain;">
                 </div>
                 <div class="logo-text">
-                    <h2>NovelTrad <span class="app-version" id="appVersion" title="NovelTrad v{{ app_version|default('dev') }}">v{{ app_version|default('dev') }}</span></h2>
+                    <h2><span data-i18n="common:app_name">NovelTrad</span> <span class="app-version" id="appVersion">v{{ app_version|default('dev') }}</span></h2>
                     <p data-i18n="common:app_subtitle">Translate books with AI</p>
                 </div>
             </div>

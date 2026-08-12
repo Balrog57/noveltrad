@@ -207,7 +207,8 @@ class OpenRouterProvider(LLMProvider):
                 for m in self.FALLBACK_MODELS]
 
     async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT,
-                      system_prompt: Optional[str] = None) -> Optional[LLMResponse]:
+                      system_prompt: Optional[str] = None,
+                      **generation_options) -> Optional[LLMResponse]:
         """
         Generate text using OpenRouter API with cost tracking.
 

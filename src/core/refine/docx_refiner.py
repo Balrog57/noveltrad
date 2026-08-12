@@ -1,13 +1,13 @@
 """DOCX refine-only mode.
 
 Converts an already-translated DOCX to HTML, refines, then writes a new
-DOCX. Reuses the EPUB tag-preservation + chunking machinery. No resume
-support in v1.
+DOCX. Reuses the EPUB tag-preservation + chunking machinery and persists
+phase/segment state for safe resume.
 """
 
 import os
 import tempfile
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable, Dict, Any
 
 from src.config import DEFAULT_MODEL, API_ENDPOINT, MAX_TOKENS_PER_CHUNK
 from src.core.epub.xhtml_translator import _refine_epub_chunks, _escape_stray_angle_brackets
@@ -15,12 +15,14 @@ from src.core.epub.container import TranslationContainer
 from src.core.docx.converter import DocxHtmlConverter
 from .client_setup import build_refine_client
 from .epub_refiner import _globalize_chunk_text
+from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
 
 
 async def refine_docx_file(
     input_filepath: str,
     output_filepath: str,
     target_language: str,
+    source_filepath: Optional[str] = None,
     model_name: str = DEFAULT_MODEL,
     cli_api_endpoint: str = API_ENDPOINT,
     log_callback: Optional[Callable] = None,
@@ -41,6 +43,9 @@ async def refine_docx_file(
     auto_adjust_context: bool = True,
     prompt_options: Optional[Dict] = None,
     max_tokens_per_chunk: int = MAX_TOKENS_PER_CHUNK,
+    checkpoint_manager: Optional[Any] = None,
+    translation_id: Optional[str] = None,
+    refinement_output_filepath: Optional[str] = None,
 ) -> bool:
     """Run a refinement-only pass on an already-translated DOCX file."""
     if not os.path.exists(input_filepath):
@@ -108,24 +113,85 @@ async def refine_docx_file(
 
         draft_globalized = [_globalize_chunk_text(c, placeholder_format) for c in chunks]
 
-        refined_chunks = await _refine_epub_chunks(
-            translated_chunks=draft_globalized,
-            chunks=chunks,
-            target_language=target_language,
-            model_name=model_name,
-            llm_client=llm_client,
-            context_manager=context_manager,
-            placeholder_format=placeholder_format,
-            log_callback=log_callback,
-            prompt_options=prompt_options,
-            stats_callback=stats_callback,
-        )
+        source_chunks = None
+        if source_filepath and os.path.abspath(source_filepath) != os.path.abspath(input_filepath):
+            try:
+                source_html, _ = converter.to_html(source_filepath)
+                source_container = TranslationContainer()
+                source_text, source_tag_map = source_container.tag_preserver.preserve_tags(source_html)
+                source_chunks = source_container.chunker.chunk_html_with_placeholders(
+                    source_text, source_tag_map
+                )
+                if len(source_chunks) != len(chunks):
+                    if log_callback:
+                        log_callback(
+                            "docx_source_alignment_warning",
+                            f"⚠️ Source/translation chunk count differs ({len(source_chunks)} vs {len(chunks)}); "
+                            "using monotonic source mapping.",
+                        )
+                    if source_chunks:
+                        source_chunks = [
+                            source_chunks[min(
+                                len(source_chunks) - 1,
+                                int(index * len(source_chunks) / len(chunks)),
+                            )]
+                            for index in range(len(chunks))
+                        ]
+                    else:
+                        source_chunks = None
+            except Exception as exc:
+                if log_callback:
+                    log_callback(
+                        "docx_source_read_warning",
+                        f"⚠️ Could not read original DOCX for refinement: {exc}",
+                    )
+
+        try:
+            refined_chunks = await _refine_epub_chunks(
+                translated_chunks=draft_globalized,
+                chunks=chunks,
+                target_language=target_language,
+                model_name=model_name,
+                llm_client=llm_client,
+                context_manager=context_manager,
+                placeholder_format=placeholder_format,
+                log_callback=log_callback,
+                prompt_options=prompt_options,
+                stats_callback=stats_callback,
+                source_chunks=source_chunks,
+                check_interruption_callback=check_interruption_callback,
+                checkpoint_manager=checkpoint_manager,
+                translation_id=translation_id,
+                checkpoint_scope="docx",
+                refinement_output_filepath=refinement_output_filepath or output_filepath,
+            )
+        except (RateLimitError, RefinementInterrupted) as exc:
+            partial = getattr(exc, "partial_result", None)
+            if isinstance(partial, list) and len(partial) == len(chunks):
+                partial_text = _escape_stray_angle_brackets(''.join(partial))
+                partial_html = tag_preserver.restore_tags(partial_text, tag_map)
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.docx', delete=False, encoding='utf-8') as tmp:
+                    partial_path = tmp.name
+                try:
+                    converter.from_html(partial_html, metadata, partial_path)
+                    with open(partial_path, 'rb') as src, open(output_filepath, 'wb') as dst:
+                        dst.write(src.read())
+                finally:
+                    if os.path.exists(partial_path):
+                        try:
+                            os.remove(partial_path)
+                        except OSError:
+                            pass
+            raise
 
         if check_interruption_callback and check_interruption_callback():
             if log_callback:
                 log_callback("docx_refine_interrupted",
                              "Refinement interrupted before reconstruction")
-            return False
+            raise RefinementInterrupted(
+                "DOCX refinement interrupted before reconstruction",
+                partial_result=refined_chunks,
+            )
 
         full_text = ''.join(refined_chunks)
         full_text = _escape_stray_angle_brackets(full_text)

@@ -4,7 +4,7 @@ LLM-specific exceptions.
 This module defines all custom exceptions used in the LLM provider system.
 """
 
-from typing import Any
+from typing import Any, Dict, Optional
 
 
 class ContextOverflowError(Exception):
@@ -48,8 +48,25 @@ class RateLimitError(Exception):
     """
 
     def __init__(self, message: str, retry_after: int = None, provider: str = None,
-                 partial_result: Any = None):
+                 partial_result: Any = None,
+                 refinement_state: Optional[Dict[str, Any]] = None):
         super().__init__(message)
         self.retry_after = retry_after
         self.provider = provider
         self.partial_result = partial_result
+        self.refinement_state = refinement_state
+
+
+class RefinementInterrupted(Exception):
+    """Raised when a user/system interruption stops a refinement pass.
+
+    This is deliberately separate from :class:`RateLimitError`: an explicit
+    interruption must create an ``interrupted`` checkpoint and must never enter
+    the provider rate-limit auto-resume loop.
+    """
+
+    def __init__(self, message: str = "Refinement interrupted",
+                 partial_result: Any = None, refinement_state: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.partial_result = partial_result
+        self.refinement_state = refinement_state

@@ -1,4 +1,5 @@
 {
+  "app_name": "NovelTrad",
   "app_subtitle": "LLM으로 책 번역하기",
   "llm_checking": "LLM: 확인 중...",
   "llm_connected": "LLM: 연결됨",

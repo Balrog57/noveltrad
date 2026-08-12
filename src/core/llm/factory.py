@@ -182,15 +182,33 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
 
     elif provider_type.lower() == "anthropic":
         api_key = _require_key(kwargs.get("api_key") or kwargs.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY", ANTHROPIC_API_KEY), "Anthropic provider requires an API key.")
-        return AnthropicProvider(api_key=api_key, model=kwargs.get("model", ANTHROPIC_MODEL), api_endpoint=kwargs.get("api_endpoint") or ANTHROPIC_API_ENDPOINT)
+        return AnthropicProvider(
+            api_key=api_key,
+            model=kwargs.get("model", ANTHROPIC_MODEL),
+            api_endpoint=kwargs.get("api_endpoint") or ANTHROPIC_API_ENDPOINT,
+            context_window=kwargs.get("context_window"),
+            log_callback=kwargs.get("log_callback"),
+        )
 
     elif provider_type.lower() == "xai":
         api_key = _require_key(kwargs.get("api_key") or kwargs.get("xai_api_key") or os.getenv("XAI_API_KEY", XAI_API_KEY), "xAI provider requires an API key.")
-        return XAIProvider(api_key=api_key, model=kwargs.get("model", XAI_MODEL), api_endpoint=kwargs.get("api_endpoint") or XAI_API_ENDPOINT)
+        return XAIProvider(
+            api_key=api_key,
+            model=kwargs.get("model", XAI_MODEL),
+            api_endpoint=kwargs.get("api_endpoint") or XAI_API_ENDPOINT,
+            context_window=kwargs.get("context_window"),
+            log_callback=kwargs.get("log_callback"),
+        )
 
     elif provider_type.lower() == "nexum":
         api_key = _require_key(kwargs.get("api_key") or kwargs.get("nexum_api_key") or os.getenv("NEXUM_API_KEY", NEXUM_API_KEY), "Nexum provider requires an API key.")
-        return NexumProvider(api_key=api_key, model=kwargs.get("model", NEXUM_MODEL), api_endpoint=kwargs.get("api_endpoint") or NEXUM_API_ENDPOINT)
+        return NexumProvider(
+            api_key=api_key,
+            model=kwargs.get("model", NEXUM_MODEL),
+            api_endpoint=kwargs.get("api_endpoint") or NEXUM_API_ENDPOINT,
+            context_window=kwargs.get("context_window"),
+            log_callback=kwargs.get("log_callback"),
+        )
 
     elif provider_type.lower() == "litellm":
         # LiteLLM reads credentials from each provider's native env var, so no

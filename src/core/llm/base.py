@@ -104,7 +104,8 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT,
-                      system_prompt: Optional[str] = None) -> Optional["LLMResponse"]:
+                      system_prompt: Optional[str] = None,
+                      **generation_options) -> Optional["LLMResponse"]:
         """
         Generate text from prompt.
 
@@ -112,6 +113,8 @@ class LLMProvider(ABC):
             prompt: The user prompt (content to process)
             timeout: Request timeout in seconds
             system_prompt: Optional system prompt (role/instructions)
+            generation_options: Optional provider-neutral controls such as
+                ``temperature``, ``top_p`` and ``max_tokens``.
 
         Returns:
             LLMResponse object with content and token usage info, or None if failed

@@ -10,9 +10,10 @@ import aiofiles
 from typing import Optional, Callable, Dict, Any
 
 from src.core.chunking.reassembly import join_translated_chunks
-from src.core.llm.exceptions import RateLimitError
+from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
 from src.core.text_processor import split_text_into_chunks
 from src.core.translator import refine_chunks
+from src.core.refine.segment_alignment import align_source_segments
 from src.config import DEFAULT_MODEL, API_ENDPOINT
 
 
@@ -54,6 +55,7 @@ async def refine_txt_file(
     input_filepath: str,
     output_filepath: str,
     target_language: str,
+    source_filepath: Optional[str] = None,
     model_name: str = DEFAULT_MODEL,
     cli_api_endpoint: str = API_ENDPOINT,
     log_callback: Optional[Callable] = None,
@@ -75,13 +77,20 @@ async def refine_txt_file(
     max_tokens_per_chunk: Optional[int] = None,
     soft_limit_ratio: Optional[float] = None,
     prompt_options: Optional[Dict[str, Any]] = None,
+    checkpoint_manager: Any = None,
+    translation_id: Optional[str] = None,
+    refinement_output_filepath: Optional[str] = None,
 ) -> bool:
     """Run a refinement-only pass on an already-translated text file.
 
     `target_language` names the language the file is already in: refinement
     is monolingual and does not translate.
     """
-    prompt_options = {**(prompt_options or {}), "four_pass_refinement": True}
+    prompt_options = {
+        **(prompt_options or {}),
+        "four_pass_refinement": True,  # backward-compatible option name
+        "three_pass_refinement": True,
+    }
     if not os.path.exists(input_filepath):
         err_msg = f"ERROR: Input file '{input_filepath}' not found."
         if log_callback:
@@ -132,6 +141,26 @@ async def refine_txt_file(
         }]
         total_chunks = 1
 
+    source_text = translated_text
+    if source_filepath and os.path.abspath(source_filepath) != os.path.abspath(input_filepath):
+        try:
+            async with aiofiles.open(source_filepath, 'r', encoding='utf-8') as f:
+                source_text = await f.read()
+        except Exception as exc:
+            if log_callback:
+                log_callback(
+                    "refine_source_read_warning",
+                    f"⚠️ Could not read original source for refinement: {exc}. "
+                    "Using the translated text as the fallback source."
+                )
+            source_text = translated_text
+
+    aligned_sources = align_source_segments(
+        source_text, structured_chunks, max_tokens_per_chunk=max_tokens_per_chunk
+    )
+    for chunk, source_chunk in zip(structured_chunks, aligned_sources):
+        chunk["source_text"] = source_chunk
+
     if stats_callback:
         stats_callback({'total_chunks': total_chunks, 'completed_chunks': 0, 'failed_chunks': 0})
 
@@ -167,8 +196,11 @@ async def refine_txt_file(
             context_window=context_window,
             auto_adjust_context=auto_adjust_context,
             prompt_options=prompt_options,
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            refinement_output_filepath=refinement_output_filepath or output_filepath,
         )
-    except RateLimitError as e:
+    except (RateLimitError, RefinementInterrupted) as e:
         # Persist whatever the pass managed to refine before pausing, then let
         # the error propagate: handlers.py drives the pause / auto-resume.
         parts = e.partial_result
@@ -177,8 +209,9 @@ async def refine_txt_file(
         written = await _write_refined_output(
             parts, structured_chunks, output_filepath, log_callback)
         if written and log_callback:
-            log_callback("refine_partial_saved",
-                         f"💾 Partial refined output saved before rate-limit pause: '{output_filepath}'")
+            event = "refine_partial_saved" if isinstance(e, RateLimitError) else "refine_interrupted_partial_saved"
+            log_callback(event,
+                         f"💾 Partial refined output saved before refinement pause: '{output_filepath}'")
         raise
 
     if not await _write_refined_output(

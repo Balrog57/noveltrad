@@ -233,7 +233,8 @@ class OllamaProvider(LLMProvider):
         print(f"{CYAN}[INFO] Using think=true to cleanly separate thinking from content{RESET}\n")
 
     async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT,
-                      system_prompt: Optional[str] = None) -> Optional[LLMResponse]:
+                      system_prompt: Optional[str] = None,
+                      **generation_options) -> Optional[LLMResponse]:
         """
         Generate text using Ollama Chat API with streaming for real-time token monitoring.
 

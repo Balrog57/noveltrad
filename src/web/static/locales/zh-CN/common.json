@@ -1,4 +1,5 @@
 {
+  "app_name": "NovelTrad",
   "app_subtitle": "使用大语言模型翻译书籍",
   "llm_checking": "LLM：检查中...",
   "llm_connected": "LLM：已连接",

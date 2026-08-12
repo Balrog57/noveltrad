@@ -456,7 +456,8 @@ class PoeProvider(LLMProvider):
         self,
         prompt: str,
         timeout: int = REQUEST_TIMEOUT,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        **generation_options
     ) -> Optional[LLMResponse]:
         """
         Generate text using Poe API.

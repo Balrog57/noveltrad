@@ -4,6 +4,8 @@ Checkpoint manager for translation job persistence and resume functionality.
 
 import os
 import shutil
+import json
+import hashlib
 from typing import Optional, Dict, List, Any, Tuple
 from pathlib import Path
 from .database import Database
@@ -233,6 +235,72 @@ class CheckpointManager:
             'failed_chunk_indices': failed_chunk_indices,
             'translation_context': job.get('translation_context')
         }
+
+    def _refinement_state_path(self, translation_id: str, scope: str = "global") -> Path:
+        """Return a stable, job-local path for refinement state.
+
+        ``scope`` lets EPUB persist one state per XHTML file while retaining a
+        global job state.  Hashing prevents an EPUB href from becoming a path
+        traversal vector and keeps filenames portable across platforms.
+        """
+        job_dir = resolve_within(self.uploads_dir, translation_id)
+        job_dir.mkdir(parents=True, exist_ok=True)
+        scope_hash = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:24]
+        return job_dir / f"refinement_state_{scope_hash}.json"
+
+    def save_refinement_state(
+        self,
+        translation_id: str,
+        state: Dict[str, Any],
+        scope: str = "global",
+    ) -> bool:
+        """Atomically persist phase/segment refinement state for a job."""
+        try:
+            state_path = self._refinement_state_path(translation_id, scope)
+            tmp_path = state_path.with_suffix(".json.tmp")
+            with open(tmp_path, "w", encoding="utf-8") as handle:
+                json.dump(state, handle, ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_path, state_path)
+            return True
+        except Exception as exc:
+            print(f"Error saving refinement state: {exc}")
+            return False
+
+    def load_refinement_state(
+        self,
+        translation_id: str,
+        scope: str = "global",
+    ) -> Optional[Dict[str, Any]]:
+        """Load and validate a persisted refinement state, if present."""
+        try:
+            state_path = self._refinement_state_path(translation_id, scope)
+            if not state_path.exists():
+                return None
+            with open(state_path, "r", encoding="utf-8") as handle:
+                state = json.load(handle)
+            if not isinstance(state, dict) or state.get("version") != 1:
+                return None
+            return state
+        except (OSError, ValueError, TypeError) as exc:
+            print(f"Warning: Could not load refinement state: {exc}")
+            return None
+
+    def delete_refinement_state(
+        self,
+        translation_id: str,
+        scope: str = "global",
+    ) -> bool:
+        """Delete one refinement state; missing state is already clean."""
+        try:
+            state_path = self._refinement_state_path(translation_id, scope)
+            if state_path.exists():
+                state_path.unlink()
+            return True
+        except OSError as exc:
+            print(f"Warning: Could not delete refinement state: {exc}")
+            return False
 
     def get_resumable_jobs(self) -> List[Dict[str, Any]]:
         """

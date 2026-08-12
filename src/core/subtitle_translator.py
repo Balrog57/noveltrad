@@ -2,6 +2,8 @@
 Subtitle-specific translation module
 """
 import time
+import hashlib
+import json
 from typing import List, Dict, Optional, Tuple
 from tqdm.auto import tqdm
 
@@ -185,6 +187,11 @@ async def _refine_subtitle_translations_once(
     check_interruption_callback=None,
     subtitle_blocks: Optional[List[List[Dict[str, str]]]] = None,
     subtitle_positions: Optional[Dict[int, int]] = None,
+    source_subtitles: Optional[List[Dict[str, str]]] = None,
+    initial_translations: Optional[Dict[int, str]] = None,
+    refinement_histories: Optional[Dict[int, List[str]]] = None,
+    start_block_index: int = 0,
+    block_checkpoint_callback=None,
 ) -> Dict[int, str]:
     """
     Refine subtitle translations using a second LLM pass.
@@ -221,7 +228,7 @@ async def _refine_subtitle_translations_once(
     from src.core.srt_processor import SRTProcessor
 
     total_subtitles = len(translations)
-    refined_translations: Dict[int, str] = {}
+    refined_translations: Dict[int, str] = dict(translations)
     completed_count = 0
     failed_count = 0
     # Transient per-job state (e.g. glossary cap warning dedupe) — never persisted.
@@ -285,18 +292,21 @@ async def _refine_subtitle_translations_once(
 
     max_block_attempts = 2  # initial attempt + 1 retry with reinforced reminder
 
-    for block_idx, group in enumerate(index_groups):
+    for block_idx in range(start_block_index, len(index_groups)):
+        group = index_groups[block_idx]
         if check_interruption_callback and check_interruption_callback():
             if log_callback:
                 log_callback(
                     "srt_refinement_interrupted",
                     f"Refinement interrupted at block {block_idx + 1}/{total_blocks}"
                 )
-            # Carry over any not-yet-refined subtitles unchanged.
-            for remaining_group in index_groups[block_idx:]:
-                for g_idx in remaining_group:
-                    refined_translations.setdefault(g_idx, translations[g_idx])
-            break
+            from src.core.llm.exceptions import RefinementInterrupted
+            partial = dict(refined_translations)
+            if block_checkpoint_callback:
+                block_checkpoint_callback(block_idx, partial)
+            exc = RefinementInterrupted(partial_result=partial)
+            exc.refinement_index = block_idx
+            raise exc
 
         # Build local-index tuples and the local->global mapping.
         local_subtitle_tuples: List[Tuple[int, str]] = []
@@ -321,7 +331,13 @@ async def _refine_subtitle_translations_once(
 
         for attempt in range(max_block_attempts):
             if check_interruption_callback and check_interruption_callback():
-                break
+                from src.core.llm.exceptions import RefinementInterrupted
+                partial = dict(refined_translations)
+                if block_checkpoint_callback:
+                    block_checkpoint_callback(block_idx, partial)
+                exc = RefinementInterrupted(partial_result=partial)
+                exc.refinement_index = block_idx
+                raise exc
 
             # On retry, reinforce the reminder with the exact missing indices.
             extra_instructions = post_processing_instructions or ''
@@ -346,9 +362,23 @@ async def _refine_subtitle_translations_once(
                     f"Missing indices last time: {missing_str}. Do NOT stop early."
                 )
 
+            source_block_tuples = None
+            if source_subtitles:
+                source_block_tuples = [
+                    (local_idx, source_subtitles[g_idx].get('text', ''))
+                    for local_idx, g_idx in enumerate(group)
+                    if g_idx < len(source_subtitles)
+                ]
+            history_block = {
+                local_idx: (refinement_histories or {}).get(g_idx, [])
+                for local_idx, g_idx in enumerate(group)
+                if (refinement_histories or {}).get(g_idx)
+            }
+
             try:
                 prompt_pair = generate_subtitle_refinement_block_prompt(
                     subtitle_blocks=local_subtitle_tuples,
+                    source_subtitle_blocks=source_block_tuples,
                     previous_refined_block=(
                         previous_refined_block
                         + (f"\n\nNext block context:\n{next_block_context}" if next_block_context else "")
@@ -356,6 +386,7 @@ async def _refine_subtitle_translations_once(
                     target_language=target_language,
                     additional_instructions=extra_instructions,
                     glossary_block=glossary_block,
+                    refinement_history=history_block,
                 )
 
                 if log_callback and attempt > 0:
@@ -393,6 +424,10 @@ async def _refine_subtitle_translations_once(
                 # Re-raise RateLimitError to trigger auto-pause
                 from src.core.llm.exceptions import RateLimitError
                 if isinstance(e, RateLimitError):
+                    e.partial_result = dict(refined_translations)
+                    e.refinement_index = block_idx
+                    if block_checkpoint_callback:
+                        block_checkpoint_callback(block_idx, e.partial_result)
                     raise
                 if log_callback:
                     log_callback("srt_refinement_error",
@@ -434,6 +469,8 @@ async def _refine_subtitle_translations_once(
         for local_idx, g_idx in enumerate(group[-5:]):
             last_items.append(f"[{local_idx}]{refined_translations.get(g_idx, translations[g_idx])}")
         previous_refined_block = "\n".join(last_items)
+        if block_checkpoint_callback:
+            block_checkpoint_callback(block_idx, dict(refined_translations))
 
     return refined_translations
 
@@ -444,10 +481,80 @@ async def refine_subtitle_translations(
     stats_callback=None, check_interruption_callback=None,
     subtitle_blocks: Optional[List[List[Dict[str, str]]]] = None,
     subtitle_positions: Optional[Dict[int, int]] = None,
+    source_subtitles: Optional[List[Dict[str, str]]] = None,
+    checkpoint_manager=None,
+    translation_id: Optional[str] = None,
+    refinement_output_filepath: Optional[str] = None,
 ) -> Dict[int, str]:
     """Run subtitle refinement through contextual, correction, and final passes."""
+    checkpoint_state = None
+    initial_hash = hashlib.sha256(
+        json.dumps(dict(translations), ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    source_hash = hashlib.sha256(
+        json.dumps(
+            [item.get("text", "") for item in (source_subtitles or [])],
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    if checkpoint_manager and translation_id:
+        try:
+            checkpoint_state = checkpoint_manager.load_refinement_state(translation_id)
+        except Exception:
+            checkpoint_state = None
+
+    initial = dict(translations)
     current = dict(translations)
-    for phase in (1, 2, 3):
+    histories: Dict[int, List[str]] = {index: [value] for index, value in current.items()}
+    start_phase = 1
+    start_block = 0
+    if (
+        isinstance(checkpoint_state, dict)
+        and checkpoint_state.get("version") == 1
+        and checkpoint_state.get("format") == "srt"
+        and checkpoint_state.get("initial_hash") == initial_hash
+        and checkpoint_state.get("source_hash") == source_hash
+        and checkpoint_state.get("model") == model_name
+        and checkpoint_state.get("prompt_version") == "source-aware-three-pass-v2"
+        and checkpoint_state.get("initial")
+        and set(map(int, checkpoint_state["initial"].keys())) == set(initial.keys())
+    ):
+        initial = {int(index): value for index, value in checkpoint_state["initial"].items()}
+        current = {int(index): value for index, value in checkpoint_state["current"].items()}
+        histories = {
+            int(index): list(revisions)
+            for index, revisions in checkpoint_state.get("history", {}).items()
+        }
+        start_phase = int(checkpoint_state.get("phase", 1))
+        start_block = int(checkpoint_state.get("next_block", 0))
+
+    def _save_state(phase, next_block, current_value):
+        if not checkpoint_manager or not translation_id:
+            return None
+        state = {
+            "version": 1,
+            "format": "srt",
+            "phase": phase,
+            "next_block": next_block,
+            "initial": {str(index): value for index, value in initial.items()},
+            "current": {str(index): value for index, value in current_value.items()},
+            "history": {str(index): list(revisions) for index, revisions in histories.items()},
+            "refinement_total_passes": 3,
+            "initial_hash": initial_hash,
+            "source_hash": source_hash,
+            "model": model_name,
+            "prompt_version": "source-aware-three-pass-v2",
+        }
+        if refinement_output_filepath:
+            state["output_filepath"] = refinement_output_filepath
+        try:
+            checkpoint_manager.save_refinement_state(translation_id, state)
+        except Exception:
+            if log_callback:
+                log_callback("refinement_checkpoint_warning", "⚠️ Could not persist SRT refinement checkpoint.")
+        return state
+
+    for phase in range(start_phase, 4):
         if log_callback:
             log_callback("refinement_phase_start", f"Starting refinement pass {phase}/3 ({len(current)} subtitles)...")
         base_total = len(current)
@@ -464,7 +571,28 @@ async def refine_subtitle_translations(
             payload['refinement_total_passes'] = 3
             stats_callback(payload)
 
-        current = await _refine_subtitle_translations_once(
+        phase_start_block = start_block if phase == start_phase else 0
+
+        def _block_checkpoint(block_index, partial):
+            group = []
+            if subtitle_blocks and block_index < len(subtitle_blocks):
+                group = subtitle_blocks[block_index]
+            for subtitle in group:
+                if subtitle_positions is not None:
+                    g_idx = subtitle_positions.get(id(subtitle))
+                else:
+                    try:
+                        g_idx = int(subtitle.get('number')) - 1
+                    except (TypeError, ValueError):
+                        g_idx = None
+                if g_idx is not None and g_idx in partial:
+                    histories.setdefault(g_idx, [initial.get(g_idx, "")])
+                    if partial[g_idx] != histories[g_idx][-1]:
+                        histories[g_idx].append(partial[g_idx])
+            _save_state(phase, block_index + 1, partial)
+
+        try:
+            current = await _refine_subtitle_translations_once(
             translations=current, target_language=target_language, model_name=model_name,
             llm_client=llm_client, log_callback=log_callback,
             prompt_options={**(prompt_options or {}), "refinement_phase": phase},
@@ -472,7 +600,37 @@ async def refine_subtitle_translations(
             stats_callback=phase_stats,
             check_interruption_callback=check_interruption_callback,
             subtitle_blocks=subtitle_blocks, subtitle_positions=subtitle_positions,
-        )
+            source_subtitles=source_subtitles,
+            initial_translations=initial,
+            refinement_histories={
+                index: revisions[:-1]
+                for index, revisions in histories.items()
+                if revisions
+            },
+                start_block_index=phase_start_block,
+                block_checkpoint_callback=_block_checkpoint,
+            )
+        except Exception as exc:
+            from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
+            if isinstance(exc, (RateLimitError, RefinementInterrupted)):
+                state = _save_state(
+                    phase,
+                    getattr(exc, "refinement_index", phase_start_block),
+                    getattr(exc, "partial_result", current),
+                )
+                exc.refinement_state = state
+            raise
+        for index, value in current.items():
+            histories.setdefault(index, [initial.get(index, value)])
+            if value != histories[index][-1]:
+                histories[index].append(value)
+        _save_state(phase + 1, 0, current)
+        start_block = 0
+    if checkpoint_manager and translation_id:
+        try:
+            checkpoint_manager.delete_refinement_state(translation_id)
+        except Exception:
+            pass
     return current
 
 

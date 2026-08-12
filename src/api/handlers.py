@@ -20,7 +20,7 @@ from src.utils.custom_instructions import (
 )
 from src.core import auto_prep
 from src.core.llm import OpenRouterProvider
-from src.core.llm.exceptions import RateLimitError
+from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
 from src.core.llm_client import create_llm_client
 from src.config import AUTO_PAUSE_ON_RATE_LIMIT, RATE_LIMIT_AUTO_RESUME_DELAY
 from src.core.adapters import translate_file, refine_file
@@ -567,6 +567,12 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
     checkpoint_manager = state_manager.get_checkpoint_manager()
     resume_from_index = config.get('resume_from_index', 0)
     is_resume = config.get('is_resume', False)
+    refinement_state = None
+    if is_resume:
+        try:
+            refinement_state = checkpoint_manager.load_refinement_state(translation_id)
+        except Exception:
+            refinement_state = None
 
     # Snapshot the active glossary into prompt_options BEFORE persisting the
     # job, so the snapshot survives resume even if the source glossary is
@@ -612,9 +618,25 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         # PHASE 2: Configuration validation is now handled by AdaptiveContextManager during translation
 
-        # Generate unique output filename to avoid overwriting
+        # Generate a unique output filename for new jobs. A refinement resume
+        # must reuse the exact partial output path, otherwise it would refine a
+        # fresh copy and leave the checkpointed work orphaned.
+        refinement_resume = bool(
+            refinement_state
+            and refinement_state.get('output_filepath')
+            and os.path.exists(refinement_state['output_filepath'])
+        )
+        if refinement_state and not refinement_resume:
+            try:
+                checkpoint_manager.delete_refinement_state(translation_id)
+            except Exception:
+                pass
         tentative_output_path = os.path.join(output_dir, config['output_filename'])
-        output_filepath_on_server = get_unique_output_path(tentative_output_path)
+        output_filepath_on_server = (
+            refinement_state['output_filepath']
+            if refinement_resume
+            else get_unique_output_path(tentative_output_path)
+        )
 
         # Update config with the actual filename (may have been modified)
         actual_output_filename = os.path.basename(output_filepath_on_server)
@@ -644,7 +666,12 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 f"{config.get('llm_provider', 'ollama')} / {config['model']}."
             )
 
-        input_path_for_translate_module = config.get('file_path')
+        original_input_path = config.get('file_path')
+        input_path_for_translate_module = (
+            refinement_state['output_filepath']
+            if refinement_resume
+            else original_input_path
+        )
 
         # Handle special case for TXT with inline text content (no file upload)
         temp_txt_file_path = None
@@ -677,6 +704,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         if config.get('refine_after') or config.get('refine_only'):
             config.setdefault('prompt_options', {})['four_pass_refinement'] = True
+            config['prompt_options']['three_pass_refinement'] = True
 
         # Surface glossary load result (snapshot was taken earlier, before start_job).
         glossary_terms_snapshot = config.get('prompt_options', {}).get('glossary_terms')
@@ -696,10 +724,12 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 f"⚠️ Could not load glossary: {glossary_load_error}"
             )
 
-        if config.get('refine_only'):
+        if config.get('refine_only') or refinement_resume:
             _log_message_callback(
                 "refine_only_mode",
-                "✨ Refine-only mode: skipping translation, polishing the input file as-is."
+                "✨ Refine-only mode: skipping translation, polishing the current output."
+                if refinement_resume
+                else "✨ Refine-only mode: skipping translation, polishing the input file as-is."
             )
             src_lang = config.get('source_language')
             tgt_lang = config.get('target_language')
@@ -709,12 +739,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     f"⚠️ source_language ({src_lang}) ≠ target_language ({tgt_lang}). "
                     f"Refinement is monolingual; the file will be polished as {tgt_lang}."
                 )
-            await refine_file(
+            refine_result = await refine_file(
                 input_filepath=input_path_for_translate_module,
                 output_filepath=output_filepath_on_server,
                 target_language=config['target_language'],
                 model_name=config['model'],
                 llm_provider=config.get('llm_provider', 'ollama'),
+                source_filepath=original_input_path or input_path_for_translate_module,
                 checkpoint_manager=checkpoint_manager,
                 translation_id=translation_id,
                 log_callback=_log_message_callback,
@@ -737,6 +768,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 max_tokens_per_chunk=config.get('max_tokens_per_chunk'),
                 prompt_options=config.get('prompt_options', {}),
             )
+            if refine_result is False:
+                raise RuntimeError("Refinement adapter did not produce a valid output")
         else:
             # The translate-phase callback advertises the two-phase workflow
             # up-front (via enable_refinement) when a refine-after pass will
@@ -793,12 +826,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     "refine_after_start",
                     "✨ Translation done — running refinement pass on the output."
                 )
-                await refine_file(
+                refine_result = await refine_file(
                     input_filepath=output_filepath_on_server,
                     output_filepath=output_filepath_on_server,
                     target_language=config['target_language'],
                     model_name=config['model'],
                     llm_provider=config.get('llm_provider', 'ollama'),
+                    source_filepath=original_input_path or input_path_for_translate_module,
                     checkpoint_manager=checkpoint_manager,
                     translation_id=translation_id,
                     log_callback=_log_message_callback,
@@ -821,6 +855,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     max_tokens_per_chunk=config.get('max_tokens_per_chunk'),
                     prompt_options=config.get('prompt_options', {}),
                 )
+                if refine_result is False:
+                    raise RuntimeError("Refinement adapter did not produce a valid output")
 
         # If an EPUB translation was paused, the file was saved with a `[partial NN%]`
         # prefix. Re-point the tracking variables to the actual file on disk so the
@@ -1018,6 +1054,54 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 'filename': config.get('output_filename', 'unknown')
             }, namespace='/')
 
+    except RefinementInterrupted as e:
+        if not state_manager.exists(translation_id):
+            return
+
+        partial_path = None
+        if getattr(e, "refinement_state", None):
+            partial_path = e.refinement_state.get("output_filepath")
+        if not partial_path and os.path.exists(output_filepath_on_server):
+            partial_path = output_filepath_on_server
+        if partial_path and os.path.exists(partial_path):
+            state_manager.set_translation_field(translation_id, 'output_filepath', partial_path)
+            state_manager.set_translation_field(
+                translation_id,
+                'result',
+                f"[{config['file_type'].upper()} file partially refined - resume available]",
+            )
+
+        state_manager.set_translation_field(translation_id, 'status', 'interrupted')
+        state_manager.set_translation_field(translation_id, 'interrupted', True)
+        checkpoint_manager.mark_interrupted(translation_id)
+        stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+        elapsed_time = time.time() - stats.get('start_time', time.time())
+        _finalize_stats_callback({'elapsed_time': elapsed_time})
+        message = "🛑 Refinement interrupted — phase checkpoint saved; resume will continue at the saved pass/segment."
+        _log_message_callback("refinement_interrupted", message)
+        emit_update(socketio, translation_id, {
+            'status': 'interrupted',
+            'log': message,
+            'result': state_manager.get_translation_field(translation_id, 'result') or message,
+        }, state_manager)
+        socketio.emit('checkpoint_created', {
+            'translation_id': translation_id,
+            'status': 'interrupted',
+            'message': message,
+        }, namespace='/')
+        await asyncio.to_thread(
+            notify,
+            EVENT_INTERRUPTION,
+            _notification_context(config, translation_id, elapsed_time),
+        )
+        output_filepath = state_manager.get_translation_field(translation_id, 'output_filepath')
+        if output_filepath and os.path.exists(output_filepath):
+            socketio.emit('file_list_changed', {
+                'reason': 'interrupted',
+                'filename': config.get('output_filename', 'unknown'),
+            }, namespace='/')
+        return
+
     except RateLimitError as e:
         auto_pause = config.get('auto_pause_on_rate_limit', AUTO_PAUSE_ON_RATE_LIMIT)
         retry_msg = f" Retry suggested after ~{e.retry_after}s." if e.retry_after else ""
@@ -1094,6 +1178,23 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         pause_msg = f"⏸️ Rate limited by {provider_name}.{retry_msg} Translation auto-paused, you can resume when ready."
         _log_message_callback("rate_limit_auto_pause", pause_msg)
+
+        # Refinement checkpoints carry their own partial output path because
+        # the chained refine phase may not have reached the normal finalizer.
+        # Publish it now so the UI/download endpoint points at the resumable
+        # artifact instead of the pre-refinement translation.
+        refinement_partial_path = getattr(e, "refinement_state", None)
+        if isinstance(refinement_partial_path, dict):
+            refinement_partial_path = refinement_partial_path.get("output_filepath")
+        if refinement_partial_path and os.path.exists(refinement_partial_path):
+            state_manager.set_translation_field(
+                translation_id, 'output_filepath', refinement_partial_path
+            )
+            state_manager.set_translation_field(
+                translation_id,
+                'result',
+                f"[{config['file_type'].upper()} file partially refined - rate limit pause]",
+            )
 
         state_manager.set_translation_field(translation_id, 'status', 'rate_limited')
         state_manager.set_translation_field(translation_id, 'interrupted', True)

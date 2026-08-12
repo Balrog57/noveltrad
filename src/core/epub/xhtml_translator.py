@@ -36,6 +36,8 @@ LEVEL 3 - Translation (PlaceholderManager):
     → Restored: "[id5]Bonjour[id6]" (global indices)
 """
 import re
+import hashlib
+import json
 import copy as _copy
 from collections import Counter
 from html.entities import html5 as _HTML5_ENTITIES
@@ -1389,7 +1391,13 @@ async def _refine_epub_chunks_once(
     log_callback: Optional[Callable],
     prompt_options: Optional[Dict],
     stats_callback: Optional[Callable] = None,
-    stats: Optional['TranslationMetrics'] = None
+    stats: Optional['TranslationMetrics'] = None,
+    source_chunks: Optional[List[Dict]] = None,
+    initial_chunks: Optional[List[str]] = None,
+    refinement_histories: Optional[List[List[str]]] = None,
+    start_index: int = 0,
+    check_interruption_callback: Optional[Callable] = None,
+    chunk_checkpoint_callback: Optional[Callable] = None,
 ) -> List[str]:
     """
     Refine translated EPUB chunks using a second LLM pass.
@@ -1417,7 +1425,7 @@ async def _refine_epub_chunks_once(
     from src.prompts.prompts import generate_post_processing_prompt
 
     total_chunks = len(translated_chunks)
-    refined_chunks = []
+    refined_chunks = list(translated_chunks[:start_index])
 
     if log_callback:
         log_callback("epub_refinement_info",
@@ -1428,7 +1436,27 @@ async def _refine_epub_chunks_once(
         _log_error(log_callback, "epub_refinement_warning",
                     f"Warning: Length mismatch - translated_chunks: {len(translated_chunks)}, chunks: {len(chunks)}")
 
-    for idx, (translated_text, chunk_dict) in enumerate(zip(translated_chunks, chunks)):
+    if len(translated_chunks) != len(chunks):
+        _log_error(
+            log_callback,
+            "epub_refinement_alignment_error",
+            "EPUB refinement chunk alignment mismatch: "
+            f"translated={len(translated_chunks)}, chunks={len(chunks)}. "
+            "Keeping the last valid translation for this document.",
+        )
+        return list(translated_chunks)
+
+    for idx in range(start_index, len(translated_chunks)):
+        translated_text = translated_chunks[idx]
+        chunk_dict = chunks[idx]
+        if check_interruption_callback and check_interruption_callback():
+            from src.core.llm.exceptions import RefinementInterrupted
+            resumable = refined_chunks + translated_chunks[idx:]
+            exc = RefinementInterrupted(partial_result=list(resumable))
+            exc.refinement_index = idx
+            if chunk_checkpoint_callback:
+                chunk_checkpoint_callback(idx, None, resumable)
+            raise exc
         # Build context from surrounding chunks
         context_before = translated_chunks[idx - 1] if idx > 0 else ""
         context_after = translated_chunks[idx + 1] if idx < len(translated_chunks) - 1 else ""
@@ -1454,32 +1482,54 @@ async def _refine_epub_chunks_once(
         # 1. Convert global → local before sending to LLM
         # 2. Convert local → global after receiving refined result
 
-        # Create a mapping from global to local indices
-        text_for_refinement = translated_text
-        for local_idx, global_idx in enumerate(global_indices):
-            global_ph = f"{placeholder_format[0]}{global_idx}{placeholder_format[1]}"
-            local_ph = f"{placeholder_format[0]}{local_idx}{placeholder_format[1]}"
-            # Replace global placeholders with local ones using temporary markers
-            text_for_refinement = text_for_refinement.replace(global_ph, f"__TEMP_PH_{local_idx}__")
+        # Create a mapping from global to local indices. Apply it to every
+        # revision shown to the model, not only the current draft; otherwise
+        # the history would contain placeholder IDs that do not exist in the
+        # current local tag map.
+        def _localize_placeholders(value: str) -> str:
+            localized = value or ""
+            for local_idx, global_idx in enumerate(global_indices):
+                global_ph = f"{placeholder_format[0]}{global_idx}{placeholder_format[1]}"
+                localized = localized.replace(global_ph, f"__TEMP_PH_{local_idx}__")
+            for local_idx in range(len(global_indices)):
+                localized = localized.replace(
+                    f"__TEMP_PH_{local_idx}__",
+                    f"{placeholder_format[0]}{local_idx}{placeholder_format[1]}",
+                )
+            return localized
 
-        # Replace temporary markers with actual local placeholders
-        for local_idx in range(len(global_indices)):
-            text_for_refinement = text_for_refinement.replace(f"__TEMP_PH_{local_idx}__",
-                                                              f"{placeholder_format[0]}{local_idx}{placeholder_format[1]}")
+        text_for_refinement = _localize_placeholders(translated_text)
+        local_context_before = _localize_placeholders(context_before)
+        local_context_after = _localize_placeholders(context_after)
 
         # Generate refinement prompt using text with LOCAL indices
+        source_chunk = source_chunks[idx] if source_chunks and idx < len(source_chunks) else None
+        source_translation = source_chunk.get('text', '') if source_chunk else ''
+        segment_history = (
+            refinement_histories[idx]
+            if refinement_histories and idx < len(refinement_histories)
+            else []
+        )
         prompt_pair = generate_post_processing_prompt(
             translated_text=text_for_refinement,  # Use localized version
             target_language=target_language,
-            context_before=context_before,
-            context_after=context_after,
+            context_before=local_context_before,
+            context_after=local_context_after,
             additional_instructions=refinement_instructions,
             has_placeholders=True,
             placeholder_format=placeholder_format,
             prompt_options=prompt_options,
-            source_translation=chunk_dict.get('main_content', ''),
-            initial_translation=chunk_dict.get('translated_content', ''),
-            previous_refined_translation=context_before,
+            source_translation=source_translation,
+            initial_translation=_localize_placeholders(
+                initial_chunks[idx] if initial_chunks and idx < len(initial_chunks)
+                else translated_text
+            ),
+            previous_refined_translation=(
+                _localize_placeholders(segment_history[-1])
+                if segment_history else ''
+            ),
+            refinement_phase=phase,
+            refinement_history=[_localize_placeholders(item) for item in segment_history],
         )
 
         # Make refinement request
@@ -1565,6 +1615,10 @@ async def _refine_epub_chunks_once(
             # Re-raise RateLimitError to trigger auto-pause
             from src.core.llm.exceptions import RateLimitError as _RLE
             if isinstance(e, _RLE):
+                e.partial_result = list(refined_chunks + translated_chunks[idx:])
+                e.refinement_index = idx
+                if chunk_checkpoint_callback:
+                    chunk_checkpoint_callback(idx, None, e.partial_result)
                 raise
             # Fallback to original translation on error
             refined_chunks.append(translated_text)
@@ -1877,11 +1931,97 @@ async def _refine_epub_chunks(
     placeholder_format: Tuple[str, str], log_callback: Optional[Callable],
     prompt_options: Optional[Dict], stats_callback: Optional[Callable] = None,
     stats: Optional['TranslationMetrics'] = None,
+    source_chunks: Optional[List[Dict]] = None,
+    check_interruption_callback: Optional[Callable] = None,
+    checkpoint_manager: Optional[Any] = None,
+    translation_id: Optional[str] = None,
+    checkpoint_scope: str = "global",
+    refinement_output_filepath: Optional[str] = None,
 ) -> List[str]:
     """Run the EPUB refiner through contextual, correction, and final passes."""
-    current = list(translated_chunks)
+    checkpoint_state = None
+    initial_hash = hashlib.sha256(
+        json.dumps(list(translated_chunks), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    source_hash = hashlib.sha256(
+        json.dumps(
+            [chunk.get("text", "") for chunk in (source_chunks or [])],
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    if checkpoint_manager and translation_id:
+        try:
+            checkpoint_state = checkpoint_manager.load_refinement_state(
+                translation_id, scope=checkpoint_scope
+            )
+        except Exception:
+            checkpoint_state = None
+
+    def _valid_state(state):
+        return (
+            isinstance(state, dict)
+            and state.get("version") == 1
+            and state.get("total_segments") == len(translated_chunks)
+            and state.get("initial_hash") == initial_hash
+            and state.get("source_hash") == source_hash
+            and state.get("model") == model_name
+            and state.get("prompt_version") == "source-aware-three-pass-v2"
+            and isinstance(state.get("initial"), list)
+            and isinstance(state.get("current"), list)
+            and isinstance(state.get("history"), list)
+            and len(state["initial"]) == len(translated_chunks)
+            and len(state["current"]) == len(translated_chunks)
+            and len(state["history"]) == len(translated_chunks)
+            and isinstance(state.get("phase"), int)
+            and 1 <= state["phase"] <= 4
+            and isinstance(state.get("next_segment"), int)
+            and 0 <= state["next_segment"] <= len(translated_chunks)
+        )
+
+    if _valid_state(checkpoint_state):
+        initial = list(checkpoint_state["initial"])
+        current = list(checkpoint_state["current"])
+        histories = [list(items) for items in checkpoint_state["history"]]
+        start_phase = checkpoint_state["phase"]
+        start_segment = checkpoint_state["next_segment"]
+    else:
+        initial = list(translated_chunks)
+        current = list(translated_chunks)
+        histories = [[text] for text in initial]
+        start_phase = 1
+        start_segment = 0
+
     base_total = len(current)
-    for phase in (1, 2, 3):
+
+    def _save_state(phase, next_segment, current_value):
+        if not checkpoint_manager or not translation_id:
+            return None
+        state = {
+            "version": 1,
+            "phase": phase,
+            "next_segment": next_segment,
+            "total_segments": len(initial),
+            "initial": list(initial),
+            "current": list(current_value),
+            "history": [list(items) for items in histories],
+            "refinement_total_passes": 3,
+            "initial_hash": initial_hash,
+            "source_hash": source_hash,
+            "model": model_name,
+            "prompt_version": "source-aware-three-pass-v2",
+        }
+        if refinement_output_filepath:
+            state["output_filepath"] = refinement_output_filepath
+        try:
+            checkpoint_manager.save_refinement_state(
+                translation_id, state, scope=checkpoint_scope
+            )
+        except Exception:
+            if log_callback:
+                log_callback("refinement_checkpoint_warning", "⚠️ Could not persist EPUB refinement checkpoint.")
+        return state
+
+    for phase in range(start_phase, 4):
         if log_callback:
             log_callback("refinement_phase_start", f"Starting refinement pass {phase}/3 ({len(current)} EPUB chunks)...")
         def phase_stats(payload):
@@ -1899,13 +2039,43 @@ async def _refine_epub_chunks(
             item['refinement_total_passes'] = 3
             stats_callback(item)
 
-        current = await _refine_epub_chunks_once(
-            translated_chunks=current, chunks=chunks, target_language=target_language,
-            model_name=model_name, llm_client=llm_client, context_manager=context_manager,
-            placeholder_format=placeholder_format, log_callback=log_callback,
-            prompt_options={**(prompt_options or {}), "refinement_phase": phase},
-            stats_callback=phase_stats, stats=stats,
-        )
+        phase_start_segment = start_segment if phase == start_phase else 0
+
+        def _chunk_checkpoint(index, refined, resumable_current):
+            if refined is not None:
+                histories[index].append(refined)
+            _save_state(phase, index + (1 if refined is not None else 0), resumable_current)
+
+        try:
+            current = await _refine_epub_chunks_once(
+                translated_chunks=current, chunks=chunks, target_language=target_language,
+                model_name=model_name, llm_client=llm_client, context_manager=context_manager,
+                placeholder_format=placeholder_format, log_callback=log_callback,
+                prompt_options={**(prompt_options or {}), "refinement_phase": phase},
+                stats_callback=phase_stats, stats=stats,
+                source_chunks=source_chunks,
+                initial_chunks=initial,
+                refinement_histories=[history[1:] for history in histories],
+                start_index=phase_start_segment,
+                check_interruption_callback=check_interruption_callback,
+                chunk_checkpoint_callback=_chunk_checkpoint,
+            )
+        except Exception as exc:
+            # The lower-level loop attaches a resumable payload for provider
+            # throttling and explicit interruption. Persist it before bubbling
+            # the signal to the file adapter/handler.
+            from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
+            if isinstance(exc, (RateLimitError, RefinementInterrupted)):
+                index = getattr(exc, "refinement_index", phase_start_segment)
+                state = _save_state(
+                    phase,
+                    index,
+                    getattr(exc, "partial_result", current),
+                )
+                exc.refinement_state = state
+            raise
+        _save_state(phase + 1, 0, current)
+        start_segment = 0
         if stats_callback:
             stats_callback({
                 "total_chunks": base_total * 3,
@@ -1914,4 +2084,11 @@ async def _refine_epub_chunks(
                 "refinement_pass": phase,
                 "refinement_total_passes": 3,
             })
+    if checkpoint_manager and translation_id:
+        try:
+            checkpoint_manager.delete_refinement_state(
+                translation_id, scope=checkpoint_scope
+            )
+        except Exception:
+            pass
     return current

@@ -53,7 +53,9 @@ _ENDPOINT_PROVIDERS = ('ollama', 'openai')
 # The others use a constant or a .env endpoint and ignore the request field,
 # so an endpoint sent alongside them is inert and must not be treated as an
 # override — the frontend sends llm_api_endpoint unconditionally.
-_ENDPOINT_CONSUMING_PROVIDERS = ('ollama', 'openai', 'nim')
+_ENDPOINT_CONSUMING_PROVIDERS = (
+    'ollama', 'openai', 'nim', 'anthropic', 'xai', 'nexum'
+)
 
 
 def _server_default_endpoint(provider):
@@ -68,6 +70,12 @@ def _server_default_endpoint(provider):
         return _config.OPENAI_API_ENDPOINT
     if provider == 'nim':
         return _config.NIM_API_ENDPOINT
+    if provider == 'anthropic':
+        return _config.ANTHROPIC_API_ENDPOINT
+    if provider == 'xai':
+        return _config.XAI_API_ENDPOINT
+    if provider == 'nexum':
+        return _config.NEXUM_API_ENDPOINT
     return ''
 
 

@@ -1,4 +1,5 @@
 {
+  "app_name": "NovelTrad",
   "app_subtitle": "Traduisez des livres avec des LLM",
   "llm_checking": "LLM : vérification...",
   "llm_connected": "LLM : connecté",

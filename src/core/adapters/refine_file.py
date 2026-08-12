@@ -18,6 +18,7 @@ async def refine_file(
     target_language: str,
     model_name: str,
     llm_provider: str,
+    source_filepath: Optional[str] = None,
     checkpoint_manager: Any = None,
     translation_id: Optional[str] = None,
     log_callback: Optional[Callable] = None,
@@ -78,6 +79,7 @@ async def refine_file(
         return await refine_txt_file(
             input_filepath=input_filepath,
             output_filepath=output_filepath,
+            source_filepath=source_filepath,
             target_language=target_language,
             model_name=model_name,
             cli_api_endpoint=llm_api_endpoint,
@@ -99,6 +101,9 @@ async def refine_file(
             auto_adjust_context=auto_adjust_context,
             max_tokens_per_chunk=max_tokens_per_chunk,
             prompt_options=prompt_options,
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            refinement_output_filepath=output_filepath,
         )
 
     if detected_type == 'epub':
@@ -106,6 +111,7 @@ async def refine_file(
         return await refine_epub_file(
             input_filepath=input_filepath,
             output_filepath=output_filepath,
+            source_filepath=source_filepath,
             target_language=target_language,
             model_name=model_name,
             cli_api_endpoint=llm_api_endpoint,
@@ -127,6 +133,9 @@ async def refine_file(
             auto_adjust_context=auto_adjust_context,
             max_tokens_per_chunk=max_tokens_per_chunk,
             prompt_options=prompt_options,
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            refinement_output_filepath=output_filepath,
         )
 
     if detected_type == 'docx':
@@ -134,6 +143,7 @@ async def refine_file(
         return await refine_docx_file(
             input_filepath=input_filepath,
             output_filepath=output_filepath,
+            source_filepath=source_filepath,
             target_language=target_language,
             model_name=model_name,
             cli_api_endpoint=llm_api_endpoint,
@@ -155,6 +165,9 @@ async def refine_file(
             auto_adjust_context=auto_adjust_context,
             max_tokens_per_chunk=max_tokens_per_chunk,
             prompt_options=prompt_options,
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            refinement_output_filepath=output_filepath,
         )
 
     if detected_type == 'srt':
@@ -162,6 +175,7 @@ async def refine_file(
         return await refine_srt_file(
             input_filepath=input_filepath,
             output_filepath=output_filepath,
+            source_filepath=source_filepath,
             target_language=target_language,
             model_name=model_name,
             cli_api_endpoint=llm_api_endpoint,
@@ -180,6 +194,9 @@ async def refine_file(
             xai_api_key=xai_api_key,
             nexum_api_key=nexum_api_key,
             prompt_options=prompt_options,
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            refinement_output_filepath=output_filepath,
         )
 
     supported = ', '.join(['txt', 'epub', 'srt', 'docx'])
