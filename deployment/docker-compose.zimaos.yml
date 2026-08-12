@@ -37,6 +37,10 @@ services:
       - noveltrad_data:/app/data
       - noveltrad_files:/app/translated_files
       - noveltrad_logs:/app/logs
+      # Keep the file visible to python-dotenv and persist settings written by
+      # the UI across container recreations. The same file is also supplied as
+      # env_file above for Compose interpolation/runtime environment values.
+      - ../.env:/app/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
