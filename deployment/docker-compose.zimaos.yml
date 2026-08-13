@@ -50,6 +50,21 @@ services:
       retries: 3
       start_period: 40s
 
+x-casaos:
+  author: self
+  category: Books
+  hostname: 192.168.1.98
+  icon: http://192.168.1.98:8501/static/noveltrad-logo.svg
+  index: /
+  is_uncontrolled: false
+  main: app
+  port_map: "8501"
+  scheme: http
+  store_app_id: noveltrad
+  title:
+    custom: "NovelTrad"
+    en_us: "NovelTrad"
+
 volumes:
   noveltrad_data:
     external: true
