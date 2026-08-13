@@ -1,0 +1,3 @@
+## 2024-05-31 - [Optimize SQL Cursor Usage]
+**Learning:** Using `.fetchall()` causes memory spikes by loading all results into a list. Iterating directly over the cursor acts as a generator and is more memory efficient. Avoid `.fetchall()` unless you need to execute another query while iterating on the current one. Note that some `.fetchall()` list comprehensions are perfectly fine if the final structure scales linearly anyway, but direct cursor loops skip intermediate array creation.
+**Action:** Always prefer direct iteration `for row in cursor:` over `for row in cursor.fetchall():` or `[x for x in cursor.fetchall()]` in python sqlite implementations.

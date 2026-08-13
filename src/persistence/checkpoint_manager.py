@@ -434,7 +434,7 @@ class CheckpointManager:
             cursor.execute("SELECT translation_id, config FROM translation_jobs")
             db_job_ids = set()
             preserved_files = set()  # Full file paths that are referenced
-            for row in cursor.fetchall():
+            for row in cursor:
                 db_job_ids.add(row['translation_id'])
                 config = json.loads(row['config'])
                 preserved_path = config.get('preserved_input_path', '')
