@@ -20,6 +20,11 @@ from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS
 from ..base import LLMProvider, LLMResponse
 from ..exceptions import ContextOverflowError
 from ..rate_limit_handler import handle_rate_limit, is_retryable_http_status
+from ..utils.openai_response import (
+    empty_retry_reason,
+    parse_chat_completion,
+    should_retry_empty_completion,
+)
 
 
 class OpenRouterProvider(LLMProvider):
@@ -260,24 +265,25 @@ class OpenRouterProvider(LLMProvider):
                 response.raise_for_status()
 
                 result = response.json()
+                parsed = parse_chat_completion(result)
+                response_text = parsed["text"]
+                prompt_tokens = parsed["prompt_tokens"]
+                completion_tokens = parsed["completion_tokens"]
 
-                if "choices" not in result or len(result["choices"]) == 0:
-                    print(f"[OpenRouter] WARN: Unexpected response format: {result}")
-                    return None
-
-                # NOTE: a present-but-null "content" makes .get(..., "") return None,
-                # so coalesce with `or ""` to guarantee a string downstream.
-                response_text = result["choices"][0].get("message", {}).get("content") or ""
-
-                usage = result.get("usage", {})
-                prompt_tokens = usage.get("prompt_tokens", 0)
-                completion_tokens = usage.get("completion_tokens", 0)
+                if should_retry_empty_completion(parsed, attempt, MAX_TRANSLATION_ATTEMPTS):
+                    delay = min(8, 2 * (attempt + 1))
+                    print(f"[OpenRouter] Empty/malformed response from '{self.model}' "
+                          f"({empty_retry_reason(parsed)}) - retrying in {delay}s "
+                          f"(attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS})")
+                    attempt += 1
+                    await asyncio.sleep(delay)
+                    continue
 
                 if not response_text.strip():
                     print(f"[OpenRouter] WARN: Empty response from model '{self.model}' "
-                          f"({prompt_tokens}+{completion_tokens} tokens). The model likely "
-                          f"refused or filtered this chunk (sensitive/policy-flagged content "
-                          f"or provider-side moderation). Try a different model.")
+                          f"({empty_retry_reason(parsed)}). The model likely "
+                          f"refused or filtered this chunk, or the provider dropped "
+                          f"the completion. Try a different model if this persists.")
 
                 if "cost" in result:
                     cost = float(result.get("cost", 0))

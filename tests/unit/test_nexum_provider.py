@@ -64,3 +64,38 @@ async def test_generate_keeps_explicit_max_tokens(monkeypatch):
     await provider.generate("Translate", timeout=30, max_tokens=1234)
 
     assert fake.last_json["max_tokens"] == 1234
+
+
+@pytest.mark.asyncio
+async def test_nexum_retries_zero_token_empty_beyond_global_default(monkeypatch):
+    """Nexum uses MAX_GENERATE_ATTEMPTS=5 so a flaky Dialagram drop is retried."""
+    from src.core.llm.providers import openai as openai_mod
+
+    monkeypatch.setattr(openai_mod, "MAX_TRANSLATION_ATTEMPTS", 2)
+
+    async def _instant(_seconds):
+        return None
+
+    monkeypatch.setattr(openai_mod.asyncio, "sleep", _instant)
+
+    provider = NexumProvider(api_key="test-key", model="deepseek-v4")
+    fake = _FakeClient()
+    payloads = [
+        {"choices": [{"message": {"content": ""}}], "usage": {"prompt_tokens": 1, "completion_tokens": 0}},
+        {"choices": [{"message": {"content": ""}}], "usage": {"prompt_tokens": 1, "completion_tokens": 0}},
+        {"choices": [{"message": {"content": "Hallo"}}], "usage": {"prompt_tokens": 5, "completion_tokens": 3}},
+    ]
+
+    async def _post(*args, **kwargs):
+        fake.calls += 1
+        fake.last_json = kwargs.get("json")
+        return _FakeResponse(payloads.pop(0))
+
+    fake.post = _post
+    _async_fake_client(provider, fake, monkeypatch)
+
+    response = await provider.generate("Translate", timeout=30)
+
+    assert fake.calls == 3
+    assert response.content == "Hallo"
+    assert NexumProvider.MAX_GENERATE_ATTEMPTS == 5

@@ -120,6 +120,7 @@ function getTranslationConfig(file) {
         parallel_workers: provider === 'ollama'
             ? 1
             : (parseInt(DomHelpers.getValue('parallelWorkers'), 10) || 1),
+        max_tokens_per_chunk: parseInt(DomHelpers.getValue('maxTokensPerChunk'), 10) || undefined,
         tts_enabled: ttsEnabled,
         tts_voice: ttsEnabled ? (DomHelpers.getValue('ttsVoice') || '') : '',
         tts_rate: ttsEnabled ? (DomHelpers.getValue('ttsRate') || '+0%') : '+0%',

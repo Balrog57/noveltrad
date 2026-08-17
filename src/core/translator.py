@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 
 from src.config import (
     DEFAULT_MODEL, TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT, SENTENCE_TERMINATORS,
-    THINKING_MODELS, ADAPTIVE_CONTEXT_INITIAL_THINKING
+    THINKING_MODELS, ADAPTIVE_CONTEXT_INITIAL_THINKING, MAX_TRANSLATION_ATTEMPTS
 )
 from src.prompts.prompts import generate_translation_prompt, generate_subtitle_block_prompt, generate_refinement_prompt
 from src.prompts.examples import ensure_example_ready, has_example_for_pair, PLACEHOLDER_EXAMPLES
@@ -239,6 +239,7 @@ async def _make_llm_request_with_adaptive_context(
     remaining_content = ""
     all_translations = []
     reduction_attempt = 0
+    empty_retries = 0
     last_response: Optional[LLMResponse] = None
 
     while current_content.strip():
@@ -295,20 +296,31 @@ async def _make_llm_request_with_adaptive_context(
                 return None, main_content, None
 
             last_response = llm_response
-            full_raw_response = llm_response.content
+            full_raw_response = llm_response.content or ""
 
-            if not full_raw_response or not full_raw_response.strip():
-                # Empty/null content: the model returned nothing. This is almost
-                # always a refusal or a provider-side moderation/policy block on
-                # sensitive content (not a truncation), so retrying with a larger
-                # context would not help. Fail this unit cleanly with a clear hint
-                # instead of crashing later on None slicing.
+            if not str(full_raw_response).strip():
+                # Empty/null content. Aggregators (Nexum, OpenRouter, …) drop
+                # completions with 0 tokens; that is usually transient, not a
+                # policy refusal. Retry with backoff before failing the chunk.
+                empty_retries += 1
+                tokens = llm_response.completion_tokens or 0
+                if empty_retries < MAX_TRANSLATION_ATTEMPTS:
+                    delay = min(8, 2 * empty_retries)
+                    if log_callback:
+                        log_callback("empty_llm_retry",
+                            f"⚠️ Empty response ({tokens} completion tokens) — "
+                            f"retrying in {delay}s "
+                            f"({empty_retries}/{MAX_TRANSLATION_ATTEMPTS}). "
+                            f"Often a dropped completion from the provider, not a refusal.")
+                    await asyncio.sleep(delay)
+                    continue
                 if log_callback:
                     log_callback("empty_llm_response",
-                        "⚠️ Model returned an empty response (0 tokens). This usually "
-                        "means the model refused or filtered this chunk — common with "
-                        "sensitive/policy-flagged content or provider-side moderation. "
-                        "Try a different model.")
+                        f"⚠️ Model returned an empty response after "
+                        f"{empty_retries} attempts ({tokens} completion tokens). "
+                        f"This can be a flaky aggregator, a dropped completion, "
+                        f"or a content filter. The chunk will be retried by the "
+                        f"pipeline; if it keeps failing, try another model.")
                 return None, main_content, last_response
 
             # Check if we should retry with larger context (adaptive strategy)
@@ -339,6 +351,7 @@ async def _make_llm_request_with_adaptive_context(
 
             if translated_text:
                 all_translations.append(translated_text)
+                empty_retries = 0
             else:
                 # Extraction failed - tags not found or malformed
                 if log_callback:
@@ -602,6 +615,7 @@ async def _make_refinement_request(
 
     client = llm_client or default_client
     last_response: Optional[LLMResponse] = None
+    empty_retries = 0
 
     # Retry loop with adaptive context (mirrors translation logic)
     while True:
@@ -644,7 +658,25 @@ async def _make_refinement_request(
                     context_manager.increase_context()
                     continue  # Retry with larger context
 
-            full_raw_response = llm_response.content
+            full_raw_response = llm_response.content or ""
+
+            if not str(full_raw_response).strip():
+                empty_retries += 1
+                tokens = llm_response.completion_tokens or 0
+                if empty_retries < MAX_TRANSLATION_ATTEMPTS:
+                    delay = min(8, 2 * empty_retries)
+                    if log_callback:
+                        log_callback("empty_llm_retry",
+                            f"⚠️ Empty refinement response ({tokens} completion tokens) — "
+                            f"retrying in {delay}s "
+                            f"({empty_retries}/{MAX_TRANSLATION_ATTEMPTS})")
+                    await asyncio.sleep(delay)
+                    continue
+                if log_callback:
+                    log_callback("empty_llm_response",
+                        f"⚠️ Empty refinement response after {empty_retries} attempts "
+                        f"({tokens} completion tokens). Keeping the draft translation.")
+                return None, last_response
 
             # Log the response
             if log_callback:
@@ -667,8 +699,9 @@ async def _make_refinement_request(
             if refined_text:
                 return refined_text, llm_response
             else:
-                # Fallback to raw response if no tags found
-                if draft_translation not in full_raw_response:
+                # Fallback to raw response if no tags found. Never treat a
+                # blank body as a successful refine — that would wipe the draft.
+                if full_raw_response.strip() and draft_translation not in full_raw_response:
                     return full_raw_response.strip(), llm_response
                 else:
                     if log_callback:

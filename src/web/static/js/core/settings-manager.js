@@ -150,6 +150,11 @@ export const SettingsManager = {
             { id: 'deepseekApiKey', event: 'input' },
             { id: 'poeApiKey', event: 'input' },
             { id: 'nimApiKey', event: 'input' },
+            { id: 'anthropicApiKey', event: 'input' },
+            { id: 'xaiApiKey', event: 'input' },
+            { id: 'nexumApiKey', event: 'input' },
+            { id: 'opencodeApiKey', event: 'input' },
+            { id: 'opencodegoApiKey', event: 'input' },
             { id: 'disableAutoPause', event: 'change' },
             { id: 'parallelWorkers', event: 'input' },
             { id: 'maxTokensPerChunk', event: 'input' }

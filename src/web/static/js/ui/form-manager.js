@@ -712,6 +712,7 @@ export const FormManager = {
             parallel_workers: provider === 'ollama'
                 ? 1
                 : (parseInt(DomHelpers.getValue('parallelWorkers'), 10) || 1),
+            max_tokens_per_chunk: parseInt(DomHelpers.getValue('maxTokensPerChunk'), 10) || undefined,
             // TTS configuration
             tts_enabled: ttsEnabled,
             tts_voice: ttsEnabled ? (DomHelpers.getValue('ttsVoice') || '') : '',

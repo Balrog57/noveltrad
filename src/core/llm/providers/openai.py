@@ -14,6 +14,11 @@ from ..base import LLMProvider, LLMResponse
 from ..exceptions import ContextOverflowError
 from ..rate_limit_handler import handle_rate_limit, is_retryable_http_status
 from ..utils.context_detection import ContextDetector
+from ..utils.openai_response import (
+    empty_retry_reason,
+    parse_chat_completion,
+    should_retry_empty_completion,
+)
 
 from src.config import (
     REQUEST_TIMEOUT,
@@ -24,6 +29,10 @@ from src.config import (
 
 class OpenAICompatibleProvider(LLMProvider):
     """OpenAI-compatible API provider (works with llama.cpp, LM Studio, vLLM, OpenAI, etc.)"""
+
+    # Flaky aggregators (Nexum, …) override this so empty/5xx drops get more
+    # attempts than the global MAX_TRANSLATION_ATTEMPTS default.
+    MAX_GENERATE_ATTEMPTS: Optional[int] = None
 
     def __init__(self, api_endpoint: str, model: str,
                  api_key: Optional[Union[str, List[str]]] = None,
@@ -118,9 +127,13 @@ class OpenAICompatibleProvider(LLMProvider):
         client = await self._get_client()
         # 429s have their own budget (rate_limit_events): rotating to a spare
         # key must not consume a transient-retry attempt (issue #217).
+        max_attempts = max(
+            MAX_TRANSLATION_ATTEMPTS,
+            self.MAX_GENERATE_ATTEMPTS or MAX_TRANSLATION_ATTEMPTS,
+        )
         attempt = 0
         rate_limit_events = 0
-        while attempt < MAX_TRANSLATION_ATTEMPTS:
+        while attempt < max_attempts:
             current_key = await self._key_pool.acquire() if self._key_pool else None
             headers = {"Content-Type": "application/json"}
             if current_key:
@@ -135,12 +148,10 @@ class OpenAICompatibleProvider(LLMProvider):
                 response.raise_for_status()
 
                 response_json = response.json()
-                response_text = response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-                # Extract token usage if available
-                usage = response_json.get("usage", {})
-                prompt_tokens = usage.get("prompt_tokens", 0)
-                completion_tokens = usage.get("completion_tokens", 0)
+                parsed = parse_chat_completion(response_json)
+                response_text = parsed["text"]
+                prompt_tokens = parsed["prompt_tokens"]
+                completion_tokens = parsed["completion_tokens"]
                 context_used = prompt_tokens + completion_tokens
 
                 if self.log_callback and (prompt_tokens or completion_tokens):
@@ -148,26 +159,23 @@ class OpenAICompatibleProvider(LLMProvider):
                         f"Tokens: prompt={prompt_tokens}, response={completion_tokens}, "
                         f"total={context_used}")
 
-                # Some reasoning models (e.g. deepseek-v4 served through
-                # aggregator routers) return HTTP 200 with an empty
-                # ``content`` when the chain-of-thought spent the whole
-                # completion budget before writing the answer. The tokens
-                # were billed, but no usable text came back - retrying
-                # usually lands a full answer. A genuine refusal returns
-                # zero tokens, so it is not retried and flows to upstream
-                # empty-response handling as before.
-                if not response_text or not response_text.strip():
-                    if completion_tokens > 0 and attempt + 1 < MAX_TRANSLATION_ATTEMPTS:
-                        if self.log_callback:
-                            self.log_callback("llm_empty_retry",
-                                f"Empty response ({completion_tokens} tokens, no content) "
-                                f"- retrying (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS})")
-                        attempt += 1
-                        await asyncio.sleep(2)
-                        continue
+                # Aggregators often return HTTP 200 with no usable text: empty
+                # choices, content:null, a 0-token drop, or reasoning that ate
+                # the completion budget. Retry those. An explicit content-filter
+                # / refusal is not retried — it will not recover.
+                if should_retry_empty_completion(parsed, attempt, max_attempts):
+                    delay = min(8, 2 * (attempt + 1))
+                    if self.log_callback:
+                        self.log_callback("llm_empty_retry",
+                            f"Empty/malformed response ({empty_retry_reason(parsed)}) "
+                            f"- retrying in {delay}s "
+                            f"(attempt {attempt + 1}/{max_attempts})")
+                    attempt += 1
+                    await asyncio.sleep(delay)
+                    continue
 
                 return LLMResponse(
-                    content=response_text,
+                    content=response_text or "",
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     context_used=context_used,
@@ -182,7 +190,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 if self.log_callback:
                     self.log_callback("llm_timeout",
-                        f"{YELLOW}⚠️ LLM request timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}){RESET}\n"
+                        f"{YELLOW}⚠️ LLM request timeout (attempt {attempt + 1}/{max_attempts}){RESET}\n"
                         f"{YELLOW}   Endpoint: {self.api_endpoint}{RESET}\n"
                         f"{YELLOW}   Model: {self.model}{RESET}\n"
                         f"{YELLOW}   Possible causes:{RESET}\n"
@@ -191,10 +199,10 @@ class OpenAICompatibleProvider(LLMProvider):
                         f"{YELLOW}   - Network connectivity issues{RESET}\n"
                         f"{YELLOW}   - Model too large for available VRAM{RESET}")
                 else:
-                    print(f"{YELLOW}⚠️ OpenAI-compatible API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}{RESET}")
+                    print(f"{YELLOW}⚠️ OpenAI-compatible API Timeout (attempt {attempt + 1}/{max_attempts}): {e}{RESET}")
 
                 attempt += 1
-                if attempt < MAX_TRANSLATION_ATTEMPTS:
+                if attempt < max_attempts:
                     if self.log_callback:
                         self.log_callback("llm_retry", f"   Retrying in 2 seconds...")
                     await asyncio.sleep(2)
@@ -203,7 +211,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 # All retry attempts exhausted
                 if self.log_callback:
                     self.log_callback("llm_timeout_fatal",
-                        f"{RED}❌ All {MAX_TRANSLATION_ATTEMPTS} retry attempts exhausted{RESET}\n"
+                        f"{RED}❌ All {max_attempts} retry attempts exhausted{RESET}\n"
                         f"{RED}   Translation failed - unable to reach LLM server{RESET}\n"
                         f"{RED}   Recommendations:{RESET}\n"
                         f"{RED}   1. Check if llama.cpp/LM Studio server is running{RESET}\n"
@@ -241,7 +249,7 @@ class OpenAICompatibleProvider(LLMProvider):
                     rate_limit_events += 1
                     await handle_rate_limit(
                         self._key_pool, current_key, e.response.headers,
-                        rate_limit_events, MAX_TRANSLATION_ATTEMPTS, self.log_callback,
+                        rate_limit_events, max_attempts, self.log_callback,
                     )
                     continue
 
@@ -277,7 +285,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 if self.log_callback:
                     status_code = e.response.status_code if e.response else 'unknown'
                     self.log_callback("llm_http_error",
-                        f"{YELLOW}⚠️ HTTP error from LLM server (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}){RESET}\n"
+                        f"{YELLOW}⚠️ HTTP error from LLM server (attempt {attempt + 1}/{max_attempts}){RESET}\n"
                         f"{YELLOW}   Endpoint: {self.api_endpoint}{RESET}\n"
                         f"{YELLOW}   Status: {e.response.status_code if e.response else 'unknown'}{RESET}\n"
                         f"{YELLOW}   Model: {self.model}{RESET}\n"
@@ -285,7 +293,7 @@ class OpenAICompatibleProvider(LLMProvider):
                     if error_body:
                         self.log_callback("llm_http_error_detail", f"{YELLOW}   Response: {error_body[:200]}...{RESET}")
                 else:
-                    print(f"{YELLOW}⚠️ OpenAI-compatible API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}{RESET}")
+                    print(f"{YELLOW}⚠️ OpenAI-compatible API HTTP Error (attempt {attempt + 1}/{max_attempts}): {e}{RESET}")
                     if error_body:
                         print(f"{YELLOW}   Response: {error_body[:200]}...{RESET}")
 
@@ -297,7 +305,7 @@ class OpenAICompatibleProvider(LLMProvider):
                     return None
 
                 attempt += 1
-                if attempt < MAX_TRANSLATION_ATTEMPTS:
+                if attempt < max_attempts:
                     if self.log_callback:
                         self.log_callback("llm_retry", f"   Retrying in 2 seconds...")
                     await asyncio.sleep(2)
@@ -306,7 +314,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 # All retries exhausted
                 if self.log_callback:
                     self.log_callback("llm_http_error_fatal",
-                        f"{RED}❌ All {MAX_TRANSLATION_ATTEMPTS} retry attempts exhausted{RESET}\n"
+                        f"{RED}❌ All {max_attempts} retry attempts exhausted{RESET}\n"
                         f"{RED}   HTTP error persists - translation failed{RESET}\n"
                         f"{RED}   Status: {e.response.status_code if e.response else 'unknown'}{RESET}\n"
                         f"{RED}   Check server logs for more details{RESET}")
@@ -321,7 +329,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 if self.log_callback:
                     self.log_callback("llm_json_error",
-                        f"{YELLOW}⚠️ Invalid JSON response from LLM (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}){RESET}\n"
+                        f"{YELLOW}⚠️ Invalid JSON response from LLM (attempt {attempt + 1}/{max_attempts}){RESET}\n"
                         f"{YELLOW}   Endpoint: {self.api_endpoint}{RESET}\n"
                         f"{YELLOW}   Model: {self.model}{RESET}\n"
                         f"{YELLOW}   Error: {str(e)}{RESET}\n"
@@ -331,10 +339,10 @@ class OpenAICompatibleProvider(LLMProvider):
                         f"{YELLOW}   - API endpoint incompatibility{RESET}\n"
                         f"{YELLOW}   - Server configuration issues{RESET}")
                 else:
-                    print(f"{YELLOW}⚠️ OpenAI-compatible API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}{RESET}")
+                    print(f"{YELLOW}⚠️ OpenAI-compatible API JSON Decode Error (attempt {attempt + 1}/{max_attempts}): {e}{RESET}")
 
                 attempt += 1
-                if attempt < MAX_TRANSLATION_ATTEMPTS:
+                if attempt < max_attempts:
                     if self.log_callback:
                         self.log_callback("llm_retry", f"   Retrying in 2 seconds...")
                     await asyncio.sleep(2)
@@ -342,7 +350,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 if self.log_callback:
                     self.log_callback("llm_json_error_fatal",
-                        f"{RED}❌ All {MAX_TRANSLATION_ATTEMPTS} retry attempts exhausted{RESET}\n"
+                        f"{RED}❌ All {max_attempts} retry attempts exhausted{RESET}\n"
                         f"{RED}   Unable to parse LLM response - translation failed{RESET}\n"
                         f"{RED}   Verify server is running and endpoint is correct{RESET}")
                 else:
@@ -356,16 +364,16 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 if self.log_callback:
                     self.log_callback("llm_unexpected_error",
-                        f"{YELLOW}⚠️ Unexpected error during LLM request (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}){RESET}\n"
+                        f"{YELLOW}⚠️ Unexpected error during LLM request (attempt {attempt + 1}/{max_attempts}){RESET}\n"
                         f"{YELLOW}   Endpoint: {self.api_endpoint}{RESET}\n"
                         f"{YELLOW}   Model: {self.model}{RESET}\n"
                         f"{YELLOW}   Error type: {type(e).__name__}{RESET}\n"
                         f"{YELLOW}   Error: {str(e)}{RESET}")
                 else:
-                    print(f"{YELLOW}⚠️ OpenAI-compatible API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {type(e).__name__}: {e}{RESET}")
+                    print(f"{YELLOW}⚠️ OpenAI-compatible API Unknown Error (attempt {attempt + 1}/{max_attempts}): {type(e).__name__}: {e}{RESET}")
 
                 attempt += 1
-                if attempt < MAX_TRANSLATION_ATTEMPTS:
+                if attempt < max_attempts:
                     if self.log_callback:
                         self.log_callback("llm_retry", f"   Retrying in 2 seconds...")
                     await asyncio.sleep(2)
@@ -373,7 +381,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
                 if self.log_callback:
                     self.log_callback("llm_unexpected_error_fatal",
-                        f"{RED}❌ All {MAX_TRANSLATION_ATTEMPTS} retry attempts exhausted{RESET}\n"
+                        f"{RED}❌ All {max_attempts} retry attempts exhausted{RESET}\n"
                         f"{RED}   Unexpected error persists - translation failed{RESET}\n"
                         f"{RED}   Please report this issue with the error details above{RESET}")
                 else:

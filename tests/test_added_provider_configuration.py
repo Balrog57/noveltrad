@@ -23,6 +23,7 @@ def test_added_provider_endpoints_and_fallback_models():
     assert AnthropicProvider.API_URL.endswith("/v1/messages")
     assert "grok-4.5" in XAIProvider.FALLBACK_MODELS
     assert NexumProvider.FALLBACK_MODELS == ["qwen-3.7-max", "deepseek-v4", "xiaomi-mimo-2.5"]
+    assert NexumProvider.MAX_GENERATE_ATTEMPTS == 5
     assert OpenCodeProvider.FALLBACK_MODELS[0] == "deepseek-v4-flash"
     assert OpenCodeGoProvider.FALLBACK_MODELS[0] == "deepseek-v4-pro"
     assert OpenCodeProvider.DEFAULT_MAX_OUTPUT_TOKENS == 32768

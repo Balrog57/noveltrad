@@ -9,6 +9,10 @@ class NexumProvider(OpenAICompatibleProvider):
     DEFAULT_API_ENDPOINT = "https://dialagram.me/router/v1"
     FALLBACK_MODELS = ["qwen-3.7-max", "deepseek-v4", "xiaomi-mimo-2.5"]
 
+    # Dialagram routinely drops completions (empty 200, 0 tokens, 5xx). Give
+    # those glitches more retries than the global default.
+    MAX_GENERATE_ATTEMPTS = 5
+
     # Reasoning models routed through Dialagram (deepseek-v4) routinely spend
     # 6-10k completion tokens on chain-of-thought before writing the answer.
     # A default cap low enough to truncate that would return an empty
