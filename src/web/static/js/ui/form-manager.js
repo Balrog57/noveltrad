@@ -460,6 +460,11 @@ export const FormManager = {
             ApiKeyUtils.setupField('deepseekApiKey', config.deepseek_api_key_configured, config.deepseek_api_key, config.deepseek_api_key_count);
             ApiKeyUtils.setupField('poeApiKey', config.poe_api_key_configured, config.poe_api_key, config.poe_api_key_count);
             ApiKeyUtils.setupField('nimApiKey', config.nim_api_key_configured, config.nim_api_key, config.nim_api_key_count);
+            ApiKeyUtils.setupField('anthropicApiKey', config.anthropic_api_key_configured, config.anthropic_api_key, config.anthropic_api_key_count);
+            ApiKeyUtils.setupField('xaiApiKey', config.xai_api_key_configured, config.xai_api_key, config.xai_api_key_count);
+            ApiKeyUtils.setupField('nexumApiKey', config.nexum_api_key_configured, config.nexum_api_key, config.nexum_api_key_count);
+            ApiKeyUtils.setupField('opencodeApiKey', config.opencode_api_key_configured, config.opencode_api_key, config.opencode_api_key_count);
+            ApiKeyUtils.setupField('opencodegoApiKey', config.opencodego_api_key_configured, config.opencodego_api_key, config.opencodego_api_key_count);
 
             // After loading defaults, dispatch event to notify other modules
             console.log('[FormManager] Default config loaded, dispatching event');
@@ -691,6 +696,11 @@ export const FormManager = {
             gemini_api_key: geminiApiKey,
             openai_api_key: openaiApiKey,
             openrouter_api_key: openrouterApiKey,
+            anthropic_api_key: provider === 'anthropic' ? ApiKeyUtils.getValue('anthropicApiKey') : '',
+            xai_api_key: provider === 'xai' ? ApiKeyUtils.getValue('xaiApiKey') : '',
+            nexum_api_key: provider === 'nexum' ? ApiKeyUtils.getValue('nexumApiKey') : '',
+            opencode_api_key: provider === 'opencode' ? ApiKeyUtils.getValue('opencodeApiKey') : '',
+            opencodego_api_key: provider === 'opencodego' ? ApiKeyUtils.getValue('opencodegoApiKey') : '',
             // Prompt options (optional system prompt instructions)
             // Technical content protection is always enabled
             prompt_options: promptOptions,

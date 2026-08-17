@@ -477,6 +477,12 @@ export const SettingsManager = {
             } else if (provider === 'nexum') {
                 const key = DomHelpers.getValue('nexumApiKey');
                 if (key) envSettings['NEXUM_API_KEY'] = key;
+            } else if (provider === 'opencode') {
+                const key = DomHelpers.getValue('opencodeApiKey');
+                if (key) envSettings['OPENCODE_API_KEY'] = key;
+            } else if (provider === 'opencodego') {
+                const key = DomHelpers.getValue('opencodegoApiKey');
+                if (key) envSettings['OPENCODE_GO_API_KEY'] = key;
             }
 
             // Save endpoints to .env
@@ -559,6 +565,10 @@ export const SettingsManager = {
                     envSettings['XAI_MODEL'] = model;
                 } else if (provider === 'nexum') {
                     envSettings['NEXUM_MODEL'] = model;
+                } else if (provider === 'opencode') {
+                    envSettings['OPENCODE_MODEL'] = model;
+                } else if (provider === 'opencodego') {
+                    envSettings['OPENCODE_GO_MODEL'] = model;
                 } else {
                     // Ollama and OpenAI use DEFAULT_MODEL
                     envSettings['DEFAULT_MODEL'] = model;

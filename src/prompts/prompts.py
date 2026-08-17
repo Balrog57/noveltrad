@@ -712,9 +712,29 @@ def generate_refinement_prompt(
 {additional_instructions.strip()}"""
 
     phase_guidance = {
-        1: "First, anchor the draft to the source when it is available. Resolve context, continuity, terminology, omissions, additions, character relationships, tense, and point of view. Return a corrected working version.",
-        2: "Now perform a rigorous orthography, grammar, syntax, punctuation, and fluency correction while preserving the source meaning and the contextual decisions already established. Keep a sentence unchanged when no certain correction is needed.",
-        3: "Finally, arbitrate between the initial translation and every earlier revision for this same segment. Keep only justified improvements, remove regressions, and preserve every fact, name, number, relation, and placeholder. Make the smallest changes needed for a publication-ready version.",
+        1: (
+            "First, anchor the draft to the source when it is available. "
+            "Resolve context, continuity, terminology, omissions, additions, "
+            "character relationships, tense, and point of view. Repair any "
+            "calque that still reads like the source language. Return a "
+            "corrected working version entirely in the target language."
+        ),
+        2: (
+            "Now perform a rigorous orthography, grammar, syntax, punctuation, "
+            "and fluency correction while preserving the source meaning and the "
+            "contextual decisions already established. Prefer idiomatic target-"
+            "language phrasing over word-for-word residue. Keep a sentence "
+            "unchanged only when it is already fluent and certain."
+        ),
+        3: (
+            "Finally, arbitrate between the initial translation and every earlier "
+            "revision for this same segment. Keep justified improvements, remove "
+            "regressions, and preserve every fact, name, number, relation, and "
+            f"placeholder. Rewrite into natural human {target_language} whenever "
+            "the draft still sounds translated: vary rhythm and lexicon, restore "
+            "a literary voice, and produce a publication-ready paragraph that a "
+            "skilled native author could have written."
+        ),
     }.get(refinement_phase, "Polish the draft into fluent, literary prose while preserving meaning.")
 
     # SYSTEM PROMPT for refinement
@@ -734,6 +754,7 @@ Your job is to improve it only where the source and the editing rules justify a 
 - Some sentences may already be correct and must remain unchanged
 
 **YOUR OUTPUT MUST BE:**
+- Entirely in {target_language} - never leave source-language wording
 - Fluent, natural {target_language} prose
 - Stylistically excellent - as if written by a skilled {target_language} author
 
@@ -744,7 +765,7 @@ Your job is to improve it only where the source and the editing rules justify a 
 2. **Structural integrity** - Preserve placeholders, line breaks, markup, and output boundaries exactly
 3. **Correctness** - Fix demonstrable omissions, additions, mistranslations, grammar, punctuation, and terminology
 4. **Natural flow** - Use idiomatic {target_language} only when meaning remains unchanged
-5. **Literary polish** - Improve rhythm and word choice only when the improvement is certain
+5. **Literary polish** - Improve rhythm, voice, and word choice so the prose reads as native {target_language}, not as a translation
 
 **WHAT TO FIX:**
 - Awkward literal translations → Natural {target_language} expressions

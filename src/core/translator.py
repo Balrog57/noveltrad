@@ -37,7 +37,7 @@ from typing import List, Dict, Tuple, Optional
 MAX_CHUNK_REDUCTION_ATTEMPTS = 3
 CHUNK_REDUCTION_FACTOR = 0.6  # Reduce to 60% of original size each attempt
 MIN_CHUNK_CHARACTERS = 200  # Minimum chunk size to attempt translation
-REFINEMENT_PROMPT_VERSION = "source-aware-three-pass-v2"
+REFINEMENT_PROMPT_VERSION = "source-aware-three-pass-v3"
 
 
 def _build_chunk_glossary_block(
@@ -732,6 +732,8 @@ async def refine_chunks(
     anthropic_api_key=None,
     xai_api_key=None,
     nexum_api_key=None,
+    opencode_api_key=None,
+    opencodego_api_key=None,
     context_window=2048,
     auto_adjust_context=True,
     prompt_options=None,
@@ -790,6 +792,8 @@ async def refine_chunks(
             anthropic_api_key=anthropic_api_key,
             xai_api_key=xai_api_key,
             nexum_api_key=nexum_api_key,
+            opencode_api_key=opencode_api_key,
+            opencodego_api_key=opencodego_api_key,
             context_window=context_window,
             auto_adjust_context=auto_adjust_context,
             prompt_options=prompt_options,
@@ -846,6 +850,8 @@ async def refine_chunks(
         anthropic_api_key=anthropic_api_key,
         xai_api_key=xai_api_key,
         nexum_api_key=nexum_api_key,
+        opencode_api_key=opencode_api_key,
+        opencodego_api_key=opencodego_api_key,
         context_window=initial_context, log_callback=log_callback
     )
 
@@ -1012,6 +1018,8 @@ async def _refine_chunks_four_pass(
     anthropic_api_key=None,
     xai_api_key=None,
     nexum_api_key=None,
+    opencode_api_key=None,
+    opencodego_api_key=None,
     context_window=2048,
     auto_adjust_context=True,
     prompt_options=None,
@@ -1038,7 +1046,8 @@ async def _refine_chunks_four_pass(
         mistral_api_key=mistral_api_key, deepseek_api_key=deepseek_api_key,
         poe_api_key=poe_api_key, nim_api_key=nim_api_key,
         anthropic_api_key=anthropic_api_key, xai_api_key=xai_api_key,
-        nexum_api_key=nexum_api_key, context_window=initial_context,
+        nexum_api_key=nexum_api_key, opencode_api_key=opencode_api_key,
+        opencodego_api_key=opencodego_api_key, context_window=initial_context,
         log_callback=log_callback,
     )
     if not client:

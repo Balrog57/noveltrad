@@ -191,6 +191,8 @@ async def refine_epub_file(
     anthropic_api_key: Optional[str] = None,
     xai_api_key: Optional[str] = None,
     nexum_api_key: Optional[str] = None,
+    opencode_api_key: Optional[str] = None,
+    opencodego_api_key: Optional[str] = None,
     context_window: int = 2048,
     auto_adjust_context: bool = True,
     prompt_options: Optional[Dict] = None,
@@ -222,6 +224,8 @@ async def refine_epub_file(
         anthropic_api_key=anthropic_api_key,
         xai_api_key=xai_api_key,
         nexum_api_key=nexum_api_key,
+        opencode_api_key=opencode_api_key,
+        opencodego_api_key=opencodego_api_key,
         log_callback=log_callback,
     )
     if llm_client is None:

@@ -43,7 +43,7 @@ def _clamp_parallel_workers(value):
 # '<PROVIDER>_API_KEY'. The mapping is mechanical, so supporting a new provider
 # in the resume-override path requires only adding it here (and nowhere else in
 # this file).
-_KEY_PROVIDERS = ('gemini', 'openai', 'openrouter', 'mistral', 'deepseek', 'poe', 'nim', 'anthropic', 'xai', 'nexum')
+_KEY_PROVIDERS = ('gemini', 'openai', 'openrouter', 'mistral', 'deepseek', 'poe', 'nim', 'anthropic', 'xai', 'nexum', 'opencode', 'opencodego')
 
 # Providers that talk to a user-supplied endpoint; the others use a built-in one.
 _ENDPOINT_PROVIDERS = ('ollama', 'openai')
@@ -54,7 +54,7 @@ _ENDPOINT_PROVIDERS = ('ollama', 'openai')
 # so an endpoint sent alongside them is inert and must not be treated as an
 # override — the frontend sends llm_api_endpoint unconditionally.
 _ENDPOINT_CONSUMING_PROVIDERS = (
-    'ollama', 'openai', 'nim', 'anthropic', 'xai', 'nexum'
+    'ollama', 'openai', 'nim', 'anthropic', 'xai', 'nexum', 'opencode', 'opencodego'
 )
 
 
@@ -76,6 +76,10 @@ def _server_default_endpoint(provider):
         return _config.XAI_API_ENDPOINT
     if provider == 'nexum':
         return _config.NEXUM_API_ENDPOINT
+    if provider == 'opencode':
+        return _config.OPENCODE_API_ENDPOINT
+    if provider == 'opencodego':
+        return _config.OPENCODE_GO_API_ENDPOINT
     return ''
 
 
@@ -169,13 +173,16 @@ def _validate_provider_credentials(config):
     provider = (config.get('llm_provider') or 'ollama').lower()
 
     if provider in _KEY_PROVIDERS:
-        env_var = f"{provider.upper()}_API_KEY"
+        env_var = _provider_env_var(provider)
         # 'openai' also covers OpenAI-compatible local endpoints (llama.cpp,
         # LM Studio, vLLM) where a key is legitimately absent — only require
         # one for the official API, mirroring the factory's heuristic.
         key_required = (provider != 'openai'
                         or 'api.openai.com' in (config.get('llm_api_endpoint') or ''))
-        if key_required and not (config.get(f"{provider}_api_key") or os.getenv(env_var)):
+        stored_key = config.get(f"{provider}_api_key") or os.getenv(env_var)
+        if provider == 'opencodego':
+            stored_key = stored_key or os.getenv('OPENCODE_API_KEY')
+        if key_required and not stored_key:
             return jsonify({
                 "error": "Missing API key for provider",
                 "message": (f"Resuming with '{provider}' requires an API key. "
@@ -226,8 +233,11 @@ def _apply_resume_overrides(config, overrides):
         provider = (config.get('llm_provider') or 'ollama').lower()
         raw_key = overrides.get('api_key')
         if provider in _KEY_PROVIDERS and raw_key not in (None, ''):
-            env_var = f"{provider.upper()}_API_KEY"
-            config[f"{provider}_api_key"] = _resolve_api_key(raw_key, env_var)
+            env_var = _provider_env_var(provider)
+            resolved = _resolve_api_key(raw_key, env_var)
+            if provider == 'opencodego' and not resolved:
+                resolved = _resolve_api_key(raw_key, 'OPENCODE_API_KEY')
+            config[f"{provider}_api_key"] = resolved
 
     # A resume can point the job at a different host, either through the
     # override body or through the endpoint stored in the checkpoint. The same
@@ -322,6 +332,10 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
             'anthropic_api_key': _resolve_api_key(data.get('anthropic_api_key'), 'ANTHROPIC_API_KEY'),
             'xai_api_key': _resolve_api_key(data.get('xai_api_key'), 'XAI_API_KEY'),
             'nexum_api_key': _resolve_api_key(data.get('nexum_api_key'), 'NEXUM_API_KEY'),
+            'opencode_api_key': _resolve_api_key(data.get('opencode_api_key'), 'OPENCODE_API_KEY'),
+            'opencodego_api_key': _resolve_api_key(
+                data.get('opencodego_api_key'), 'OPENCODE_GO_API_KEY'
+            ) or _resolve_api_key(data.get('opencodego_api_key'), 'OPENCODE_API_KEY'),
             # Prompt options (optional instructions to include in the system prompt)
             'prompt_options': data.get('prompt_options', {}),
             # Auto-pause on rate limit toggle (request overrides .env default)

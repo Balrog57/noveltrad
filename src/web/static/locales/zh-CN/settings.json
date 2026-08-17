@@ -35,6 +35,8 @@
   "api_key_placeholder_anthropic": "输入 Anthropic API 密钥",
   "api_key_placeholder_xai": "输入 xAI API 密钥",
   "api_key_placeholder_nexum": "输入 Nexum API 密钥",
+  "api_key_placeholder_opencode": "输入 OpenCode Zen API 密钥",
+  "api_key_placeholder_opencodego": "输入 OpenCode Go API 密钥",
   "refresh_models_title": "刷新模型列表",
   "refresh_list_title": "刷新列表",
   "open_folder_title": "打开文件夹",

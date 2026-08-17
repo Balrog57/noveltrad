@@ -34,6 +34,8 @@
   "api_key_placeholder_anthropic": "Saisissez la clé API Anthropic",
   "api_key_placeholder_xai": "Saisissez la clé API xAI",
   "api_key_placeholder_nexum": "Saisissez la clé API Nexum",
+  "api_key_placeholder_opencode": "Saisissez la clé API OpenCode Zen",
+  "api_key_placeholder_opencodego": "Saisissez la clé API OpenCode Go",
 
   "refresh_models_title": "Actualiser la liste des modèles",
   "refresh_list_title": "Actualiser la liste",

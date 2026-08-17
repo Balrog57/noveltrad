@@ -51,6 +51,11 @@ def test_local_and_private_endpoints_are_allowed(endpoint):
     OPENAI_ALT_ENDPOINT,  # subdomain rule
     'https://openrouter.ai/api/v1/chat/completions',
     'https://integrate.api.nvidia.com/v1/chat/completions',
+    'https://api.anthropic.com/v1/messages',
+    'https://api.x.ai/v1/chat/completions',
+    'https://dialagram.me/router/v1/chat/completions',
+    'https://opencode.ai/zen/v1/chat/completions',
+    'https://opencode.ai/zen/go/v1/chat/completions',
 ])
 def test_known_provider_hosts_are_allowed(endpoint):
     assert EndpointValidator.validate(endpoint) == (True, None)
@@ -285,6 +290,22 @@ def test_cloud_provider_accepts_missing_endpoint(translate_app, monkeypatch):
         model='deepseek-v4',
         llm_api_endpoint='',
         nexum_api_key='__USE_ENV__',
+    ))
+    assert resp.status_code == 200
+    assert len(state_manager.created) == 1
+    _translation_id, config = state_manager.created[0]
+    assert config['llm_api_endpoint'] == ''
+
+
+def test_opencode_provider_accepts_missing_endpoint(translate_app, monkeypatch):
+    """OpenCode Zen must not inherit the local Ollama endpoint."""
+    client, state_manager, _started = translate_app
+    monkeypatch.setenv('OPENCODE_API_KEY', 'env-opencode-key')
+    resp = client.post('/api/translate', json=_payload(
+        llm_provider='opencode',
+        model='deepseek-v4-flash',
+        llm_api_endpoint='',
+        opencode_api_key='__USE_ENV__',
     ))
     assert resp.status_code == 200
     assert len(state_manager.created) == 1

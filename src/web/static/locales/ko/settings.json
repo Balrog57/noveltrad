@@ -35,6 +35,8 @@
   "api_key_placeholder_anthropic": "Anthropic API 키 입력",
   "api_key_placeholder_xai": "xAI API 키 입력",
   "api_key_placeholder_nexum": "Nexum API 키 입력",
+  "api_key_placeholder_opencode": "OpenCode Zen API 키 입력",
+  "api_key_placeholder_opencodego": "OpenCode Go API 키 입력",
   "refresh_models_title": "모델 목록 새로 고침",
   "refresh_list_title": "목록 새로 고침",
   "open_folder_title": "폴더 열기",

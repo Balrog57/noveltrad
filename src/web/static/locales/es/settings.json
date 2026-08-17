@@ -35,6 +35,8 @@
   "api_key_placeholder_anthropic": "Introduzca la clave API de Anthropic",
   "api_key_placeholder_xai": "Introduzca la clave API de xAI",
   "api_key_placeholder_nexum": "Introduzca la clave API de Nexum",
+  "api_key_placeholder_opencode": "Introduzca la clave API de OpenCode Zen",
+  "api_key_placeholder_opencodego": "Introduzca la clave API de OpenCode Go",
   "refresh_models_title": "Actualizar lista de modelos",
   "refresh_list_title": "Actualizar lista",
   "open_folder_title": "Abrir carpeta",

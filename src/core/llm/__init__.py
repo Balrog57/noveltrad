@@ -48,6 +48,7 @@ from .providers.poe import PoeProvider
 from .providers.anthropic import AnthropicProvider
 from .providers.xai import XAIProvider
 from .providers.nexum import NexumProvider
+from .providers.opencode import OpenCodeProvider, OpenCodeGoProvider
 
 # Factory
 from .factory import create_llm_provider
@@ -86,6 +87,8 @@ __all__ = [
     'AnthropicProvider',
     'XAIProvider',
     'NexumProvider',
+    'OpenCodeProvider',
+    'OpenCodeGoProvider',
 
     # Factory
     'create_llm_provider',

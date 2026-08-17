@@ -34,7 +34,9 @@ const PROVIDER_FIELD_MAP = {
     'nim': 'nimApiKey',
     'anthropic': 'anthropicApiKey',
     'xai': 'xaiApiKey',
-    'nexum': 'nexumApiKey'
+    'nexum': 'nexumApiKey',
+    'opencode': 'opencodeApiKey',
+    'opencodego': 'opencodegoApiKey'
 };
 
 export const ApiKeyUtils = {

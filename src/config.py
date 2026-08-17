@@ -77,6 +77,10 @@ _RELOADABLE_ENV_SETTINGS = (
     ('XAI_MODEL',           'XAI_MODEL',           'grok-4.5'),
     ('NEXUM_API_KEY',       'NEXUM_API_KEY',       ''),
     ('NEXUM_MODEL',         'NEXUM_MODEL',         'qwen-3.7-max'),
+    ('OPENCODE_API_KEY',    'OPENCODE_API_KEY',    ''),
+    ('OPENCODE_MODEL',      'OPENCODE_MODEL',      'deepseek-v4-flash'),
+    ('OPENCODE_GO_API_KEY', 'OPENCODE_GO_API_KEY', ''),
+    ('OPENCODE_GO_MODEL',   'OPENCODE_GO_MODEL',   'deepseek-v4-pro'),
     # LiteLLM gateway (CLI-only). Provider-prefixed model name, e.g.
     # "anthropic/claude-sonnet-4-6". Keys are read from each provider's native
     # env var (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), not from a single key.
@@ -385,6 +389,8 @@ NIM_API_ENDPOINT = os.getenv('NIM_API_ENDPOINT', 'https://integrate.api.nvidia.c
 ANTHROPIC_API_ENDPOINT = os.getenv('ANTHROPIC_API_ENDPOINT', 'https://api.anthropic.com/v1')
 XAI_API_ENDPOINT = os.getenv('XAI_API_ENDPOINT', 'https://api.x.ai/v1')
 NEXUM_API_ENDPOINT = os.getenv('NEXUM_API_ENDPOINT', 'https://dialagram.me/router/v1')
+OPENCODE_API_ENDPOINT = os.getenv('OPENCODE_API_ENDPOINT', 'https://opencode.ai/zen/v1')
+OPENCODE_GO_API_ENDPOINT = os.getenv('OPENCODE_GO_API_ENDPOINT', 'https://opencode.ai/zen/go/v1')
 
 
 def provider_default_endpoint(provider: str) -> str:
@@ -417,6 +423,10 @@ def provider_default_endpoint(provider: str) -> str:
         return XAI_API_ENDPOINT
     if provider == 'nexum':
         return NEXUM_API_ENDPOINT
+    if provider == 'opencode':
+        return OPENCODE_API_ENDPOINT
+    if provider == 'opencodego':
+        return OPENCODE_GO_API_ENDPOINT
     return API_ENDPOINT
 
 # SRT-specific configuration
@@ -730,6 +740,8 @@ class TranslationConfig:
     anthropic_api_key: str = ANTHROPIC_API_KEY
     xai_api_key: str = XAI_API_KEY
     nexum_api_key: str = NEXUM_API_KEY
+    opencode_api_key: str = OPENCODE_API_KEY
+    opencodego_api_key: str = OPENCODE_GO_API_KEY
 
     # LLM parameters
     timeout: int = REQUEST_TIMEOUT
@@ -776,6 +788,8 @@ class TranslationConfig:
             anthropic_api_key=getattr(args, 'anthropic_api_key', ANTHROPIC_API_KEY),
             xai_api_key=getattr(args, 'xai_api_key', XAI_API_KEY),
             nexum_api_key=getattr(args, 'nexum_api_key', NEXUM_API_KEY),
+            opencode_api_key=getattr(args, 'opencode_api_key', OPENCODE_API_KEY),
+            opencodego_api_key=getattr(args, 'opencodego_api_key', OPENCODE_GO_API_KEY),
             max_tokens_per_chunk=getattr(args, 'max_tokens_per_chunk', MAX_TOKENS_PER_CHUNK),
             soft_limit_ratio=getattr(args, 'soft_limit_ratio', SOFT_LIMIT_RATIO),
             parallel_workers=getattr(args, 'parallel', PARALLEL_TRANSLATIONS)
@@ -828,6 +842,8 @@ class TranslationConfig:
             anthropic_api_key=request_data.get('anthropic_api_key', ANTHROPIC_API_KEY),
             xai_api_key=request_data.get('xai_api_key', XAI_API_KEY),
             nexum_api_key=request_data.get('nexum_api_key', NEXUM_API_KEY),
+            opencode_api_key=request_data.get('opencode_api_key', OPENCODE_API_KEY),
+            opencodego_api_key=request_data.get('opencodego_api_key', OPENCODE_GO_API_KEY),
             max_tokens_per_chunk=clamped_max_tokens,
             soft_limit_ratio=request_data.get('soft_limit_ratio', SOFT_LIMIT_RATIO),
             parallel_workers=clamped_workers
@@ -855,6 +871,8 @@ class TranslationConfig:
             'anthropic_api_key': self.anthropic_api_key,
             'xai_api_key': self.xai_api_key,
             'nexum_api_key': self.nexum_api_key,
+            'opencode_api_key': self.opencode_api_key,
+            'opencodego_api_key': self.opencodego_api_key,
             'max_tokens_per_chunk': self.max_tokens_per_chunk,
             'soft_limit_ratio': self.soft_limit_ratio,
             'parallel_workers': self.parallel_workers

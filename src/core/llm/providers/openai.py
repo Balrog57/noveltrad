@@ -103,7 +103,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "messages": messages,
             "stream": False,
         }
-        for option in ("temperature", "top_p", "max_tokens", "frequency_penalty", "presence_penalty"):
+        for option in ("temperature", "top_p", "max_tokens", "frequency_penalty", "presence_penalty", "thinking", "enable_thinking"):
             value = generation_options.get(option)
             if value is not None:
                 payload[option] = value

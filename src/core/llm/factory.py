@@ -20,7 +20,9 @@ from src.config import (
     LITELLM_MODEL,
     ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_API_ENDPOINT,
     XAI_API_KEY, XAI_MODEL, XAI_API_ENDPOINT,
-    NEXUM_API_KEY, NEXUM_MODEL, NEXUM_API_ENDPOINT
+    NEXUM_API_KEY, NEXUM_MODEL, NEXUM_API_ENDPOINT,
+    OPENCODE_API_KEY, OPENCODE_MODEL, OPENCODE_API_ENDPOINT,
+    OPENCODE_GO_API_KEY, OPENCODE_GO_MODEL, OPENCODE_GO_API_ENDPOINT,
 )
 from .base import LLMProvider, normalize_api_keys
 from .providers.ollama import OllamaProvider
@@ -34,6 +36,7 @@ from .providers.litellm import LiteLLMProvider
 from .providers.anthropic import AnthropicProvider
 from .providers.xai import XAIProvider
 from .providers.nexum import NexumProvider
+from .providers.opencode import OpenCodeProvider, OpenCodeGoProvider
 
 
 def _require_key(raw, error_message: str):
@@ -206,6 +209,35 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
             api_key=api_key,
             model=kwargs.get("model", NEXUM_MODEL),
             api_endpoint=kwargs.get("api_endpoint") or NEXUM_API_ENDPOINT,
+            context_window=kwargs.get("context_window"),
+            log_callback=kwargs.get("log_callback"),
+        )
+
+    elif provider_type.lower() == "opencode":
+        api_key = _require_key(
+            kwargs.get("api_key") or kwargs.get("opencode_api_key") or os.getenv("OPENCODE_API_KEY", OPENCODE_API_KEY),
+            "OpenCode Zen provider requires an API key.",
+        )
+        return OpenCodeProvider(
+            api_key=api_key,
+            model=kwargs.get("model", OPENCODE_MODEL),
+            api_endpoint=kwargs.get("api_endpoint") or OPENCODE_API_ENDPOINT,
+            context_window=kwargs.get("context_window"),
+            log_callback=kwargs.get("log_callback"),
+        )
+
+    elif provider_type.lower() == "opencodego":
+        api_key = _require_key(
+            kwargs.get("api_key")
+            or kwargs.get("opencodego_api_key")
+            or os.getenv("OPENCODE_GO_API_KEY")
+            or os.getenv("OPENCODE_API_KEY", OPENCODE_GO_API_KEY or OPENCODE_API_KEY),
+            "OpenCode Go provider requires an API key.",
+        )
+        return OpenCodeGoProvider(
+            api_key=api_key,
+            model=kwargs.get("model", OPENCODE_GO_MODEL),
+            api_endpoint=kwargs.get("api_endpoint") or OPENCODE_GO_API_ENDPOINT,
             context_window=kwargs.get("context_window"),
             log_callback=kwargs.get("log_callback"),
         )

@@ -282,9 +282,57 @@ Browse models: [build.nvidia.com](https://build.nvidia.com/)
 
 ---
 
+## OpenCode Zen (Cloud)
+
+Pay-as-you-go Chat Completions gateway. Same console key as OpenCode Go.
+
+Supported here: Chat Completions models (DeepSeek, Kimi, GLM, MiniMax, …). GPT (`/responses`), Claude (`/messages`) and Gemini are not routed through this provider.
+
+### Setup
+
+1. Get an API key at [opencode.ai/auth](https://opencode.ai/auth)
+2. In TBL: Select "OpenCode Zen", enter your key
+3. Default model: `deepseek-v4-flash`
+
+### CLI Example
+
+```bash
+python translate.py -i book.txt -o book_fr.txt \
+    --provider opencode \
+    --opencode_api_key YOUR_API_KEY_HERE \
+    -m deepseek-v4-flash
+```
+
+Endpoint: `https://opencode.ai/zen/v1`
+
+---
+
+## OpenCode Go (Cloud)
+
+Subscription Chat Completions gateway. Uses `OPENCODE_GO_API_KEY` when set, otherwise the Zen key `OPENCODE_API_KEY`.
+
+### Setup
+
+1. Use the same console key as OpenCode Zen, or a dedicated Go key
+2. In TBL: Select "OpenCode Go", enter your key
+3. Default model: `deepseek-v4-pro`
+
+### CLI Example
+
+```bash
+python translate.py -i book.txt -o book_fr.txt \
+    --provider opencodego \
+    --opencodego_api_key YOUR_API_KEY_HERE \
+    -m deepseek-v4-pro
+```
+
+Endpoint: `https://opencode.ai/zen/go/v1`
+
+---
+
 ## Endpoint Allowlist
 
-The web API lets a request choose the endpoint the server calls, so the server checks that endpoint against an allowlist before using it. Accepted out of the box: the known provider hosts (`api.openai.com`, `generativelanguage.googleapis.com`, `openrouter.ai`, `api.mistral.ai`, `api.deepseek.com`, `api.poe.com`, `integrate.api.nvidia.com`), every `*_API_ENDPOINT` configured in your `.env`, and any loopback, LAN or `host.docker.internal` address so self-hosted Ollama, LM Studio, llama.cpp and vLLM keep working. Anything else returns HTTP 400.
+The web API lets a request choose the endpoint the server calls, so the server checks that endpoint against an allowlist before using it. Accepted out of the box: the known provider hosts (`api.openai.com`, `generativelanguage.googleapis.com`, `openrouter.ai`, `api.mistral.ai`, `api.deepseek.com`, `api.poe.com`, `integrate.api.nvidia.com`, `api.anthropic.com`, `api.x.ai`, `dialagram.me`, `opencode.ai`), every `*_API_ENDPOINT` configured in your `.env`, and any loopback, LAN or `host.docker.internal` address so self-hosted Ollama, LM Studio, llama.cpp and vLLM keep working. Anything else returns HTTP 400.
 
 To allow a self-hosted gateway on a public hostname, add it to `LLM_ENDPOINT_ALLOWLIST` in `.env` (comma-separated; subdomains of a listed host are covered):
 
@@ -318,6 +366,11 @@ MISTRAL_API_KEY=...
 DEEPSEEK_API_KEY=...
 POE_API_KEY=...
 NIM_API_KEY=...
+ANTHROPIC_API_KEY=...
+XAI_API_KEY=...
+NEXUM_API_KEY=...
+OPENCODE_API_KEY=...
+OPENCODE_GO_API_KEY=...
 
 # Ollama settings
 API_ENDPOINT=http://localhost:11434/api/generate

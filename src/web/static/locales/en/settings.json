@@ -34,6 +34,8 @@
   "api_key_placeholder_anthropic": "Enter Anthropic API key",
   "api_key_placeholder_xai": "Enter xAI API key",
   "api_key_placeholder_nexum": "Enter Nexum API key",
+  "api_key_placeholder_opencode": "Enter OpenCode Zen API key",
+  "api_key_placeholder_opencodego": "Enter OpenCode Go API key",
 
   "refresh_models_title": "Refresh model list",
   "refresh_list_title": "Refresh list",

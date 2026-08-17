@@ -515,7 +515,7 @@ async def refine_subtitle_translations(
         and checkpoint_state.get("initial_hash") == initial_hash
         and checkpoint_state.get("source_hash") == source_hash
         and checkpoint_state.get("model") == model_name
-        and checkpoint_state.get("prompt_version") == "source-aware-three-pass-v2"
+        and checkpoint_state.get("prompt_version") == "source-aware-three-pass-v3"
         and checkpoint_state.get("initial")
         and set(map(int, checkpoint_state["initial"].keys())) == set(initial.keys())
     ):
@@ -543,7 +543,7 @@ async def refine_subtitle_translations(
             "initial_hash": initial_hash,
             "source_hash": source_hash,
             "model": model_name,
-            "prompt_version": "source-aware-three-pass-v2",
+            "prompt_version": "source-aware-three-pass-v3",
         }
         if refinement_output_filepath:
             state["output_filepath"] = refinement_output_filepath

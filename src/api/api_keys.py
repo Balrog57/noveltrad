@@ -29,6 +29,8 @@ PROVIDER_ENV_VARS = {
     'anthropic': 'ANTHROPIC_API_KEY',
     'xai': 'XAI_API_KEY',
     'nexum': 'NEXUM_API_KEY',
+    'opencode': 'OPENCODE_API_KEY',
+    'opencodego': 'OPENCODE_GO_API_KEY',
 }
 
 

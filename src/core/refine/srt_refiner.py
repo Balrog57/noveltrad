@@ -45,6 +45,8 @@ async def refine_srt_file(
     anthropic_api_key: Optional[str] = None,
     xai_api_key: Optional[str] = None,
     nexum_api_key: Optional[str] = None,
+    opencode_api_key: Optional[str] = None,
+    opencodego_api_key: Optional[str] = None,
     prompt_options: Optional[Dict[str, Any]] = None,
     checkpoint_manager: Any = None,
     translation_id: Optional[str] = None,
@@ -128,6 +130,8 @@ async def refine_srt_file(
             anthropic_api_key=anthropic_api_key,
             xai_api_key=xai_api_key,
             nexum_api_key=nexum_api_key,
+            opencode_api_key=opencode_api_key,
+            opencodego_api_key=opencodego_api_key,
         log_callback=log_callback,
     )
 

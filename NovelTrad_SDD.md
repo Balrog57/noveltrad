@@ -15,6 +15,8 @@ providers TBL existants :
 | `anthropic` | Anthropic / Claude | `ANTHROPIC_API_KEY` | Anthropic Messages API |
 | `xai` | xAI / Grok | `XAI_API_KEY` | OpenAI-compatible |
 | `nexum` | Nexum Router | `NEXUM_API_KEY` | OpenAI-compatible |
+| `opencode` | OpenCode Zen | `OPENCODE_API_KEY` | OpenAI-compatible Chat Completions |
+| `opencodego` | OpenCode Go | `OPENCODE_GO_API_KEY` (fallback `OPENCODE_API_KEY`) | OpenAI-compatible Chat Completions |
 
 Chaque provider doit fonctionner depuis la CLI, l'interface web, les tests de
 connexion, le chargement des modèles, les parcours glossaire/style et la
@@ -27,6 +29,13 @@ Endpoints par défaut :
 - Anthropic : `https://api.anthropic.com/v1` avec `POST /messages` et `GET /models`.
 - xAI : `https://api.x.ai/v1` avec `POST /chat/completions` et `GET /models`.
 - Nexum : `https://dialagram.me/router/v1` avec le contrat OpenAI-compatible.
+- OpenCode Zen : `https://opencode.ai/zen/v1` avec `POST /chat/completions` et `GET /models`.
+- OpenCode Go : `https://opencode.ai/zen/go/v1` avec le même contrat. Une clé Go
+  vide retombe sur `OPENCODE_API_KEY`.
+
+Seuls les modèles Chat Completions sont routés (DeepSeek, Kimi, GLM, MiniMax,
+MiMo, Hy3). GPT (`/responses`), Claude (`/messages`) et Gemini via Zen/Go sont
+hors périmètre.
 
 Les listes de modèles doivent être récupérées quand l'API le permet et
 disposer d'une liste de repli courte et documentée.
@@ -62,7 +71,7 @@ aux consommateurs existants.
 ## 3. Critères d'acceptation
 
 - Le fork est basé sur l'amont TBL 1.5.6 sans autre changement historique.
-- Les trois providers sont utilisables depuis CLI et interface web avec une
+- Les cinq providers sont utilisables depuis CLI et interface web avec une
   réponse `LLMResponse` normale, une liste de modèles et des erreurs testées.
 - Les parcours EPUB, TXT, DOCX et SRT produisent une sortie valide en traduction
   simple et en multipasse.

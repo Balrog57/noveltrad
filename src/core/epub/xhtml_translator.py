@@ -1965,7 +1965,7 @@ async def _refine_epub_chunks(
             and state.get("initial_hash") == initial_hash
             and state.get("source_hash") == source_hash
             and state.get("model") == model_name
-            and state.get("prompt_version") == "source-aware-three-pass-v2"
+            and state.get("prompt_version") == "source-aware-three-pass-v3"
             and isinstance(state.get("initial"), list)
             and isinstance(state.get("current"), list)
             and isinstance(state.get("history"), list)
@@ -2008,7 +2008,7 @@ async def _refine_epub_chunks(
             "initial_hash": initial_hash,
             "source_hash": source_hash,
             "model": model_name,
-            "prompt_version": "source-aware-three-pass-v2",
+            "prompt_version": "source-aware-three-pass-v3",
         }
         if refinement_output_filepath:
             state["output_filepath"] = refinement_output_filepath

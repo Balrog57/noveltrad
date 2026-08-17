@@ -58,6 +58,8 @@ async def translate_epub_file(
     anthropic_api_key: Optional[str] = None,
     xai_api_key: Optional[str] = None,
     nexum_api_key: Optional[str] = None,
+    opencode_api_key: Optional[str] = None,
+    opencodego_api_key: Optional[str] = None,
     context_window: int = 2048,
     auto_adjust_context: bool = True,
     min_chunk_size: int = 5,
@@ -157,6 +159,8 @@ async def translate_epub_file(
         anthropic_api_key=anthropic_api_key,
         xai_api_key=xai_api_key,
         nexum_api_key=nexum_api_key,
+        opencode_api_key=opencode_api_key,
+        opencodego_api_key=opencodego_api_key,
         cli_api_endpoint=cli_api_endpoint,
         initial_context=initial_context,
         log_callback=log_callback
@@ -567,6 +571,8 @@ def _create_llm_client(
     anthropic_api_key: Optional[str],
     xai_api_key: Optional[str],
     nexum_api_key: Optional[str],
+    opencode_api_key: Optional[str],
+    opencodego_api_key: Optional[str],
     cli_api_endpoint: str,
     initial_context: int,
     log_callback: Optional[Callable] = None
@@ -582,6 +588,8 @@ def _create_llm_client(
         anthropic_api_key=anthropic_api_key,
         xai_api_key=xai_api_key,
         nexum_api_key=nexum_api_key,
+        opencode_api_key=opencode_api_key,
+        opencodego_api_key=opencodego_api_key,
         context_window=initial_context,
         log_callback=log_callback
     )

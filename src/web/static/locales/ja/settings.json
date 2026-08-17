@@ -35,6 +35,8 @@
   "api_key_placeholder_anthropic": "Anthropic APIキーを入力",
   "api_key_placeholder_xai": "xAI APIキーを入力",
   "api_key_placeholder_nexum": "Nexum APIキーを入力",
+  "api_key_placeholder_opencode": "OpenCode Zen APIキーを入力",
+  "api_key_placeholder_opencodego": "OpenCode Go APIキーを入力",
   "refresh_models_title": "モデルリストを更新",
   "refresh_list_title": "リストを更新",
   "open_folder_title": "フォルダを開く",

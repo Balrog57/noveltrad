@@ -13,6 +13,8 @@ from src.api.blueprints import translation_routes
         ("anthropic", "anthropic_api_key"),
         ("xai", "xai_api_key"),
         ("nexum", "nexum_api_key"),
+        ("opencode", "opencode_api_key"),
+        ("opencodego", "opencodego_api_key"),
     ],
 )
 def test_create_llm_client_passes_runtime_provider_configuration(
@@ -44,7 +46,7 @@ def test_create_llm_client_passes_runtime_provider_configuration(
     assert captured["log_callback"] is not None
 
 
-@pytest.mark.parametrize("provider", ["anthropic", "xai", "nexum"])
+@pytest.mark.parametrize("provider", ["anthropic", "xai", "nexum", "opencode", "opencodego"])
 def test_provider_factory_preserves_runtime_configuration(monkeypatch, provider):
     captured = {}
 
@@ -56,6 +58,8 @@ def test_provider_factory_preserves_runtime_configuration(monkeypatch, provider)
         "anthropic": "AnthropicProvider",
         "xai": "XAIProvider",
         "nexum": "NexumProvider",
+        "opencode": "OpenCodeProvider",
+        "opencodego": "OpenCodeGoProvider",
     }[provider], CaptureProvider)
 
     factory.create_llm_provider(
@@ -77,12 +81,17 @@ def test_provider_factory_preserves_runtime_configuration(monkeypatch, provider)
 
 
 def test_new_cloud_provider_endpoints_are_runtime_overrides():
-    assert {"anthropic", "xai", "nexum"}.issubset(
+    assert {"anthropic", "xai", "nexum", "opencode", "opencodego"}.issubset(
         set(translation_routes._ENDPOINT_CONSUMING_PROVIDERS)
     )
     assert translation_routes._server_default_endpoint("nexum")
+    assert translation_routes._server_default_endpoint("opencode")
+    assert translation_routes._server_default_endpoint("opencodego")
     assert translation_routes._is_endpoint_override(
         {"llm_provider": "nexum"}, "https://custom.example/v1"
+    )
+    assert translation_routes._is_endpoint_override(
+        {"llm_provider": "opencode"}, "https://custom.example/v1"
     )
 
 

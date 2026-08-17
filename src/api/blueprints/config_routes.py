@@ -178,6 +178,10 @@ def create_config_blueprint(server_session_id=None):
             return _get_xai_models(api_key)
         elif provider == 'nexum':
             return _get_nexum_models(api_key)
+        elif provider == 'opencode':
+            return _get_opencode_models(api_key)
+        elif provider == 'opencodego':
+            return _get_opencodego_models(api_key)
         elif provider == 'openai':
             # Get endpoint from request for LM Studio support
             if request.method == 'POST':
@@ -212,6 +216,10 @@ def create_config_blueprint(server_session_id=None):
         anthropic_mask, anthropic_count = mask_api_key(_config.ANTHROPIC_API_KEY)
         xai_mask, xai_count = mask_api_key(_config.XAI_API_KEY)
         nexum_mask, nexum_count = mask_api_key(_config.NEXUM_API_KEY)
+        opencode_mask, opencode_count = mask_api_key(_config.OPENCODE_API_KEY)
+        opencodego_mask, opencodego_count = mask_api_key(
+            _config.OPENCODE_GO_API_KEY or _config.OPENCODE_API_KEY
+        )
 
         config_response = {
             "api_endpoint": _config.API_ENDPOINT,
@@ -221,9 +229,13 @@ def create_config_blueprint(server_session_id=None):
             "anthropic_model": _config.ANTHROPIC_MODEL,
             "xai_model": _config.XAI_MODEL,
             "nexum_model": _config.NEXUM_MODEL,
+            "opencode_model": _config.OPENCODE_MODEL,
+            "opencodego_model": _config.OPENCODE_GO_MODEL,
             "anthropic_api_endpoint": _config.ANTHROPIC_API_ENDPOINT,
             "xai_api_endpoint": _config.XAI_API_ENDPOINT,
             "nexum_api_endpoint": _config.NEXUM_API_ENDPOINT,
+            "opencode_api_endpoint": _config.OPENCODE_API_ENDPOINT,
+            "opencodego_api_endpoint": _config.OPENCODE_GO_API_ENDPOINT,
             "default_source_language": _config.DEFAULT_SOURCE_LANGUAGE,
             "default_target_language": _config.DEFAULT_TARGET_LANGUAGE,
             "timeout": _config.REQUEST_TIMEOUT,
@@ -241,6 +253,8 @@ def create_config_blueprint(server_session_id=None):
             "anthropic_api_key": anthropic_mask,
             "xai_api_key": xai_mask,
             "nexum_api_key": nexum_mask,
+            "opencode_api_key": opencode_mask,
+            "opencodego_api_key": opencodego_mask,
             "gemini_api_key_count": gemini_count,
             "openai_api_key_count": openai_count,
             "openrouter_api_key_count": openrouter_count,
@@ -251,6 +265,8 @@ def create_config_blueprint(server_session_id=None):
             "anthropic_api_key_count": anthropic_count,
             "xai_api_key_count": xai_count,
             "nexum_api_key_count": nexum_count,
+            "opencode_api_key_count": opencode_count,
+            "opencodego_api_key_count": opencodego_count,
             "gemini_api_key_configured": gemini_count > 0,
             "openai_api_key_configured": openai_count > 0,
             "openrouter_api_key_configured": openrouter_count > 0,
@@ -261,6 +277,8 @@ def create_config_blueprint(server_session_id=None):
             "anthropic_api_key_configured": anthropic_count > 0,
             "xai_api_key_configured": xai_count > 0,
             "nexum_api_key_configured": nexum_count > 0,
+            "opencode_api_key_configured": opencode_count > 0,
+            "opencodego_api_key_configured": opencodego_count > 0,
             "output_filename_pattern": _config.OUTPUT_FILENAME_PATTERN,
             "max_tokens_per_chunk": int(_config.MAX_TOKENS_PER_CHUNK),
             "parallel_translations": int(_config.PARALLEL_TRANSLATIONS),
@@ -565,6 +583,35 @@ def create_config_blueprint(server_session_id=None):
     def _get_nexum_models(provided_api_key=None):
         from src.core.llm import NexumProvider
         return _fetch_provider_models(provided_api_key=provided_api_key, env_var='NEXUM_API_KEY', config_api_key=_config.NEXUM_API_KEY, config_default_model=_config.NEXUM_MODEL, provider_class=NexumProvider, fallback_model='qwen-3.7-max', status_prefix='nexum', display_name='Nexum', api_key_missing_message='Nexum API key is required.')
+
+    def _get_opencode_models(provided_api_key=None):
+        from src.core.llm import OpenCodeProvider
+        return _fetch_provider_models(
+            provided_api_key=provided_api_key,
+            env_var='OPENCODE_API_KEY',
+            config_api_key=_config.OPENCODE_API_KEY,
+            config_default_model=_config.OPENCODE_MODEL,
+            provider_class=OpenCodeProvider,
+            fallback_model='deepseek-v4-flash',
+            status_prefix='opencode',
+            display_name='OpenCode Zen',
+            api_key_missing_message='OpenCode Zen API key is required.',
+        )
+
+    def _get_opencodego_models(provided_api_key=None):
+        from src.core.llm import OpenCodeGoProvider
+        go_key = _config.OPENCODE_GO_API_KEY or _config.OPENCODE_API_KEY
+        return _fetch_provider_models(
+            provided_api_key=provided_api_key,
+            env_var='OPENCODE_GO_API_KEY',
+            config_api_key=go_key,
+            config_default_model=_config.OPENCODE_GO_MODEL,
+            provider_class=OpenCodeGoProvider,
+            fallback_model='deepseek-v4-pro',
+            status_prefix='opencodego',
+            display_name='OpenCode Go',
+            api_key_missing_message='OpenCode Go API key is required.',
+        )
 
     def _get_openai_models(provided_api_key=None, api_endpoint=None):
         """Get available models from OpenAI-compatible API.
@@ -931,6 +978,10 @@ def create_config_blueprint(server_session_id=None):
             'XAI_MODEL',
             'NEXUM_API_KEY',
             'NEXUM_MODEL',
+            'OPENCODE_API_KEY',
+            'OPENCODE_MODEL',
+            'OPENCODE_GO_API_KEY',
+            'OPENCODE_GO_MODEL',
             'DEFAULT_MODEL',
             'LLM_PROVIDER',
             'OLLAMA_API_ENDPOINT',
@@ -1085,6 +1136,8 @@ def create_config_blueprint(server_session_id=None):
             "anthropic_api_key_configured": bool(_config.ANTHROPIC_API_KEY),
             "xai_api_key_configured": bool(_config.XAI_API_KEY),
             "nexum_api_key_configured": bool(_config.NEXUM_API_KEY),
+            "opencode_api_key_configured": bool(_config.OPENCODE_API_KEY),
+            "opencodego_api_key_configured": bool(_config.OPENCODE_GO_API_KEY or _config.OPENCODE_API_KEY),
             "default_model": _config.DEFAULT_MODEL or "",
             "llm_provider": _config.LLM_PROVIDER,
             "api_endpoint": _config.API_ENDPOINT or "",

@@ -14,6 +14,8 @@ async def test_epub_entrypoint_accepts_added_provider_credentials(tmp_path):
         anthropic_api_key="anthropic-secret",
         xai_api_key="xai-secret",
         nexum_api_key="nexum-secret",
+        opencode_api_key="opencode-secret",
+        opencodego_api_key="opencodego-secret",
     )
 
     assert result is None
@@ -25,6 +27,8 @@ async def test_epub_entrypoint_accepts_added_provider_credentials(tmp_path):
         ("anthropic", "anthropic_api_key"),
         ("xai", "xai_api_key"),
         ("nexum", "nexum_api_key"),
+        ("opencode", "opencode_api_key"),
+        ("opencodego", "opencodego_api_key"),
     ],
 )
 def test_epub_client_uses_added_provider_credential(provider, credential_name):
@@ -32,6 +36,8 @@ def test_epub_client_uses_added_provider_credential(provider, credential_name):
         "anthropic_api_key": None,
         "xai_api_key": None,
         "nexum_api_key": None,
+        "opencode_api_key": None,
+        "opencodego_api_key": None,
     }
     credentials[credential_name] = "provider-secret"
 

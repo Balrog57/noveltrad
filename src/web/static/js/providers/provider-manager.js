@@ -349,7 +349,9 @@ export const ProviderManager = {
         const anthropicSettings = DomHelpers.getElement('anthropicSettings');
         const xaiSettings = DomHelpers.getElement('xaiSettings');
         const nexumSettings = DomHelpers.getElement('nexumSettings');
-        [anthropicSettings, xaiSettings, nexumSettings].forEach(el => { if (el) el.style.display = 'none'; });
+        const opencodeSettings = DomHelpers.getElement('opencodeSettings');
+        const opencodegoSettings = DomHelpers.getElement('opencodegoSettings');
+        [anthropicSettings, xaiSettings, nexumSettings, opencodeSettings, opencodegoSettings].forEach(el => { if (el) el.style.display = 'none'; });
 
         // Show/hide provider-specific settings (use inline style for elements with inline display:none)
         if (provider === 'ollama') {
@@ -440,7 +442,7 @@ export const ProviderManager = {
             if (poeSettings) poeSettings.style.display = 'none';
             if (nimSettings) nimSettings.style.display = 'block';
             if (loadModels) this.loadNimModels();
-        } else if (['anthropic', 'xai', 'nexum'].includes(provider)) {
+        } else if (['anthropic', 'xai', 'nexum', 'opencode', 'opencodego'].includes(provider)) {
             DomHelpers.hide('ollamaSettings');
             if (loadModels) this.loadGenericCloudModels(provider);
         }
@@ -477,7 +479,7 @@ export const ProviderManager = {
             this.loadDeepSeekModels();
         } else if (provider === 'nim') {
             this.loadNimModels();
-        } else if (['anthropic', 'xai', 'nexum'].includes(provider)) {
+        } else if (['anthropic', 'xai', 'nexum', 'opencode', 'opencodego'].includes(provider)) {
             this.loadGenericCloudModels(provider);
         }
     },
@@ -495,6 +497,18 @@ export const ProviderManager = {
                 { value: 'qwen-3.7-max', label: 'Qwen 3.7 Max' },
                 { value: 'deepseek-v4', label: 'DeepSeek V4' },
                 { value: 'xiaomi-mimo-2.5', label: 'Xiaomi Mimo 2.5' },
+            ],
+            opencode: [
+                { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+                { value: 'kimi-k3', label: 'Kimi K3' },
+                { value: 'glm-5.2', label: 'GLM 5.2' },
+                { value: 'minimax-m2.7', label: 'MiniMax M2.7' },
+            ],
+            opencodego: [
+                { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+                { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+                { value: 'kimi-k3', label: 'Kimi K3' },
+                { value: 'glm-5.2', label: 'GLM 5.2' },
             ],
         }[provider];
         try {
