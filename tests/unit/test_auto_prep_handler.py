@@ -114,6 +114,7 @@ def patched(monkeypatch):
 
     monkeypatch.setattr(handlers, 'create_llm_client', state.factory)
     monkeypatch.setattr(auto_prep, 'build_auto_prompt_options', fake_build)
+    monkeypatch.setattr(handlers, '_persist_auto_glossary', lambda *a, **k: None)
     return state
 
 
@@ -526,6 +527,169 @@ async def test_heartbeat_ticks_while_a_slow_pass_runs(patched, monkeypatch):
     # Start signal + several heartbeats + the final clear.
     assert progress.states.count(True) >= 3
     assert progress.states[-1] is False
+
+
+# ---------------------------------------------------------------------------
+# Persist auto glossary into the shared store
+# ---------------------------------------------------------------------------
+class FakeGlossary:
+    def __init__(self, glossary_id, name):
+        self.id = glossary_id
+        self.name = name
+
+
+class FakeGlossaryStore:
+    def __init__(self, taken=None):
+        self.taken = set(taken or [])
+        self.created = []
+        self.replaced = []
+        self._next_id = 1
+
+    def create_glossary(self, name, source_language='', target_language=''):
+        if name in self.taken:
+            raise ValueError(f"Glossary name already exists: {name}")
+        self.taken.add(name)
+        glossary = FakeGlossary(self._next_id, name)
+        self._next_id += 1
+        self.created.append((glossary, source_language, target_language))
+        return glossary
+
+    def bulk_replace_terms(self, glossary_id, terms):
+        self.replaced.append((glossary_id, list(terms)))
+        return len(terms)
+
+
+class FakeGlossaryStateManager:
+    def __init__(self, store):
+        self._store = store
+
+    def get_glossary_store(self):
+        return self._store
+
+
+def _patch_store(monkeypatch, store):
+    monkeypatch.setattr(
+        'src.api.translation_state.get_state_manager',
+        lambda: FakeGlossaryStateManager(store),
+    )
+
+
+def test_suggest_auto_glossary_name_uses_filename_and_languages():
+    name = handlers._suggest_auto_glossary_name({
+        'input_filename': 'Perry-Rhodan-3056.epub',
+        'source_language': 'German',
+        'target_language': 'French',
+    })
+    assert name == 'Auto — Perry-Rhodan-3056 (German → French)'
+
+
+def test_suggest_auto_glossary_name_falls_back_to_path_stem():
+    name = handlers._suggest_auto_glossary_name({
+        'file_path': '/app/uploads/book.txt',
+        'source_language': 'English',
+        'target_language': 'Japanese',
+    })
+    assert name == 'Auto — book (English → Japanese)'
+
+
+def test_persist_auto_glossary_saves_terms_and_metadata(monkeypatch):
+    store = FakeGlossaryStore()
+    _patch_store(monkeypatch, store)
+    log = LogRecorder()
+    emitted = []
+
+    class FakeSocket:
+        def emit(self, event, payload, namespace='/'):
+            emitted.append((event, payload, namespace))
+
+    config = _base_config({
+        'glossary_source': 'auto',
+        'glossary_terms': {'Avenue': 'Avenue des Ombres', 'Rain': 'Pluie'},
+        'glossary_term_metadata': {'Avenue': {'category': 'place', 'gender': 'female'}},
+        'glossary_name': auto_prep.AUTO_GLOSSARY_NAME,
+    }, input_filename='city.epub')
+
+    handlers._persist_auto_glossary(config, log, FakeSocket())
+
+    assert len(store.created) == 1
+    glossary, src, tgt = store.created[0]
+    assert glossary.name == 'Auto — city (English → French)'
+    assert src == 'English'
+    assert tgt == 'French'
+    assert store.replaced[0][0] == glossary.id
+    terms = store.replaced[0][1]
+    by_source = {t.source_term: t for t in terms}
+    assert by_source['Avenue'].translated_term == 'Avenue des Ombres'
+    assert by_source['Avenue'].category == 'place'
+    assert by_source['Avenue'].gender == 'female'
+    assert by_source['Rain'].category is None
+    assert config['prompt_options']['glossary_name'] == glossary.name
+    assert config['prompt_options']['glossary_id'] == glossary.id
+    assert any(key == 'auto_glossary_saved' for key in log.keys())
+    assert emitted[0][0] == 'glossary_list_changed'
+    assert emitted[0][1]['id'] == glossary.id
+
+
+def test_persist_auto_glossary_suffixes_on_name_collision(monkeypatch):
+    taken = {'Auto — city (English → French)'}
+    store = FakeGlossaryStore(taken=taken)
+    _patch_store(monkeypatch, store)
+    config = _base_config({
+        'glossary_source': 'auto',
+        'glossary_terms': {'A': 'B'},
+    }, input_filename='city.epub')
+
+    handlers._persist_auto_glossary(config, LogRecorder())
+
+    assert store.created[0][0].name == 'Auto — city (English → French) (2)'
+
+
+def test_persist_auto_glossary_skips_non_auto_and_empty(monkeypatch):
+    store = FakeGlossaryStore()
+    _patch_store(monkeypatch, store)
+
+    handlers._persist_auto_glossary(
+        _base_config({'glossary_terms': {'A': 'B'}, 'glossary_source': 'manual'}),
+        LogRecorder(),
+    )
+    handlers._persist_auto_glossary(
+        _base_config({'glossary_source': 'auto', 'glossary_terms': {}}),
+        LogRecorder(),
+    )
+    assert store.created == []
+
+
+def test_persist_auto_glossary_failure_is_logged_not_raised(monkeypatch):
+    class BoomStore:
+        def create_glossary(self, **kwargs):
+            raise RuntimeError('disk full')
+
+    _patch_store(monkeypatch, BoomStore())
+    log = LogRecorder()
+    config = _base_config({
+        'glossary_source': 'auto',
+        'glossary_terms': {'A': 'B'},
+    })
+
+    handlers._persist_auto_glossary(config, log)
+
+    assert any(key == 'auto_glossary_save_failed' for key in log.keys())
+    assert config['prompt_options']['glossary_terms'] == {'A': 'B'}
+
+
+@pytest.mark.asyncio
+async def test_apply_auto_prep_persists_when_terms_are_derived(patched, monkeypatch):
+    calls = []
+
+    def record(config, log_callback, socketio=None):
+        calls.append(socketio)
+
+    monkeypatch.setattr(handlers, '_persist_auto_glossary', record)
+    socket = object()
+    await handlers._apply_auto_prep(
+        _base_config({'glossary_auto': True}), LogRecorder(), None, socket
+    )
+    assert calls == [socket]
 
 
 if __name__ == "__main__":

@@ -56,3 +56,15 @@ def test_settings_dirty_tracks_nexum_and_chunk_size():
         "maxTokensPerChunk",
     ):
         assert f"id: '{field_id}'" in settings
+
+
+def test_frontend_refreshes_glossaries_on_auto_save_event():
+    ws = (ROOT / "src" / "web" / "static" / "js" / "core" / "websocket-manager.js").read_text(
+        encoding="utf-8"
+    )
+    glossary = (ROOT / "src" / "web" / "static" / "js" / "glossary" / "glossary-manager.js").read_text(
+        encoding="utf-8"
+    )
+    assert "glossary_list_changed" in ws
+    assert "glossary_list_changed" in glossary
+    assert "refreshDropdown" in glossary

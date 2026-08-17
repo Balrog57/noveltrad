@@ -180,7 +180,7 @@ async def _auto_prep_heartbeat(progress_callback, interval):
             _logger.debug("auto prep heartbeat emit failed: %s", exc, exc_info=True)
 
 
-async def _apply_auto_prep(config, log_callback, progress_callback=None):
+async def _apply_auto_prep(config, log_callback, progress_callback=None, socketio=None):
     """Compute the auto glossary/style for this job and merge them in place.
 
     Runs before `checkpoint_manager.start_job(...)` so the derived snapshot is
@@ -189,7 +189,8 @@ async def _apply_auto_prep(config, log_callback, progress_callback=None):
     Invariants:
       - the whole body is inside `try/except Exception`: any unexpected error is
         logged and swallowed. This function can never make a translation job fail;
-      - only `config['prompt_options']` is mutated;
+      - only `config['prompt_options']` is mutated (plus a best-effort write
+        of the auto glossary into the shared glossary store);
       - no LLM client is created and no LLM call is made when neither auto pass
         is wanted, and `progress_callback` is not called either.
 
@@ -202,6 +203,8 @@ async def _apply_auto_prep(config, log_callback, progress_callback=None):
             (then periodically while they run) and exactly once with False when
             they end, whatever the outcome. None disables the feature — the CLI
             has no progress panel to drive.
+        socketio: optional SocketIO instance; used to notify the UI that a new
+            glossary was saved so the dropdown can refresh.
     """
     def _signal(active):
         if progress_callback is None:
@@ -301,6 +304,7 @@ async def _apply_auto_prep(config, log_callback, progress_callback=None):
 
             if fragment:
                 config.setdefault('prompt_options', {}).update(fragment)
+                _persist_auto_glossary(config, log_callback, socketio)
         finally:
             # Whatever happened, the panel must stop saying "Preparing".
             _signal(False)
@@ -309,6 +313,104 @@ async def _apply_auto_prep(config, log_callback, progress_callback=None):
             "auto_prep_error",
             f"⚠️ Auto mode failed: {exc} — translating without it."
         )
+
+
+def _suggest_auto_glossary_name(config) -> str:
+    """Build a unique-looking display name for a persisted auto glossary."""
+    raw = config.get('input_filename') or config.get('output_filename') or ''
+    stem = Path(str(raw)).stem.strip()
+    if not stem:
+        stem = Path(str(config.get('file_path') or '')).stem.strip()
+    src = (config.get('source_language') or '').strip() or '?'
+    tgt = (config.get('target_language') or '').strip() or '?'
+    if stem:
+        name = f"Auto — {stem} ({src} → {tgt})"
+    else:
+        name = f"Auto — {src} → {tgt}"
+    if len(name) > 120:
+        return name[:117] + '...'
+    return name
+
+
+def _persist_auto_glossary(config, log_callback, socketio=None):
+    """Save a just-derived auto glossary into the shared glossary store.
+
+    Best-effort: a store failure is logged and never fails the translation.
+    Skipped when the fragment is not an auto glossary or has no terms.
+    """
+    prompt_options = config.get('prompt_options')
+    if not isinstance(prompt_options, dict):
+        return
+    if prompt_options.get('glossary_source') != 'auto':
+        return
+    terms = prompt_options.get('glossary_terms') or {}
+    if not terms:
+        return
+
+    try:
+        from src.api.translation_state import get_state_manager
+        from src.core.glossary import GlossaryTerm
+
+        store = get_state_manager().get_glossary_store()
+        metadata = prompt_options.get('glossary_term_metadata') or {}
+        term_rows = []
+        for source, target in terms.items():
+            meta = metadata.get(source) or {}
+            term_rows.append(GlossaryTerm(
+                source_term=source,
+                translated_term=target,
+                category=meta.get('category') or None,
+                gender=meta.get('gender') or None,
+            ))
+
+        base_name = _suggest_auto_glossary_name(config)
+        glossary = None
+        last_error = None
+        for attempt in range(1, 50):
+            name = base_name if attempt == 1 else f"{base_name} ({attempt})"
+            try:
+                glossary = store.create_glossary(
+                    name=name,
+                    source_language=config.get('source_language') or '',
+                    target_language=config.get('target_language') or '',
+                )
+                break
+            except ValueError as exc:
+                last_error = exc
+                continue
+        if glossary is None:
+            raise last_error or ValueError(f"Could not allocate a unique glossary name from {base_name!r}")
+
+        store.bulk_replace_terms(glossary.id, term_rows)
+        prompt_options['glossary_name'] = glossary.name
+        prompt_options['glossary_id'] = glossary.id
+        log_callback(
+            "auto_glossary_saved",
+            f"💾 Saved auto glossary as '{glossary.name}' ({len(term_rows)} terms).",
+        )
+        if socketio is not None:
+            try:
+                socketio.emit(
+                    'glossary_list_changed',
+                    {
+                        'reason': 'auto',
+                        'id': glossary.id,
+                        'name': glossary.name,
+                        'term_count': len(term_rows),
+                    },
+                    namespace='/',
+                )
+            except Exception as emit_exc:
+                _logger.debug("glossary_list_changed emit failed: %s", emit_exc, exc_info=True)
+    except Exception as exc:
+        _logger.debug("auto glossary persist failed: %s", exc, exc_info=True)
+        try:
+            log_callback(
+                "auto_glossary_save_failed",
+                f"⚠️ Auto glossary was used for this job but could not be saved: {exc}",
+            )
+        except Exception:
+            pass
 
 
 def _format_stats_summary(config, stats, verdict):
@@ -598,12 +700,15 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 # Non-fatal: log later once the logger is wired in.
                 config.setdefault('prompt_options', {})['glossary_load_error'] = str(e)
 
-        # Auto mode: derive a throwaway glossary/style from this very document.
-        # Runs after the snapshot above so an explicitly selected glossary is
-        # already visible to the precedence check (D6), and before start_job so
-        # the derived snapshot is persisted with the job config — a resume
-        # reuses it instead of recomputing it (D5).
-        await _apply_auto_prep(config, _log_message_callback, _auto_prep_progress_callback)
+        # Auto mode: derive a glossary/style from this very document, then
+        # save the glossary into the shared store so it shows up in the
+        # Glossaries tab. Runs after the snapshot above so an explicitly
+        # selected glossary is already visible to the precedence check (D6),
+        # and before start_job so the derived snapshot is persisted with the
+        # job config — a resume reuses it instead of recomputing it (D5).
+        await _apply_auto_prep(
+            config, _log_message_callback, _auto_prep_progress_callback, socketio
+        )
 
     try:
         # Create checkpoint for new jobs (not for resumed jobs)

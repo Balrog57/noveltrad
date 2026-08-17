@@ -13,6 +13,7 @@ import { toast } from '../ui/toast.js';
 import { DomHelpers } from '../ui/dom-helpers.js';
 import { ApiKeyUtils } from '../utils/api-key-utils.js';
 import { t } from '../i18n/i18n.js';
+import { WebSocketManager } from '../core/websocket-manager.js';
 
 // ========================================
 // Module state
@@ -2141,6 +2142,14 @@ export const GlossaryManager = {
         wirePreviewModal();
         refreshDropdown().catch((err) => {
             console.error('Initial glossary dropdown refresh failed:', err);
+        });
+
+        WebSocketManager.on('glossary_list_changed', () => {
+            refreshDropdown().catch(() => {});
+            const listTable = $('glossaryListTable');
+            if (listTable && !listTable.classList.contains('hidden')) {
+                loadList().catch(() => {});
+            }
         });
 
         // Re-render dynamic glossary content when the UI locale changes:

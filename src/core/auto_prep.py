@@ -31,7 +31,7 @@ logger = logging.getLogger("core.auto_prep")
 
 #: Value both dropdowns send when the user picks "Auto".
 AUTO_SENTINEL = "__auto__"
-#: Name reported for the derived glossary (it is never persisted).
+#: Name reported for the derived glossary until it is saved into the store.
 AUTO_GLOSSARY_NAME = "auto"
 
 # Budgets mirror the manual endpoints so auto and manual quality match: a

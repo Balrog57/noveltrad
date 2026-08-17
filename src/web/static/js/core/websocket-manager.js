@@ -49,6 +49,10 @@ export const WebSocketManager = {
             this.emit('file_list_changed', data);
         });
 
+        socket.on('glossary_list_changed', (data) => {
+            this.emit('glossary_list_changed', data);
+        });
+
         socket.on('checkpoint_created', (data) => {
             console.log('Checkpoint created:', data);
             MessageLogger.addLog(`⏸️ ${data.message || t('common:checkpoint_created_default')}`);
