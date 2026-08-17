@@ -46,8 +46,12 @@ class NexumProvider(OpenAICompatibleProvider):
         chain-of-thought and return empty ``content`` with finish_reason=length.
         """
         generation_options.setdefault("max_tokens", self.DEFAULT_MAX_OUTPUT_TOKENS)
-        generation_options.setdefault("thinking", False)
-        generation_options.setdefault("enable_thinking", False)
+        # Dialagram forwards this to DeepSeek V4, which thinks unless given
+        # the struct ``{"type": "disabled"}``. A boolean ``false`` is a 400
+        # (``expected struct ThinkingOptions``). llama.cpp-style
+        # ``enable_thinking`` is not part of that schema — omit it.
+        if "deepseek" in (self.model or "").lower():
+            generation_options.setdefault("thinking", {"type": "disabled"})
         return await super().generate(
             prompt, timeout=timeout, system_prompt=system_prompt, **generation_options
         )

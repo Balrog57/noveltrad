@@ -53,8 +53,8 @@ async def test_generate_sets_default_max_tokens(monkeypatch):
 
     assert fake.calls == 1
     assert fake.last_json["max_tokens"] == NexumProvider.DEFAULT_MAX_OUTPUT_TOKENS
-    assert fake.last_json["thinking"] is False
-    assert fake.last_json["enable_thinking"] is False
+    assert fake.last_json["thinking"] == {"type": "disabled"}
+    assert "enable_thinking" not in fake.last_json
 
 
 @pytest.mark.asyncio
@@ -66,6 +66,19 @@ async def test_generate_keeps_explicit_max_tokens(monkeypatch):
     await provider.generate("Translate", timeout=30, max_tokens=1234)
 
     assert fake.last_json["max_tokens"] == 1234
+    assert fake.last_json["thinking"] == {"type": "disabled"}
+
+
+@pytest.mark.asyncio
+async def test_qwen_does_not_send_thinking_struct(monkeypatch):
+    provider = NexumProvider(api_key="test-key", model="qwen-3.7-max")
+    fake = _FakeClient()
+    _async_fake_client(provider, fake, monkeypatch)
+
+    await provider.generate("Translate", timeout=30)
+
+    assert "thinking" not in fake.last_json
+    assert "enable_thinking" not in fake.last_json
 
 
 @pytest.mark.asyncio
