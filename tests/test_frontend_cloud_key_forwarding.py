@@ -80,6 +80,23 @@ def test_translate_route_forwards_chunk_size():
     assert "max_tokens_per_chunk" in routes
 
 
+def test_stale_api_token_triggers_reload():
+    client = (ROOT / "src" / "web" / "static" / "js" / "core" / "api-client.js").read_text(
+        encoding="utf-8"
+    )
+    assert "reloadIfStaleApiToken" in client
+    assert "missing_or_invalid_token" in client
+    lifecycle = (ROOT / "src" / "web" / "static" / "js" / "utils" / "lifecycle-manager.js").read_text(
+        encoding="utf-8"
+    )
+    assert "reloadIfStaleApiToken" in lifecycle
+    files = (ROOT / "src" / "web" / "static" / "js" / "files" / "file-actions.js").read_text(
+        encoding="utf-8"
+    )
+    assert "data.docker" in files
+    assert "folder_open_docker" in files
+
+
 def test_frontend_refreshes_glossaries_on_auto_save_event():
     ws = (ROOT / "src" / "web" / "static" / "js" / "core" / "websocket-manager.js").read_text(
         encoding="utf-8"
@@ -90,3 +107,4 @@ def test_frontend_refreshes_glossaries_on_auto_save_event():
     assert "glossary_list_changed" in ws
     assert "glossary_list_changed" in glossary
     assert "refreshDropdown" in glossary
+

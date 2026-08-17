@@ -6,6 +6,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict
 
+from src.utils.container import running_in_container
+
+# Returned as the message when explorer cannot be used (Docker/CasaOS).
+DOCKER_NO_DESKTOP = "DOCKER_NO_DESKTOP"
+
 
 class FileService:
     """Handles file operations for the translation API"""
@@ -198,6 +203,8 @@ class FileService:
             return False, "File not found", None
 
         abs_path = str(file_path.resolve())
+        if running_in_container():
+            return True, DOCKER_NO_DESKTOP, abs_path
         system = platform.system()
 
         try:
@@ -230,6 +237,8 @@ class FileService:
             return False, f"Failed to prepare output folder: {str(e)}", str(folder)
 
         abs_path = str(folder)
+        if running_in_container():
+            return True, DOCKER_NO_DESKTOP, abs_path
         system = platform.system()
 
         try:
@@ -264,6 +273,8 @@ class FileService:
 
         abs_path = str(file_path.resolve())
         parent_dir = str(file_path.parent.resolve())
+        if running_in_container():
+            return True, DOCKER_NO_DESKTOP, abs_path
         system = platform.system()
 
         try:

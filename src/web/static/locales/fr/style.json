@@ -22,6 +22,8 @@
   "list_empty_message": "Aucun style pour l'instant. Extrayez-en un à partir de livres ou partez d'un style vierge.",
   "load_failed": "Échec du chargement des styles : {{error}}",
   "save_failed": "Échec de l'enregistrement du style : {{error}}",
+  "open_folder_docker": "Les styles s'éditent dans cet onglet. Docker ne peut pas ouvrir un dossier sur l'ordinateur — utilise Exporter pour télécharger un préréglage.",
+  "open_folder_failed": "Impossible d'ouvrir le dossier des styles : {{error}}",
   "saved": "Style enregistré",
   "deleted": "Style supprimé",
   "editor_title": "Modifier le style",

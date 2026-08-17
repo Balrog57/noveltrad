@@ -793,8 +793,10 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             raise Exception(f"{config['file_type'].upper()} translation requires a file_path.")
 
         # Read custom instruction file if specified
+        from src.utils.custom_instructions import resolve_custom_instructions_dir
+
         project_root = Path(os.getcwd())
-        custom_instructions_dir = project_root / 'Custom_Instructions'
+        custom_instructions_dir = resolve_custom_instructions_dir(project_root)
         translation_instructions, refinement_instructions = resolve_custom_instructions(
             config.get('prompt_options', {}), custom_instructions_dir, _log_message_callback
         )

@@ -426,5 +426,17 @@ class TestAssemble:
         assert "context" in response.get_json()["error"]
 
 
+class TestOpenFolderDocker:
+    def test_open_folder_in_container_does_not_call_xdg_open(self, client, monkeypatch, presets_dir):
+        monkeypatch.setattr(cir, "running_in_container", lambda: True)
+        presets_dir.mkdir(parents=True, exist_ok=True)
+        response = client.post("/api/custom-instructions/open-folder")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["success"] is True
+        assert body["docker"] is True
+        assert "path" in body
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

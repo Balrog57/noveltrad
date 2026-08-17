@@ -50,6 +50,8 @@
   "folder_opened_log": "📁 번역 폴더가 열렸습니다",
   "folder_opened_log_with_path": "📁 번역 폴더가 열렸습니다: {{path}}",
   "folder_open_error": "폴더 열기 오류: {{error}}",
+  "folder_open_docker": "앱이 Docker에서 실행 중이므로 컴퓨터 파일 탐색기를 열 수 없습니다. 번역은 파일 탭에서 다운로드하세요.",
+  "open_docker_download": "Docker에는 데스크톱이 없어 {{name}}을(를) 다운로드했습니다.",
   "delete_default_msg": "{{name}} 삭제됨",
 
   "file_too_large": "파일이 너무 큽니다: {{name}} ({{size}})",

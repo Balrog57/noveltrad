@@ -35,7 +35,11 @@ from src.core.text_processor import split_text_into_chunks
 from src.prompts.prompts import (
     generate_refinement_prompt, generate_translation_prompt,
 )
-from src.utils.custom_instructions import is_safe_filename, load_custom_instructions
+from src.utils.custom_instructions import (
+    is_safe_filename,
+    load_custom_instructions,
+    resolve_custom_instructions_dir,
+)
 from src.utils.file_detector import detect_file_type
 from src.utils.language_detector import LanguageDetector
 
@@ -493,7 +497,7 @@ def _column_prompt_options(base_options: Dict[str, Any], column: Dict[str, Any])
         logger.warning("sample: ignoring unsafe custom instruction filename %r", filename)
         return opts
     try:
-        ci_dir = Path(os.getcwd()) / "Custom_Instructions"
+        ci_dir = resolve_custom_instructions_dir(Path(os.getcwd()))
         loaded = load_custom_instructions(filename, ci_dir)
         translation = loaded.get("translation")
         refinement = loaded.get("refinement")

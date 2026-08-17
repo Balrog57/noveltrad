@@ -50,6 +50,8 @@
   "folder_opened_log": "📁 翻訳フォルダを開きました",
   "folder_opened_log_with_path": "📁 翻訳フォルダを開きました: {{path}}",
   "folder_open_error": "フォルダを開く際にエラーが発生しました: {{error}}",
+  "folder_open_docker": "Docker 内ではホストのエクスプローラーを開けません。翻訳は「ファイル」タブからダウンロードしてください。",
+  "open_docker_download": "Docker にデスクトップがないため {{name}} をダウンロードしました。",
   "delete_default_msg": "{{name}} を削除しました",
 
   "file_too_large": "ファイルサイズが大きすぎます: {{name}} ({{size}})",

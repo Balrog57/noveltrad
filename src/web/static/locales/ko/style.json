@@ -22,6 +22,8 @@
   "list_empty_message": "아직 스타일이 없습니다. 책에서 추출하거나 빈 스타일로 시작하세요.",
   "load_failed": "스타일을 불러오지 못했습니다: {{error}}",
   "save_failed": "스타일을 저장하지 못했습니다: {{error}}",
+  "open_folder_docker": "스타일은 이 탭에서 편집합니다. Docker는 호스트 폴더를 열 수 없으니 내보내기로 프리셋을 받으세요.",
+  "open_folder_failed": "스타일 폴더를 열 수 없습니다: {{error}}",
   "saved": "스타일이 저장되었습니다",
   "deleted": "스타일이 삭제되었습니다",
   "editor_title": "스타일 편집",

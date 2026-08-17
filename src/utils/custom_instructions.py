@@ -30,6 +30,23 @@ import yaml
 SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9_\-\.]+\.(?:txt|ya?ml)$")
 SUPPORTED_EXTENSIONS = (".txt", ".yaml", ".yml")
 
+
+def resolve_custom_instructions_dir(base) -> Path:
+    """Directory that holds style presets.
+
+    Native checkouts keep ``<base>/Custom_Instructions`` (TranslateBooksWithLLMs).
+    Docker does not persist that path across recreates, so when we are in a
+    container and ``<base>/data`` exists (the jobs volume), presets live in
+    ``data/Custom_Instructions`` instead.
+    """
+    from src.utils.container import running_in_container
+
+    base = Path(base)
+    if running_in_container() and (base / "data").is_dir():
+        return base / "data" / "Custom_Instructions"
+    return base / "Custom_Instructions"
+
+
 # Key order enforced when write_preset serializes a preset. Unknown keys
 # preserved from a pre-existing file (read-merge-write) are appended after
 # these, in their original order.
@@ -388,6 +405,7 @@ def write_preset(
 
     tmp_path = target.with_name(target.name + ".tmp")
     try:
+        Path(custom_instructions_dir).mkdir(parents=True, exist_ok=True)
         with tmp_path.open("w", encoding="utf-8") as fh:
             yaml.safe_dump(
                 ordered,

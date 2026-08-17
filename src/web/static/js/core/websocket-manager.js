@@ -5,7 +5,7 @@
  */
 
 import { MessageLogger } from '../ui/message-logger.js';
-import { ApiClient } from './api-client.js';
+import { ApiClient, reloadIfStaleApiToken } from './api-client.js';
 import { t } from '../i18n/i18n.js';
 
 let socket = null;
@@ -37,6 +37,13 @@ export const WebSocketManager = {
             console.log('WebSocket disconnected.');
             MessageLogger.addLog(t('common:ws_disconnected_log'));
             this.emit('disconnect');
+        });
+
+        socket.on('connect_error', (err) => {
+            const msg = String((err && (err.message || err)) || '').toLowerCase();
+            if (msg.includes('auth') || msg.includes('unauthorized') || msg.includes('token')) {
+                reloadIfStaleApiToken();
+            }
         });
 
         // Application events

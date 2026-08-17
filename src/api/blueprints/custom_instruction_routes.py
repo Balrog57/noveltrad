@@ -35,12 +35,14 @@ from src.core.style.assembler import assemble_instructions
 from src.core.style.extractor import extract_style
 from src.core.style.lint import lint_instruction
 from src.utils import document_sampler
+from src.utils.container import running_in_container
 from src.utils.custom_instructions import (
     PRESET_KEY_ORDER,
     delete_preset,
     filename_for_name,
     list_custom_instructions,
     read_preset,
+    resolve_custom_instructions_dir,
     resolve_inside,
     slugify_preset_name,
     write_preset,
@@ -74,7 +76,7 @@ def _custom_instructions_dir() -> Path:
     Tests monkeypatch `get_config_path`, so this must never be cached at
     module load.
     """
-    return Path(get_config_path()) / 'Custom_Instructions'
+    return resolve_custom_instructions_dir(Path(get_config_path()))
 
 
 def create_custom_instruction_blueprint():
@@ -117,6 +119,10 @@ def create_custom_instruction_blueprint():
                 custom_instructions_dir.mkdir(parents=True, exist_ok=True)
 
             abs_path = str(custom_instructions_dir.resolve())
+            if running_in_container():
+                # No desktop inside Docker; the Styles tab is the editor.
+                return jsonify({"success": True, "docker": True, "path": abs_path})
+
             system = platform.system()
 
             if system == 'Windows':

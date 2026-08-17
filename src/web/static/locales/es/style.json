@@ -22,6 +22,8 @@
   "list_empty_message": "Aún no hay estilos. Extrae uno de libros o empieza desde un estilo en blanco.",
   "load_failed": "Error al cargar los estilos: {{error}}",
   "save_failed": "Error al guardar el estilo: {{error}}",
+  "open_folder_docker": "Los estilos se editan en esta pestaña. Docker no puede abrir una carpeta en el equipo: usa Exportar para descargar un ajuste.",
+  "open_folder_failed": "No se pudo abrir la carpeta de estilos: {{error}}",
   "saved": "Estilo guardado",
   "deleted": "Estilo eliminado",
   "editor_title": "Editar estilo",

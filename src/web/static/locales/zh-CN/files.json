@@ -50,6 +50,8 @@
   "folder_opened_log": "📁 已打开翻译文件夹",
   "folder_opened_log_with_path": "📁 已打开翻译文件夹：{{path}}",
   "folder_open_error": "打开文件夹出错：{{error}}",
+  "folder_open_docker": "应用在 Docker 中运行，无法打开电脑上的资源管理器。译文在“文件”标签页，请从那里下载。",
+  "open_docker_download": "Docker 没有桌面环境，已改为下载 {{name}}。",
   "delete_default_msg": "已删除 {{name}}",
 
   "file_too_large": "文件过大：{{name}}（{{size}}）",

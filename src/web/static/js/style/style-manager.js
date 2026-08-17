@@ -324,8 +324,13 @@ function wireListView() {
         openFolderBtn.addEventListener('click', async () => {
             try {
                 const resp = await ApiClient.openCustomInstructionsFolder();
+                if (resp && resp.docker) {
+                    toast.info(t('style:open_folder_docker'));
+                    return;
+                }
                 if (!resp || !resp.success) {
                     console.error('Failed to open Custom_Instructions folder:', resp && resp.error);
+                    toast.error(t('style:open_folder_failed', { error: (resp && resp.error) || t('glossary:unknown_error') }));
                 }
             } catch (err) {
                 console.error('Failed to open Custom_Instructions folder:', err);

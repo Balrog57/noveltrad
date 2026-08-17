@@ -48,7 +48,12 @@ export const FileActions = {
     async open(filename) {
         if (!filename) return;
         try {
-            await ApiClient.openLocalFile(filename);
+            const data = await ApiClient.openLocalFile(filename);
+            if (data && data.docker) {
+                this.download(filename);
+                MessageLogger.addLog(t('files:open_docker_download', { name: filename }));
+                return;
+            }
             MessageLogger.addLog(t('files:open_log', { name: filename }));
         } catch (error) {
             MessageLogger.showMessage(t('files:open_error', { error: error.message }), 'error');
@@ -58,7 +63,12 @@ export const FileActions = {
     async reveal(filename) {
         if (!filename) return;
         try {
-            await ApiClient.revealLocalFile(filename);
+            const data = await ApiClient.revealLocalFile(filename);
+            if (data && data.docker) {
+                MessageLogger.showMessage(t('files:folder_open_docker'), 'info');
+                this.goToFilesTab();
+                return;
+            }
             MessageLogger.addLog(t('files:reveal_log', { name: filename }));
         } catch (error) {
             MessageLogger.showMessage(t('files:reveal_error', { error: error.message }), 'error');
@@ -68,6 +78,11 @@ export const FileActions = {
     async openOutputFolder() {
         try {
             const data = await ApiClient.openOutputFolder();
+            if (data && data.docker) {
+                MessageLogger.showMessage(t('files:folder_open_docker'), 'info');
+                this.goToFilesTab();
+                return;
+            }
             MessageLogger.addLog(
                 data.folder_path
                     ? t('files:folder_opened_log_with_path', { path: data.folder_path })

@@ -50,6 +50,8 @@
   "folder_opened_log": "📁 Übersetzungsordner geöffnet",
   "folder_opened_log_with_path": "📁 Übersetzungsordner geöffnet: {{path}}",
   "folder_open_error": "Fehler beim Öffnen des Ordners: {{error}}",
+  "folder_open_docker": "Die App läuft in Docker, der Dateimanager des Rechners kann daher nicht geöffnet werden. Übersetzungen liegen im Tab Dateien — von dort herunterladen.",
+  "open_docker_download": "Kein Desktop in Docker — {{name}} wurde heruntergeladen.",
   "delete_default_msg": "{{name}} gelöscht",
 
   "file_too_large": "Datei zu groß: {{name}} ({{size}})",

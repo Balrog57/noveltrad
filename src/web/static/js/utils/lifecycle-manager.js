@@ -6,7 +6,7 @@
  */
 
 import { StateManager } from '../core/state-manager.js';
-import { ApiClient } from '../core/api-client.js';
+import { ApiClient, reloadIfStaleApiToken } from '../core/api-client.js';
 import { WebSocketManager } from '../core/websocket-manager.js';
 import { MessageLogger } from '../ui/message-logger.js';
 import { t } from '../i18n/i18n.js';
@@ -14,7 +14,6 @@ import { t } from '../i18n/i18n.js';
 // Storage configuration with versioning
 const STORAGE_VERSION = 1;
 const SERVER_SESSION_KEY = `tbl_server_session_id_v${STORAGE_VERSION}`;
-const TRANSLATION_STATE_STORAGE_KEY = `tbl_translation_state_v${STORAGE_VERSION}`;
 
 export const LifecycleManager = {
     /**
@@ -136,32 +135,8 @@ export const LifecycleManager = {
             const lastSessionId = localStorage.getItem(SERVER_SESSION_KEY);
 
             if (lastSessionId && lastSessionId !== String(serverSessionId)) {
-                MessageLogger.addLog(t('common:server_restart_detected'));
-
-                localStorage.removeItem(TRANSLATION_STATE_STORAGE_KEY);
-
-                StateManager.setState('translation.currentJob', null);
-                StateManager.setState('translation.isBatchActive', false);
-                StateManager.setState('translation.activeJobs', []);
-                StateManager.setState('translation.hasActive', false);
-
-                try {
-                    const progressSection = document.getElementById('progressSection');
-                    const interruptBtn = document.getElementById('interruptBtn');
-                    const translateBtn = document.getElementById('translateBtn');
-
-                    if (progressSection) progressSection.style.display = 'none';
-                    if (interruptBtn) interruptBtn.style.display = 'none';
-                    if (translateBtn) {
-                        translateBtn.disabled = false;
-                        translateBtn.innerHTML = t('translation:start_batch_with_icon');
-                    }
-                } catch (uiError) {
-                    console.warn('Could not reset UI elements:', uiError);
-                }
-
                 localStorage.setItem(SERVER_SESSION_KEY, String(serverSessionId));
-
+                reloadIfStaleApiToken();
                 return true;
             }
 

@@ -7,6 +7,7 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, send_from_directory, send_file, current_app
 
 from src.api.services import FileService, PathValidator
+from src.api.services.file_service import DOCKER_NO_DESKTOP
 
 
 def create_file_blueprint(output_dir):
@@ -217,11 +218,14 @@ def create_file_blueprint(output_dir):
 
             if success:
                 current_app.logger.info(f"Opened file: {filename} at {abs_path}")
-                return jsonify({
+                payload = {
                     "success": True,
                     "message": message,
-                    "file_path": abs_path
-                })
+                    "file_path": abs_path,
+                }
+                if message == DOCKER_NO_DESKTOP:
+                    payload["docker"] = True
+                return jsonify(payload)
             else:
                 current_app.logger.error(f"Error opening file {filename}: {message}")
                 return jsonify({"error": message}), 404 if "not found" in message.lower() else 500
@@ -237,7 +241,10 @@ def create_file_blueprint(output_dir):
             success, message, abs_path = file_service.open_output_folder()
             if success:
                 current_app.logger.info(f"Opened output folder: {abs_path}")
-                return jsonify({"success": True, "message": message, "folder_path": abs_path})
+                payload = {"success": True, "message": message, "folder_path": abs_path}
+                if message == DOCKER_NO_DESKTOP:
+                    payload["docker"] = True
+                return jsonify(payload)
             current_app.logger.error(f"Error opening output folder: {message}")
             return jsonify({"error": message, "folder_path": abs_path}), 500
         except Exception as e:
@@ -256,11 +263,14 @@ def create_file_blueprint(output_dir):
 
             if success:
                 current_app.logger.info(f"Revealed file: {filename} at {abs_path}")
-                return jsonify({
+                payload = {
                     "success": True,
                     "message": message,
-                    "file_path": abs_path
-                })
+                    "file_path": abs_path,
+                }
+                if message == DOCKER_NO_DESKTOP:
+                    payload["docker"] = True
+                return jsonify(payload)
             else:
                 current_app.logger.error(f"Error revealing file {filename}: {message}")
                 return jsonify({"error": message}), 404 if "not found" in message.lower() else 500

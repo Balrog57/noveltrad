@@ -22,6 +22,8 @@
   "list_empty_message": "Noch keine Stile. Extrahieren Sie einen aus Büchern oder beginnen Sie mit einem leeren Stil.",
   "load_failed": "Stile konnten nicht geladen werden: {{error}}",
   "save_failed": "Stil konnte nicht gespeichert werden: {{error}}",
+  "open_folder_docker": "Stile werden in diesem Tab bearbeitet. Docker kann keinen Ordner auf dem Rechner öffnen — mit Exportieren eine Vorgabe herunterladen.",
+  "open_folder_failed": "Der Stilordner konnte nicht geöffnet werden: {{error}}",
   "saved": "Stil gespeichert",
   "deleted": "Stil gelöscht",
   "editor_title": "Stil bearbeiten",

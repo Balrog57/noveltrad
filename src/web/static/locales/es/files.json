@@ -50,6 +50,8 @@
   "folder_opened_log": "📁 Carpeta de traducciones abierta",
   "folder_opened_log_with_path": "📁 Carpeta de traducciones abierta: {{path}}",
   "folder_open_error": "Error al abrir la carpeta: {{error}}",
+  "folder_open_docker": "La aplicación se ejecuta en Docker, así que no se puede abrir el explorador del equipo. Las traducciones están en la pestaña Archivos: descárgalas desde ahí.",
+  "open_docker_download": "Docker no tiene escritorio: se descargó {{name}}.",
   "delete_default_msg": "{{name}} eliminado",
 
   "file_too_large": "Archivo demasiado grande: {{name}} ({{size}})",

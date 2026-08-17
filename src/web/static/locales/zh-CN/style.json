@@ -22,6 +22,8 @@
   "list_empty_message": "还没有风格。从书籍中提取一个,或从空白风格开始。",
   "load_failed": "加载风格失败:{{error}}",
   "save_failed": "保存风格失败:{{error}}",
+  "open_folder_docker": "请在此标签页编辑风格。Docker 无法打开电脑上的文件夹 — 用“导出”下载预设。",
+  "open_folder_failed": "无法打开风格文件夹：{{error}}",
   "saved": "风格已保存",
   "deleted": "风格已删除",
   "editor_title": "编辑风格",

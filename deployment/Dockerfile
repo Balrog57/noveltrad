@@ -21,7 +21,7 @@ COPY translation_api.py /app/
 COPY translate.py /app/
 
 # Create necessary directories
-RUN mkdir -p /app/translated_files /app/logs /app/data/uploads
+RUN mkdir -p /app/translated_files /app/logs /app/data/uploads /app/data/Custom_Instructions
 
 ARG PORT=5000
 ENV PORT=$PORT

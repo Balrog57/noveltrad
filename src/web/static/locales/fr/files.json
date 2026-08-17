@@ -50,6 +50,8 @@
   "folder_opened_log": "📁 Dossier des traductions ouvert",
   "folder_opened_log_with_path": "📁 Dossier des traductions ouvert : {{path}}",
   "folder_open_error": "Erreur d'ouverture du dossier : {{error}}",
+  "folder_open_docker": "NovelTrad tourne dans Docker : l'explorateur de fichiers de l'ordinateur ne peut pas s'ouvrir. Les traductions sont dans l'onglet Fichiers — télécharge-les depuis là.",
+  "open_docker_download": "Pas d'explorateur dans Docker — {{name}} a été téléchargé.",
   "delete_default_msg": "{{name}} supprimé",
 
   "file_too_large": "Fichier trop volumineux : {{name}} ({{size}})",
