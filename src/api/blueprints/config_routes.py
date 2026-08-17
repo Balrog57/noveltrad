@@ -50,6 +50,7 @@ import src.config as _config
 from src.config import reload_config
 from src import __version__
 from src.core.llm.base import normalize_api_keys
+from src.api.api_keys import USE_ENV_SENTINEL
 from src.api.api_keys import resolve_api_key as _resolve_api_key
 from src.api.services.endpoint_validator import EndpointValidator
 
@@ -279,6 +280,7 @@ def create_config_blueprint(server_session_id=None):
             "nexum_api_key_configured": nexum_count > 0,
             "opencode_api_key_configured": opencode_count > 0,
             "opencodego_api_key_configured": opencodego_count > 0,
+            "llm_provider": _config.LLM_PROVIDER,
             "output_filename_pattern": _config.OUTPUT_FILENAME_PATTERN,
             "max_tokens_per_chunk": int(_config.MAX_TOKENS_PER_CHUNK),
             "parallel_translations": int(_config.PARALLEL_TRANSLATIONS),
@@ -857,9 +859,8 @@ def create_config_blueprint(server_session_id=None):
             return jsonify({"warning": None, "behavior": None, "error": str(e)})
 
     def _get_env_file_path():
-        """Get the path to the .env file"""
-        config_path = get_config_path()
-        return Path(config_path) / '.env'
+        """Durable `.env` path (``data/.env`` when that volume exists)."""
+        return _config.primary_env_file_path()
 
     # Keys whose values may contain spaces, '#', or JSON braces. python-dotenv
     # parses unquoted values up to a '#' (treated as inline comment), so a raw
@@ -895,58 +896,52 @@ def create_config_blueprint(server_session_id=None):
         Returns:
             True if successful, False otherwise
         """
-        env_path = _get_env_file_path()
+        env_paths = _config.env_files_to_update()
+        if not env_paths:
+            env_paths = [_get_env_file_path()]
 
-        # Read existing content or start fresh
-        existing_lines = []
-        file_is_new = not env_path.exists()
+        for env_path in env_paths:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if env_path.exists():
-            with open(env_path, 'r', encoding='utf-8') as f:
-                existing_lines = f.readlines()
-        else:
-            # Create file with header if it doesn't exist
-            existing_lines = [
-                "# Translation API Configuration\n",
-                "# This file was automatically created by the web interface\n",
-                "# You can edit these values manually or via the web UI\n",
-                "\n"
-            ]
+            existing_lines = []
+            if env_path.exists():
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    existing_lines = f.readlines()
+            else:
+                existing_lines = [
+                    "# Translation API Configuration\n",
+                    "# This file was automatically created by the web interface\n",
+                    "# You can edit these values manually or via the web UI\n",
+                    "\n"
+                ]
 
-        # Track which keys we've updated
-        updated_keys = set()
-        new_lines = []
+            updated_keys = set()
+            new_lines = []
 
-        for line in existing_lines:
-            stripped = line.strip()
-
-            # Skip empty lines and comments, keep them as-is
-            if not stripped or stripped.startswith('#'):
-                new_lines.append(line)
-                continue
-
-            # Check if this line has a key we want to update
-            match = re.match(r'^([A-Z_][A-Z0-9_]*)=', stripped)
-            if match:
-                key = match.group(1)
-                if key in updates:
-                    formatted = _format_env_value(key, updates[key])
-                    new_lines.append(f"{key}={formatted}\n")
-                    updated_keys.add(key)
+            for line in existing_lines:
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    new_lines.append(line)
+                    continue
+                match = re.match(r'^([A-Z_][A-Z0-9_]*)=', stripped)
+                if match:
+                    key = match.group(1)
+                    if key in updates:
+                        formatted = _format_env_value(key, updates[key])
+                        new_lines.append(f"{key}={formatted}\n")
+                        updated_keys.add(key)
+                    else:
+                        new_lines.append(line)
                 else:
                     new_lines.append(line)
-            else:
-                new_lines.append(line)
 
-        # Add any keys that weren't in the file
-        for key, value in updates.items():
-            if key not in updated_keys:
-                formatted = _format_env_value(key, value)
-                new_lines.append(f"{key}={formatted}\n")
+            for key, value in updates.items():
+                if key not in updated_keys:
+                    formatted = _format_env_value(key, value)
+                    new_lines.append(f"{key}={formatted}\n")
 
-        # Write back
-        with open(env_path, 'w', encoding='utf-8') as f:
-            f.writelines(new_lines)
+            with open(env_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
 
         return True
 
@@ -1011,6 +1006,15 @@ def create_config_blueprint(server_session_id=None):
                 if key in allowed_keys:
                     # Sanitize value - remove newlines and dangerous characters
                     safe_value = str(value).replace('\n', '').replace('\r', '')
+                    # The UI sends __USE_ENV__ when the key field is blank but
+                    # a key is already configured. Persist the live value so a
+                    # new data/.env (Docker volume) receives it instead of
+                    # dropping the key on the next container recreate.
+                    if key.endswith('_API_KEY') and safe_value == USE_ENV_SENTINEL:
+                        live = os.getenv(key, '') or str(getattr(_config, key, '') or '')
+                        if not live:
+                            continue
+                        safe_value = live
                     # Floor MAX_TOKENS_PER_CHUNK so a hand-crafted POST can't
                     # over-fragment the chunker. No upper bound: the usable
                     # ceiling depends on the provider's context window and on

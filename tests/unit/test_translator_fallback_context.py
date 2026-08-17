@@ -254,3 +254,32 @@ class TestRefinementEmptyResponse:
         assert refined is None
         assert client.make_request.await_count == 2
 
+    @pytest.mark.asyncio
+    async def test_truncated_empty_refine_keeps_draft_without_retry(self, monkeypatch):
+        from src.core.translator import _make_refinement_request
+
+        client = Mock()
+        client.make_request = AsyncMock(return_value=LLMResponse(
+            content="", prompt_tokens=4, completion_tokens=10178,
+            was_truncated=True,
+        ))
+        client.extract_translation = Mock(return_value=None)
+        monkeypatch.setattr("src.core.translator.asyncio.sleep", AsyncMock())
+        monkeypatch.setattr("src.core.translator.MAX_TRANSLATION_ATTEMPTS", 5)
+
+        refined, response = await _make_refinement_request(
+            draft_translation="Bonjour le monde",
+            context_before="",
+            context_after="",
+            previous_refined_context="",
+            target_language="French",
+            model="test-model",
+            llm_client=client,
+            log_callback=None,
+            has_placeholders=False,
+        )
+
+        assert refined is None
+        assert response.was_truncated is True
+        assert client.make_request.await_count == 1
+

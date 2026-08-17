@@ -21,16 +21,85 @@ if _debug_mode:
 
 # Get config directory (current working directory)
 _config_dir = Path.cwd()
+_env_example = _config_dir / '.env.example'
+_cwd = Path.cwd()
+
+
+def env_file_candidates():
+    """Return `.env` files to load, later files overriding earlier ones.
+
+    Docker/CasaOS injects compose defaults into the process environment and
+    typically does not mount the project `.env` into `/app`. Writing to
+    `/app/.env` is lost on `docker compose up --force-recreate`. The `data/`
+    directory *is* a persistent volume (jobs DB, glossaries), so `data/.env`
+    is where UI "Save to .env" settings must live to survive a redeploy.
+    """
+    cwd = Path.cwd()
+    paths = []
+    seen = set()
+    for path in (cwd / '.env', cwd / 'data' / '.env'):
+        if not path.is_file():
+            continue
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        paths.append(path)
+    return paths
+
+
+def primary_env_file_path():
+    """Path the web UI writes when the user clicks Save to .env.
+
+    Prefer ``data/.env`` whenever that directory exists so container
+    recreates cannot wipe the API key, chunk size, or parallel-worker default.
+    """
+    cwd = Path.cwd()
+    data_dir = cwd / 'data'
+    if data_dir.is_dir():
+        return data_dir / '.env'
+    return cwd / '.env'
+
+
+def env_files_to_update():
+    """Files `_update_env_file` should write.
+
+    Always write the primary (durable) path. Also mirror into cwd `.env` when
+    that file already exists so a local checkout and the data volume stay in
+    sync.
+    """
+    cwd = Path.cwd()
+    primary = primary_env_file_path()
+    files = [primary]
+    cwd_env = cwd / '.env'
+    try:
+        if cwd_env.exists() and cwd_env.resolve() != primary.resolve():
+            files.append(cwd_env)
+    except OSError:
+        if cwd_env.exists() and cwd_env != primary:
+            files.append(cwd_env)
+    return files
+
+
+def load_env_files(*, override):
+    """Load every candidate `.env`. ``override=True`` beats Docker compose env."""
+    loaded = []
+    for path in env_file_candidates():
+        load_dotenv(path, override=override)
+        loaded.append(path)
+    return loaded
+
 
 # Check if .env file exists and provide helpful guidance
-_env_file = _config_dir / '.env'
-_env_example = _config_dir / '.env.example'
-_env_exists = _env_file.exists()
-_cwd = Path.cwd()
+_env_file = primary_env_file_path()
+_env_exists = bool(env_file_candidates()) or (_config_dir / '.env').exists()
 
 if _debug_mode:
     _config_logger.debug(f"📁 Current working directory: {_cwd}")
-    _config_logger.debug(f"📁 Looking for .env at: {_env_file.absolute()}")
+    _config_logger.debug(f"📁 Primary .env path: {_env_file.absolute()}")
     _config_logger.debug(f"📁 .env exists: {_env_exists}")
 
 # Whether the .env file is missing. The actual "no .env" warning is emitted
@@ -44,11 +113,11 @@ if ENV_FILE_MISSING and _is_frozen and _debug_mode:
     # Running as executable - silently use defaults
     _config_logger.debug("⚠️  .env not found, using defaults (executable mode)")
 
-# Load .env file if it exists
-_dotenv_result = load_dotenv(_env_file)
+# Load .env files if they exist. override=True so a saved `data/.env` wins
+# over compose `environment:` defaults (LLM_PROVIDER=ollama, chunk size 450, …).
+_dotenv_loaded = load_env_files(override=True)
 if _debug_mode:
-    _config_logger.debug(f"📁 load_dotenv() returned: {_dotenv_result}")
-    _config_logger.debug(f"📁 Loaded .env from: {_env_file.absolute()}")
+    _config_logger.debug(f"📁 Loaded .env files: {_dotenv_loaded}")
 
 # Settings that the web UI can update at runtime via /api/settings.
 # Listed once so the initial load and reload_config() stay in lockstep.
@@ -515,7 +584,7 @@ def reload_config():
     did `from src.config import X` snapshot at import time and are not
     affected — read via `import src.config as cfg; cfg.X` for live values.
     """
-    load_dotenv(_env_file, override=True)
+    load_env_files(override=True)
     _apply_reloadable_env_settings()
     if _debug_mode or os.getenv('DEBUG_MODE', 'false').lower() == 'true':
         _config_logger.debug("📋 Configuration reloaded from .env")

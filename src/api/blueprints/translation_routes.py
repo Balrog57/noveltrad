@@ -16,6 +16,7 @@ from src.config import (
     AUTO_PAUSE_ON_RATE_LIMIT,
     PARALLEL_TRANSLATIONS,
     MAX_PARALLEL_TRANSLATIONS,
+    MIN_CHUNK_SIZE_TOKENS,
 )
 from src.tts.tts_config import TTSConfig
 from src.api.api_keys import (
@@ -348,8 +349,17 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
             'refine_after': data.get('refine_after', False),
             # TTS configuration
             'tts_enabled': data.get('tts_enabled', False),
-            'tts_config': TTSConfig.from_web_request(data).to_dict() if data.get('tts_enabled') else None
+            'tts_config': TTSConfig.from_web_request(data).to_dict() if data.get('tts_enabled') else None,
         }
+
+        raw_chunk = data.get('max_tokens_per_chunk')
+        if raw_chunk is not None and str(raw_chunk).strip() != '':
+            try:
+                config['max_tokens_per_chunk'] = max(
+                    MIN_CHUNK_SIZE_TOKENS, int(raw_chunk)
+                )
+            except (TypeError, ValueError):
+                pass
 
         # Add file-specific or text-specific configuration
         if 'file_path' in data:

@@ -9,6 +9,7 @@
 import { ApiClient } from './api-client.js';
 import { DomHelpers } from '../ui/dom-helpers.js';
 import { MessageLogger } from '../ui/message-logger.js';
+import { ApiKeyUtils } from '../utils/api-key-utils.js';
 import { t } from '../i18n/i18n.js';
 
 // Storage configuration with versioning
@@ -453,40 +454,40 @@ export const SettingsManager = {
             const provider = DomHelpers.getValue('llmProvider');
 
             if (provider === 'gemini') {
-                const key = DomHelpers.getValue('geminiApiKey');
+                const key = ApiKeyUtils.getValue('geminiApiKey');
                 if (key) envSettings['GEMINI_API_KEY'] = key;
             } else if (provider === 'openai') {
-                const key = DomHelpers.getValue('openaiApiKey');
+                const key = ApiKeyUtils.getValue('openaiApiKey');
                 if (key) envSettings['OPENAI_API_KEY'] = key;
             } else if (provider === 'openrouter') {
-                const key = DomHelpers.getValue('openrouterApiKey');
+                const key = ApiKeyUtils.getValue('openrouterApiKey');
                 if (key) envSettings['OPENROUTER_API_KEY'] = key;
             } else if (provider === 'mistral') {
-                const key = DomHelpers.getValue('mistralApiKey');
+                const key = ApiKeyUtils.getValue('mistralApiKey');
                 if (key) envSettings['MISTRAL_API_KEY'] = key;
             } else if (provider === 'deepseek') {
-                const key = DomHelpers.getValue('deepseekApiKey');
+                const key = ApiKeyUtils.getValue('deepseekApiKey');
                 if (key) envSettings['DEEPSEEK_API_KEY'] = key;
             } else if (provider === 'poe') {
-                const key = DomHelpers.getValue('poeApiKey');
+                const key = ApiKeyUtils.getValue('poeApiKey');
                 if (key) envSettings['POE_API_KEY'] = key;
             } else if (provider === 'nim') {
-                const key = DomHelpers.getValue('nimApiKey');
+                const key = ApiKeyUtils.getValue('nimApiKey');
                 if (key) envSettings['NIM_API_KEY'] = key;
             } else if (provider === 'anthropic') {
-                const key = DomHelpers.getValue('anthropicApiKey');
+                const key = ApiKeyUtils.getValue('anthropicApiKey');
                 if (key) envSettings['ANTHROPIC_API_KEY'] = key;
             } else if (provider === 'xai') {
-                const key = DomHelpers.getValue('xaiApiKey');
+                const key = ApiKeyUtils.getValue('xaiApiKey');
                 if (key) envSettings['XAI_API_KEY'] = key;
             } else if (provider === 'nexum') {
-                const key = DomHelpers.getValue('nexumApiKey');
+                const key = ApiKeyUtils.getValue('nexumApiKey');
                 if (key) envSettings['NEXUM_API_KEY'] = key;
             } else if (provider === 'opencode') {
-                const key = DomHelpers.getValue('opencodeApiKey');
+                const key = ApiKeyUtils.getValue('opencodeApiKey');
                 if (key) envSettings['OPENCODE_API_KEY'] = key;
             } else if (provider === 'opencodego') {
-                const key = DomHelpers.getValue('opencodegoApiKey');
+                const key = ApiKeyUtils.getValue('opencodegoApiKey');
                 if (key) envSettings['OPENCODE_GO_API_KEY'] = key;
             }
 

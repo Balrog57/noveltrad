@@ -133,6 +133,7 @@ class OpenAICompatibleProvider(LLMProvider):
         )
         attempt = 0
         rate_limit_events = 0
+        length_empty_tries = 0
         while attempt < max_attempts:
             current_key = await self._key_pool.acquire() if self._key_pool else None
             headers = {"Content-Type": "application/json"}
@@ -164,6 +165,33 @@ class OpenAICompatibleProvider(LLMProvider):
                 # the completion budget. Retry those. An explicit content-filter
                 # / refusal is not retried — it will not recover.
                 if should_retry_empty_completion(parsed, attempt, max_attempts):
+                    # Reasoning models on aggregators often hit finish_reason=
+                    # length with empty content (CoT ate the budget). A few
+                    # retries with a larger max_tokens can recover; looping
+                    # five 5-minute calls just stalls a 4-pass job. After two
+                    # length-empty replies, return empty so refine keeps the
+                    # previous draft and translation can retry the chunk.
+                    if parsed.get("was_truncated"):
+                        length_empty_tries += 1
+                        current_max = payload.get("max_tokens")
+                        if isinstance(current_max, int) and current_max > 0:
+                            payload["max_tokens"] = min(65536, current_max * 2)
+                        if length_empty_tries >= 2:
+                            if self.log_callback:
+                                self.log_callback(
+                                    "llm_empty_give_up",
+                                    "Empty truncated completion after "
+                                    f"{length_empty_tries} tries — keeping the "
+                                    "previous draft / retrying this chunk upstream.",
+                                )
+                            return LLMResponse(
+                                content="",
+                                prompt_tokens=prompt_tokens,
+                                completion_tokens=completion_tokens,
+                                context_used=context_used,
+                                context_limit=self.context_window,
+                                was_truncated=True,
+                            )
                     delay = min(8, 2 * (attempt + 1))
                     if self.log_callback:
                         self.log_callback("llm_empty_retry",
@@ -180,9 +208,44 @@ class OpenAICompatibleProvider(LLMProvider):
                     completion_tokens=completion_tokens,
                     context_used=context_used,
                     context_limit=self.context_window,
-                    was_truncated=False  # OpenAI API doesn't provide truncation info
+                    was_truncated=bool(parsed.get("was_truncated")),
                 )
 
+            except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
+                YELLOW = '\033[93m'
+                RED = '\033[91m'
+                RESET = '\033[0m'
+                if self.log_callback:
+                    self.log_callback(
+                        "llm_connect_error",
+                        f"{YELLOW}⚠️ Cannot reach LLM provider "
+                        f"(attempt {attempt + 1}/{max_attempts}){RESET}\n"
+                        f"{YELLOW}   Endpoint: {self.api_endpoint}{RESET}\n"
+                        f"{YELLOW}   Error: {type(e).__name__}: {e}{RESET}",
+                    )
+                else:
+                    print(
+                        f"{YELLOW}⚠️ LLM provider unreachable "
+                        f"(attempt {attempt + 1}/{max_attempts}): {e}{RESET}"
+                    )
+                attempt += 1
+                if attempt < max_attempts:
+                    delay = min(16, 2 * max(1, attempt))
+                    if self.log_callback:
+                        self.log_callback(
+                            "llm_retry",
+                            f"   Retrying in {delay} seconds...",
+                        )
+                    await asyncio.sleep(delay)
+                    continue
+                if self.log_callback:
+                    self.log_callback(
+                        "llm_connect_error_fatal",
+                        f"{RED}❌ Could not reach the LLM provider after "
+                        f"{max_attempts} attempts. The chunk will be retried "
+                        f"or kept as-is (refine keeps the previous draft).{RESET}",
+                    )
+                return None
             except httpx.TimeoutException as e:
                 RED = '\033[91m'
                 YELLOW = '\033[93m'

@@ -77,6 +77,7 @@ def parse_chat_completion(response_json: Mapping[str, Any] | None) -> Dict[str, 
             "error_message": error_message,
             "empty_choices": True,
             "is_explicit_refusal": False,
+            "was_truncated": False,
         }
 
     choice = choices[0] if isinstance(choices[0], dict) else {}
@@ -89,6 +90,7 @@ def parse_chat_completion(response_json: Mapping[str, Any] | None) -> Dict[str, 
 
     finish_l = finish_reason.lower()
     is_explicit_refusal = bool(refusal) or finish_l in _REFUSAL_FINISH_REASONS
+    was_truncated = finish_l in ("length", "max_tokens")
 
     return {
         "text": text,
@@ -99,6 +101,7 @@ def parse_chat_completion(response_json: Mapping[str, Any] | None) -> Dict[str, 
         "error_message": error_message,
         "empty_choices": False,
         "is_explicit_refusal": is_explicit_refusal,
+        "was_truncated": was_truncated,
     }
 
 

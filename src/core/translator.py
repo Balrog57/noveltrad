@@ -649,6 +649,18 @@ async def _make_refinement_request(
                 return None, None
 
             last_response = llm_response
+            full_raw_response = llm_response.content or ""
+
+            # Truncated empty completions already exhausted provider-side
+            # retries (Nexum/Dialagram CoT ate max_tokens). Extra loops stall
+            # 4-pass refine for minutes per chunk; keep the previous draft.
+            if not str(full_raw_response).strip() and llm_response.was_truncated:
+                if log_callback:
+                    log_callback(
+                        "empty_llm_response",
+                        "⚠️ Empty truncated refinement — keeping the draft translation.",
+                    )
+                return None, last_response
 
             # Check if we should retry with larger context (adaptive strategy)
             if context_manager and llm_response.was_truncated:
@@ -657,8 +669,6 @@ async def _make_refinement_request(
                 ):
                     context_manager.increase_context()
                     continue  # Retry with larger context
-
-            full_raw_response = llm_response.content or ""
 
             if not str(full_raw_response).strip():
                 empty_retries += 1

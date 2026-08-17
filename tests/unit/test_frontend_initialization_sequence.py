@@ -178,6 +178,8 @@ class TestFrontendInitializationSequence:
         
         assert has_dispatch, \
             "FormManager should dispatch 'defaultConfigLoaded' event after loading server config."
+        assert "config.llm_provider" in content
+        assert "providerSelect.value = config.llm_provider" in content
 
     def test_comments_reference_github_issue(self, js_files):
         """

@@ -200,7 +200,53 @@ async def test_empty_retry_stops_at_attempt_limit(monkeypatch, no_sleep):
     assert fake.calls == 2  # never exceeds MAX_TRANSLATION_ATTEMPTS default
 
 
-def test_stringify_skips_reasoning_parts():
+@pytest.mark.asyncio
+async def test_length_empty_stops_after_two_tries(monkeypatch, no_sleep):
+    """finish_reason=length with no content must not loop five long calls."""
+    provider = OpenAICompatibleProvider(
+        api_endpoint="http://llm.test/v1", model="deepseek-v4", api_key="test-key"
+    )
+    fake = _FakeClient([
+        _payload("", 10178, finish_reason="length"),
+        _payload("", 8927, finish_reason="length"),
+        _payload("should not be called", 10),
+    ])
+    _async_fake_client(provider, fake, monkeypatch)
+
+    response = await provider.generate("Translate this", timeout=30)
+
+    assert response is not None
+    assert response.content == ""
+    assert response.was_truncated is True
+    assert fake.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_connect_error_is_retried(monkeypatch, no_sleep):
+    import httpx
+
+    provider = OpenAICompatibleProvider(
+        api_endpoint="http://llm.test/v1", model="deepseek-v4", api_key="test-key"
+    )
+
+    class _Flaky:
+        def __init__(self):
+            self.calls = 0
+
+        async def post(self, *args, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise httpx.ConnectError("connection refused")
+            return _FakeResponse(_payload("OK", 12))
+
+    fake = _Flaky()
+    _async_fake_client(provider, fake, monkeypatch)
+
+    response = await provider.generate("Translate this", timeout=30)
+
+    assert response.content == "OK"
+    assert fake.calls == 2
+
     assert stringify_message_content(None) == ""
     assert stringify_message_content("hi") == "hi"
     assert stringify_message_content([

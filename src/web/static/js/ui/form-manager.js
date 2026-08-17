@@ -402,6 +402,14 @@ export const FormManager = {
                 }
             }
 
+            // Provider + model saved in .env win over localStorage / HTML defaults.
+            if (config.llm_provider) {
+                const providerSelect = DomHelpers.getElement('llmProvider');
+                if (providerSelect) {
+                    providerSelect.value = config.llm_provider;
+                }
+            }
+
             // Parallel requests default (seeds the input; per-job request overrides it)
             if (config.parallel_translations) {
                 const parallelWorkersInput = DomHelpers.getElement('parallelWorkers');

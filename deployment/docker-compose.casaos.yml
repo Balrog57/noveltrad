@@ -11,16 +11,20 @@ services:
       PORT: 8501
       HOST: 0.0.0.0
       OUTPUT_DIR: /app/translated_files
-      API_ENDPOINT: http://host.docker.internal:11434/api/generate
-      OLLAMA_API_ENDPOINT: http://host.docker.internal:11434/api/generate
-      DEFAULT_MODEL: qwen2.5:1.5b
-      LLM_PROVIDER: ollama
+      API_ENDPOINT: ${API_ENDPOINT:-http://host.docker.internal:11434/api/generate}
+      OLLAMA_API_ENDPOINT: ${OLLAMA_API_ENDPOINT:-http://host.docker.internal:11434/api/generate}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-qwen2.5:1.5b}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
     ports:
       - "0.0.0.0:8501:8501"
     volumes:
       - noveltrad_data:/app/data
       - noveltrad_files:/app/translated_files
       - noveltrad_logs:/app/logs
+      # Same file as env_file: UI "Save to .env" must write here or settings
+      # vanish on container recreate (TranslateBooksWithLLMs keeps settings
+      # because it writes the host cwd .env; Docker needs this bind mount).
+      - /DATA/AppData/noveltrad/.env:/app/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

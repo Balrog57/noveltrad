@@ -45,7 +45,7 @@ STYLE_MAX_CHARS = 10000          # == custom_instruction_routes._EXTRACT_DEFAULT
 STYLE_SAMPLE_COUNT = 6           # == custom_instruction_routes._EXTRACT_DEFAULT_SAMPLE_COUNT
 STYLE_MIN_SAMPLE_SIZE = 1200     # == custom_instruction_routes._EXTRACT_MIN_SAMPLE_SIZE
 AUTO_PREP_CONTEXT_WINDOW = 16384 # == custom_instruction_routes._EXTRACT_CONTEXT_WINDOW
-AUTO_PREP_TIMEOUT_S = 420        # hard wall-clock ceiling for both passes together
+AUTO_PREP_TIMEOUT_S = 900        # hard wall-clock ceiling for both passes together
 
 #: Value written to `glossary_source`; suppresses the legacy "Loaded glossary" log line.
 _AUTO_GLOSSARY_SOURCE = "auto"
