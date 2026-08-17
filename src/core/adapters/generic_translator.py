@@ -185,6 +185,7 @@ class GenericTranslator:
             sequential = workers == 1
             prompt_options = llm_kwargs.get('prompt_options', {})
             max_validation_attempts = 1 + max(0, UNIT_VALIDATION_RETRIES)
+            runtime_state: dict = {}
 
             last_context = ""
             failed_count = 0
@@ -218,7 +219,8 @@ class GenericTranslator:
                         model=model_name,
                         llm_client=llm_client,
                         log_callback=log_callback,
-                        prompt_options=attempt_options
+                        prompt_options=attempt_options,
+                        runtime_state=runtime_state,
                     )
 
                     # API failure / empty result: existing failure semantics.

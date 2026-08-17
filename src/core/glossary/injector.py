@@ -18,8 +18,9 @@ Two blocks live here:
 """
 from typing import Dict, List, Optional, Tuple
 
+from src.core.glossary.filter import filter_glossary
 from src.core.glossary.inflection import target_language_is_inflected
-from src.core.glossary.models import DEFAULT_MAX_CAST_ENTRIES, normalize_gender
+from src.core.glossary.models import DEFAULT_MAX_CAST_ENTRIES, GlossaryConfig, normalize_gender
 
 # Target-side counterpart of the '|' source-variants line: in an inflected
 # target the citation form listed in the glossary is routinely NOT the form a
@@ -108,13 +109,21 @@ def build_cast_block(
     glossary_terms: Dict[str, str],
     term_metadata: Optional[Dict[str, Dict[str, str]]] = None,
     max_entries: int = DEFAULT_MAX_CAST_ENTRIES,
+    chunk_content: str = "",
 ) -> Tuple[str, bool]:
     """
-    Render the cast block listing every entity with a known gender.
+    Render the cast block listing entities with a known gender.
 
-    Unlike the glossary block, this is NOT filtered against the current chunk:
-    a chunk that refers to a character only by pronoun contains no glossary
-    match, yet that is the chunk that most needs the gender.
+    Unlike the glossary block, this is not limited to names that appear in the
+    current chunk: a passage that refers to a character only by pronoun has no
+    glossary match, yet that is exactly where the model would guess the gender.
+
+    When ``chunk_content`` is set and the cast is larger than ``max_entries``,
+    names that actually occur in the chunk are kept first, then the remaining
+    slots are filled in glossary order so pronoun-only references still have a
+    stable core cast. Without chunk text the list stays in glossary order
+    (byte-identical across calls — used by tests and by callers that inject
+    one global block).
 
     Args:
         glossary_terms: {source: target} for the whole glossary (unfiltered).
@@ -123,6 +132,8 @@ def build_cast_block(
         max_entries: cap on the number of listed entities. The block is
             injected into every chunk, so an unbounded cast on a 300-character
             saga would be a permanent token tax.
+        chunk_content: optional source text of the current chunk. Used only
+            to prioritize which names survive the cap.
 
     Returns:
         (block, capped). ``block`` is "" when no entity has a known gender —
@@ -133,7 +144,7 @@ def build_cast_block(
     if not glossary_terms or not metadata:
         return "", False
 
-    entries: List[Tuple[str, str, str]] = []
+    entries: List[Tuple[str, str, str, str]] = []
     for source, target in glossary_terms.items():
         gender = normalize_gender((metadata.get(source) or {}).get("gender"))
         if not gender:
@@ -145,7 +156,7 @@ def build_cast_block(
             (a.strip() for a in source.split("|") if a.strip()),
             source,
         )
-        entries.append((canonical, target, gender))
+        entries.append((source, canonical, target, gender))
 
     if not entries:
         return "", False
@@ -153,10 +164,18 @@ def build_cast_block(
     capped = False
     if max_entries and len(entries) > max_entries:
         capped = True
-        # Truncate in glossary order rather than by relevance: the block must
-        # be byte-identical across every chunk of a job, both for prompt
-        # caching and so a character does not change gender halfway through.
-        entries = entries[:max_entries]
+        in_chunk_keys = set()
+        if chunk_content:
+            gendered_terms = {source: target for source, _, target, _ in entries}
+            matched, _ = filter_glossary(
+                chunk_content,
+                gendered_terms,
+                GlossaryConfig(max_entries=0, warn_on_cap=False),
+            )
+            in_chunk_keys = set(matched)
+        preferred = [e for e in entries if e[0] in in_chunk_keys]
+        filler = [e for e in entries if e[0] not in in_chunk_keys]
+        entries = (preferred + filler)[:max_entries]
 
     lines = [
         "# CAST - CHARACTER GENDERS",
@@ -170,7 +189,7 @@ def build_cast_block(
         "referred to here by pronoun only in the passage you are translating.",
         "",
     ]
-    for canonical, target, gender in entries:
+    for _source, canonical, target, gender in entries:
         label = f"{canonical} ({target})" if target and target != canonical else canonical
         lines.append(f"  - {label} — {gender}")
 

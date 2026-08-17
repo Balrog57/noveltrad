@@ -394,6 +394,7 @@ async def translate_paragraphs_plain(
 
     workers = max(1, int(parallel_workers))
     sequential = workers == 1
+    runtime_state: dict = {}
 
     # Index-addressed results so out-of-order completion still reassembles in
     # source order.
@@ -427,6 +428,7 @@ async def translate_paragraphs_plain(
             prompt_options=prompt_options if options is None else options,
             context_manager=context_manager,
             placeholder_format=None,
+            runtime_state=runtime_state,
         )
 
     async def _translate_chunk(i):

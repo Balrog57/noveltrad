@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from src.core.glossary.cli_loader import load_glossary_from_file
 from src.core.glossary.injector import build_cast_block, build_glossary_block
-from src.core.glossary.models import GlossaryTerm, normalize_gender
+from src.core.glossary.models import GlossaryConfig, GlossaryTerm, normalize_gender
 from src.core.glossary.ner import parse_ner_response
 from src.core.glossary.store import GlossaryStore
 from src.core.translator import _build_chunk_glossary_block
@@ -141,13 +141,25 @@ class TestCastBlock:
         assert block.count(" — female") == 4
 
     def test_block_is_stable_across_calls(self):
-        """A cast that reordered per chunk would break prompt caching and could
-        flip a character's gender mid-book."""
+        """Without chunk text the list stays in glossary order (prompt cache)."""
         terms = {"林月": "Lin Yue", "李凡": "Li Fan"}
         metadata = {"林月": {"gender": "female"}, "李凡": {"gender": "male"}}
         first, _ = build_cast_block(terms, metadata)
         second, _ = build_cast_block(terms, metadata)
         assert first == second
+
+    def test_cap_keeps_in_chunk_names_first(self):
+        """A saga with hundreds of gendered names must still list the people
+        who actually appear in this chunk, not only the first N glossary rows."""
+        terms = {f"C{i}": f"Char {i}" for i in range(10)}
+        terms["Perry"] = "Perry Rhodan"
+        metadata = {name: {"gender": "male"} for name in terms}
+        block, capped = build_cast_block(
+            terms, metadata, max_entries=4, chunk_content="Perry opened the airlock."
+        )
+        assert capped is True
+        assert "Perry (Perry Rhodan) — male" in block
+        assert block.count(" — male") == 4
 
 
 class TestGlossaryBlockGenderHint:
@@ -218,6 +230,23 @@ class TestChunkPromptSection:
             "glossary_term_metadata": {"林月": {"category": "character"}},
         }
         assert _build_chunk_glossary_block("天气很好。", options) == ""
+
+    def test_cast_cap_warning_fires_once_with_shared_runtime_state(self):
+        terms = {f"C{i}": f"T{i}" for i in range(90)}
+        options = {
+            "glossary_terms": terms,
+            "glossary_term_metadata": {name: {"gender": "male"} for name in terms},
+            "glossary_config": GlossaryConfig(max_cast_entries=80),
+        }
+        logs = []
+        state = {}
+
+        def _log(_event, message):
+            logs.append(message)
+
+        _build_chunk_glossary_block("hello", options, log_callback=_log, runtime_state=state)
+        _build_chunk_glossary_block("hello", options, log_callback=_log, runtime_state=state)
+        assert sum("Cast list capped" in message for message in logs) == 1
 
 
 class TestStoreGender:

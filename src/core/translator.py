@@ -57,9 +57,9 @@ def _build_chunk_glossary_block(
     entity.
 
     Two sections may be emitted:
-      - the cast block (gendered entities), which is NOT chunk-filtered, since
-        a passage referring to a character by pronoun alone contains no match
-        yet is exactly where the model would otherwise guess the gender;
+      - the cast block (gendered entities). Names in this chunk are kept
+        first when the list is capped; remaining slots stay in glossary
+        order so pronoun-only references still have a core cast;
       - the glossary block, restricted to terms present in this chunk.
 
     When the per-chunk cap is hit and `warn_on_cap` is enabled, logs a single
@@ -95,7 +95,7 @@ def _build_chunk_glossary_block(
     if runtime_state is None:
         runtime_state = {}
 
-    if capped and config.warn_on_cap and not runtime_state.get("glossary_cap_warned"):
+    if capped and config.warn_on_cap and "glossary_cap_warned" not in runtime_state:
         runtime_state["glossary_cap_warned"] = True
         if log_callback:
             log_callback(
@@ -110,16 +110,21 @@ def _build_chunk_glossary_block(
         terms,
         term_metadata=metadata,
         max_entries=getattr(config, "max_cast_entries", None) or 0,
+        chunk_content=chunk_content,
     )
 
-    if cast_capped and config.warn_on_cap and not runtime_state.get("cast_cap_warned"):
+    if (
+        cast_capped
+        and config.warn_on_cap
+        and "cast_cap_warned" not in runtime_state
+    ):
         runtime_state["cast_cap_warned"] = True
         if log_callback:
             log_callback(
                 "glossary_cast_capped",
-                f"⚠️ Cast block cap reached: more than {config.max_cast_entries} glossary entries "
-                f"carry a gender. Entries beyond the cap are dropped from the per-chunk gender "
-                f"reference — raise `max_cast_entries` if the whole cast must be listed."
+                f"⚠️ Cast list capped at {config.max_cast_entries} gendered names "
+                f"(the glossary has more). Names in the current chunk are kept "
+                f"first; raise `max_cast_entries` to list the whole cast every chunk."
             )
 
     glossary_block = (
@@ -487,7 +492,8 @@ async def generate_translation_request(main_content, context_before, context_aft
                                        source_language="English", target_language="Chinese", model=DEFAULT_MODEL,
                                        llm_client=None, log_callback=None, has_placeholders=False,
                                        prompt_options=None, context_manager: AdaptiveContextManager = None,
-                                       placeholder_format: Optional[Tuple[str, str]] = None):
+                                       placeholder_format: Optional[Tuple[str, str]] = None,
+                                       runtime_state: Optional[dict] = None):
     """
     Generate translation request to LLM API with automatic context overflow handling.
 
@@ -530,7 +536,8 @@ async def generate_translation_request(main_content, context_before, context_aft
         has_placeholders=has_placeholders,
         prompt_options=prompt_options,
         context_manager=context_manager,
-        placeholder_format=placeholder_format
+        placeholder_format=placeholder_format,
+        runtime_state=runtime_state,
     )
 
     if translated_text:

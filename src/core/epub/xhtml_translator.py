@@ -402,7 +402,8 @@ async def translate_chunk_with_fallback(
     max_retries: int = 1,
     context_manager: Optional[AdaptiveContextManager] = None,
     placeholder_format: Optional[Tuple[str, str]] = None,
-    prompt_options: Optional[Dict] = None
+    prompt_options: Optional[Dict] = None,
+    runtime_state: Optional[Dict] = None,
 ) -> str:
     """
     Translate a chunk with retry mechanism.
@@ -462,7 +463,8 @@ async def translate_chunk_with_fallback(
             has_placeholders=has_placeholders,
             context_manager=context_manager,
             placeholder_format=placeholder_format,
-            prompt_options=prompt_options
+            prompt_options=prompt_options,
+            runtime_state=runtime_state,
         )
 
         if translated is None:
@@ -525,7 +527,8 @@ async def translate_chunk_with_fallback(
                 has_placeholders=False,  # CRITICAL: no placeholder instructions
                 context_manager=context_manager,
                 placeholder_format=None,  # No placeholders in prompt
-                prompt_options=prompt_options
+                prompt_options=prompt_options,
+                runtime_state=runtime_state,
             )
 
             if translated_clean is None:
@@ -747,6 +750,7 @@ async def _translate_all_chunks_with_checkpoint(
     from datetime import datetime, timezone
 
     CHECKPOINT_FREQUENCY = 5  # Save every 5 chunks
+    runtime_state: dict = {}
 
     # Initialize if first time
     if stats is None:
@@ -844,7 +848,8 @@ async def _translate_all_chunks_with_checkpoint(
             max_retries=max_retries,
             context_manager=context_manager,
             placeholder_format=placeholder_format,
-            prompt_options=prompt_options
+            prompt_options=prompt_options,
+            runtime_state=runtime_state,
         )
 
     pending = list(range(start_chunk_index, len(chunks)))
@@ -955,6 +960,7 @@ async def _translate_all_chunks(
     # Initialize total_chunks at the start (not incrementally during processing)
     # This ensures stats_callback can report the total immediately
     stats.total_chunks = len(chunks)
+    runtime_state: dict = {}
 
     # Report initial stats with total_chunks set
     if stats_callback:
@@ -982,7 +988,8 @@ async def _translate_all_chunks(
             max_retries=max_retries,
             context_manager=context_manager,
             placeholder_format=placeholder_format,
-            prompt_options=prompt_options
+            prompt_options=prompt_options,
+            runtime_state=runtime_state,
         )
         translated_chunks.append(translated)
 

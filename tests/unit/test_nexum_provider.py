@@ -53,6 +53,8 @@ async def test_generate_sets_default_max_tokens(monkeypatch):
 
     assert fake.calls == 1
     assert fake.last_json["max_tokens"] == NexumProvider.DEFAULT_MAX_OUTPUT_TOKENS
+    assert fake.last_json["thinking"] is False
+    assert fake.last_json["enable_thinking"] is False
 
 
 @pytest.mark.asyncio

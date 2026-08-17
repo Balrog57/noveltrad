@@ -42,8 +42,12 @@ class NexumProvider(OpenAICompatibleProvider):
         """Generate with a generous completion budget by default.
 
         ``max_tokens`` can still be overridden per call via ``generation_options``.
+        Reasoning models (deepseek-v4) otherwise spend the whole budget on
+        chain-of-thought and return empty ``content`` with finish_reason=length.
         """
         generation_options.setdefault("max_tokens", self.DEFAULT_MAX_OUTPUT_TOKENS)
+        generation_options.setdefault("thinking", False)
+        generation_options.setdefault("enable_thinking", False)
         return await super().generate(
             prompt, timeout=timeout, system_prompt=system_prompt, **generation_options
         )
