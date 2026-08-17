@@ -415,7 +415,7 @@ class Database:
                 """, (translation_id,))
 
                 chunks = []
-                for row in cursor.fetchall():
+                for row in cursor:
                     chunks.append({
                         'chunk_index': row['chunk_index'],
                         'original_text': row['original_text'],
@@ -475,7 +475,7 @@ class Database:
                 """, (f'-{max_age_days}',))
 
                 jobs = []
-                for row in cursor.fetchall():
+                for row in cursor:
                     jobs.append({
                         'translation_id': row['translation_id'],
                         'status': row['status'],
