@@ -269,13 +269,20 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
         """Start a new translation job"""
         data = request.json
 
-        # Validate required fields
+        # Validate required fields. `llm_api_endpoint` is only mandatory for
+        # providers with an editable endpoint (ollama, openai); cloud providers
+        # resolve their endpoint from the server defaults (.env), and an empty
+        # value must not fail the request (it also must not silently forward the
+        # local Ollama endpoint, which used to produce 404 "model not found"
+        # and leave the output in the source language).
+        provider = (data.get('llm_provider') or 'ollama').lower()
+        endpoint_required = provider in ('ollama', 'openai')
         if 'file_path' in data:
             required_fields = ['file_path', 'source_language', 'target_language',
-                             'model', 'llm_api_endpoint', 'output_filename', 'file_type']
+                             'model', 'output_filename', 'file_type']
         else:
             required_fields = ['text', 'source_language', 'target_language',
-                             'model', 'llm_api_endpoint', 'output_filename']
+                             'model', 'output_filename']
 
         for field in required_fields:
             if field not in data or (isinstance(data[field], str) and not data[field].strip()) or (not isinstance(data[field], str) and data[field] is None):
@@ -283,6 +290,11 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
                     pass
                 else:
                     return jsonify({"error": f"Missing or empty field: {field}"}), 400
+
+        if endpoint_required:
+            endpoint = data.get('llm_api_endpoint')
+            if not isinstance(endpoint, str) or not endpoint.strip():
+                return jsonify({"error": "Missing or empty field: llm_api_endpoint"}), 400
 
         # Generate unique translation ID
         translation_id = f"trans_{int(time.time() * 1000)}"
@@ -292,7 +304,7 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
             'source_language': data['source_language'],
             'target_language': data['target_language'],
             'model': data['model'],
-            'llm_api_endpoint': data['llm_api_endpoint'],
+            'llm_api_endpoint': data.get('llm_api_endpoint') or '',
             'request_timeout': int(data.get('timeout', REQUEST_TIMEOUT)),
             'context_window': int(data.get('context_window', OLLAMA_NUM_CTX)),
             'max_attempts': int(data.get('max_attempts', 2)),

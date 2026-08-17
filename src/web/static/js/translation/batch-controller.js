@@ -87,9 +87,13 @@ function getTranslationConfig(file) {
         source_language: sourceLanguageVal,
         target_language: targetLanguageVal,
         model: currentModel,
+        // Cloud providers resolve their endpoint from server defaults; only
+        // ollama/openai expose an endpoint field in the form. Forwarding the
+        // Ollama endpoint for e.g. nexum redirected requests to the local
+        // server (404 "model not found") and left the output untranslated.
         llm_api_endpoint: provider === 'openai' ?
                          DomHelpers.getValue('openaiEndpoint') :
-                         DomHelpers.getValue('apiEndpoint'),
+                         (provider === 'ollama' ? DomHelpers.getValue('apiEndpoint') : ''),
         llm_provider: provider,
         gemini_api_key: provider === 'gemini' ? ApiKeyUtils.getValue('geminiApiKey') : '',
         openai_api_key: provider === 'openai' ? ApiKeyUtils.getValue('openaiApiKey') : '',

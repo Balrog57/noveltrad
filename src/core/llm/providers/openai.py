@@ -148,6 +148,24 @@ class OpenAICompatibleProvider(LLMProvider):
                         f"Tokens: prompt={prompt_tokens}, response={completion_tokens}, "
                         f"total={context_used}")
 
+                # Some reasoning models (e.g. deepseek-v4 served through
+                # aggregator routers) return HTTP 200 with an empty
+                # ``content`` when the chain-of-thought spent the whole
+                # completion budget before writing the answer. The tokens
+                # were billed, but no usable text came back - retrying
+                # usually lands a full answer. A genuine refusal returns
+                # zero tokens, so it is not retried and flows to upstream
+                # empty-response handling as before.
+                if not response_text or not response_text.strip():
+                    if completion_tokens > 0 and attempt + 1 < MAX_TRANSLATION_ATTEMPTS:
+                        if self.log_callback:
+                            self.log_callback("llm_empty_retry",
+                                f"Empty response ({completion_tokens} tokens, no content) "
+                                f"- retrying (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS})")
+                        attempt += 1
+                        await asyncio.sleep(2)
+                        continue
+
                 return LLMResponse(
                     content=response_text,
                     prompt_tokens=prompt_tokens,

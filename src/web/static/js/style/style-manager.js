@@ -1046,11 +1046,14 @@ async function handleExtractRun() {
 
     // Reuse the provider/model/endpoint/key from the main translate form,
     // same read logic as the glossary NER modal (glossary-manager.js).
+    // Only ollama/openai expose an endpoint field; the server resolves the
+    // default for cloud providers (forwarding the Ollama endpoint here would
+    // send cloud requests to the local server, which answers 404).
     const provider = (DomHelpers.getValue('llmProvider') || '').trim();
     const model = (DomHelpers.getValue('model') || '').trim();
     const apiEndpoint = (provider === 'openai'
         ? DomHelpers.getValue('openaiEndpoint')
-        : DomHelpers.getValue('apiEndpoint')) || '';
+        : (provider === 'ollama' ? DomHelpers.getValue('apiEndpoint') : '')) || '';
     const apiKey = provider ? ApiKeyUtils.getValueForProvider(provider) : '';
 
     const formData = new FormData();

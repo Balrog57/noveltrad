@@ -651,11 +651,17 @@ export const FormManager = {
         const provider = DomHelpers.getValue('llmProvider');
         const model = DomHelpers.getValue('model');
 
-        // Get API endpoint based on provider
-        let apiEndpoint;
+        // Get API endpoint based on provider. Only providers with a visible
+        // endpoint field (ollama, openai) send one from the form. Cloud
+        // providers (nexum, anthropic, xai, ...) resolve their endpoint
+        // server-side from the .env/config defaults; forwarding the Ollama
+        // endpoint here used to redirect every request to the local server,
+        // which answered 404 "model not found" and silently kept the source
+        // language in the output file.
+        let apiEndpoint = '';
         if (provider === 'openai') {
             apiEndpoint = DomHelpers.getValue('openaiEndpoint');
-        } else {
+        } else if (provider === 'ollama') {
             apiEndpoint = DomHelpers.getValue('apiEndpoint');
         }
 
@@ -724,7 +730,12 @@ export const FormManager = {
             return { valid: false, message: t('translation:validation_model_required') };
         }
 
-        if (!config.llm_api_endpoint) {
+        // The endpoint field is only meaningful for providers that expose one
+        // (ollama, openai). Cloud providers resolve their endpoint from the
+        // server defaults, so an empty llm_api_endpoint is valid for them.
+        const provider = config.llm_provider;
+        const needsEndpoint = provider === 'ollama' || provider === 'openai';
+        if (needsEndpoint && !config.llm_api_endpoint) {
             return { valid: false, message: t('translation:validation_endpoint_empty') };
         }
 

@@ -271,3 +271,40 @@ def test_custom_ollama_endpoint_needs_no_key(translate_app):
     ))
     assert resp.status_code == 200
     assert len(state_manager.created) == 1
+
+
+def test_cloud_provider_accepts_missing_endpoint(translate_app, monkeypatch):
+    """A cloud provider (nexum) must not be forced to carry the local Ollama
+    endpoint. Without a request endpoint it falls back to the server default
+    (NEXUM_API_ENDPOINT); the pairing guard must not fire, and an empty
+    llm_api_endpoint is stored instead of the Ollama URL."""
+    client, state_manager, _started = translate_app
+    monkeypatch.setenv('NEXUM_API_KEY', 'env-nexum-key')
+    resp = client.post('/api/translate', json=_payload(
+        llm_provider='nexum',
+        model='deepseek-v4',
+        llm_api_endpoint='',
+        nexum_api_key='__USE_ENV__',
+    ))
+    assert resp.status_code == 200
+    assert len(state_manager.created) == 1
+    _translation_id, config = state_manager.created[0]
+    assert config['llm_api_endpoint'] == ''
+
+
+def test_cloud_provider_with_ollama_endpoint_is_rejected(translate_app, monkeypatch):
+    """Forwarding the local Ollama endpoint for a cloud provider used to send
+    every request to the local server (404 'model not found'), silently keeping
+    the output in the source language. An endpoint that differs from the
+    provider default is an override and must carry its own key."""
+    client, state_manager, _started = translate_app
+    monkeypatch.setenv('NEXUM_API_KEY', 'env-nexum-key')
+    resp = client.post('/api/translate', json=_payload(
+        llm_provider='nexum',
+        model='deepseek-v4',
+        llm_api_endpoint=_config.API_ENDPOINT,
+        nexum_api_key='__USE_ENV__',
+    ))
+    assert resp.status_code == 400
+    assert resp.get_json()['error'] == 'Endpoint override requires its own API key'
+    assert state_manager.created == []

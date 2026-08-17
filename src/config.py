@@ -386,6 +386,39 @@ ANTHROPIC_API_ENDPOINT = os.getenv('ANTHROPIC_API_ENDPOINT', 'https://api.anthro
 XAI_API_ENDPOINT = os.getenv('XAI_API_ENDPOINT', 'https://api.x.ai/v1')
 NEXUM_API_ENDPOINT = os.getenv('NEXUM_API_ENDPOINT', 'https://dialagram.me/router/v1')
 
+
+def provider_default_endpoint(provider: str) -> str:
+    """Server-side default endpoint for a provider.
+
+    Used wherever a request may omit ``api_endpoint`` (NER, auto glossary,
+    auto style, …): the fallback must be the provider's own endpoint, never
+    the local Ollama one. Forwarding the Ollama endpoint for a cloud provider
+    (e.g. nexum → Dialagram) used to send every request to the local server,
+    which answered 404 "model not found" and silently kept the source text.
+    """
+    provider = (provider or '').lower()
+    if provider == 'ollama':
+        return API_ENDPOINT
+    if provider == 'openai':
+        return OPENAI_API_ENDPOINT
+    if provider == 'openrouter':
+        return OPENROUTER_API_ENDPOINT
+    if provider == 'mistral':
+        return MISTRAL_API_ENDPOINT
+    if provider == 'deepseek':
+        return DEEPSEEK_API_ENDPOINT
+    if provider == 'poe':
+        return POE_API_ENDPOINT
+    if provider == 'nim':
+        return NIM_API_ENDPOINT
+    if provider == 'anthropic':
+        return ANTHROPIC_API_ENDPOINT
+    if provider == 'xai':
+        return XAI_API_ENDPOINT
+    if provider == 'nexum':
+        return NEXUM_API_ENDPOINT
+    return API_ENDPOINT
+
 # SRT-specific configuration
 # Single knob for both translate and refine: every SRT block sent to the
 # LLM contains exactly SRT_LINES_PER_BLOCK subtitles (no char cap). Keeping
