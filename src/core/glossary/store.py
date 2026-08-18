@@ -145,11 +145,11 @@ class GlossaryStore:
         columns (e.g. `notes`) we don't want around. Idempotent."""
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(glossaries)")
-        gloss_cols = [row[1] for row in cursor.fetchall()]
+        gloss_cols = [row[1] for row in cursor]
         if gloss_cols:
             self._migrate_drop_glossaries_legacy_columns(cursor)
         cursor.execute("PRAGMA table_info(glossary_terms)")
-        term_cols = [row[1] for row in cursor.fetchall()]
+        term_cols = [row[1] for row in cursor]
         if term_cols:
             self._migrate_drop_notes_column(cursor)
             self._migrate_add_gender_column(cursor)
@@ -327,7 +327,7 @@ class GlossaryStore:
     def _migrate_drop_notes_column(self, cursor: sqlite3.Cursor):
         """Drop the legacy `notes` column from glossary_terms if present."""
         cursor.execute("PRAGMA table_info(glossary_terms)")
-        columns = [row["name"] for row in cursor.fetchall()]
+        columns = [row["name"] for row in cursor]
         if "notes" not in columns:
             return
         try:
@@ -371,7 +371,7 @@ class GlossaryStore:
         glossary predating this column.
         """
         cursor.execute("PRAGMA table_info(glossary_terms)")
-        columns = [row["name"] for row in cursor.fetchall()]
+        columns = [row["name"] for row in cursor]
         if not columns or "gender" in columns:
             return
         try:
@@ -383,7 +383,7 @@ class GlossaryStore:
     def _migrate_drop_glossaries_legacy_columns(self, cursor: sqlite3.Cursor):
         """Drop legacy columns from `glossaries` if present. Idempotent."""
         cursor.execute("PRAGMA table_info(glossaries)")
-        columns = [row["name"] for row in cursor.fetchall()]
+        columns = [row["name"] for row in cursor]
         canonical = {"id", "name", "source_language", "target_language", "created_at", "updated_at"}
         extras = [c for c in columns if c not in canonical]
         if not extras:
@@ -425,7 +425,7 @@ class GlossaryStore:
             "FROM glossary_terms WHERE glossary_id = ? ORDER BY id",
             (glossary_id,),
         )
-        return [_row_to_term(row) for row in cursor.fetchall()]
+        return [_row_to_term(row) for row in cursor]
 
     def create_glossary(
         self,
@@ -497,7 +497,7 @@ class GlossaryStore:
                 "SELECT id, name, source_language, target_language, created_at, updated_at "
                 "FROM glossaries ORDER BY name"
             )
-            return [_row_to_glossary(row, terms=[]) for row in cursor.fetchall()]
+            return [_row_to_glossary(row, terms=[]) for row in cursor]
 
     def list_glossaries_with_counts(self) -> List[tuple]:
         """Return [(Glossary, term_count), ...] for index views."""
@@ -514,7 +514,7 @@ class GlossaryStore:
                 "ORDER BY g.name"
             )
             results = []
-            for row in cursor.fetchall():
+            for row in cursor:
                 glossary = _row_to_glossary(row, terms=[])
                 results.append((glossary, int(row["term_count"])))
             return results
@@ -793,7 +793,7 @@ class GlossaryStore:
                 return None
 
             cursor.execute("SELECT name FROM glossaries")
-            existing = {row["name"] for row in cursor.fetchall()}
+            existing = {row["name"] for row in cursor}
 
             base = (new_name or f"{src['name']} (copy)").strip() or f"{src['name']} (copy)"
             candidate = base
