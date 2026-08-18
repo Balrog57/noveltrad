@@ -79,5 +79,6 @@
   "flag_word_list": "Liste des mots précis",
   "flag_proper_noun": "Nomme un nom propre",
   "flag_too_specific": "Trop spécifique à ce livre",
-  "abstraction_notice": "Les règles qui nomment des mots précis ou citent le livre sont décochées — les réutiliser pousse le modèle à répéter ce vocabulaire tout au long de la traduction. Reformulez-les de façon abstraite ou laissez-les de côté."
+  "abstraction_notice": "Les règles qui nomment des mots précis ou citent le livre sont décochées — les réutiliser pousse le modèle à répéter ce vocabulaire tout au long de la traduction. Reformulez-les de façon abstraite ou laissez-les de côté.",
+  "editor_back": "Back to styles list"
 }

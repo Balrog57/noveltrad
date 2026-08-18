@@ -79,5 +79,6 @@
   "flag_word_list": "Listet bestimmte Wörter auf",
   "flag_proper_noun": "Nennt einen Eigennamen",
   "flag_too_specific": "Zu spezifisch für dieses Buch",
-  "abstraction_notice": "Regeln, die bestimmte Wörter nennen oder das Buch zitieren, sind deaktiviert — ihre Wiederverwendung führt dazu, dass das Modell dieses Vokabular während der gesamten Übersetzung wiederholt. Formulieren Sie sie abstrakter oder lassen Sie sie weg."
+  "abstraction_notice": "Regeln, die bestimmte Wörter nennen oder das Buch zitieren, sind deaktiviert — ihre Wiederverwendung führt dazu, dass das Modell dieses Vokabular während der gesamten Übersetzung wiederholt. Formulieren Sie sie abstrakter oder lassen Sie sie weg.",
+  "editor_back": "Back to styles list"
 }

@@ -79,5 +79,6 @@
   "flag_word_list": "列出了具体词语",
   "flag_proper_noun": "指出了专有名词",
   "flag_too_specific": "对本书过于具体",
-  "abstraction_notice": "指出具体词语或引用书中原文的规则已被取消勾选——重复使用会导致模型在整篇译文中不断重复这些词汇。请将其改写得更抽象,或干脆不使用。"
+  "abstraction_notice": "指出具体词语或引用书中原文的规则已被取消勾选——重复使用会导致模型在整篇译文中不断重复这些词汇。请将其改写得更抽象,或干脆不使用。",
+  "editor_back": "Back to styles list"
 }
