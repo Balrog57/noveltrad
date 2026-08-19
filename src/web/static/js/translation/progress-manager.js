@@ -130,8 +130,8 @@ export function resolveOperationLabel(stats) {
     }
 
     if (stats.refine_only) {
-        const phase = stats.current_phase || 2;
-        const total = stats.total_phases || 4;
+        const phase = stats.current_phase || 1;
+        const total = stats.total_phases || 3;
         return t('translation:refining_step', { step: phase, total, defaultValue: `Refining (${phase}/${total})` });
     }
 

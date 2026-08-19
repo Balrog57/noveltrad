@@ -71,6 +71,7 @@ async def _refine_one_xhtml(
     translation_id: Optional[str] = None,
     checkpoint_scope: str = "global",
     refinement_output_filepath: Optional[str] = None,
+    stats_callback: Optional[Callable] = None,
 ) -> bool:
     """Refine a single parsed XHTML document in place."""
     body_html, body_element, tag_preserver = _setup_translation(
@@ -148,6 +149,7 @@ async def _refine_one_xhtml(
             translation_id=translation_id,
             checkpoint_scope=checkpoint_scope,
             refinement_output_filepath=refinement_output_filepath,
+            stats_callback=stats_callback,
         )
     except (RateLimitError, RefinementInterrupted) as exc:
         partial_chunks = getattr(exc, "partial_result", None)
@@ -373,6 +375,7 @@ async def refine_epub_file(
                         translation_id=translation_id,
                         checkpoint_scope=f"epub:{href}",
                         refinement_output_filepath=refinement_output_filepath or output_filepath,
+                        stats_callback=stats_callback,
                     )
                 except (RateLimitError, RefinementInterrupted) as exc:
                     interruption_error = exc

@@ -30,7 +30,11 @@ from .context_optimizer import (
 )
 from .progress_tracker import TokenProgressTracker
 from .chunking.token_chunker import TokenChunker
+from .llm.utils.extraction import TranslationExtractor
 from typing import List, Dict, Tuple, Optional
+
+# Shared inspector so one-pass EPUB and refine agree on unclosed-tag salvage.
+_TAG_INSPECTOR = TranslationExtractor(TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT)
 
 
 # Configuration for context overflow recovery
@@ -351,10 +355,60 @@ async def _make_llm_request_with_adaptive_context(
                     }
                 })
 
-            # Extract translation
+            # Extract translation. An omitted </TRANSLATION> is salvaged so
+            # one-pass EPUB keeps the body the same way refine already did.
             translated_text = client.extract_translation(full_raw_response)
+            unclosed = _TAG_INSPECTOR.omitted_closing_tag(full_raw_response)
+
+            if translated_text and unclosed and llm_response.was_truncated:
+                # Salvaged a cut-off completion. Prefer a smaller slice over a
+                # mid-sentence chunk. Growing num_ctx does nothing on cloud
+                # routers (Nexum): the limit is max_tokens.
+                if reduction_attempt < MAX_CHUNK_REDUCTION_ATTEMPTS:
+                    reduction_attempt += 1
+                    reduction_factor = CHUNK_REDUCTION_FACTOR ** reduction_attempt
+                    first_part, second_part = split_chunk_for_retry(
+                        current_content, reduction_factor
+                    )
+                    if len(first_part) >= MIN_CHUNK_CHARACTERS:
+                        if log_callback:
+                            log_callback(
+                                "truncated_translation_split",
+                                "⚠️ Output truncated before </TRANSLATION>. "
+                                f"Splitting the chunk ({reduction_factor * 100:.0f}%) "
+                                f"and retrying "
+                                f"({reduction_attempt}/{MAX_CHUNK_REDUCTION_ATTEMPTS})...",
+                            )
+                        current_content = first_part
+                        if second_part.strip():
+                            remaining_content = second_part + (
+                                "\n" + remaining_content if remaining_content else ""
+                            )
+                        continue
+                if context_manager and context_manager.should_retry_with_larger_context(
+                    True, llm_response.context_used
+                ):
+                    if log_callback:
+                        log_callback(
+                            "implicit_truncation_retry",
+                            "🔄 Output truncated before closing tag. "
+                            "Retrying with larger context...",
+                        )
+                    context_manager.increase_context()
+                    continue
+                if log_callback:
+                    log_callback(
+                        "translation_unclosed_tag_salvaged",
+                        "⚠️ Output truncated; using the partial translation "
+                        "(could not split further).",
+                    )
 
             if translated_text:
+                if unclosed and not llm_response.was_truncated and log_callback:
+                    log_callback(
+                        "translation_unclosed_tag_salvaged",
+                        "⚠️ Model omitted </TRANSLATION> — using the translated text anyway.",
+                    )
                 all_translations.append(translated_text)
                 empty_retries = 0
             else:
@@ -365,15 +419,30 @@ async def _make_llm_request_with_adaptive_context(
                     log_callback("translation_extraction_failed_preview",
                         f"Response preview (first 300 chars): {full_raw_response[:300]}")
 
-                # Implicit truncation detection: model started <TRANSLATION> but hit EOS before </TRANSLATION>
-                stripped_response = full_raw_response.strip()
-                if (stripped_response.startswith(TRANSLATE_TAG_IN) and not stripped_response.endswith(TRANSLATE_TAG_OUT)):
-                    if context_manager and context_manager.should_retry_with_larger_context(True, llm_response.context_used):
+                # Only grow context when the provider actually hit an output
+                # limit. A missing closer with finish_reason=stop is not a
+                # context-window problem (and Nexum ignores num_ctx anyway).
+                if llm_response.was_truncated:
+                    if context_manager and context_manager.should_retry_with_larger_context(
+                        True, llm_response.context_used
+                    ):
                         if log_callback:
                             log_callback("implicit_truncation_retry",
                                 "🔄 Model stopped before closing tag. Retrying with larger context...")
                         context_manager.increase_context()
                         continue  # Retry with larger context
+
+                empty_retries += 1
+                if empty_retries < MAX_TRANSLATION_ATTEMPTS:
+                    delay = min(8, 2 * empty_retries)
+                    if log_callback:
+                        log_callback(
+                            "translation_extraction_retry",
+                            f"⚠️ Malformed translation tags — retrying in {delay}s "
+                            f"({empty_retries}/{MAX_TRANSLATION_ATTEMPTS}).",
+                        )
+                    await asyncio.sleep(delay)
+                    continue
 
                 # For EPUB with placeholders, failing to extract is CRITICAL
                 # because using the raw response would include <TRANSLATION> tags in the HTML
@@ -710,16 +779,38 @@ async def _make_refinement_request(
                     }
                 })
 
-            # Extract refined text
+            # Extract refined text (unclosed </TRANSLATION> is salvaged)
             refined_text = client.extract_translation(full_raw_response)
+            unclosed = _TAG_INSPECTOR.omitted_closing_tag(full_raw_response)
 
             if refined_text:
+                if unclosed and llm_response.was_truncated:
+                    # A cut refine is worse than the previous draft.
+                    if log_callback:
+                        log_callback(
+                            "refinement_truncated",
+                            "⚠️ Refinement truncated before </TRANSLATION> — "
+                            "keeping the previous draft.",
+                        )
+                    return None, llm_response
                 return refined_text, llm_response
             else:
+                empty_retries += 1
+                if empty_retries < MAX_TRANSLATION_ATTEMPTS:
+                    delay = min(8, 2 * empty_retries)
+                    if log_callback:
+                        log_callback(
+                            "refinement_extraction_retry",
+                            f"⚠️ Malformed refinement tags — retrying in {delay}s "
+                            f"({empty_retries}/{MAX_TRANSLATION_ATTEMPTS})",
+                        )
+                    await asyncio.sleep(delay)
+                    continue
                 # Fallback to raw response if no tags found. Never treat a
                 # blank body as a successful refine — that would wipe the draft.
                 if full_raw_response.strip() and draft_translation not in full_raw_response:
-                    return full_raw_response.strip(), llm_response
+                    salvaged = _TAG_INSPECTOR.extract(full_raw_response)
+                    return (salvaged or full_raw_response.strip()), llm_response
                 else:
                     if log_callback:
                         log_callback("refinement_warning",
@@ -1133,7 +1224,14 @@ async def _refine_chunks_four_pass(
             return False
         if state.get("source_hash") != source_hash:
             return False
-        if state.get("initial_hash") != initial_hash:
+        stored_initial = state.get("initial")
+        stored_hash = hashlib.sha256(
+            json.dumps(list(stored_initial or []), ensure_ascii=False).encode("utf-8")
+        ).hexdigest() if isinstance(stored_initial, list) else ""
+        # Identity is source/model/prompt plus the checkpoint's own initial
+        # drafts. Do not hash the incoming file: on resume that file is the
+        # partial current output, not the original translation.
+        if state.get("initial_hash") != stored_hash:
             return False
         if state.get("model") != model_name:
             return False

@@ -62,12 +62,17 @@ from ..context_optimizer import AdaptiveContextManager, INITIAL_CONTEXT_SIZE, CO
 from src.config import (
     PLACEHOLDER_PATTERN,
     MAX_PLACEHOLDER_CORRECTION_ATTEMPTS,
+    TRANSLATE_TAG_IN,
+    TRANSLATE_TAG_OUT,
     create_placeholder,
     detect_placeholder_format_in_text,
     detect_format_from_placeholder,
     THINKING_MODELS,
     ADAPTIVE_CONTEXT_INITIAL_THINKING,
 )
+from src.core.llm.utils.extraction import TranslationExtractor
+
+_EPUB_TAG_INSPECTOR = TranslationExtractor(TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT)
 from src.prompts.prompts import generate_placeholder_correction_prompt, CORRECTED_TAG_IN, CORRECTED_TAG_OUT
 from src.utils.unified_logger import LogLevel, LogType
 
@@ -1583,9 +1588,18 @@ async def _refine_epub_chunks_once(
                 refined_text = llm_client.extract_translation(llm_response.content)
 
                 if refined_text:
+                    unclosed = _EPUB_TAG_INSPECTOR.omitted_closing_tag(llm_response.content)
+                    if unclosed and getattr(llm_response, "was_truncated", False):
+                        _log_error(
+                            log_callback,
+                            "epub_refinement_truncated",
+                            f"Chunk {idx + 1}/{total_chunks}: refinement truncated "
+                            "before </TRANSLATION>, keeping the previous draft",
+                        )
+                        refined_chunks.append(translated_text)
                     # CRITICAL: Validate placeholders before accepting refinement
                     # refined_text should have LOCAL indices (0, 1, 2...) matching local_tag_map
-                    if local_tag_map and not validate_placeholders(refined_text, local_tag_map):
+                    elif local_tag_map and not validate_placeholders(refined_text, local_tag_map):
                         _log_error(log_callback, "epub_refinement_placeholder_corruption",
                                     f"Chunk {idx + 1}/{total_chunks}: refinement corrupted placeholders, using original translation")
                         refined_chunks.append(translated_text)
@@ -1630,6 +1644,16 @@ async def _refine_epub_chunks_once(
             # Fallback to original translation on error
             refined_chunks.append(translated_text)
             _log_error(log_callback, "epub_refinement_error", f"Chunk {idx + 1}/{total_chunks}: error during refinement: {e}")
+
+        if chunk_checkpoint_callback:
+            accepted = refined_chunks[-1] if refined_chunks else translated_text
+            resumable = refined_chunks + translated_chunks[len(refined_chunks):]
+            chunk_checkpoint_callback(
+                idx,
+                accepted if accepted != translated_text else None,
+                resumable,
+                advance=True,
+            )
 
         # Update progress after each refinement chunk.
         if stats_callback:
@@ -1897,7 +1921,8 @@ async def translate_xhtml_simplified(
             log_callback=log_callback,  # Pass through to parent's token tracker
             prompt_options=prompt_options,
             stats_callback=stats_callback,  # Pass stats callback for progress updates
-            stats=stats  # Pass stats object to update during refinement
+            stats=stats,  # Pass stats object to update during refinement
+            source_chunks=chunks,
         )
 
         if refined_result:
@@ -1969,7 +1994,9 @@ async def _refine_epub_chunks(
             isinstance(state, dict)
             and state.get("version") == 1
             and state.get("total_segments") == len(translated_chunks)
-            and state.get("initial_hash") == initial_hash
+            and state.get("initial_hash") == hashlib.sha256(
+                json.dumps(list(state.get("initial") or []), ensure_ascii=False).encode("utf-8")
+            ).hexdigest()
             and state.get("source_hash") == source_hash
             and state.get("model") == model_name
             and state.get("prompt_version") == "source-aware-three-pass-v3"
@@ -2048,10 +2075,12 @@ async def _refine_epub_chunks(
 
         phase_start_segment = start_segment if phase == start_phase else 0
 
-        def _chunk_checkpoint(index, refined, resumable_current):
-            if refined is not None:
+        def _chunk_checkpoint(index, refined, resumable_current, advance=None):
+            if refined is not None and histories[index][-1] != refined:
                 histories[index].append(refined)
-            _save_state(phase, index + (1 if refined is not None else 0), resumable_current)
+            if advance is None:
+                advance = refined is not None
+            _save_state(phase, index + (1 if advance else 0), resumable_current)
 
         try:
             current = await _refine_epub_chunks_once(
@@ -2081,6 +2110,9 @@ async def _refine_epub_chunks(
                 )
                 exc.refinement_state = state
             raise
+        for index, value in enumerate(current):
+            if value != histories[index][-1]:
+                histories[index].append(value)
         _save_state(phase + 1, 0, current)
         start_segment = 0
         if stats_callback:

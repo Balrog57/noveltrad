@@ -115,6 +115,68 @@ async def test_three_pass_interruption_is_distinct_and_resume_starts_at_saved_se
 
 
 @pytest.mark.asyncio
+async def test_three_pass_resume_from_partial_output_keeps_checkpoint(monkeypatch):
+    """Handlers re-read the partial refined file; that must not drop the checkpoint."""
+    calls = []
+
+    class FakeClient:
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(
+        translator,
+        "create_llm_client",
+        lambda *args, **kwargs: FakeClient(),
+    )
+
+    async def fake_request(**kwargs):
+        calls.append(kwargs)
+        return f"{kwargs['draft_translation']}|p{kwargs['refinement_phase']}", object()
+
+    monkeypatch.setattr(translator, "_make_refinement_request", fake_request)
+    checkpoint = _MemoryCheckpoint()
+    interrupted = {"value": False}
+
+    def stop_after_first_segment():
+        return len(calls) == 1 and not interrupted["value"]
+
+    with pytest.raises(RefinementInterrupted):
+        await translator._refine_chunks_four_pass(
+            translated_chunks=["one", "two"],
+            original_chunks=[{"source_text": "source one"}, {"source_text": "source two"}],
+            target_language="French",
+            model_name="test-model",
+            api_endpoint="https://example.test/v1",
+            auto_adjust_context=False,
+            context_window=8192,
+            check_interruption_callback=stop_after_first_segment,
+            checkpoint_manager=checkpoint,
+            translation_id="trans_partial",
+            refinement_output_filepath="/tmp/translated.txt",
+        )
+
+    interrupted["value"] = True
+    calls.clear()
+    # Simulate the handler feeding the already-written partial file back in.
+    result = await translator._refine_chunks_four_pass(
+        translated_chunks=["one|p1", "two"],
+        original_chunks=[{"source_text": "source one"}, {"source_text": "source two"}],
+        target_language="French",
+        model_name="test-model",
+        api_endpoint="https://example.test/v1",
+        auto_adjust_context=False,
+        context_window=8192,
+        checkpoint_manager=checkpoint,
+        translation_id="trans_partial",
+        refinement_output_filepath="/tmp/translated.txt",
+    )
+
+    assert result == ["one|p1|p2|p3", "two|p1|p2|p3"]
+    assert calls[0]["refinement_phase"] == 1
+    assert calls[0]["draft_translation"] == "two"
+
+
+@pytest.mark.asyncio
 async def test_srt_three_pass_checkpoint_resumes_at_block(monkeypatch):
     from src.core import subtitle_translator
 

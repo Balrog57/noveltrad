@@ -444,6 +444,14 @@ export const ProviderManager = {
             if (loadModels) this.loadNimModels();
         } else if (['anthropic', 'xai', 'nexum', 'opencode', 'opencodego'].includes(provider)) {
             DomHelpers.hide('ollamaSettings');
+            if (geminiSettings) geminiSettings.style.display = 'none';
+            if (openaiApiKeyGroup) openaiApiKeyGroup.style.display = 'none';
+            if (openaiEndpointRow) openaiEndpointRow.style.display = 'none';
+            if (openrouterSettings) openrouterSettings.style.display = 'none';
+            if (mistralSettings) mistralSettings.style.display = 'none';
+            if (deepseekSettings) deepseekSettings.style.display = 'none';
+            if (poeSettings) poeSettings.style.display = 'none';
+            if (nimSettings) nimSettings.style.display = 'none';
             if (loadModels) this.loadGenericCloudModels(provider);
         }
 
@@ -513,12 +521,17 @@ export const ProviderManager = {
         }[provider];
         try {
             const data = await ApiClient.getModels(provider, { apiKey: ApiKeyUtils.getValue(field) });
+            if (data.status === 'api_key_missing') {
+                populateModelSelect(fallback, fallback[0].value, provider);
+                StatusManager.setDisconnected(t('errors:api_key_required'));
+                return;
+            }
             const models = (data.models || []).map(m => ({ value: m.id, label: m.name || m.id, context_length: m.context_length }));
             populateModelSelect(models.length ? models : fallback, data.default || fallback[0].value, provider);
             StatusManager.setConnected(provider, models.length || fallback.length);
         } catch (error) {
             populateModelSelect(fallback, fallback[0].value, provider);
-            StatusManager.setConnected(provider, fallback.length);
+            StatusManager.setError(error.message);
         }
     },
 

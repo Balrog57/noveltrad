@@ -498,6 +498,18 @@ def provider_default_endpoint(provider: str) -> str:
         return OPENCODE_GO_API_ENDPOINT
     return API_ENDPOINT
 
+
+def is_provider_endpoint_override(provider: str, requested_endpoint: str) -> bool:
+    """True when the request chose a host other than this provider's default.
+
+    Glossary NER and style extraction used to compare against Ollama's
+    ``API_ENDPOINT``, which treated every cloud default (Nexum, Anthropic, …)
+    as an override and stripped the ``.env`` key.
+    """
+    normalized = (requested_endpoint or "").strip().rstrip("/")
+    default = (provider_default_endpoint(provider) or "").strip().rstrip("/")
+    return bool(normalized) and normalized != default
+
 # SRT-specific configuration
 # Single knob for both translate and refine: every SRT block sent to the
 # LLM contains exactly SRT_LINES_PER_BLOCK subtitles (no char cap). Keeping

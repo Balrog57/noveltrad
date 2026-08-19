@@ -135,6 +135,30 @@ export const LifecycleManager = {
             const lastSessionId = localStorage.getItem(SERVER_SESSION_KEY);
 
             if (lastSessionId && lastSessionId !== String(serverSessionId)) {
+                MessageLogger.addLog(t('common:server_restart_detected'));
+
+                localStorage.removeItem('tbl_translation_state_v1');
+
+                StateManager.setState('translation.currentJob', null);
+                StateManager.setState('translation.isBatchActive', false);
+                StateManager.setState('translation.activeJobs', []);
+                StateManager.setState('translation.hasActive', false);
+
+                try {
+                    const progressSection = document.getElementById('progressSection');
+                    const interruptBtn = document.getElementById('interruptBtn');
+                    const translateBtn = document.getElementById('translateBtn');
+
+                    if (progressSection) progressSection.style.display = 'none';
+                    if (interruptBtn) interruptBtn.style.display = 'none';
+                    if (translateBtn) {
+                        translateBtn.disabled = false;
+                        translateBtn.innerHTML = t('translation:start_batch_with_icon');
+                    }
+                } catch (uiError) {
+                    console.warn('Could not reset UI elements:', uiError);
+                }
+
                 localStorage.setItem(SERVER_SESSION_KEY, String(serverSessionId));
                 reloadIfStaleApiToken();
                 return true;

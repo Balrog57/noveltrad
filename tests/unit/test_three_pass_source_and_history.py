@@ -64,3 +64,41 @@ def test_refinement_prompt_lists_all_same_segment_revisions():
     assert "Revision 1:\npass 1" in prompt.user
     assert "Revision 2:\npass 2" in prompt.user
     assert "source sentence" in prompt.user
+
+
+@pytest.mark.asyncio
+async def test_epub_three_pass_accumulates_same_segment_history(monkeypatch):
+    """EPUB/DOCX refine must feed prior revisions into later passes."""
+    from src.core.epub import xhtml_translator
+
+    calls = []
+
+    async def fake_once(**kwargs):
+        calls.append({
+            "phase": kwargs["prompt_options"]["refinement_phase"],
+            "histories": kwargs.get("refinement_histories"),
+            "drafts": list(kwargs["translated_chunks"]),
+        })
+        phase = kwargs["prompt_options"]["refinement_phase"]
+        return [f"pass-{phase}"]
+
+    monkeypatch.setattr(xhtml_translator, "_refine_epub_chunks_once", fake_once)
+
+    result = await xhtml_translator._refine_epub_chunks(
+        translated_chunks=["initial draft"],
+        chunks=[{"text": "source sentence", "local_tag_map": {}, "global_indices": []}],
+        target_language="French",
+        model_name="test-model",
+        llm_client=object(),
+        context_manager=None,
+        placeholder_format=("[id", "]"),
+        log_callback=None,
+        prompt_options={},
+        source_chunks=[{"text": "source sentence"}],
+    )
+
+    assert result == ["pass-3"]
+    assert [call["phase"] for call in calls] == [1, 2, 3]
+    assert calls[0]["histories"] == [[]]
+    assert calls[1]["histories"] == [["pass-1"]]
+    assert calls[2]["histories"] == [["pass-1", "pass-2"]]

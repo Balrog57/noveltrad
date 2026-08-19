@@ -45,3 +45,22 @@ def test_ui_nexum_fallback_contains_all_dialagram_models():
     assert "deepseek-v4-pro" in source
     assert "'opencode'" in source
     assert "'opencodego'" in source
+    assert "geminiSettings.style.display = 'none'" in source.split("['anthropic', 'xai', 'nexum', 'opencode', 'opencodego']")[1]
+    assert "data.status === 'api_key_missing'" in source
+
+
+def test_frontend_validates_added_provider_keys():
+    source = (
+        Path(__file__).parents[1] / "src/web/static/js/utils/api-key-utils.js"
+    ).read_text(encoding="utf-8")
+    assert "anthropic" in source
+    assert "opencodego" in source
+    assert "errors:api_key_required" in source
+
+
+def test_lifecycle_clears_translation_state_on_session_change():
+    source = (
+        Path(__file__).parents[1] / "src/web/static/js/utils/lifecycle-manager.js"
+    ).read_text(encoding="utf-8")
+    assert "tbl_translation_state_v1" in source
+    assert "server_restart_detected" in source

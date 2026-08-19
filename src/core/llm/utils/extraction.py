@@ -8,6 +8,9 @@ handling various response formats including thinking blocks.
 import re
 from typing import Optional
 
+# Dangling incomplete closer such as `</TRANSL` at EOF after a truncated completion.
+_DANGLING_CLOSE_TAG = re.compile(r"</[A-Za-z]{0,24}\s*$")
+
 
 class TranslationExtractor:
     """
@@ -36,6 +39,8 @@ class TranslationExtractor:
         """
         self._tag_in = tag_in
         self._tag_out = tag_out
+        self._tag_in_l = tag_in.lower()
+        self._tag_out_l = tag_out.lower()
         # Pre-compile regex for efficiency
         self._compiled_regex = self._compile_extraction_regex()
 
@@ -48,8 +53,32 @@ class TranslationExtractor:
         """
         return re.compile(
             rf"{re.escape(self._tag_in)}(.*?){re.escape(self._tag_out)}",
-            re.DOTALL
+            re.DOTALL | re.IGNORECASE,
         )
+
+    def _prepare(self, response: str) -> str:
+        """Strip think blocks and markdown fences; return cleaned text."""
+        response = (response or "").strip()
+        if not response:
+            return ""
+        response = self._remove_think_blocks(response)
+        response = self._remove_markdown_code_blocks(response)
+        return response.strip()
+
+    def omitted_closing_tag(self, response: str) -> bool:
+        """True when an opening tag is present but the matching closer is not.
+
+        Used by the translator to distinguish "model forgot </TRANSLATION>"
+        (salvage the body) from a genuine output-length truncation that
+        should split the chunk.
+        """
+        prepared = self._prepare(response)
+        if not prepared:
+            return False
+        lower = prepared.lower()
+        if self._tag_out_l in lower:
+            return False
+        return self._tag_in_l in lower
 
     def extract(self, response: str) -> Optional[str]:
         """
@@ -71,25 +100,18 @@ class TranslationExtractor:
         if not response:
             return None
 
-        # Trim whitespace from response
-        response = response.strip()
-        original_length = len(response)
-
-        # Remove all <think>...</think> blocks completely
-        response = self._remove_think_blocks(response)
-
-        # Remove markdown code block wrappers (some providers like Gemini may wrap in ```)
-        response = self._remove_markdown_code_blocks(response)
-
-        response = response.strip()
+        original_length = len(response.strip())
+        response = self._prepare(response)
+        if not response:
+            return None
 
         if len(response) < original_length:
             print(f"[DEBUG] Think blocks removed: {original_length} -> {len(response)} chars (-{original_length - len(response)})")
             print(f"[DEBUG] Response after think removal (first 200 chars): {response[:200]}")
 
-        # STRICT VALIDATION: Check if response starts and ends with correct tags
-        starts_correctly = response.startswith(self._tag_in)
-        ends_correctly = response.endswith(self._tag_out)
+        lower = response.lower()
+        starts_correctly = lower.startswith(self._tag_in_l)
+        ends_correctly = lower.endswith(self._tag_out_l)
 
         if starts_correctly and ends_correctly:
             # Perfect format - extract content between boundary tags
@@ -112,8 +134,8 @@ class TranslationExtractor:
 
         # FUZZY FALLBACK: Opening tag found but closing tag is malformed
         # Some models (e.g. Gemini without thinking) write </TRANATION> instead of </TRANSLATION>
-        if starts_correctly:
-            # Extract tag name from closing tag (e.g. "TRANSLATION" from "</TRANSLATION>")
+        opening_at = lower.find(self._tag_in_l)
+        if opening_at != -1:
             closing_tag_match = re.match(r'</(\w+)>', self._tag_out)
             if closing_tag_match:
                 tag_name = closing_tag_match.group(1)
@@ -121,13 +143,24 @@ class TranslationExtractor:
                 prefix = tag_name[:3]
                 fuzzy_pattern = re.compile(
                     rf'{re.escape(self._tag_in)}(.*?)</\w*{re.escape(prefix)}\w*>',
-                    re.DOTALL
+                    re.DOTALL | re.IGNORECASE,
                 )
                 fuzzy_match = fuzzy_pattern.search(response)
                 if fuzzy_match:
                     extracted = fuzzy_match.group(1).strip()
                     print(f"[WARN] Fuzzy tag match: closing tag was malformed, extracted content using prefix '</{prefix}...'")
                     return extracted
+
+            # UNCLOSED TAG: the model (or a max_tokens cut) omitted </TRANSLATION>.
+            # One-pass EPUB used to treat this as fatal and drop the chunk;
+            # refine already kept the raw body. Salvage the same way so both
+            # paths keep the translation.
+            content = response[opening_at + len(self._tag_in):].strip()
+            content = _DANGLING_CLOSE_TAG.sub("", content).strip()
+            content = re.sub(r"</think>\s*$", "", content, flags=re.IGNORECASE).strip()
+            if content:
+                print("[WARN] Unclosed translation tag — using content after opening tag")
+                return content
 
         # No tags found at all
         return None

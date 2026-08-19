@@ -59,8 +59,9 @@ def snapshot_from_legacy_stats(stats: Dict[str, Any]) -> ProgressSnapshot:
         refinement_enabled = True
     elif refine_only and total_phases > 1:
         phase = Phase.REFINING
-        # Refine-only starts at pass 2, so its three passes occupy the full bar.
-        percent = ((max(phase_num, 2) - 2) + (done / total if total else 0.0)) * (100.0 / (total_phases - 1))
+        percent = ((max(phase_num, 1) - 1) + (done / total if total else 0.0)) * (
+            100.0 / total_phases
+        )
         refinement_enabled = False
     else:
         phase = Phase.REFINING if refine_only else Phase.TRANSLATING

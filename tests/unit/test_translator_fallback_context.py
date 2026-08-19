@@ -12,6 +12,10 @@ from src.core.llm.base import LLMResponse
 class TestTranslatorFallbackContext:
     """Test that raw fallback responses do not contaminate chunk context chain."""
 
+    @pytest.fixture(autouse=True)
+    def no_sleep(self, monkeypatch):
+        monkeypatch.setattr("src.core.translator.asyncio.sleep", AsyncMock())
+
     @pytest.fixture
     def mock_llm_client(self):
         client = Mock()
@@ -105,6 +109,45 @@ class TestTranslatorFallbackContext:
         assert response.was_fallback is False
 
     @pytest.mark.asyncio
+    async def test_epub_salvages_unclosed_translation_tag(self, mock_llm_client):
+        """One-pass EPUB must keep an unclosed <TRANSLATION> body, like refine."""
+        from src.config import TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
+        from src.core.llm.utils.extraction import TranslationExtractor
+
+        mock_llm_client.generate = AsyncMock(return_value=LLMResponse(
+            content=(
+                "<TRANSLATION> «C'est tout — pour une civilisation "
+                "dotée du meilleur réseau d'information"
+            ),
+            prompt_tokens=10,
+            completion_tokens=40,
+            context_used=50,
+            context_limit=2048,
+            was_truncated=False,
+        ))
+        mock_llm_client.extract_translation = TranslationExtractor(
+            TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
+        ).extract
+
+        translated, _, response = await _make_llm_request_with_adaptive_context(
+            main_content="Das ist alles",
+            context_before="",
+            context_after="",
+            previous_translation_context="",
+            source_language="German",
+            target_language="French",
+            model="test-model",
+            llm_client=mock_llm_client,
+            log_callback=None,
+            has_placeholders=True,
+        )
+
+        assert translated.startswith("«C'est tout")
+        assert "<TRANSLATION>" not in translated
+        assert response.was_fallback is False
+        mock_llm_client.generate.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_context_manager_implicit_truncation_retry(self, mock_llm_client):
         """If response starts with <TRANSLATION> but has no closing tag, retry with larger context."""
         call_count = 0
@@ -118,7 +161,7 @@ class TestTranslatorFallbackContext:
                     completion_tokens=5,
                     context_used=15,
                     context_limit=2048,
-                    was_truncated=False,
+                    was_truncated=True,
                 )
             return LLMResponse(
                 content="<TRANSLATION>Completed</TRANSLATION>",
@@ -281,5 +324,38 @@ class TestRefinementEmptyResponse:
 
         assert refined is None
         assert response.was_truncated is True
+        assert client.make_request.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_unclosed_tag_keeps_refined_body(self, monkeypatch):
+        from src.config import TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
+        from src.core.llm.utils.extraction import TranslationExtractor
+        from src.core.translator import _make_refinement_request
+
+        client = Mock()
+        client.make_request = AsyncMock(return_value=LLMResponse(
+            content="<TRANSLATION>Le monde raffiné",
+            prompt_tokens=4,
+            completion_tokens=8,
+            was_truncated=False,
+        ))
+        client.extract_translation = TranslationExtractor(
+            TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
+        ).extract
+        monkeypatch.setattr("src.core.translator.asyncio.sleep", AsyncMock())
+
+        refined, _ = await _make_refinement_request(
+            draft_translation="Bonjour le monde",
+            context_before="",
+            context_after="",
+            previous_refined_context="",
+            target_language="French",
+            model="test-model",
+            llm_client=client,
+            log_callback=None,
+            has_placeholders=False,
+        )
+
+        assert refined == "Le monde raffiné"
         assert client.make_request.await_count == 1
 

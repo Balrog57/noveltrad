@@ -175,6 +175,38 @@ class TestSuggestTermsApiKeyResolution:
         assert response.status_code == 200, response.get_json()
         assert captured.get("api_key") == "real-env-key"
 
+    def test_nexum_default_endpoint_still_resolves_env_key(self, client, store):
+        glossary = self._create_glossary(store)
+
+        captured = {}
+
+        def _fake_factory(**kwargs):
+            captured.update(kwargs)
+            return _CapturingProvider(**kwargs)
+
+        async def _fake_suggest(*args, **kwargs):
+            return [], []
+
+        with patch(
+            "src.core.llm.factory.create_llm_provider",
+            side_effect=_fake_factory,
+        ), patch(
+            "src.api.blueprints.glossary_routes.ner_suggest_terms",
+            side_effect=_fake_suggest,
+        ), patch.dict(os.environ, {"NEXUM_API_KEY": "nexum-env-key"}):
+            response = client.post(
+                f"/api/glossaries/{glossary.id}/suggest-terms",
+                json={
+                    "text": "Some sample source text to analyze.",
+                    "provider": "nexum",
+                    "model": "deepseek-v4",
+                    "api_key": "__USE_ENV__",
+                },
+            )
+
+        assert response.status_code == 200, response.get_json()
+        assert captured.get("api_key") == "nexum-env-key"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

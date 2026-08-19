@@ -18,7 +18,12 @@ const STATUS_ID_MAP = {
     'mistralApiKey': 'mistralKeyStatus',
     'deepseekApiKey': 'deepseekKeyStatus',
     'poeApiKey': 'poeKeyStatus',
-    'nimApiKey': 'nimKeyStatus'
+    'nimApiKey': 'nimKeyStatus',
+    'anthropicApiKey': 'anthropicKeyStatus',
+    'xaiApiKey': 'xaiKeyStatus',
+    'nexumApiKey': 'nexumKeyStatus',
+    'opencodeApiKey': 'opencodeKeyStatus',
+    'opencodegoApiKey': 'opencodegoKeyStatus'
 };
 
 /**
@@ -216,6 +221,10 @@ export const ApiKeyUtils = {
 
         if (provider === 'nim' && !isAvailable) {
             return { valid: false, message: t('errors:api_key_required_nim') };
+        }
+
+        if (['anthropic', 'xai', 'nexum', 'opencode', 'opencodego'].includes(provider) && !isAvailable) {
+            return { valid: false, message: t('errors:api_key_required') };
         }
 
         return { valid: true, message: '' };

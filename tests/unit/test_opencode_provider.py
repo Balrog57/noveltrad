@@ -57,8 +57,8 @@ async def test_generate_sets_default_max_tokens_and_disables_thinking(monkeypatc
 
     assert fake.calls == 1
     assert fake.last_json["max_tokens"] == provider_cls.DEFAULT_MAX_OUTPUT_TOKENS
-    assert fake.last_json["thinking"] is False
-    assert fake.last_json["enable_thinking"] is False
+    assert fake.last_json["thinking"] == {"type": "disabled"}
+    assert "enable_thinking" not in fake.last_json
     assert fake.last_url.endswith("/chat/completions")
 
 

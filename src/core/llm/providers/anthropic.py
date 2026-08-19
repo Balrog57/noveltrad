@@ -23,7 +23,7 @@ class AnthropicProvider(LLMProvider):
         api_endpoint: Optional[str] = None,
         context_window: Optional[int] = None,
         log_callback: Optional[Callable] = None,
-        max_output_tokens: int = 4096,
+        max_output_tokens: int = 16384,
     ):
         super().__init__(model, api_keys=api_key, provider_name="anthropic")
         self.context_window = context_window or 200000

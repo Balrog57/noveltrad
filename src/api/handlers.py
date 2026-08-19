@@ -632,8 +632,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             stats['completed_chunks'] = max(0, int(stats.get('completed_chunks', 0)) - (int(refinement_pass) - 1) * base_total)
         _emit_progress(stats, {
             'enable_refinement': False, 'refine_only': True,
-            'current_phase': (int(refinement_pass) + 1) if refinement_pass else 2,
-            'total_phases': 4,
+            'current_phase': int(refinement_pass) if refinement_pass else 1,
+            'total_phases': 3,
         })
 
     def _finalize_stats_callback(new_stats_dict):

@@ -387,6 +387,7 @@ async def _refine_subtitle_translations_once(
                     additional_instructions=extra_instructions,
                     glossary_block=glossary_block,
                     refinement_history=history_block,
+                    refinement_phase=phase,
                 )
 
                 if log_callback and attempt > 0:
@@ -512,7 +513,13 @@ async def refine_subtitle_translations(
         isinstance(checkpoint_state, dict)
         and checkpoint_state.get("version") == 1
         and checkpoint_state.get("format") == "srt"
-        and checkpoint_state.get("initial_hash") == initial_hash
+        and checkpoint_state.get("initial_hash") == hashlib.sha256(
+            json.dumps(
+                dict(checkpoint_state.get("initial") or {}),
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
         and checkpoint_state.get("source_hash") == source_hash
         and checkpoint_state.get("model") == model_name
         and checkpoint_state.get("prompt_version") == "source-aware-three-pass-v3"

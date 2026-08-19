@@ -869,6 +869,7 @@ def generate_subtitle_refinement_block_prompt(
     additional_instructions: str = "",
     glossary_block: str = "",
     refinement_history: Optional[Dict[int, List[str]]] = None,
+    refinement_phase: int = 3,
 ) -> PromptPair:
     """
     Generate a refinement prompt for multiple subtitles in a single LLM call.
@@ -899,6 +900,12 @@ def generate_subtitle_refinement_block_prompt(
         example_format=subtitle_example_format,
     )
 
+    phase_guidance = {
+        1: "Anchor the subtitles to the source and prioritize continuity, terminology, omissions, and speaker identity.",
+        2: "Prioritize orthography, grammar, agreement, punctuation, syntax, and spoken fluency.",
+        3: "Arbitrate between the initial translation and every earlier revision for this same cue. Keep justified improvements only.",
+    }.get(refinement_phase, "Polish the subtitles into fluent target-language dialogue while preserving meaning.")
+
     additional_instructions_section = ""
     if additional_instructions and additional_instructions.strip():
         additional_instructions_section = f"""
@@ -914,6 +921,9 @@ def generate_subtitle_refinement_block_prompt(
 You will receive a block of valid working {target_language} subtitles, each prefixed with an [index] marker.
 Your job is to make only source-justified or demonstrably correct language edits, using natural
 idiomatic {target_language} dialogue when the meaning remains unchanged.
+
+**CURRENT REFINEMENT STAGE (pass {refinement_phase}/3):**
+{phase_guidance}
 
 **THE INPUT IS:**
 - A block of working {target_language} subtitles; some cues may need correction
@@ -1005,7 +1015,7 @@ REMINDER: Output format must be:
 
 Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
 
-Provide your refined block now:"""
+Provide your refined block for pass {refinement_phase}/3 now:"""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 

@@ -450,9 +450,9 @@ def create_custom_instruction_blueprint():
             # A caller-chosen endpoint gets no .env key: the stored credential
             # must never travel to a host the request picked.
             requested_endpoint = (api_endpoint or '').strip().rstrip('/')
-            is_endpoint_override = bool(requested_endpoint) and requested_endpoint != (
-                _config.API_ENDPOINT or ''
-            ).strip().rstrip('/')
+            is_endpoint_override = _config.is_provider_endpoint_override(
+                provider_type, requested_endpoint
+            )
             env_var = provider_env_var(provider_type)
             api_key = resolve_api_key(
                 data.get('api_key'),
