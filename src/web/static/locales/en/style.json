@@ -79,5 +79,6 @@
   "flag_word_list": "Lists specific words",
   "flag_proper_noun": "Names a proper noun",
   "flag_too_specific": "Too specific to this book",
-  "abstraction_notice": "Rules that name specific words or quote the book are unchecked — reusing them makes the model repeat that vocabulary throughout the translation. Rewrite them abstractly or leave them out."
+  "abstraction_notice": "Rules that name specific words or quote the book are unchecked — reusing them makes the model repeat that vocabulary throughout the translation. Rewrite them abstractly or leave them out.",
+  "editor_back": "Back to styles list"
 }
