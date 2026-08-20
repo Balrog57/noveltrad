@@ -93,7 +93,10 @@ class PathValidator:
         if os.path.sep in filename or ('/' in filename or '\\' in filename):
             # Exception: allow if it's just the filename itself (no actual traversal)
             # Use os.path.basename to check if it's a pure filename
-            if os.path.basename(filename) != filename:
+            # Note: normalize backslashes to forward slashes before using os.path.basename
+            # to prevent bypasses on POSIX systems where '\' is not a path separator.
+            normalized_filename = filename.replace('\\', '/')
+            if os.path.basename(normalized_filename) != normalized_filename:
                 return False, "Invalid filename: path separators not allowed"
 
         # Check filename length
