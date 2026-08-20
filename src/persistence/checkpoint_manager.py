@@ -741,6 +741,7 @@ class CheckpointManager:
                 return None, "Original EPUB file not found, cannot reconstruct"
 
             try:
+                import os
                 import tempfile
                 import zipfile
                 from lxml import etree
@@ -760,7 +761,9 @@ class CheckpointManager:
                         return None, "Failed to restore translated files from checkpoint"
 
                     # Repackage EPUB
-                    output_path = Path(tempfile.mktemp(suffix='.epub'))
+                    fd, temp_path = tempfile.mkstemp(suffix='.epub')
+                    os.close(fd)
+                    output_path = Path(temp_path)
                     try:
                         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as epub_zip:
                             # Add mimetype first (uncompressed)
