@@ -514,7 +514,7 @@ class GlossaryStore:
                 "ORDER BY g.name"
             )
             results = []
-            for row in cursor.fetchall():
+            for row in cursor:
                 glossary = _row_to_glossary(row, terms=[])
                 results.append((glossary, int(row["term_count"])))
             return results
