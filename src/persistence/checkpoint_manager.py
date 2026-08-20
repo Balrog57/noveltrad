@@ -760,7 +760,9 @@ class CheckpointManager:
                         return None, "Failed to restore translated files from checkpoint"
 
                     # Repackage EPUB
-                    output_path = Path(tempfile.mktemp(suffix='.epub'))
+                    fd, temp_path_out = tempfile.mkstemp(suffix='.epub')
+                    os.close(fd)
+                    output_path = Path(temp_path_out)
                     try:
                         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as epub_zip:
                             # Add mimetype first (uncompressed)
