@@ -14,7 +14,11 @@ from lxml import etree
 from typing import List, Dict, Any
 
 from src.core.epub.xhtml_translator import translate_xhtml_simplified, _translate_all_chunks_with_checkpoint
-from src.core.epub.xhtml_translation_state import XHTMLTranslationState
+from src.core.epub.xhtml_translation_state import (
+    XHTMLTranslationState,
+    unfinished_chunk_indices,
+    untranslated_chunk_indices,
+)
 from src.persistence.checkpoint_manager import CheckpointManager
 from src.core.epub.translation_metrics import TranslationMetrics
 from src.core.llm.base import LLMResponse
@@ -51,6 +55,24 @@ def create_mock_llm_client(default_response: str = "Texte traduit"):
 def mock_llm_client():
     """Create a mock LLM client that returns simple translations."""
     return create_mock_llm_client("Texte traduit")
+
+
+@pytest.fixture(autouse=True)
+def force_token_alignment(monkeypatch):
+    """Pin Phase 2 on for every test in this module.
+
+    The mock LLM below answers with plain text carrying no placeholders, so
+    Phase 1 validation always fails and the token-alignment fallback is what
+    produces the translated chunks these tests count. Without this pin the
+    module silently inherits `EPUB_TOKEN_ALIGNMENT_ENABLED` from the
+    developer's .env: set it to false for an unrelated reason and these tests
+    fail with confusing chunk counts, because every chunk drops to Phase 3.
+
+    `setattr` on the config attribute, not `setenv`: src/config.py reads the
+    variable once at import time, while translate_chunk_with_fallback re-reads
+    the module attribute on every call.
+    """
+    monkeypatch.setattr('src.config.EPUB_TOKEN_ALIGNMENT_ENABLED', True)
 
 
 @pytest.fixture
@@ -176,6 +198,56 @@ class TestChunkLevelInterruption:
         if final_state is not None:
             # If state exists, it should show 100% completion
             assert final_state.current_chunk_index == len(final_state.chunks), "Should be fully translated"
+
+    @pytest.mark.asyncio
+    async def test_interruption_does_not_inflate_the_untranslated_count(
+            self, sample_xhtml_doc, mock_llm_client, temp_checkpoint_manager):
+        """An interrupted file owes work, but owns no Phase 3 damage.
+
+        The live Fallbacks stat card sums `token_alignment_used` and the
+        untranslated-only projection. If that projection merged `pending` in
+        (as `unfinished_chunk_indices` does, on purpose, for the retry work
+        set), pausing a healthy job would light the card up with every chunk it
+        simply has not reached yet.
+        """
+        translation_id = "test_trans_pending_not_fallback"
+        file_href = "OEBPS/chapter1.xhtml"
+
+        interrupt_counter = [0]
+
+        def check_interruption():
+            interrupt_counter[0] += 1
+            return interrupt_counter[0] >= 3
+
+        success, _stats = await translate_xhtml_simplified(
+            doc_root=sample_xhtml_doc,
+            source_language="English",
+            target_language="French",
+            model_name="test-model",
+            llm_client=mock_llm_client,
+            max_tokens_per_chunk=100,
+            checkpoint_manager=temp_checkpoint_manager,
+            translation_id=translation_id,
+            file_href=file_href,
+            check_interruption_callback=check_interruption,
+        )
+        assert success is False
+
+        state = temp_checkpoint_manager.load_xhtml_partial_state(
+            translation_id, file_href)
+        assert state is not None
+        assert state.chunk_statuses is not None
+
+        unfinished = unfinished_chunk_indices(state.chunk_statuses)
+        untranslated = untranslated_chunk_indices(state.chunk_statuses)
+
+        # There IS work left (the never-attempted tail), and it is exactly the
+        # chunks from current_chunk_index onwards.
+        assert unfinished == list(range(state.current_chunk_index,
+                                        len(state.chunks)))
+        assert unfinished, "an interrupted file must still owe chunks"
+        # ...and none of it counts as a fallback.
+        assert untranslated == []
 
     @pytest.mark.asyncio
     async def test_multiple_interruptions(self, sample_xhtml_doc, mock_llm_client, temp_checkpoint_manager):

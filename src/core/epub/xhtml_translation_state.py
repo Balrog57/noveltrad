@@ -10,6 +10,68 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 
+# === Per-chunk translation statuses (issue #261) ===
+# A chunk of an XHTML file is in exactly one of these four states. They are
+# persisted inside the partial state so a resume can tell "already translated"
+# from "still to do" at chunk granularity instead of at file granularity.
+CHUNK_PENDING = 'pending'  # Never attempted
+CHUNK_TRANSLATED = 'translated'  # Phase 1 success, or text-free pass-through
+CHUNK_TOKEN_ALIGNED = 'token_aligned'  # Phase 2 (token alignment) succeeded
+CHUNK_UNTRANSLATED = 'untranslated'  # Phase 3 fallback: source text kept
+
+ALL_CHUNK_STATUSES = frozenset({
+    CHUNK_PENDING, CHUNK_TRANSLATED, CHUNK_TOKEN_ALIGNED, CHUNK_UNTRANSLATED,
+})
+
+# Only these two statuses mean "there is still work to do on this chunk".
+#
+# CHUNK_TOKEN_ALIGNED is deliberately NOT unfinished: those chunks ARE
+# translated, only their placeholder positions were approximated by
+# proportional reinsertion. Retrying them would re-translate healthy content
+# and could make the result worse. This is the same standing rule as the
+# docstring of src/api/completion_status.py ("token_alignment_used ... must
+# never be added to the rules"), applied at chunk level.
+UNFINISHED_CHUNK_STATUSES = frozenset({CHUNK_PENDING, CHUNK_UNTRANSLATED})
+
+
+def unfinished_chunk_indices(statuses: Optional[List[str]]) -> List[int]:
+    """Return the ascending indices of chunks that still need translating.
+
+    Args:
+        statuses: Per-chunk statuses, or None when a state carries none.
+
+    Returns:
+        Ascending list of indices whose status is in UNFINISHED_CHUNK_STATUSES.
+        An empty list when statuses is None (nothing known, nothing to retry).
+    """
+    if not statuses:
+        return []
+    return [i for i, status in enumerate(statuses)
+            if status in UNFINISHED_CHUNK_STATUSES]
+
+
+def untranslated_chunk_indices(statuses: Optional[List[str]]) -> List[int]:
+    """Return the ascending indices of chunks that fell back to source text.
+
+    Narrower than :func:`unfinished_chunk_indices` on purpose: CHUNK_PENDING is
+    excluded. A pending chunk was never attempted, so it is work still owed, not
+    damage done. The live Fallbacks stat card reads this counter, and merging
+    the two would make a merely interrupted job display every chunk it has not
+    reached yet as a fallback.
+
+    Args:
+        statuses: Per-chunk statuses, or None when a state carries none.
+
+    Returns:
+        Ascending list of indices whose status is exactly CHUNK_UNTRANSLATED.
+        An empty list when statuses is None (nothing known, nothing to report).
+    """
+    if not statuses:
+        return []
+    return [i for i, status in enumerate(statuses)
+            if status == CHUNK_UNTRANSLATED]
+
+
 @dataclass
 class XHTMLTranslationState:
     """
@@ -65,6 +127,10 @@ class XHTMLTranslationState:
     bilingual: bool = False
     original_chunks: Optional[List[Dict[str, Any]]] = None  # For bilingual mode
 
+    # Per-chunk statuses (issue #261), one entry per chunk in `chunks`.
+    # None means "unknown" (legacy state); from_dict() rebuilds it in that case.
+    chunk_statuses: Optional[List[str]] = None
+
     # Technical Content Protection (always enabled)
     protect_technical: bool = True
 
@@ -95,6 +161,7 @@ class XHTMLTranslationState:
             'prompt_options': self.prompt_options,
             'bilingual': self.bilingual,
             'original_chunks': self.original_chunks,
+            'chunk_statuses': self.chunk_statuses,
             'protect_technical': self.protect_technical,
             'created_at': self.created_at,
             'updated_at': self.updated_at,
@@ -132,11 +199,50 @@ class XHTMLTranslationState:
             prompt_options=data.get('prompt_options'),
             bilingual=data.get('bilingual', False),
             original_chunks=data.get('original_chunks'),
+            chunk_statuses=cls._migrate_chunk_statuses(
+                data.get('chunk_statuses'),
+                data['chunks'],
+                data['current_chunk_index'],
+            ),
             protect_technical=data.get('protect_technical', True),
             created_at=data['created_at'],
             updated_at=data['updated_at'],
             global_stats=data.get('global_stats'),
         )
+
+    @staticmethod
+    def _migrate_chunk_statuses(
+        statuses: Optional[List[str]],
+        chunks: List[Dict[str, Any]],
+        current_chunk_index: int,
+    ) -> List[str]:
+        """Rebuild chunk_statuses for a payload that has none or a stale one.
+
+        There is no schema migration on disk (design decision D12): a state
+        written before issue #261 simply has no `chunk_statuses` key, and it is
+        reconstructed here, in memory, every time it is loaded. The rebuilt list
+        marks the contiguous translated prefix as CHUNK_TRANSLATED and the rest
+        as CHUNK_PENDING, so a legacy state reports "nothing to retry" — exactly
+        the behaviour it had before this field existed.
+
+        The same rebuild covers a length mismatch (a state whose chunk list was
+        re-chunked): trusting a list that no longer lines up with `chunks` would
+        retry arbitrary indices.
+
+        Args:
+            statuses: Statuses read from the payload, possibly None.
+            chunks: The payload's chunk list.
+            current_chunk_index: The payload's next-chunk-to-translate index.
+
+        Returns:
+            A statuses list of length len(chunks).
+        """
+        total = len(chunks)
+        if statuses is not None and len(statuses) == total:
+            return list(statuses)
+
+        translated = max(0, min(int(current_chunk_index), total))
+        return [CHUNK_TRANSLATED] * translated + [CHUNK_PENDING] * (total - translated)
 
     def validate(self) -> bool:
         """
@@ -170,6 +276,19 @@ class XHTMLTranslationState:
                 return False
             if 'text' not in chunk or 'local_tag_map' not in chunk or 'global_indices' not in chunk:
                 return False
+
+        # Check chunk_statuses consistency (issue #261)
+        if self.chunk_statuses is not None:
+            if len(self.chunk_statuses) != len(self.chunks):
+                return False
+            for index, status in enumerate(self.chunk_statuses):
+                if status not in ALL_CHUNK_STATUSES:
+                    return False
+                # Invariant D4: any status other than 'pending' means the chunk
+                # has text in translated_chunks, so 'pending' can never appear
+                # below current_chunk_index.
+                if status == CHUNK_PENDING and index < self.current_chunk_index:
+                    return False
 
         return True
 

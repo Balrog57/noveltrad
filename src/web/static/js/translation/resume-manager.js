@@ -12,16 +12,12 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { ProgressManager } from './progress-manager.js';
 import { TranslationTracker } from './translation-tracker.js';
 import { t, getCurrentLocale, applyToDOM } from '../i18n/i18n.js';
-import { createProviderModelPicker } from '../providers/provider-model-picker.js';
-
-// Live picker instances, keyed by translation_id, so the override panel keeps
-// its state while open and can be cleaned up on the next list render.
-const overridePickers = new Map();
-
-function destroyOverridePickers() {
-    overridePickers.forEach((p) => p.destroy?.());
-    overridePickers.clear();
-}
+import {
+    overridePanelHtml,
+    toggleOverridePanel,
+    readOverrideConfig,
+    destroyOverridePickers,
+} from './model-override-panel.js';
 
 /**
  * Format resumable job card HTML
@@ -34,7 +30,21 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
     const progress = job.progress || {};
     const completedChunks = progress.completed_chunks || 0;
     const totalChunks = progress.total_chunks || 0;
-    const failedChunks = progress.failed_chunks || 0;
+    // `unfinished_chunks` (issue #261) counts both outright failures and
+    // chunks that fell back to their source text (Phase 3), which
+    // `failed_chunks` misses entirely — a fallback-only job used to show
+    // "0 failed" here even though it genuinely has untranslated content.
+    // Prefer it; fall back to summing `epub_unfinished_units` when only the
+    // per-file map is present, then to the legacy `failed_chunks` counter.
+    let failedChunks;
+    if (typeof progress.unfinished_chunks === 'number') {
+        failedChunks = progress.unfinished_chunks;
+    } else if (progress.epub_unfinished_units && typeof progress.epub_unfinished_units === 'object') {
+        failedChunks = Object.values(progress.epub_unfinished_units)
+            .reduce((sum, indices) => sum + (Array.isArray(indices) ? indices.length : 0), 0);
+    } else {
+        failedChunks = progress.failed_chunks || 0;
+    }
     const progressPercent = job.progress_percentage || 0;
     const fileType = (job.file_type || 'txt').toUpperCase();
     const isPartial = job.status === 'partial';
@@ -130,25 +140,14 @@ function formatJobCard(job, hasActiveTranslation, activeNames) {
                 </button>
             </div>
 
-            <div class="resume-override" data-tid="${job.translation_id}"
-                 data-provider="${DomHelpers.escapeHtml(origProvider)}"
-                 data-model="${DomHelpers.escapeHtml(origModel)}"
-                 data-endpoint="${DomHelpers.escapeHtml(origEndpoint)}"
-                 style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb;">
-                <div style="font-size: 12px; color: #6b7280; margin-bottom: 10px;">
-                    <span data-i18n="translation:resume_original_model">Original model</span>:
-                    <strong>${DomHelpers.escapeHtml(origProvider)} / ${DomHelpers.escapeHtml(origModel || '—')}</strong>
-                </div>
-                <div class="resume-picker-mount"></div>
-                <div class="resume-style-warning" style="display: none; margin-top: 10px; font-size: 12px; color: #92400e; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 8px;">
-                    ⚠️ <span data-i18n="translation:resume_style_warning">Switching model mid-book may cause a style break between the already-translated and remaining chunks.</span>
-                </div>
-                <div style="margin-top: 12px;">
-                    <button class="btn btn-primary resume-apply" data-tid="${job.translation_id}" data-i18n="translation:resume_apply_btn">
-                        Resume with this model
-                    </button>
-                </div>
-            </div>
+            ${overridePanelHtml({
+                tid: job.translation_id,
+                provider: origProvider,
+                model: origModel,
+                endpoint: origEndpoint,
+                applyLabelKey: 'translation:resume_apply_btn',
+                panelClass: 'resume-override',
+            })}
         </div>
     `;
 }
@@ -179,34 +178,10 @@ function createWarningBanner(activeJobs) {
 }
 
 /**
- * Lazily build the provider+model picker the first time a job's override panel
- * is opened. Seeds it with the job's original config and toggles the style-break
- * warning whenever the chosen model/provider diverges from the original.
- */
-function ensureOverridePicker(panel) {
-    const tid = panel.dataset.tid;
-    if (overridePickers.has(tid)) return;
-    const mount = panel.querySelector('.resume-picker-mount');
-    const warning = panel.querySelector('.resume-style-warning');
-    if (!mount) return;
-
-    const origProvider = panel.dataset.provider || 'ollama';
-    const origModel = panel.dataset.model || '';
-    const origEndpoint = panel.dataset.endpoint || '';
-
-    const picker = createProviderModelPicker(mount, {
-        config: { provider: origProvider, model: origModel, api_endpoint: origEndpoint },
-        onChange: (cfg) => {
-            const changed = (cfg.provider !== origProvider) || (cfg.model && cfg.model !== origModel);
-            if (warning) warning.style.display = changed ? 'block' : 'none';
-        },
-    });
-    overridePickers.set(tid, picker);
-}
-
-/**
  * Wire the "Change model" toggles and "Resume with this model" buttons inside a
- * freshly rendered resumable-jobs list. Pickers are created on first open only.
+ * freshly rendered resumable-jobs list. Panel behaviour (lazy picker creation,
+ * style-break warning, override mapping) lives in model-override-panel.js and
+ * is shared with the completion card.
  */
 function wireResumeOverrides(container) {
     container.querySelectorAll('.resume-change-model').forEach((btn) => {
@@ -215,33 +190,18 @@ function wireResumeOverrides(container) {
             const card = btn.closest('.resumable-job-card');
             const panel = card && card.querySelector('.resume-override');
             if (!panel) return;
-            if (panel.style.display !== 'none') {
-                panel.style.display = 'none';
-                return;
-            }
-            panel.style.display = 'block';
-            ensureOverridePicker(panel);
+            toggleOverridePanel(panel);
         });
     });
 
     container.querySelectorAll('.resume-apply').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const tid = btn.dataset.tid;
-            const picker = overridePickers.get(tid);
-            const cfg = picker ? picker.getConfig() : null;
-            if (cfg && !cfg.model) {
-                MessageLogger.showMessage(t('translation:resume_no_model_selected'), 'error');
-                return;
-            }
-            // Map the picker's generic field names onto the backend override
-            // schema (llm_provider / llm_api_endpoint).
-            let overrides = null;
-            if (cfg) {
-                overrides = { model: cfg.model, llm_provider: cfg.provider };
-                if (cfg.api_endpoint) overrides.llm_api_endpoint = cfg.api_endpoint;
-                if (cfg.api_key) overrides.api_key = cfg.api_key;
-            }
-            ResumeManager.resumeJob(tid, overrides);
+            const panel = btn.closest('.resume-override');
+            const overrides = readOverrideConfig(panel);
+            // `undefined` means the panel refused the input (no model picked)
+            // and already told the user; `null` means "no override at all".
+            if (overrides === undefined) return;
+            ResumeManager.resumeJob(btn.dataset.tid, overrides);
         });
     });
 }
@@ -294,8 +254,11 @@ export const ResumeManager = {
                 return;
             }
 
-            // Drop pickers from the previous render before wiping their DOM.
-            destroyOverridePickers();
+            // Drop this list's pickers from the previous render before wiping
+            // their DOM. Scoped to the container so a completion card's own
+            // open panel (same shared module, possibly the same job id) keeps
+            // its picker.
+            destroyOverridePickers(listContainer);
             listContainer.innerHTML = warningBanner + jobsHtml;
             // Translate the freshly injected data-i18n markup, then wire the
             // override toggles / apply buttons.
@@ -350,7 +313,22 @@ export const ResumeManager = {
                 t('translation:resume_success', { chunk: data.resume_from_chunk }),
                 'success'
             );
-            MessageLogger.addLog(t('translation:resume_success_log', { id: translationId, chunk: data.resume_from_chunk }));
+            // The endpoint answers with the provider/model the resumed run will
+            // actually use, overrides applied. Surfacing it matters most for the
+            // completion card's "fix these chunks" flow: the user picked another
+            // model precisely to change the outcome, and until now nothing
+            // confirmed the switch took effect.
+            const runProvider = data.llm_provider || '';
+            const runModel = data.model || '';
+            const modelLabel = runModel
+                ? (runProvider ? `${runProvider} / ${runModel}` : runModel)
+                : '';
+
+            MessageLogger.addLog(modelLabel
+                ? t('translation:resume_success_log_with_model', {
+                    id: translationId, chunk: data.resume_from_chunk, model: modelLabel })
+                : t('translation:resume_success_log', {
+                    id: translationId, chunk: data.resume_from_chunk }));
 
             // Fetch job details to get filename and file type
             const jobData = await ApiClient.getTranslationStatus(translationId);
@@ -382,7 +360,13 @@ export const ResumeManager = {
 
             // Update title with actual filename
             const fileName = jobData.config?.output_filename || t('translation:resumed_translation_default');
-            DomHelpers.setText('currentFileProgressTitle', t('translation:resuming_file', { name: fileName }));
+            // The toast above disappears; a retry runs for minutes. The panel
+            // title is the one place the running model stays visible. Note the
+            // Settings summary chips cannot serve here: they reflect the form,
+            // not this job's overridden config.
+            DomHelpers.setText('currentFileProgressTitle', modelLabel
+                ? t('translation:resuming_file_with_model', { name: fileName, model: modelLabel })
+                : t('translation:resuming_file', { name: fileName }));
 
             // Show stats grid
             DomHelpers.show('statsGrid');
@@ -467,6 +451,16 @@ export const ResumeManager = {
         // Listen for translation state changes
         StateManager.subscribe('translation.hasActive', (hasActive) => {
             // Refresh job list when active state changes
+            this.loadResumableJobs();
+        });
+
+        // Most of formatJobCard's text (badge labels, button titles, "Resume"
+        // / "Delete" labels) is baked into the card HTML via t() at render
+        // time rather than through reactive data-i18n markup, so it would
+        // otherwise stay frozen in the old language until the next natural
+        // refresh. Re-render the whole list on locale switch to keep it in
+        // sync with the rest of the UI.
+        window.addEventListener('localeChanged', () => {
             this.loadResumableJobs();
         });
     }

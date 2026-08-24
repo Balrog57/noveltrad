@@ -205,7 +205,8 @@ class Database:
         completed_chunks: Optional[int] = None,
         failed_chunks: Optional[int] = None,
         status: Optional[str] = None,
-        epub_accumulated_stats: Optional[Dict[str, Any]] = None
+        epub_accumulated_stats: Optional[Dict[str, Any]] = None,
+        unfinished_units: Optional[Dict[str, List[int]]] = None
     ) -> bool:
         """
         Update job progress information.
@@ -221,6 +222,11 @@ class Database:
                 fallback counters. Stored verbatim in the progress JSON so the
                 resume path can rehydrate counters that live above the
                 per-file checkpoint (token_alignment_used, fallback_used, ...).
+            unfinished_units: EPUB index of the chunks still to translate
+                ({file_href: [chunk_index, ...]}, issue #261). Stored verbatim
+                in the progress JSON under 'epub_unfinished_units'; it is the
+                complete current picture, so it replaces the stored value
+                instead of merging into it.
 
         Returns:
             True if updated successfully
@@ -252,6 +258,8 @@ class Database:
                     progress['failed_chunks'] = failed_chunks
                 if epub_accumulated_stats is not None:
                     progress['epub_accumulated_stats'] = epub_accumulated_stats
+                if unfinished_units is not None:
+                    progress['epub_unfinished_units'] = unfinished_units
 
                 # Build update query
                 updates = ["progress = ?", "updated_at = CURRENT_TIMESTAMP"]

@@ -9,6 +9,21 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { t } from '../i18n/i18n.js';
 import { navigateToSetting } from '../ui/settings-summary.js';
 
+/**
+ * Is a stats key actually present in the payload? Precedence in this module is
+ * by presence, not truthiness — the same discipline as `_unfinished()` in
+ * src/api/completion_status.py and `runCounter()` in translation-tracker.js: a
+ * key that is present and 0 is trusted, and only an absent one falls back to an
+ * older counter (legacy payloads, formats that never emit it).
+ *
+ * @param {Object} stats - Job stats payload
+ * @param {string} key - Key to test
+ * @returns {boolean}
+ */
+function statPresent(stats, key) {
+    return !!stats && stats[key] !== undefined && stats[key] !== null;
+}
+
 // State for tracking chunk completion times (for ETA calculation)
 let chunkCompletionTimes = [];
 let lastCompletedChunks = 0;
@@ -213,15 +228,36 @@ function exceedsQualityThreshold(stats) {
  * Compute the rate metrics the critical intro line surfaces. We re-derive them
  * client-side from the cumulative stats payload so the numbers stay in sync
  * across multi-file EPUB runs (the per-file backend warning text would drift).
+ *
+ * The `run_*` counters are preferred over their accumulated twins whenever the
+ * backend sends them. The accumulated ones are deliberately rehydrated across
+ * resume passes (issue #180: the Fallbacks card must not reset to zero on
+ * resume), so both the denominator and the numerators would carry work from
+ * earlier passes — that is what produced "Across 34 chunks: 100% needed
+ * retries" for a 12-chunk book. Percentages must describe one run.
+ *
+ * Precedence is by presence, not truthiness — the same discipline as
+ * `_unfinished()` in src/api/completion_status.py: a `run_*` key that is
+ * present and 0 is trusted (that run really did zero retries); only an absent
+ * one falls back to the accumulated field (legacy payloads, formats that never
+ * emit it).
  */
 export function deriveRateContext(stats) {
-    const processed = stats.processed_chunks || stats.completed_chunks || 0;
+    const s = stats || {};
+    const present = (key) => statPresent(s, key);
+    const pick = (runKey, accKey) => (present(runKey) ? (s[runKey] || 0) : (s[accKey] || 0));
+
+    const processed = present('run_processed_chunks')
+        ? (s.run_processed_chunks || 0)
+        : (s.processed_chunks || s.completed_chunks || 0);
     if (processed <= 0) {
         return { retryPct: 0, fallbackPct: 0, avgErrors: '0.0', processed: 0 };
     }
-    const fallbackCount = (stats.token_alignment_used || 0) + (stats.fallback_used || 0);
-    const notFirstTry = (stats.successful_after_retry || 0) + fallbackCount;
-    const placeholderErrors = stats.placeholder_errors || 0;
+    const fallbackCount = pick('run_token_alignment_used', 'token_alignment_used')
+        + pick('run_fallback_used', 'fallback_used');
+    const notFirstTry = pick('run_successful_after_retry', 'successful_after_retry')
+        + fallbackCount;
+    const placeholderErrors = pick('run_placeholder_errors', 'placeholder_errors');
     return {
         retryPct: Math.round((notFirstTry / processed) * 100),
         fallbackPct: Math.round((fallbackCount / processed) * 100),
@@ -416,7 +452,21 @@ function updateStatistics(stats, fileType) {
         DomHelpers.setText('fallbackChunks', '0');
         updateFallbackHighlight(0, stats);
     } else {
-        const fallbacks = (stats.token_alignment_used || 0) + (stats.fallback_used || 0);
+        // Live count of degraded chunks: Phase 2 (token alignment, an accumulated
+        // tally — those chunks are translated and are never retried) plus the
+        // chunks *currently* sitting in their source text after Phase 3.
+        //
+        // `untranslated_chunks` is a live projection of the per-chunk statuses,
+        // so a retry that heals a chunk makes this card count down, while
+        // `fallback_used` is an accumulated cross-pass tally that only ever
+        // grows and would stay frozen at its historical value. Precedence is by
+        // presence: present and 0 is trusted (a retry healed everything), and
+        // only an absent key — legacy payloads, and the TXT/SRT/DOCX path which
+        // has no chunk statuses — falls back to the historical counter.
+        const untranslated = statPresent(stats, 'untranslated_chunks')
+            ? (stats.untranslated_chunks || 0)
+            : (stats.fallback_used || 0);
+        const fallbacks = (stats.token_alignment_used || 0) + untranslated;
         DomHelpers.setText('fallbackChunks', String(fallbacks));
         updateFallbackHighlight(fallbacks, stats);
     }

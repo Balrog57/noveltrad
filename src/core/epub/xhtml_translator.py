@@ -47,6 +47,13 @@ from .html_chunker import HtmlChunker
 from .html_utils import is_text_free_chunk
 from .translation_metrics import TranslationMetrics
 from .tag_preservation import TagPreserver
+from .xhtml_translation_state import (
+    CHUNK_PENDING,
+    CHUNK_TRANSLATED,
+    CHUNK_TOKEN_ALIGNED,
+    CHUNK_UNTRANSLATED,
+    unfinished_chunk_indices,
+)
 from .exceptions import (
     PlaceholderValidationError,
     TagRestorationError,
@@ -400,7 +407,9 @@ async def translate_chunk_with_fallback(
     max_retries: int = 1,
     context_manager: Optional[AdaptiveContextManager] = None,
     placeholder_format: Optional[Tuple[str, str]] = None,
-    prompt_options: Optional[Dict] = None
+    prompt_options: Optional[Dict] = None,
+    *,
+    chunk_index: Optional[int] = None
 ) -> str:
     """
     Translate a chunk with retry mechanism.
@@ -423,6 +432,10 @@ async def translate_chunk_with_fallback(
         max_retries: Maximum translation retry attempts (default from config)
         context_manager: Optional AdaptiveContextManager for handling context overflow
         prompt_options: Optional prompt customization options (custom instructions, etc.)
+        chunk_index: Optional index of this chunk inside the current file's
+            chunk list. When provided, the terminal outcome of the chunk is
+            recorded in stats.chunk_outcomes, so the caller can persist which
+            chunks are still untranslated (issue #261). None disables it.
 
     Returns:
         Translated text with global placeholders restored
@@ -480,6 +493,7 @@ async def translate_chunk_with_fallback(
                 if log_callback:
                     log_callback("retry_success", f"✓ Translation succeeded after {attempt + 1} attempt(s)")
 
+            stats.record_chunk_outcome(chunk_index, CHUNK_TRANSLATED)
             result = placeholder_mgr.restore_to_global(translated, global_indices)
             stats.record_processed()  # Mark chunk as fully processed
             return result
@@ -551,6 +565,7 @@ async def translate_chunk_with_fallback(
                     log_callback("phase2_warning", "⚠️ Note: Proportional repositioning may cause minor layout imperfections")
 
                 # 6. Restore global indices and return
+                stats.record_chunk_outcome(chunk_index, CHUNK_TOKEN_ALIGNED)
                 result = placeholder_mgr.restore_to_global(result_with_placeholders, global_indices)
                 stats.record_processed()  # Mark chunk as fully processed
                 return result
@@ -564,6 +579,7 @@ async def translate_chunk_with_fallback(
     # PHASE 3: UNTRANSLATED FALLBACK
     # ==========================================================================
     stats.fallback_used += 1
+    stats.record_chunk_outcome(chunk_index, CHUNK_UNTRANSLATED)
 
     _log_error(log_callback, "fallback_untranslated",
         "✗ Phase 3: All translation attempts failed - returning original untranslated text")
@@ -695,6 +711,7 @@ async def _translate_all_chunks_with_checkpoint(
     check_interruption_callback: Optional[Callable] = None,
     start_chunk_index: int = 0,
     translated_chunks: Optional[List[str]] = None,
+    chunk_statuses: Optional[List[str]] = None,
     global_tag_map: Optional[Dict[str, str]] = None,
     stats: Optional[TranslationMetrics] = None,
     prompt_options: Optional[Dict] = None,
@@ -731,6 +748,14 @@ async def _translate_all_chunks_with_checkpoint(
         check_interruption_callback: Optional callback to check interruption
         start_chunk_index: Index to start/resume from (default: 0)
         translated_chunks: Pre-existing translated chunks (for resume)
+        chunk_statuses: Per-chunk statuses restored from the partial state
+            (one entry per chunk, values from xhtml_translation_state's CHUNK_*
+            constants). This is what makes a retry pass possible: chunks marked
+            CHUNK_UNTRANSLATED are re-translated even though they sit below
+            start_chunk_index (issue #261). None (or a list whose length does
+            not match `chunks`) falls back to the legacy reading of
+            start_chunk_index: everything below it is translated, the rest is
+            pending.
         global_tag_map: Global tag map (for state serialization)
         stats: Pre-existing stats (for resume)
         prompt_options: Optional prompt options
@@ -754,6 +779,73 @@ async def _translate_all_chunks_with_checkpoint(
     if translated_chunks is None:
         translated_chunks = []
 
+    # === The two authoritative views of this pass (issue #261) ===
+    #
+    # `statuses` decides what gets translated and what gets persisted; the
+    # length of a growing list does not. A resumed pass gets the statuses from
+    # the partial state, so a chunk that fell back to its source text is
+    # re-translated even though it sits *below* start_chunk_index. Without a
+    # statuses list (fresh start, or a caller that knows nothing about them)
+    # the legacy reading of the pointer applies: everything below it is
+    # translated, everything above is pending.
+    #
+    # A length mismatch means the incoming list does not describe `chunks` (a
+    # re-chunked file, a truncated payload), and trusting it would retry
+    # arbitrary indices — so it is discarded rather than repaired.
+    if chunk_statuses is not None and len(chunk_statuses) == len(chunks):
+        statuses = list(chunk_statuses)  # copy: never mutate the caller's list
+    else:
+        done_prefix = max(0, min(start_chunk_index, len(chunks)))
+        statuses = ([CHUNK_TRANSLATED] * done_prefix
+                    + [CHUNK_PENDING] * (len(chunks) - done_prefix))
+
+    # Results are written by index, never appended (design decision D6): a
+    # retry pass fills a hole in the middle of an otherwise complete list, and
+    # appending would shift every chunk after it. `translated_chunks` is an
+    # index-aligned prefix, so it pre-fills the slots as-is.
+    slots: List[Optional[str]] = [None] * len(chunks)
+    for slot_index, slot_text in enumerate(translated_chunks[:len(chunks)]):
+        slots[slot_index] = slot_text
+
+    # Keep the two views in lockstep: a slot with text is not pending, and a
+    # slot without text has nothing but 'pending' to say about itself. Every
+    # state this module writes already satisfies both; a hand-edited or
+    # truncated payload may not, and the loop must not act on a contradiction
+    # (it is what keeps `len(translated_chunks) == current_chunk_index` true
+    # for validate(), invariant D4).
+    for slot_index in range(len(chunks)):
+        if slots[slot_index] is None:
+            statuses[slot_index] = CHUNK_PENDING
+        elif statuses[slot_index] == CHUNK_PENDING:
+            statuses[slot_index] = CHUNK_TRANSLATED
+
+    def _next_pending_index():
+        """First never-attempted chunk, or len(chunks) when there is none.
+
+        This is what `current_chunk_index` means in the persisted state. It is
+        NOT the number of delivered results any more: a retry pass translates a
+        chunk below the pointer without moving it.
+        """
+        for index, status in enumerate(statuses):
+            if status == CHUNK_PENDING:
+                return index
+        return len(chunks)
+
+    def _completed_prefix() -> List[str]:
+        """The delivered text, up to the first never-attempted chunk.
+
+        Invariant D4 (any status other than 'pending' has text in the slot)
+        makes this the same list as `[s for s in slots if s is not None]`.
+        Stopping at the first hole is the shape validate() requires:
+        len(translated_chunks) == current_chunk_index, with no hole below it.
+        """
+        prefix: List[str] = []
+        for text in slots:
+            if text is None:
+                break
+            prefix.append(text)
+        return prefix
+
     # Report initial stats
     if stats_callback:
         stats_callback(stats.to_dict())
@@ -763,13 +855,19 @@ async def _translate_all_chunks_with_checkpoint(
 
     # EPUB chunks carry no cross-chunk translation context (the prompt is built
     # with previous_translation_context=""), so they parallelize cleanly. The
-    # ordered-concurrent scheduler keeps translated_chunks a contiguous prefix
+    # ordered-concurrent scheduler keeps the delivered slots a contiguous prefix
     # (resume-safe) while keeping the request pool full. parallel_workers is
     # already resolved by the caller (local providers forced to 1).
     workers = max(1, int(parallel_workers))
 
-    def _save_state(next_index):
-        """Persist resume state with current_chunk_index = next chunk to do."""
+    def _save_state():
+        """Persist the resume state for this file from `slots` and `statuses`.
+
+        Both persisted progress fields come from the two authoritative views,
+        so they can never disagree: `current_chunk_index` is the first
+        never-attempted chunk and `translated_chunks` is the text delivered
+        below it.
+        """
         if not (checkpoint_manager and translation_id and file_href):
             return
         from .xhtml_translation_state import XHTMLTranslationState
@@ -795,14 +893,15 @@ async def _translate_all_chunks_with_checkpoint(
             chunks=chunks,
             global_tag_map=global_tag_map or {},
             placeholder_format=placeholder_format,
-            translated_chunks=translated_chunks,
-            current_chunk_index=next_index,
+            translated_chunks=_completed_prefix(),
+            current_chunk_index=_next_pending_index(),
             original_body_html="",
             doc_metadata={},
             stats=stats.to_dict(),
             prompt_options=prompt_options,
             bilingual=bilingual,
             original_chunks=original_chunks,
+            chunk_statuses=statuses,
             protect_technical=True,
             created_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + 'Z',
             updated_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + 'Z',
@@ -827,6 +926,7 @@ async def _translate_all_chunks_with_checkpoint(
             # LLM-call, token and retry counters (no request was made).
             stats.successful_first_try += 1
             stats.record_processed()
+            stats.record_chunk_outcome(i, CHUNK_TRANSLATED)
             return PlaceholderManager.restore_to_global(chunk['text'], chunk['global_indices'])
 
         return await translate_chunk_with_fallback(
@@ -842,13 +942,22 @@ async def _translate_all_chunks_with_checkpoint(
             max_retries=max_retries,
             context_manager=context_manager,
             placeholder_format=placeholder_format,
-            prompt_options=prompt_options
+            prompt_options=prompt_options,
+            chunk_index=i
         )
 
-    pending = list(range(start_chunk_index, len(chunks)))
+    # The work set (design decision D5): everything never attempted from the
+    # resume pointer on, plus every chunk the previous passes left unfinished
+    # (a Phase 3 fallback below the pointer). One expression covers both
+    # mid-file interruption resume and post-completion retry.
+    # CHUNK_TOKEN_ALIGNED is deliberately absent: those chunks are translated
+    # (D3), retrying them would re-translate healthy content.
+    pending = sorted(set(unfinished_chunk_indices(statuses))
+                     | set(range(start_chunk_index, len(chunks))))
     rate_limit_error = None
+    delivered = 0
 
-    # Continuous concurrency with in-order delivery: translated_chunks stays a
+    # Continuous concurrency with in-order delivery: the delivered slots stay a
     # contiguous prefix (resume-safe) while up to `workers` requests run at once.
     # aclosing() is required: the rate-limit branch breaks out of the loop, and
     # only closing the generator cancels the requests still in flight.
@@ -857,17 +966,22 @@ async def _translate_all_chunks_with_checkpoint(
     )) as stream:
         async for i, result in stream:
             if isinstance(result, RateLimitError):
-                # Stop before appending this chunk so resume restarts at it.
+                # Stop before recording this chunk so resume restarts at it.
                 rate_limit_error = result
                 break
             if isinstance(result, Exception):
                 # Non-rate-limit errors propagate as before (after persisting the
-                # contiguous prefix already appended).
-                if checkpoint_manager and translation_id and file_href and translated_chunks:
-                    _save_state(len(translated_chunks))
+                # contiguous prefix already delivered).
+                if slots and slots[0] is not None:
+                    _save_state()
                 raise result
 
-            translated_chunks.append(result)
+            slots[i] = result
+            # A delivered result always reached a terminal outcome, so the
+            # default only covers a caller that monkeypatches
+            # translate_chunk_with_fallback with a fake recording nothing.
+            statuses[i] = stats.chunk_outcomes.get(i, CHUNK_TRANSLATED)
+            delivered += 1
             i_done = i
 
             # === HEALTH CHECK ===
@@ -877,13 +991,17 @@ async def _translate_all_chunks_with_checkpoint(
             if quality_warning and log_callback:
                 log_callback("quality_warning", quality_warning)
 
-            # === PERIODIC CHECKPOINT === (every N chunks and at the last chunk)
+            # === PERIODIC CHECKPOINT === (every N chunks and at the last one)
+            # `pending[-1]` rather than `len(chunks) - 1`: a retry pass whose
+            # last scheduled chunk sits in the middle of the file must still
+            # persist the statuses it produced, otherwise the file loop reads
+            # back a state that still calls the chunk unfinished.
             should_checkpoint = (
                 (i_done + 1) % CHECKPOINT_FREQUENCY == 0 or
-                (i_done + 1) == len(chunks)
+                i_done == pending[-1]
             )
             if should_checkpoint:
-                _save_state(i_done + 1)
+                _save_state()
                 if log_callback:
                     log_callback("xhtml_checkpoint_saved",
                         f"💾 Checkpoint saved: chunk {i_done + 1}/{len(chunks)}")
@@ -893,25 +1011,44 @@ async def _translate_all_chunks_with_checkpoint(
                 stats_callback(stats.to_dict())
 
     if rate_limit_error is not None:
-        # Persist the contiguous prefix appended before the limit, then
-        # propagate to let the caller pause/resume.
-        if checkpoint_manager and translation_id and file_href and translated_chunks:
-            _save_state(len(translated_chunks))
+        # Persist the contiguous prefix delivered before the limit, then
+        # propagate to let the caller pause/resume. current_chunk_index still
+        # means "first never-attempted chunk", so the resumed pass restarts at
+        # the chunk that hit the limit.
+        if slots and slots[0] is not None:
+            _save_state()
         raise rate_limit_error
 
-    # Interruption: the scheduler stopped launching new chunks; the appended
-    # prefix is contiguous, so save resume state at the next index. translated_chunks
-    # is the full list from index 0 (resume restores the prefix), so its length IS
-    # the absolute next index — do NOT add start_chunk_index (that double-counts).
-    next_index = len(translated_chunks)
-    if next_index < len(chunks) and check_interruption_callback and check_interruption_callback():
+    # Interruption: the scheduler stopped launching new chunks. The delivered
+    # slots form a contiguous prefix, so the state saved here resumes exactly
+    # where this pass stopped.
+    next_index = _next_pending_index()
+    interrupted = bool(next_index < len(chunks)
+                       and check_interruption_callback
+                       and check_interruption_callback())
+
+    # Persist a pass that stopped before its last scheduled chunk. Two cases
+    # reach here:
+    #   - a genuine interruption, including one that happened before the first
+    #     chunk was delivered (the file still needs a resume point);
+    #   - a retry pass interrupted after fixing chunks that all sit below the
+    #     resume pointer: nothing looks unfinished (next_index is already
+    #     len(chunks)) yet the statuses this pass produced still have to reach
+    #     disk, because the EPUB file loop reads them back to decide whether
+    #     the file is clean.
+    # A pass that delivered everything it scheduled was already persisted by
+    # the periodic checkpoint above (its last save fires on pending[-1]), so
+    # this never double-writes a completed pass.
+    if interrupted or delivered < len(pending):
+        _save_state()
+
+    if interrupted:
         if log_callback:
             log_callback("xhtml_translation_interrupted",
                 f"⏸️ Translation interrupted at chunk {next_index}/{len(chunks)}")
-        _save_state(next_index)
-        return translated_chunks, stats, True  # was_interrupted=True
+        return _completed_prefix(), stats, True  # was_interrupted=True
 
-    return translated_chunks, stats, False  # was_interrupted=False
+    return _completed_prefix(), stats, False  # was_interrupted=False
 
 
 async def _translate_all_chunks(
@@ -980,7 +1117,8 @@ async def _translate_all_chunks(
             max_retries=max_retries,
             context_manager=context_manager,
             placeholder_format=placeholder_format,
-            prompt_options=prompt_options
+            prompt_options=prompt_options,
+            chunk_index=i
         )
         translated_chunks.append(translated)
 
@@ -1665,9 +1803,20 @@ async def translate_xhtml_simplified(
 
     # === RESUME FROM PARTIAL STATE ===
     if resume_state:
+        # Per-chunk statuses tell the two kinds of remaining work apart: a chunk
+        # left in the source language by the Phase 3 fallback (retried, even
+        # though it sits below the resume pointer) and a chunk never attempted
+        # (issue #261).
+        chunk_statuses = resume_state.chunk_statuses
+        retry_indices = [index for index, status in enumerate(chunk_statuses or [])
+                         if status == CHUNK_UNTRANSLATED]
+        never_attempted = sum(1 for status in (chunk_statuses or [])
+                              if status == CHUNK_PENDING)
         if log_callback:
             log_callback("xhtml_resume_partial",
-                f"📂 Resuming XHTML translation from chunk {resume_state.current_chunk_index}/{len(resume_state.chunks)}")
+                f"📂 Resuming XHTML translation from chunk {resume_state.current_chunk_index}/{len(resume_state.chunks)} "
+                f"- retrying {len(retry_indices)} untranslated chunk(s) {retry_indices}, "
+                f"{never_attempted} never attempted")
 
         # Restore state from checkpoint
         chunks = resume_state.chunks
@@ -1740,6 +1889,7 @@ async def translate_xhtml_simplified(
         # Initialize variables for new translation
         translated_chunks = []
         start_chunk_index = 0
+        chunk_statuses = None  # fresh start: every chunk is pending
         stats = TranslationMetrics()
         stats.total_chunks = len(chunks)
         original_chunks = chunks.copy() if bilingual else None
@@ -1787,6 +1937,7 @@ async def translate_xhtml_simplified(
         check_interruption_callback=check_interruption_callback,
         start_chunk_index=start_chunk_index,
         translated_chunks=translated_chunks,
+        chunk_statuses=chunk_statuses,
         global_tag_map=global_tag_map,
         stats=stats,
         prompt_options=prompt_options,

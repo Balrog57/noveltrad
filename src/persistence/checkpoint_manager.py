@@ -135,7 +135,8 @@ class CheckpointManager:
         total_chunks: Optional[int] = None,
         completed_chunks: Optional[int] = None,
         failed_chunks: Optional[int] = None,
-        epub_accumulated_stats: Optional[Dict[str, Any]] = None
+        epub_accumulated_stats: Optional[Dict[str, Any]] = None,
+        unfinished_units: Optional[Dict[str, List[int]]] = None
     ) -> bool:
         """
         Save a checkpoint after translating a chunk.
@@ -150,6 +151,10 @@ class CheckpointManager:
             total_chunks: Total number of chunks
             completed_chunks: Number of completed chunks
             failed_chunks: Number of failed chunks
+            unfinished_units: EPUB per-file index of the chunks still to
+                translate ({file_href: [chunk_index, ...]}, issue #261).
+                Stored verbatim in the progress JSON so the next resume knows
+                which files still have to be re-entered.
 
         Returns:
             True if saved successfully
@@ -172,7 +177,8 @@ class CheckpointManager:
             total_chunks=total_chunks,
             completed_chunks=completed_chunks,
             failed_chunks=failed_chunks,
-            epub_accumulated_stats=epub_accumulated_stats
+            epub_accumulated_stats=epub_accumulated_stats,
+            unfinished_units=unfinished_units
         )
 
         # Update translation context if provided
@@ -801,6 +807,29 @@ class CheckpointManager:
             print(f"Error restoring EPUB files: {e}")
             return False
 
+    def _xhtml_state_path(self, translation_id: str, file_href: str) -> Path:
+        """
+        Compute the on-disk path of an XHTML partial-state file for `file_href`.
+
+        This is the single authority for that location. Issue #261 was caused
+        by save/load/delete each recomputing their own sanitised filename
+        inline: the file loop deleted with a different key (the temp-dir-
+        relative path) than the one `xhtml_translator` saved under (the
+        `content_href`), so the delete silently never matched and stale
+        "finished" states blocked every retry. Routing every caller through
+        this one helper makes that kind of divergence impossible.
+
+        The sanitisation rule (`/` and `\\` replaced with `_`) is kept
+        byte-for-byte identical to the original inline version so that state
+        files already on disk keep resolving to the same path.
+
+        Does NOT create the parent directory; callers that write must call
+        `mkdir(parents=True, exist_ok=True)` on the returned path's parent
+        themselves.
+        """
+        safe_filename = file_href.replace('/', '_').replace('\\', '_')
+        return self.uploads_dir / translation_id / "xhtml_states" / f"{safe_filename}.json"
+
     def save_xhtml_partial_state(
         self,
         translation_id: str,
@@ -824,13 +853,8 @@ class CheckpointManager:
         from datetime import datetime
         import json
 
-        # Create states directory
-        states_dir = self.uploads_dir / translation_id / "xhtml_states"
-        states_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate safe filename (replace / and \ with _)
-        safe_filename = file_href.replace('/', '_').replace('\\', '_')
-        state_file = states_dir / f"{safe_filename}.json"
+        state_file = self._xhtml_state_path(translation_id, file_href)
+        state_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Update timestamp
         from datetime import timezone
@@ -878,9 +902,7 @@ class CheckpointManager:
         import json
         from src.core.epub.xhtml_translation_state import XHTMLTranslationState
 
-        states_dir = self.uploads_dir / translation_id / "xhtml_states"
-        safe_filename = file_href.replace('/', '_').replace('\\', '_')
-        state_file = states_dir / f"{safe_filename}.json"
+        state_file = self._xhtml_state_path(translation_id, file_href)
 
         if not state_file.exists():
             return None
@@ -917,9 +939,7 @@ class CheckpointManager:
         Returns:
             True if deleted successfully or file didn't exist
         """
-        states_dir = self.uploads_dir / translation_id / "xhtml_states"
-        safe_filename = file_href.replace('/', '_').replace('\\', '_')
-        state_file = states_dir / f"{safe_filename}.json"
+        state_file = self._xhtml_state_path(translation_id, file_href)
 
         if state_file.exists():
             try:
@@ -940,14 +960,25 @@ class CheckpointManager:
         Returns:
             List of file_href strings that have partial states
         """
+        import json
+
         states_dir = self.uploads_dir / translation_id / "xhtml_states"
         if not states_dir.exists():
             return []
 
         states = []
         for state_file in states_dir.glob("*.json"):
-            # Reconstruct original file_href (reverse the safe filename transformation)
-            file_href = state_file.stem.replace('_', '/')
+            # The sanitised filename cannot be reliably reversed (it is lossy
+            # for any href containing an underscore), so read the file_href
+            # that was saved inside the payload instead. Fall back to the
+            # file stem only if the payload is missing or unreadable.
+            file_href = state_file.stem
+            try:
+                with open(state_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                file_href = data.get('file_href') or file_href
+            except Exception as e:
+                print(f"Warning: Could not read partial state {state_file} for listing: {e}")
             states.append(file_href)
         return states
 

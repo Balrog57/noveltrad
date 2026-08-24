@@ -327,8 +327,13 @@ def _format_stats_summary(config, stats, verdict):
     summary = f" | {completed}/{total} {unit}"
     if verdict.failed_chunks > 0:
         summary += f" ({verdict.failed_chunks} failed)"
-    if verdict.fallback_chunks > 0:
-        summary += f" ({verdict.fallback_chunks} untranslated)"
+    # verdict.unfinished_chunks (not fallback_chunks) is what is still
+    # untranslated as of this verdict — fallback_used is a historical tally
+    # that stays positive even after every fallen-back chunk was retried
+    # to a successful outcome, which would otherwise misreport a completed
+    # job as having untranslated content (issue #261, D9/D10).
+    if verdict.unfinished_chunks > 0:
+        summary += f" ({verdict.unfinished_chunks} untranslated)"
     return summary
 
 
@@ -347,6 +352,28 @@ def _notification_context(config, translation_id, elapsed_time, error=None):
     if error:
         ctx['error'] = error
     return ctx
+
+
+def resolve_output_path(output_dir, output_filename, is_resume):
+    """Resolve the file a run writes to, inside ``output_dir``.
+
+    A fresh job never overwrites: a colliding name gets a " (1)" suffix, so two
+    independent translations of the same book keep both results.
+
+    A resume does the opposite. It rebuilds the whole document from the
+    checkpoint, so its output legitimately *replaces* the file the previous pass
+    wrote — that is the whole point of retrying the unfinished chunks. Adding a
+    suffix here would leave the stale, half-translated file next to the fixed
+    one (with no way for the user to tell them apart) and climb " (2)", " (3)"…
+    on every further retry.
+
+    The path is returned as-is on a resume even when nothing is there yet (the
+    user deleted the previous output): the run recreates it.
+    """
+    tentative_output_path = os.path.join(output_dir, output_filename)
+    if is_resume:
+        return tentative_output_path
+    return get_unique_output_path(tentative_output_path)
 
 
 def run_translation_async_wrapper(translation_id, config, state_manager, output_dir, socketio):
@@ -587,16 +614,27 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
         # PHASE 2: Configuration validation is now handled by AdaptiveContextManager during translation
 
-        # Generate unique output filename to avoid overwriting
-        tentative_output_path = os.path.join(output_dir, config['output_filename'])
-        output_filepath_on_server = get_unique_output_path(tentative_output_path)
+        # Resolve the output file. Fresh jobs get a unique name; a resume
+        # overwrites the file the previous pass produced (see
+        # resolve_output_path) and therefore never logs a renaming.
+        output_filepath_on_server = resolve_output_path(
+            output_dir, config['output_filename'], is_resume
+        )
 
-        # Update config with the actual filename (may have been modified)
+        # Update config with the actual filename (may have been modified).
+        # Never on a resume: it reuses the name as-is, so any difference could
+        # only be a path artifact and the "renamed to avoid overwriting" line
+        # would be a lie.
         actual_output_filename = os.path.basename(output_filepath_on_server)
-        if actual_output_filename != config['output_filename']:
+        if not is_resume and actual_output_filename != config['output_filename']:
             _log_message_callback("output_filename_modified",
                 f"ℹ️ Output filename modified to avoid overwriting: {config['output_filename']} → {actual_output_filename}")
             config['output_filename'] = actual_output_filename
+            # Persist the name this run actually writes. start_job (above) saved
+            # the pre-collision name, and a user-initiated resume reloads the
+            # config from the database — without this it would target the
+            # unrelated file we just avoided instead of its own output.
+            checkpoint_manager.update_job_config(translation_id, config)
 
         # Log translation start with unified logger
         logger.info("Translation Started", LogType.TRANSLATION_START, {
@@ -821,8 +859,21 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             'result': state_manager.get_translation_field(translation_id, 'result'),
             'output_filename': config['output_filename'],
             'output_dir': os.path.dirname(os.path.abspath(output_filepath_on_server)),
-            'file_type': config['file_type']
+            'file_type': config['file_type'],
+            # Issue #261: a `partial` job keeps its checkpoint, so the completion
+            # card offers an inline "retry the unfinished chunks on a better
+            # model" action. It needs the job id (emit_update stamps it on the
+            # wire too; stated here so the payload is self-describing for any
+            # other consumer) plus the model/provider seed for the picker.
+            # NEVER an API key: same rule as _strip_api_keys in
+            # src/api/blueprints/translation_routes.py — endpoints are fine, and
+            # the resumable-job card already ships llm_api_endpoint.
+            'translation_id': translation_id,
+            'model': config.get('model'),
+            'llm_provider': config.get('llm_provider', 'ollama'),
         }
+        if config.get('llm_api_endpoint'):
+            final_status_payload['llm_api_endpoint'] = config['llm_api_endpoint']
 
         if state_manager.get_translation_field(translation_id, 'interrupted'):
             state_manager.set_translation_field(translation_id, 'status', 'interrupted')
@@ -899,8 +950,8 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 state_manager.set_translation_field(translation_id, 'status', 'partial')
                 _log_message_callback("summary_partial",
                     f"⚠️ Translation finished with {verdict.failed_chunks} failed "
-                    f"and {verdict.fallback_chunks} untranslated chunk(s) in {elapsed_time:.2f}s"
-                    f"{stats_summary} — checkpoint kept for retry")
+                    f"and {verdict.unfinished_chunks} chunk(s) still untranslated "
+                    f"in {elapsed_time:.2f}s{stats_summary} — checkpoint kept for retry")
                 final_status_payload['status'] = 'partial'
                 checkpoint_manager.mark_partial(translation_id)
                 # No cleanup_completed_job — the checkpoint is deliberately kept for retry.
