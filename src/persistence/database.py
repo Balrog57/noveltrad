@@ -94,7 +94,7 @@ class Database:
 
             # Add server_session_id column if it doesn't exist (migration for existing DBs)
             cursor.execute("PRAGMA table_info(translation_jobs)")
-            columns = [row[1] for row in cursor.fetchall()]
+            columns = [row[1] for row in cursor]
             if 'server_session_id' not in columns:
                 cursor.execute("ALTER TABLE translation_jobs ADD COLUMN server_session_id TEXT")
 
@@ -415,7 +415,7 @@ class Database:
                 """, (translation_id,))
 
                 chunks = []
-                for row in cursor.fetchall():
+                for row in cursor:
                     chunks.append({
                         'chunk_index': row['chunk_index'],
                         'original_text': row['original_text'],
@@ -446,7 +446,7 @@ class Database:
                     WHERE translation_id = ? AND status = 'failed'
                     ORDER BY chunk_index
                 """, (translation_id,))
-                return [row['chunk_index'] for row in cursor.fetchall()]
+                return [row['chunk_index'] for row in cursor]
             except Exception as e:
                 print(f"Error getting failed chunks: {e}")
                 return []
@@ -475,7 +475,7 @@ class Database:
                 """, (f'-{max_age_days}',))
 
                 jobs = []
-                for row in cursor.fetchall():
+                for row in cursor:
                     jobs.append({
                         'translation_id': row['translation_id'],
                         'status': row['status'],
@@ -517,7 +517,7 @@ class Database:
                     AND created_at <= datetime('now', ? || ' days')
                 """, (f'-{max_age_days}',))
 
-                job_ids = [row['translation_id'] for row in cursor.fetchall()]
+                job_ids = [row['translation_id'] for row in cursor]
 
                 if not job_ids:
                     return 0

@@ -79,5 +79,6 @@
   "flag_word_list": "Enumera palabras concretas",
   "flag_proper_noun": "Nombra un nombre propio",
   "flag_too_specific": "Demasiado específico para este libro",
-  "abstraction_notice": "Las reglas que nombran palabras concretas o citan el libro quedan desmarcadas — reutilizarlas hace que el modelo repita ese vocabulario a lo largo de toda la traducción. Reformúlalas de forma abstracta o descártalas."
+  "abstraction_notice": "Las reglas que nombran palabras concretas o citan el libro quedan desmarcadas — reutilizarlas hace que el modelo repita ese vocabulario a lo largo de toda la traducción. Reformúlalas de forma abstracta o descártalas.",
+  "editor_back_title": "Volver a la lista"
 }

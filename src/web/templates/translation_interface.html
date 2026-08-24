@@ -256,7 +256,7 @@
                         <option value="ko" data-short="한">한국어</option>
                     </select>
                 </div>
-                <button class="btn btn-secondary" id="themeToggleBtn" onclick="toggleTheme()" data-i18n-attr="title:common:theme_toggle_title" title="Toggle dark/light mode">
+                <button class="btn btn-secondary" id="themeToggleBtn" onclick="toggleTheme()" data-i18n-attr="title:common:theme_toggle_title;aria-label:common:theme_toggle_title" title="Toggle dark/light mode" aria-label="Toggle dark/light mode">
                     <span class="material-symbols-outlined" id="themeIcon">dark_mode</span>
                 </button>
             </div>
@@ -528,7 +528,7 @@
                          rewriting its data-i18n attribute so the label still follows a
                          locale switch. -->
                     <button type="button" id="preflightToggle" class="preflight-toggle"
-                            aria-expanded="false" aria-controls="preflightPanel">
+                            aria-expanded="false" aria-controls="preflightPanel" data-i18n-attr="aria-label:translation:preflight_adjust" aria-label="Adjust translation options">
                         <span data-i18n="translation:preflight_adjust">Adjust</span>
                         <span id="preflightToggleIcon" class="material-symbols-outlined">expand_more</span>
                     </button>
@@ -586,10 +586,10 @@
                                         <option value="__auto__" data-i18n="settings:glossary_auto_option">Auto — build from this document</option>
                                     </select>
                                 </div>
-                                <button type="button" id="glossaryRefreshBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list">
+                                <button type="button" id="glossaryRefreshBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title;aria-label:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list" aria-label="Refresh list">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
                                 </button>
-                                <button type="button" id="glossaryManageBtn" class="btn btn-sm" data-i18n-attr="title:settings:glossary_manage_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Manage glossaries">
+                                <button type="button" id="glossaryManageBtn" class="btn btn-sm" data-i18n-attr="title:settings:glossary_manage_title;aria-label:settings:glossary_manage_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Manage glossaries" aria-label="Manage glossaries">
                                     <span class="material-symbols-outlined" style="font-size: 16px;">settings</span>
                                 </button>
                             </div>
@@ -612,10 +612,10 @@
                                         <!-- Options populated dynamically via JavaScript -->
                                     </select>
                                 </div>
-                                <button type="button" id="refreshCustomInstructionsBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list">
+                                <button type="button" id="refreshCustomInstructionsBtn" class="btn btn-sm" data-i18n-attr="title:settings:refresh_list_title;aria-label:settings:refresh_list_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Refresh list" aria-label="Refresh list">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
                                 </button>
-                                <button type="button" id="customInstructionsManageBtn" class="btn btn-sm" data-i18n-attr="title:settings:custom_instructions_manage_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Manage styles">
+                                <button type="button" id="customInstructionsManageBtn" class="btn btn-sm" data-i18n-attr="title:settings:custom_instructions_manage_title;aria-label:settings:custom_instructions_manage_title" style="padding: 6px 10px; background: var(--background-light); border: 1px solid var(--border-light); border-radius: 6px; cursor: pointer;" title="Manage styles" aria-label="Manage styles">
                                     <span class="material-symbols-outlined" style="font-size: 16px;">settings</span>
                                 </button>
                             </div>
@@ -1655,7 +1655,7 @@
                         </label>
                         <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkSetGenderBtn" data-i18n="glossary:bulk_apply">Apply</button>
                         <span class="bulk-spacer"></span>
-                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkClearBtn" data-i18n-attr="title:glossary:bulk_clear_title" title="Clear selection">
+                        <button type="button" class="btn btn-secondary glossary-toolbar-btn" id="glossaryBulkClearBtn" data-i18n-attr="title:glossary:bulk_clear_title;aria-label:glossary:bulk_clear_title" title="Clear selection" aria-label="Clear selection">
                             <span class="material-symbols-outlined">close</span>
                         </button>
                     </div>
@@ -1751,7 +1751,7 @@
             <!-- EDITOR VIEW -->
             <div class="main-card hidden" id="styleEditorView">
                 <div class="card-header style-editor-header">
-                    <button type="button" class="btn btn-secondary style-editor-back" id="styleEditorBack">
+                    <button type="button" class="btn btn-secondary style-editor-back" id="styleEditorBack" data-i18n-attr="title:style:editor_back_title;aria-label:style:editor_back_title" title="Back to list" aria-label="Back to list">
                         <span class="material-symbols-outlined">arrow_back</span>
                     </button>
                     <h2 data-i18n="style:editor_title">Edit style</h2>

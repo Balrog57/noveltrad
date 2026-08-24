@@ -434,7 +434,7 @@ class CheckpointManager:
             cursor.execute("SELECT translation_id, config FROM translation_jobs")
             db_job_ids = set()
             preserved_files = set()  # Full file paths that are referenced
-            for row in cursor.fetchall():
+            for row in cursor:
                 db_job_ids.add(row['translation_id'])
                 config = json.loads(row['config'])
                 preserved_path = config.get('preserved_input_path', '')
@@ -760,7 +760,9 @@ class CheckpointManager:
                         return None, "Failed to restore translated files from checkpoint"
 
                     # Repackage EPUB
-                    output_path = Path(tempfile.mktemp(suffix='.epub'))
+                    fd, temp_path_str = tempfile.mkstemp(suffix='.epub')
+                    os.close(fd)
+                    output_path = Path(temp_path_str)
                     try:
                         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as epub_zip:
                             # Add mimetype first (uncompressed)
