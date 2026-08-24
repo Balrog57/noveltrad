@@ -205,9 +205,11 @@ def _apply_resume_overrides(config, overrides):
     """Merge optional model/provider override fields into a resume config in place.
 
     Lets the resume request switch model/provider for the remaining chunks
-    (issue #183). An empty/absent body leaves `config` untouched. API keys flow
-    through `_resolve_api_key` exactly like the start endpoint, and a multi-key
-    string is passed through unchanged so the key-rotation pool still works.
+    (issue #183). An empty/absent body leaves model, provider and endpoint
+    untouched; `auto_pause_on_rate_limit` is refreshed either way, see below.
+    API keys flow through `_resolve_api_key` exactly like the start endpoint,
+    and a multi-key string is passed through unchanged so the key-rotation
+    pool still works.
 
     Credentials are validated even with an empty body: checkpoints no longer
     persist API keys (issue #213), so every resume must find its key in .env
