@@ -170,7 +170,7 @@ def epub_job(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def _run_pass(job, monkeypatch, resume_from_index, starve,
-                    payload_sink=None):
+                    payload_sink=None, interrupt_after=None):
     """Run one EPUB pass and return (stats, chunk_requests, log_kinds).
 
     `starve` decides whether the sentinel chunk is answered. Every chunk-level
@@ -181,6 +181,11 @@ async def _run_pass(job, monkeypatch, resume_from_index, starve,
     The returned `stats` dict is the merge of all of them (which is what the web
     layer keeps), so it can only answer "what did the panel end on"; the sink is
     how a test can look at the *first* emit of a pass.
+
+    `interrupt_after`, when given, makes the interruption callback return True
+    once that many chunk-level requests have been issued - the machinery of
+    tests/test_xhtml_chunk_interruption.py, lifted to the book level so a plain
+    interrupted resume can be told apart from a repair pass.
     """
     requests = []
     log_kinds = []
@@ -204,6 +209,11 @@ async def _run_pass(job, monkeypatch, resume_from_index, starve,
     def log_callback(kind, message, **kwargs):
         log_kinds.append(kind)
 
+    check_interruption = None
+    if interrupt_after is not None:
+        def check_interruption():
+            return len(requests) >= interrupt_after
+
     await epub_translator.translate_epub_file(
         input_filepath=str(job['input']),
         output_filepath=str(job['output']),
@@ -216,6 +226,7 @@ async def _run_pass(job, monkeypatch, resume_from_index, starve,
         resume_from_index=resume_from_index,
         log_callback=log_callback,
         stats_callback=stats_callback,
+        check_interruption_callback=check_interruption,
         max_tokens_per_chunk=MAX_TOKENS_PER_CHUNK,
         max_attempts=1,
         prompt_options={},
@@ -245,6 +256,11 @@ async def _first_pass(job, monkeypatch):
     # unconditionally, never only-sometimes) equal the accumulated ones.
     assert stats['run_processed_chunks'] == stats['processed_chunks'] == 3
     assert stats['run_fallback_used'] == stats['fallback_used'] == 1
+
+    # Scope of the pass (the live progress panel's denominator). A fresh pass
+    # is the whole book, and it is explicitly not a repair.
+    assert stats['run_is_repair'] is False
+    assert stats['run_total_chunks'] == stats['total_chunks'] == 3
 
     # Live count of chunks currently sitting in their source text. Unlike
     # `fallback_used` (accumulated across passes) this one is a projection of
@@ -422,3 +438,193 @@ async def test_resume_retry_that_fails_again_keeps_the_ticket(epub_job, monkeypa
     assert manager.load_checkpoint(translation_id)['resume_from_index'] == 3
     assert TRANSLATED_MARKER not in _chapter_text(epub_job['output'],
                                                  "chapter2.xhtml")
+
+
+# ---------------------------------------------------------------------------
+# 4. The live panel reports the repair pass, not the book
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_repair_pass_reports_its_own_scope(epub_job, monkeypatch):
+    """`run_total_chunks` / `run_is_repair` describe the pass in flight.
+
+    The panel used to report a one-chunk repair of a 3-chapter book as
+    "3 TOTAL / 2 COMPLETED", creeping to 3/3 in one tiny step with an ETA paced
+    by chunks nobody was translating. These two keys are what let it read
+    "1 TOTAL / 1 COMPLETED" instead - and they are live-payload only: the
+    persisted progress keeps describing the book, because that is what the
+    checkpoint and the resumable-job card need.
+    """
+    manager = epub_job['manager']
+    translation_id = epub_job['translation_id']
+
+    await _first_pass(epub_job, monkeypatch)
+    resume_from_index = manager.load_checkpoint(translation_id)['resume_from_index']
+
+    payloads = []
+    stats2, requests2, _kinds2 = await _run_pass(
+        epub_job, monkeypatch, resume_from_index=resume_from_index,
+        starve=False, payload_sink=payloads)
+
+    # Exactly one chunk was retried, and the pass says so.
+    assert len(requests2) == 1
+    assert stats2['run_is_repair'] is True
+    assert stats2['run_total_chunks'] == 1
+    assert stats2['run_processed_chunks'] == 1
+
+    # The denominator is known before the first chunk of the pass: the very
+    # first emit already carries 1, not 0 (no denominator yet) and not 3 (the
+    # book). Without that the bar would have nothing to divide by on its first
+    # frame, which is exactly when the user is looking at it.
+    assert payloads
+    assert payloads[0]['run_total_chunks'] == 1
+    assert payloads[0]['run_is_repair'] is True
+    assert payloads[0]['run_processed_chunks'] == 0
+
+    # The book-level pair is untouched in the same payloads - the panel picks,
+    # the payload never has to choose.
+    assert stats2['total_chunks'] == 3
+    assert stats2['completed_chunks'] == 3
+
+    # ... and what got persisted is the book, not the repair. This is what the
+    # resumable-job card renders as "Progress: X/Y chunks (Z%)": a 3-chunk book
+    # must never read "1/1 chunks (100%)" there.
+    progress = _job_progress(epub_job)
+    assert progress['total_chunks'] == 3
+    assert progress['completed_chunks'] == 3
+    assert 'run_total_chunks' not in progress
+    assert 'run_is_repair' not in progress
+
+
+@pytest.mark.asyncio
+async def test_repair_pass_that_fails_again_still_scopes_to_the_retry(
+        epub_job, monkeypatch):
+    """A retry that falls back again keeps the pass-level denominator.
+
+    The failure mode this guards is a bar that can exceed 100% or stall below
+    it: `run_processed_chunks` must count the same things `run_total_chunks`
+    counts, whatever the outcome of the chunk.
+    """
+    manager = epub_job['manager']
+    translation_id = epub_job['translation_id']
+
+    await _first_pass(epub_job, monkeypatch)
+    resume_from_index = manager.load_checkpoint(translation_id)['resume_from_index']
+
+    stats2, _requests2, _kinds2 = await _run_pass(
+        epub_job, monkeypatch, resume_from_index=resume_from_index, starve=True)
+
+    assert stats2['run_is_repair'] is True
+    assert stats2['run_total_chunks'] == 1
+    assert stats2['run_processed_chunks'] == 1
+    assert _job_progress(epub_job)['total_chunks'] == 3
+
+
+# ---------------------------------------------------------------------------
+# 5. A plain interrupted resume is NOT a repair pass
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_interrupted_resume_is_not_a_repair_pass(epub_job, monkeypatch):
+    """Resuming an interrupted book keeps book-level progress.
+
+    Someone resuming a book at 33% expects 33 -> 100% of the book, not
+    0 -> 100% of the remainder, so the work set derived from the file pointer
+    must never set `run_is_repair`. Only retry tickets do.
+    """
+    manager = epub_job['manager']
+    translation_id = epub_job['translation_id']
+
+    # Pass 1 stops right after chapter 1: nothing fell back, so nothing is
+    # owed at the chunk level - the file pointer alone describes the remainder.
+    stats1, requests1, _kinds1 = await _run_pass(
+        epub_job, monkeypatch, resume_from_index=0, starve=False,
+        interrupt_after=1)
+    assert len(requests1) == 1
+    assert stats1['run_is_repair'] is False
+
+    progress = _job_progress(epub_job)
+    assert progress.get('epub_unfinished_units') in (None, {})
+    resume_from_index = manager.load_checkpoint(translation_id)['resume_from_index']
+    assert resume_from_index == 1
+
+    payloads = []
+    stats2, requests2, kinds2 = await _run_pass(
+        epub_job, monkeypatch, resume_from_index=resume_from_index,
+        starve=False, payload_sink=payloads)
+
+    # Chapters 2 and 3 were translated, and no file was re-entered by ticket.
+    assert len(requests2) == 2
+    assert 'epub_retry_file' not in kinds2
+    assert stats2['run_is_repair'] is False
+    assert payloads[0]['run_is_repair'] is False
+    # Book-level pair still ends the pass at 3/3, exactly as before this change.
+    assert stats2['total_chunks'] == 3
+    assert stats2['completed_chunks'] == 3
+
+
+# ---------------------------------------------------------------------------
+# The repair denominator must not over-count the file the previous pass was
+# interrupted inside
+# ---------------------------------------------------------------------------
+
+def test_pending_chunk_count_uses_the_partial_state_when_there_is_one(
+        epub_job):
+    """`_pending_chunk_count` answers "how many chunks will this file attempt".
+
+    A file the previous pass was interrupted inside carries a partial state and
+    resumes from `current_chunk_index`, so it attempts fewer chunks than the
+    pre-count says. That file gets no ticket (a ticket is written by
+    `_save_checkpoint`, which only runs for files that completed), so its state
+    has to be read directly.
+
+    It matters when a book was interrupted *and* an earlier file left a fallback
+    behind: the tickets make the pass a repair, so the panel uses
+    `run_total_chunks`, and an over-counted denominator leaves the repair bar
+    stalled below 100%. The fixture here has one chunk per chapter, so only a
+    direct test can distinguish the two values.
+    """
+    from src.core.epub.translator import _pending_chunk_count
+    from src.core.epub.xhtml_translation_state import (
+        CHUNK_PENDING,
+        CHUNK_TRANSLATED,
+        CHUNK_UNTRANSLATED,
+        XHTMLTranslationState,
+    )
+
+    manager = epub_job['manager']
+    translation_id = epub_job['translation_id']
+    href = 'chapter1.xhtml'
+    precounted = 6
+
+    # No state at all: the file has never been entered, so the pre-count is the
+    # only answer available and must be returned untouched.
+    assert _pending_chunk_count(
+        manager, translation_id, href, precounted) == precounted
+
+    # Interrupted after 4 of 6 chunks, one of which fell back to source text.
+    # Two chunks are still pending and the untranslated one is owed again, so
+    # the file will attempt 3 - not the 6 the pre-count reports.
+    chunks = [{'text': f'c{i}', 'local_tag_map': {}, 'global_indices': []}
+              for i in range(precounted)]
+    statuses = [CHUNK_TRANSLATED, CHUNK_UNTRANSLATED, CHUNK_TRANSLATED,
+                CHUNK_TRANSLATED, CHUNK_PENDING, CHUNK_PENDING]
+    state = XHTMLTranslationState(
+        file_path=href, translation_id=translation_id, file_href=href,
+        source_language='English', target_language='French',
+        model_name=MODEL, max_tokens_per_chunk=MAX_TOKENS_PER_CHUNK,
+        max_retries=1, chunks=chunks, global_tag_map={},
+        placeholder_format=('[id', ']'),
+        translated_chunks=['t0', 't1', 't2', 't3'], current_chunk_index=4,
+        original_body_html='', doc_metadata={}, stats={},
+        created_at='2026-01-01T00:00:00Z', updated_at='2026-01-01T00:00:00Z',
+        chunk_statuses=statuses,
+    )
+    assert state.validate() is True
+    assert manager.save_xhtml_partial_state(translation_id, href, state) is True
+
+    assert _pending_chunk_count(manager, translation_id, href, precounted) == 3
+
+    # Without a checkpoint manager there is nothing to read, so the pre-count
+    # stands rather than silently collapsing to 0.
+    assert _pending_chunk_count(None, translation_id, href, precounted) == precounted

@@ -924,7 +924,8 @@ _RUN_RATE_COUNTERS = (
 
 def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None,
                            unfinished_units=None, run_prior_counts=None,
-                           untranslated_units=None):
+                           untranslated_units=None, run_total_chunks=None,
+                           run_is_repair=False):
     """Build the EPUB global-stats dict emitted to the progress callback.
 
     Single source of the cross-file payload shape, shared by the resume-initial
@@ -953,6 +954,18 @@ def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None,
     card go down. It is deliberately NOT the same number as
     ``unfinished_chunks``: an interrupted job owes every chunk it never reached,
     and none of those is a fallback.
+
+    ``run_total_chunks`` / ``run_is_repair`` describe the scope of *this pass*
+    so the live panel can report a repair pass as its own little job ("1 TOTAL
+    / 1 COMPLETED") instead of the book it is patching ("12 TOTAL / 10
+    COMPLETED, 83%"). ``run_total_chunks`` is the number of chunks the pass will
+    attempt - known before the first one, so the bar has a denominator
+    immediately - and ``run_processed_chunks`` below is its completed
+    counterpart. ``run_is_repair`` is True only when the work set came from
+    retry tickets; it is an explicit flag rather than a shape the frontend has
+    to infer from the numbers. Both are live-payload only: nothing here is
+    persisted, and ``total_chunks`` / ``completed_chunks`` keep their
+    book-level meaning for the checkpoint and the resumable-job card.
 
     ``run_prior_counts`` is the part of those cumulative counters that belongs
     to *earlier* passes of a resumed job (see ``_process_all_content_files``).
@@ -1004,6 +1017,13 @@ def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None,
         # trusts this key whenever it is present, so it must always be present
         # and always be fresh.
         'untranslated_chunks': sum(len(v) for v in ut.values()),
+        # Scope of this pass, for the live progress panel (see the docstring).
+        # Emitted unconditionally for the same key-by-key merge reason as the
+        # keys above: a key that appears only on repair passes would leave a
+        # stale True (or a stale denominator) behind on the next pass.
+        'run_total_chunks': (total_chunks if run_total_chunks is None
+                             else max(0, int(run_total_chunks))),
+        'run_is_repair': bool(run_is_repair),
     }
     # Per-run twins. Clamped at 0: a stale snapshot must never produce a
     # negative counter, whatever the arithmetic says.
@@ -1177,6 +1197,49 @@ async def _process_all_content_files(
         if idx < len(chunks_per_file) and content_files[idx] not in retry_tickets:
             completed_chunks_global += chunks_per_file[idx]
 
+    # === Scope of THIS pass, for the live progress panel ===
+    #
+    # A repair pass re-translates a handful of chunks of an otherwise finished
+    # book. Reporting it against the book ("12 TOTAL / 10 COMPLETED, 83%",
+    # creeping to 100% in tiny steps, ETA computed from a denominator that has
+    # nothing to do with the work in flight) describes nothing the user asked
+    # for, so the panel gets the pass's own numerator/denominator instead.
+    #
+    # The arithmetic, per file index:
+    #   - below the resume pointer: only the chunks its retry ticket lists. The
+    #     ticket IS the file's work set - `_translate_all_chunks_with_checkpoint`
+    #     computes `unfinished_chunk_indices(statuses) | range(start, len)` and
+    #     the second term is already inside the first (invariant D4: every chunk
+    #     at or above `current_chunk_index` is `pending`, hence unfinished). A
+    #     file with no ticket is skipped and contributes nothing.
+    #   - at or above the pointer: its full pre-counted chunk count.
+    # Indexing by position rather than summing the ticket dict keeps the two
+    # terms disjoint, exactly like the `completed_chunks_global` loop above.
+    #
+    # The file *at* the pointer is the one a previous pass was interrupted
+    # inside, so it carries a partial state and will attempt only its remaining
+    # chunks - fewer than `chunks_per_file` says. It has no ticket (a ticket is
+    # written by `_save_checkpoint`, which only runs for files that completed),
+    # so its state has to be read directly. Only that one index can be in this
+    # situation: files above it were never touched.
+    #
+    # This matters whenever a book was interrupted *and* an earlier file left a
+    # fallback behind: the tickets make `run_is_repair` True, so the panel does
+    # use these numbers, and an over-counted denominator would leave the repair
+    # bar stalled below 100%.
+    run_is_repair = bool(retry_tickets)
+    run_total_chunks = 0
+    for idx, href in enumerate(content_files):
+        if idx < resume_from_index:
+            run_total_chunks += len(retry_tickets.get(href) or ())
+        elif idx >= len(chunks_per_file):
+            continue
+        elif idx == resume_from_index and resume_from_index > 0:
+            run_total_chunks += _pending_chunk_count(
+                checkpoint_manager, translation_id, href, chunks_per_file[idx])
+        else:
+            run_total_chunks += chunks_per_file[idx]
+
     # The file index written to the checkpoint must never rewind. `chunk_index`
     # is turned back into `resume_from_index = current_chunk_index + 1` by
     # load_checkpoint, so writing the index of a re-entered *early* file (say
@@ -1195,7 +1258,9 @@ async def _process_all_content_files(
             effective_total_chunks, completed_chunks_global, accumulated_stats,
             unfinished_units=unfinished_units,
             run_prior_counts=run_prior_counts,
-            untranslated_units=untranslated_units))
+            untranslated_units=untranslated_units,
+            run_total_chunks=run_total_chunks,
+            run_is_repair=run_is_repair))
 
     for file_idx, content_href in enumerate(content_files):
         # Check for interruption
@@ -1261,7 +1326,9 @@ async def _process_all_content_files(
                 total_chunks, global_completed, accumulated_stats, file_stats_dict,
                 unfinished_units=unfinished_units,
                 run_prior_counts=run_prior_counts,
-                untranslated_units=untranslated_units))
+                untranslated_units=untranslated_units,
+                run_total_chunks=run_total_chunks,
+                run_is_repair=run_is_repair))
 
         # Translate using orchestrator WITH checkpoint support
         doc_root, success, file_stats = await _translate_single_xhtml_file(
@@ -1338,7 +1405,9 @@ async def _process_all_content_files(
                 effective_total_chunks, completed_chunks_global, accumulated_stats,
                 unfinished_units=unfinished_units,
                 run_prior_counts=run_prior_counts,
-                untranslated_units=untranslated_units))
+                untranslated_units=untranslated_units,
+                run_total_chunks=run_total_chunks,
+                run_is_repair=run_is_repair))
 
         # Save the document if translation succeeded
         if success and doc_root is not None:
@@ -1414,6 +1483,31 @@ def _snapshot_accumulated_stats(metrics) -> Dict:
         'total_tokens_generated': metrics.total_tokens_generated,
         'refinement_chunks_completed': metrics.refinement_chunks_completed,
     }
+
+
+def _pending_chunk_count(checkpoint_manager, translation_id, content_href: str,
+                         precounted: int) -> int:
+    """How many chunks a file will actually attempt on this pass.
+
+    A file that a previous pass was interrupted inside carries a partial state,
+    so it resumes from `current_chunk_index` and attempts only what that state
+    still reports as unfinished - fewer than the pre-counted total. Used for the
+    repair-progress denominator, where over-counting would leave the bar stalled
+    below 100%.
+
+    Falls back to `precounted` whenever there is no usable state, which is the
+    correct answer for a file that has never been entered.
+    """
+    if not (checkpoint_manager and translation_id):
+        return precounted
+    try:
+        state = checkpoint_manager.load_xhtml_partial_state(
+            translation_id, content_href)
+    except Exception:
+        state = None
+    if state is None:
+        return precounted
+    return len(unfinished_chunk_indices(state.chunk_statuses))
 
 
 def _add_file_prior_counts(prior_counts: Dict, checkpoint_manager, translation_id,

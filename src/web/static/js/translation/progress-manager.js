@@ -433,6 +433,49 @@ window.addEventListener('localeChanged', () => {
 });
 
 /**
+ * The chunk pair the live panel must display: the scope of the pass in flight.
+ *
+ * A repair pass (the "Fix these N chunks" button on a `partial` job) retries a
+ * handful of chunks of an otherwise finished book. Reported against the book it
+ * reads "12 TOTAL / 10 COMPLETED, 83%", creeps to 100% in tiny steps and hands
+ * `updateEstimatedTimeRemaining` a denominator that has nothing to do with the
+ * work being done. `run_is_repair` / `run_total_chunks` (src/core/epub/translator.py,
+ * `_global_stats_payload`) describe that pass, so the panel reports it as the
+ * little job it is: "1 TOTAL / 1 COMPLETED".
+ *
+ * Deliberately NOT applied to a plain interrupted resume (`run_is_repair` is
+ * False there): someone resuming a book at 50% expects 50→100% of the book, not
+ * 0→100% of the remainder.
+ *
+ * `total_chunks` / `completed_chunks` keep their book-level meaning everywhere
+ * else - they feed the checkpoint and the resumable-job card's
+ * "Progress: X/Y chunks (Z%)", which must never read "1/1 (100%)" for a
+ * 12-chunk book.
+ *
+ * Precedence is by presence, not truthiness (see `statPresent`): a present
+ * `run_processed_chunks` of 0 is trusted (the pass really has done nothing
+ * yet), and an absent key - legacy payloads, and the TXT/SRT/DOCX path which
+ * has no repair concept and emits neither flag - leaves the whole-book pair in
+ * place, i.e. today's behaviour.
+ *
+ * @param {Object} stats - Job stats payload
+ * @returns {{total: number, completed: number, isRepair: boolean}}
+ */
+function resolveDisplayChunks(stats) {
+    const s = stats || {};
+    const runTotal = statPresent(s, 'run_total_chunks') ? Number(s.run_total_chunks) : NaN;
+    if (s.run_is_repair === true && Number.isFinite(runTotal) && runTotal > 0) {
+        const done = statPresent(s, 'run_processed_chunks') ? (s.run_processed_chunks || 0) : 0;
+        return { total: runTotal, completed: Math.min(done, runTotal), isRepair: true };
+    }
+    return {
+        total: s.total_chunks || 0,
+        completed: s.completed_chunks || 0,
+        isRepair: false,
+    };
+}
+
+/**
  * Update statistics display based on file type
  * All file types (txt, epub, srt) show stats uniformly
  * @param {Object} stats - Statistics object from server
@@ -443,8 +486,12 @@ function updateStatistics(stats, fileType) {
 
     DomHelpers.show('statsGrid');
 
-    DomHelpers.setText('totalChunks', stats.total_chunks || '0');
-    DomHelpers.setText('completedChunks', stats.completed_chunks || '0');
+    // Book-level by default, pass-level on a repair pass (see
+    // resolveDisplayChunks). `failedChunks` stays book-level: it counts the
+    // damage in the document, not the work in flight.
+    const scope = resolveDisplayChunks(stats);
+    DomHelpers.setText('totalChunks', scope.total || '0');
+    DomHelpers.setText('completedChunks', scope.completed || '0');
     DomHelpers.setText('failedChunks', stats.failed_chunks || '0');
 
     if (fileType === 'srt') {
@@ -473,9 +520,12 @@ function updateStatistics(stats, fileType) {
 
     if (stats.elapsed_time !== undefined) {
         DomHelpers.setText('elapsedTime', formatElapsedTime(stats.elapsed_time));
+        // Same pair as the two cards above, so the ETA describes the work in
+        // flight instead of a book whose remaining 2 chunks would be paced by
+        // the 10 it already had.
         updateEstimatedTimeRemaining(
-            stats.completed_chunks || 0,
-            stats.total_chunks || 0,
+            scope.completed,
+            scope.total,
             stats.elapsed_time
         );
     }
@@ -509,16 +559,29 @@ export const ProgressManager = {
         if (!data.stats) return;
 
         const stats = data.stats;
-        const completed = stats.completed_chunks || 0;
-        const total = stats.total_chunks || 0;
+        const scope = resolveDisplayChunks(stats);
+        const completed = scope.completed;
+        const total = scope.total;
 
         // The bar value is server-authoritative: the backend emits a single
         // canonical `percent` (see src/core/progress) with the phase mapping
         // and monotonic floor already applied. Display it verbatim; the chunk
         // ratio is only a defensive fallback should `percent` ever be absent.
-        const globalPercent = typeof stats.percent === 'number'
-            ? stats.percent
-            : (total > 0 ? (completed / total) * 100 : 0);
+        //
+        // The one exception is a repair pass, where the canonical `percent`
+        // answers a different question (how much of the *book* is done, which
+        // is what the checkpoint and the resumable-job card need) than the one
+        // the panel is asking. It is overridden here rather than in
+        // `snapshot_from_legacy_stats`, so the server-side contract - the
+        // canonical percent, its monotonic floor in handlers.py, and the
+        // DB-facing `progress_percentage` - keeps its book-level meaning. The
+        // bar is only ever written from this one site per socket update, so the
+        // two routes cannot fight each other.
+        const globalPercent = scope.isRepair
+            ? (total > 0 ? Math.min(100, (completed / total) * 100) : 0)
+            : (typeof stats.percent === 'number'
+                ? stats.percent
+                : (total > 0 ? (completed / total) * 100 : 0));
         updateProgressBar(globalPercent);
 
         updateOperationLabel(stats);
