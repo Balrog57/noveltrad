@@ -182,12 +182,15 @@ def _validate_provider_credentials(config):
         # one for the official API, mirroring the factory's heuristic.
         key_required = (provider != 'openai'
                         or 'api.openai.com' in (config.get('llm_api_endpoint') or ''))
-        if key_required and not (config.get(f"{provider}_api_key") or os.getenv(env_var)):
-            return jsonify({
-                "error": "Missing API key for provider",
-                "message": (f"Resuming with '{provider}' requires an API key. "
-                            f"Set {env_var} in .env or include it in the request."),
-            }), 400
+        if key_required:
+            resolved = config.get(f"{provider}_api_key") or os.getenv(env_var)
+            if not resolved:
+                return jsonify({
+                    "error": "Missing API key for provider",
+                    "message": (f"Resuming with '{provider}' requires an API key. "
+                                f"Set {env_var} in .env or include it in the request."),
+                }), 400
+            config[f"{provider}_api_key"] = resolved
 
     if provider in _ENDPOINT_PROVIDERS and not config.get('llm_api_endpoint'):
         return jsonify({
