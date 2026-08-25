@@ -255,12 +255,29 @@ class GlossaryStore:
                         )
                         conn.commit()
                         return
+                    cursor.execute("BEGIN")
                     legacy_cur.execute(
                         "SELECT id, name, source_language, target_language, "
                         "       created_at, updated_at FROM glossaries"
                     )
-                    glossary_rows = legacy_cur.fetchall()
-                    if not glossary_rows:
+                    glossaries_migrated = 0
+                    for row in legacy_cur:
+                        cursor.execute(
+                            "INSERT INTO glossaries "
+                            "(id, name, source_language, target_language, created_at, updated_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?)",
+                            (
+                                row["id"],
+                                row["name"],
+                                row["source_language"] or "",
+                                row["target_language"] or "",
+                                row["created_at"],
+                                row["updated_at"],
+                            ),
+                        )
+                        glossaries_migrated += 1
+
+                    if glossaries_migrated == 0:
                         cursor.execute(
                             "INSERT OR REPLACE INTO _migration_state (key, value) VALUES (?, ?)",
                             ("legacy_migration_done", "1"),
@@ -272,7 +289,34 @@ class GlossaryStore:
                         "SELECT id, glossary_id, source_term, translated_term, category "
                         "FROM glossary_terms"
                     )
-                    term_rows = legacy_cur.fetchall()
+                    terms_migrated = 0
+                    for row in legacy_cur:
+                        cursor.execute(
+                            "INSERT INTO glossary_terms "
+                            "(id, glossary_id, source_term, translated_term, category) "
+                            "VALUES (?, ?, ?, ?, ?)",
+                            (
+                                row["id"],
+                                row["glossary_id"],
+                                row["source_term"],
+                                row["translated_term"],
+                                row["category"],
+                            ),
+                        )
+                        terms_migrated += 1
+
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO _migration_state (key, value) VALUES (?, ?)",
+                        ("legacy_migration_done", "1"),
+                    )
+                    conn.commit()
+                    logger.info(
+                        "Migrated %d glossaries (%d terms) from %s to %s",
+                        glossaries_migrated, terms_migrated, LEGACY_DB_PATH, self.db_path,
+                    )
+                except Exception:
+                    conn.rollback()
+                    raise
                 finally:
                     legacy.close()
             except sqlite3.DatabaseError as exc:
@@ -281,48 +325,6 @@ class GlossaryStore:
                     LEGACY_DB_PATH, exc,
                 )
                 return
-
-            try:
-                cursor.execute("BEGIN")
-                for row in glossary_rows:
-                    cursor.execute(
-                        "INSERT INTO glossaries "
-                        "(id, name, source_language, target_language, created_at, updated_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        (
-                            row["id"],
-                            row["name"],
-                            row["source_language"] or "",
-                            row["target_language"] or "",
-                            row["created_at"],
-                            row["updated_at"],
-                        ),
-                    )
-                for row in term_rows:
-                    cursor.execute(
-                        "INSERT INTO glossary_terms "
-                        "(id, glossary_id, source_term, translated_term, category) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (
-                            row["id"],
-                            row["glossary_id"],
-                            row["source_term"],
-                            row["translated_term"],
-                            row["category"],
-                        ),
-                    )
-                cursor.execute(
-                    "INSERT OR REPLACE INTO _migration_state (key, value) VALUES (?, ?)",
-                    ("legacy_migration_done", "1"),
-                )
-                conn.commit()
-                logger.info(
-                    "Migrated %d glossaries (%d terms) from %s to %s",
-                    len(glossary_rows), len(term_rows), LEGACY_DB_PATH, self.db_path,
-                )
-            except Exception:
-                conn.rollback()
-                raise
 
     def _migrate_drop_notes_column(self, cursor: sqlite3.Cursor):
         """Drop the legacy `notes` column from glossary_terms if present."""
