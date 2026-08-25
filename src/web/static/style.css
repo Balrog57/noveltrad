@@ -1561,6 +1561,20 @@ select.form-control {
     transition: background 0.2s, border-radius 0.2s, margin 0.2s, box-shadow 0.2s;
 }
 
+/* Collapsible section headers use <button> for keyboard access; reset native chrome. */
+button.prompt-options-toggle {
+    width: 100%;
+    font: inherit;
+    text-align: left;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.prompt-options-toggle:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
 .prompt-options-toggle:hover {
     box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
 }

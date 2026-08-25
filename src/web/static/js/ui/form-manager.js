@@ -232,11 +232,15 @@ export const FormManager = {
     toggleActivityLog() {
         const section = DomHelpers.getElement('activityLogSection');
         const icon = DomHelpers.getElement('activityLogIcon');
+        const toggle = DomHelpers.getElement('activityLogToggle');
 
         if (!section || !icon) return;
 
         const isHidden = section.classList.toggle('hidden');
         icon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', String(!isHidden));
+        }
 
         // Update state
         StateManager.setState('ui.isActivityLogOpen', !isHidden);
