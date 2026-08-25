@@ -4,6 +4,7 @@ Security and file upload routes
 from pathlib import Path
 from flask import Blueprint, request, jsonify, current_app
 
+from src.api.services.path_validator import PathValidator
 from src.utils.security import SecureFileHandler, rate_limiter, get_client_ip, SecurityError
 from src.utils.language_detector import LanguageDetector
 
@@ -235,30 +236,25 @@ def create_security_blueprint(output_dir):
                 return jsonify({"error": "No file path provided"}), 400
 
             file_path_str = data['file_path']
-            file_path = Path(file_path_str)
-
-            # Security: ensure file exists
-            if not file_path.exists():
-                return jsonify({"error": "File not found"}), 404
-
-            # Security: ensure file is within upload directory
-            resolved = file_path.resolve()
-            upload_resolved = secure_file_handler.upload_dir.resolve()
-            if not str(resolved).startswith(str(upload_resolved)):
-                return jsonify({"error": "Access denied"}), 403
+            safe_path, path_error = PathValidator.validate_upload_path(
+                file_path_str, secure_file_handler.upload_dir
+            )
+            if path_error:
+                status = 404 if path_error == "File not found" else 403
+                return jsonify({"error": path_error}), status
 
             # Read file and detect language
-            with open(file_path, 'rb') as f:
+            with open(safe_path, 'rb') as f:
                 file_data = f.read()
 
             detected_language, confidence = LanguageDetector.detect_language_from_file(
-                file_data, file_path.name
+                file_data, safe_path.name
             )
 
             if detected_language:
                 current_app.logger.info(
                     f"Language detected: {detected_language} "
-                    f"(confidence: {confidence:.2f}) for {file_path.name}"
+                    f"(confidence: {confidence:.2f}) for {safe_path.name}"
                 )
                 return jsonify({
                     "success": True,
@@ -290,9 +286,8 @@ def create_security_blueprint(output_dir):
             thumbnails_dir = Path(output_dir) / 'thumbnails'
             thumbnail_path = thumbnails_dir / safe_filename
 
-            # Security: ensure path is within thumbnails directory
-            resolved = thumbnail_path.resolve()
-            if not str(resolved).startswith(str(thumbnails_dir.resolve())):
+            # Security: ensure path is within thumbnails directory (never str.startswith)
+            if not PathValidator.is_within_directory(thumbnail_path, thumbnails_dir):
                 return jsonify({"error": "Access denied"}), 403
 
             if not thumbnail_path.exists():
