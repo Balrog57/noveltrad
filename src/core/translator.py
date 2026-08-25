@@ -115,6 +115,7 @@ def _build_chunk_glossary_block(
         term_metadata=metadata,
         max_entries=getattr(config, "max_cast_entries", None) or 0,
         chunk_content=chunk_content,
+        matched_sources=set(filtered),
     )
 
     if (

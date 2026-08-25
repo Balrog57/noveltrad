@@ -16,7 +16,7 @@ Two blocks live here:
   chunk-filtered glossary says nothing there. That is exactly where a model
   falls back to masculine for everyone.
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from src.core.glossary.filter import filter_glossary
 from src.core.glossary.inflection import target_language_is_inflected
@@ -110,6 +110,7 @@ def build_cast_block(
     term_metadata: Optional[Dict[str, Dict[str, str]]] = None,
     max_entries: int = DEFAULT_MAX_CAST_ENTRIES,
     chunk_content: str = "",
+    matched_sources: Optional[Set[str]] = None,
 ) -> Tuple[str, bool]:
     """
     Render the cast block listing entities with a known gender.
@@ -134,6 +135,9 @@ def build_cast_block(
             saga would be a permanent token tax.
         chunk_content: optional source text of the current chunk. Used only
             to prioritize which names survive the cap.
+        matched_sources: optional pre-filtered source keys from a prior
+            ``filter_glossary`` call. When provided with a capped cast, skips
+            a second full-chunk glossary scan.
 
     Returns:
         (block, capped). ``block`` is "" when no entity has a known gender —
@@ -164,8 +168,10 @@ def build_cast_block(
     capped = False
     if max_entries and len(entries) > max_entries:
         capped = True
-        in_chunk_keys = set()
-        if chunk_content:
+        in_chunk_keys: Set[str] = set()
+        if matched_sources is not None:
+            in_chunk_keys = matched_sources
+        elif chunk_content:
             gendered_terms = {source: target for source, _, target, _ in entries}
             matched, _ = filter_glossary(
                 chunk_content,

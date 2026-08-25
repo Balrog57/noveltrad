@@ -553,6 +553,8 @@ def _glossary_block_for(glossary_data: Optional[Dict[str, Any]], text: str) -> s
             glossary_data["terms_dict"],
             term_metadata=glossary_data["term_metadata"],
             max_entries=config.max_cast_entries,
+            chunk_content=text,
+            matched_sources=set(filtered),
         )
         return "\n".join(b for b in (cast_block, glossary_block) if b)
     except Exception as exc:
