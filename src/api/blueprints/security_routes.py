@@ -4,6 +4,7 @@ Security and file upload routes
 from pathlib import Path
 from flask import Blueprint, request, jsonify, current_app
 
+from src.api.services.path_validator import PathValidator
 from src.utils.security import SecureFileHandler, rate_limiter, get_client_ip, SecurityError
 from src.utils.language_detector import LanguageDetector
 
@@ -211,8 +212,13 @@ def create_security_blueprint(output_dir):
             missing_files = []
 
             for file_path_str in file_paths:
-                file_path = Path(file_path_str)
-                if file_path.exists():
+                # Only paths inside the upload directory may be probed; treat
+                # out-of-bounds and missing files alike so callers cannot map
+                # the host filesystem.
+                resolved, _err = PathValidator.validate_upload_path(
+                    file_path_str, secure_file_handler.upload_dir
+                )
+                if resolved is not None:
                     existing_files.append(file_path_str)
                 else:
                     missing_files.append(file_path_str)
@@ -224,7 +230,7 @@ def create_security_blueprint(output_dir):
 
         except Exception as e:
             current_app.logger.error(f"Error verifying uploaded files: {str(e)}")
-            return jsonify({"error": "Verification failed", "details": str(e)}), 500
+            return jsonify({"error": "Verification failed"}), 500
 
     @bp.route('/api/detect-language', methods=['POST'])
     def detect_language():
