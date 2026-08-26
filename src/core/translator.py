@@ -4,8 +4,6 @@ Translation module for LLM communication
 import asyncio
 import time
 import re
-import hashlib
-import json
 from tqdm.auto import tqdm
 
 from src.config import (
@@ -41,7 +39,6 @@ _TAG_INSPECTOR = TranslationExtractor(TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT)
 MAX_CHUNK_REDUCTION_ATTEMPTS = 3
 CHUNK_REDUCTION_FACTOR = 0.6  # Reduce to 60% of original size each attempt
 MIN_CHUNK_CHARACTERS = 200  # Minimum chunk size to attempt translation
-REFINEMENT_PROMPT_VERSION = "source-aware-three-pass-v3"
 
 
 def _build_chunk_glossary_block(
@@ -634,11 +631,6 @@ async def _make_refinement_request(
     prompt_options: dict = None,
     context_manager: AdaptiveContextManager = None,
     runtime_state: Optional[dict] = None,
-    refinement_phase: int = 3,
-    source_translation: str = "",
-    initial_translation: str = "",
-    previous_refined_translation: str = "",
-    refinement_history: Optional[List[str]] = None,
 ) -> Tuple[Optional[str], Optional[LLMResponse]]:
     """
     Make LLM request for refinement pass.
@@ -682,11 +674,6 @@ async def _make_refinement_request(
         prompt_options=prompt_options,
         additional_instructions=refinement_instructions,
         glossary_block=glossary_block,
-        refinement_phase=refinement_phase,
-        source_translation=source_translation,
-        initial_translation=initial_translation,
-        previous_refined_translation=previous_refined_translation,
-        refinement_history=refinement_history,
     )
 
     client = llm_client or default_client
@@ -908,41 +895,6 @@ async def refine_chunks(
     Returns:
         List of refined text strings
     """
-    # The four-phase workflow is shared by translation+refine and refine-only.
-    # Keep the original single-pass implementation below as the default, but
-    # explicitly route opted-in jobs through the three refinement passes.
-    refinement_options = prompt_options or {}
-    if refinement_options.get("four_pass_refinement") or refinement_options.get("three_pass_refinement"):
-        return await _refine_chunks_four_pass(
-            translated_chunks=translated_chunks,
-            original_chunks=original_chunks,
-            target_language=target_language,
-            model_name=model_name,
-            api_endpoint=api_endpoint,
-            log_callback=log_callback,
-            stats_callback=stats_callback,
-            check_interruption_callback=check_interruption_callback,
-            llm_provider=llm_provider,
-            gemini_api_key=gemini_api_key,
-            openai_api_key=openai_api_key,
-            openrouter_api_key=openrouter_api_key,
-            mistral_api_key=mistral_api_key,
-            deepseek_api_key=deepseek_api_key,
-            poe_api_key=poe_api_key,
-            nim_api_key=nim_api_key,
-            anthropic_api_key=anthropic_api_key,
-            xai_api_key=xai_api_key,
-            opencode_api_key=opencode_api_key,
-            opencodego_api_key=opencodego_api_key,
-            ollamacloud_api_key=ollamacloud_api_key,
-            context_window=context_window,
-            auto_adjust_context=auto_adjust_context,
-            prompt_options=prompt_options,
-            checkpoint_manager=checkpoint_manager,
-            translation_id=translation_id,
-            refinement_output_filepath=refinement_output_filepath,
-        )
-
     total_chunks = len(translated_chunks)
     refined_parts = []
     last_refined_context = ""
@@ -1103,6 +1055,15 @@ async def refine_chunks(
             if refined_text is not None:
                 # Clean the refined text
                 refined_text = clean_translated_text(refined_text)
+                from .refine.structure import is_plain_text_structure_safe
+                if not is_plain_text_structure_safe(draft_text, refined_text):
+                    if log_callback:
+                        log_callback(
+                            "refinement_structure_rejected",
+                            f"⚠️ Refinement changed protected text structure "
+                            f"for chunk {i + 1}; keeping the previous valid draft.",
+                        )
+                    refined_text = draft_text
                 refined_parts.append(refined_text)
                 progress_tracker.mark_completed(i, chunk_elapsed)
 
@@ -1137,295 +1098,3 @@ async def refine_chunks(
 
 
 # Subtitle translation functions moved to subtitle_translator.py
-
-
-async def _refine_chunks_four_pass(
-    translated_chunks: List[str],
-    original_chunks: List[Dict],
-    target_language: str,
-    model_name: str,
-    api_endpoint: str,
-    log_callback=None,
-    stats_callback=None,
-    check_interruption_callback=None,
-    llm_provider="ollama",
-    gemini_api_key=None,
-    openai_api_key=None,
-    openrouter_api_key=None,
-    mistral_api_key=None,
-    deepseek_api_key=None,
-    poe_api_key=None,
-    nim_api_key=None,
-    anthropic_api_key=None,
-    xai_api_key=None,
-    opencode_api_key=None,
-    opencodego_api_key=None,
-    ollamacloud_api_key=None,
-    context_window=2048,
-    auto_adjust_context=True,
-    prompt_options=None,
-    checkpoint_manager=None,
-    translation_id=None,
-    refinement_output_filepath=None,
-) -> List[str]:
-    """Run the refinement workflow as three explicit post-translation passes.
-
-    Pass 1 uses source and neighboring blocks for continuity decisions, pass 2
-    performs orthography/grammar correction, and pass 3 synthesizes the final prose.
-    The same client/model is reused for every pass and a rate-limit error
-    carries the partial result so the caller can save a resumable checkpoint.
-    """
-    if not translated_chunks:
-        return []
-    is_thinking = any(tm in model_name.lower() for tm in THINKING_MODELS)
-    initial_context = max(context_window, 4096) if not auto_adjust_context else max(
-        ADAPTIVE_CONTEXT_INITIAL_THINKING if is_thinking else INITIAL_CONTEXT_SIZE * 2, 4096
-    )
-    client = create_llm_client(
-        llm_provider, gemini_api_key, api_endpoint, model_name,
-        openai_api_key=openai_api_key, openrouter_api_key=openrouter_api_key,
-        mistral_api_key=mistral_api_key, deepseek_api_key=deepseek_api_key,
-        poe_api_key=poe_api_key, nim_api_key=nim_api_key,
-        anthropic_api_key=anthropic_api_key, xai_api_key=xai_api_key,
-        opencode_api_key=opencode_api_key,
-        opencodego_api_key=opencodego_api_key,
-        ollamacloud_api_key=ollamacloud_api_key, context_window=initial_context,
-        log_callback=log_callback,
-    )
-    if not client:
-        return list(translated_chunks)
-    # A refinement checkpoint is independent from the regular translation
-    # checkpoint. It records the exact pass and segment so a resume never
-    # repeats a completed call or loses earlier revisions.
-    checkpoint_state = None
-    source_identity = [
-        (
-            chunk.get("source_text", "")
-            or chunk.get("original_text", "")
-            or chunk.get("source", "")
-        )
-        for chunk in original_chunks[:len(translated_chunks)]
-    ]
-    source_hash = hashlib.sha256(
-        json.dumps(source_identity, ensure_ascii=False, sort_keys=True).encode("utf-8")
-    ).hexdigest()
-    initial_hash = hashlib.sha256(
-        json.dumps(list(translated_chunks), ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
-    if checkpoint_manager and translation_id:
-        try:
-            checkpoint_state = checkpoint_manager.load_refinement_state(translation_id)
-        except Exception:
-            checkpoint_state = None
-
-    def _valid_checkpoint(state):
-        if not isinstance(state, dict) or state.get("version") != 1:
-            return False
-        if state.get("total_segments") != len(translated_chunks):
-            return False
-        if state.get("source_hash") != source_hash:
-            return False
-        stored_initial = state.get("initial")
-        stored_hash = hashlib.sha256(
-            json.dumps(list(stored_initial or []), ensure_ascii=False).encode("utf-8")
-        ).hexdigest() if isinstance(stored_initial, list) else ""
-        # Identity is source/model/prompt plus the checkpoint's own initial
-        # drafts. Do not hash the incoming file: on resume that file is the
-        # partial current output, not the original translation.
-        if state.get("initial_hash") != stored_hash:
-            return False
-        if state.get("model") != model_name:
-            return False
-        if state.get("prompt_version") != REFINEMENT_PROMPT_VERSION:
-            return False
-        initial_state = state.get("initial")
-        current_state = state.get("current")
-        history_state = state.get("history")
-        if not isinstance(initial_state, list) or not isinstance(current_state, list):
-            return False
-        if not isinstance(history_state, list):
-            return False
-        if len(initial_state) != len(translated_chunks):
-            return False
-        if len(current_state) != len(translated_chunks) or len(history_state) != len(translated_chunks):
-            return False
-        phase = state.get("phase")
-        next_segment = state.get("next_segment")
-        return (
-            isinstance(phase, int) and 1 <= phase <= 4
-            and isinstance(next_segment, int)
-            and 0 <= next_segment <= len(translated_chunks)
-        )
-
-    if _valid_checkpoint(checkpoint_state):
-        initial = list(checkpoint_state["initial"])
-        current = list(checkpoint_state["current"])
-        history = [list(revisions) for revisions in checkpoint_state["history"]]
-        start_phase = checkpoint_state["phase"]
-        start_segment = checkpoint_state["next_segment"]
-        if log_callback:
-            log_callback(
-                "refinement_checkpoint_loaded",
-                f"↻ Resuming refinement pass {start_phase}/3 at segment "
-                f"{start_segment + 1}/{len(current)}.",
-            )
-    else:
-        if checkpoint_state and log_callback:
-            log_callback(
-                "refinement_checkpoint_discarded",
-                "⚠️ Refinement checkpoint does not match the current source/model/prompt; restarting safely.",
-            )
-        initial = list(translated_chunks)
-        current = list(translated_chunks)
-        # Keep revisions per segment. Never use a neighboring segment as the
-        # previous revision for the current one.
-        history = [[text] for text in initial]
-        start_phase = 1
-        start_segment = 0
-
-    def _save_state(phase, next_segment, current_value):
-        if not checkpoint_manager or not translation_id:
-            return None
-        state = {
-            "version": 1,
-            "phase": phase,
-            "next_segment": next_segment,
-            "total_segments": len(initial),
-            "initial": list(initial),
-            "current": list(current_value),
-            "history": [list(revisions) for revisions in history],
-            "refinement_total_passes": 3,
-            "source_hash": source_hash,
-            "initial_hash": initial_hash,
-            "model": model_name,
-            "prompt_version": REFINEMENT_PROMPT_VERSION,
-        }
-        if refinement_output_filepath:
-            state["output_filepath"] = refinement_output_filepath
-        try:
-            checkpoint_manager.save_refinement_state(translation_id, state)
-        except Exception:
-            if log_callback:
-                log_callback(
-                    "refinement_checkpoint_warning",
-                    "⚠️ Could not persist refinement checkpoint.",
-                )
-        return state
-    runtime_state: dict = {}
-    context_manager = None
-    if llm_provider == "ollama" and auto_adjust_context:
-        from .context_optimizer import MAX_CONTEXT_SIZE
-        context_manager = AdaptiveContextManager(
-            initial_context=initial_context,
-            context_step=CONTEXT_STEP,
-            max_context=MAX_CONTEXT_SIZE,
-            log_callback=log_callback,
-        )
-    try:
-        for phase in range(start_phase, 4):
-            if log_callback:
-                log_callback("refinement_phase_start", f"Starting refinement pass {phase}/3 ({len(current)} blocks)...")
-            phase_start_segment = start_segment if phase == start_phase else 0
-            next_parts = list(current[:phase_start_segment])
-            base_total = len(current)
-            for index in range(phase_start_segment, len(current)):
-                draft = current[index]
-                if check_interruption_callback and check_interruption_callback():
-                    resumable_current = next_parts + current[index:]
-                    state = _save_state(phase, index, resumable_current)
-                    exc = RefinementInterrupted(
-                        partial_result=list(resumable_current),
-                        refinement_state=state,
-                    )
-                    raise exc
-                if not draft or len(draft.strip()) <= 1:
-                    next_parts.append(draft)
-                    _save_state(phase, index + 1, next_parts + current[index + 1:])
-                    continue
-                before = current[index - 1] if index else ""
-                after = current[index + 1] if index + 1 < len(current) else ""
-                if not before and index < len(original_chunks):
-                    before = original_chunks[index].get("context_before", "")
-                if not after and index < len(original_chunks):
-                    after = original_chunks[index].get("context_after", "")
-                source_text = ""
-                if index < len(original_chunks):
-                    source_text = (
-                        original_chunks[index].get("source_text", "")
-                        or original_chunks[index].get("original_text", "")
-                        or original_chunks[index].get("source", "")
-                    )
-                initial_text = initial[index] if index < len(initial) else draft
-                same_segment_history = history[index][1:] if index < len(history) else []
-                try:
-                    refined, response = await _make_refinement_request(
-                        draft_translation=draft,
-                        context_before=before,
-                        context_after=after,
-                        previous_refined_context=current[index - 1] if index else "",
-                        target_language=target_language,
-                        model=model_name,
-                        llm_client=client,
-                        log_callback=log_callback,
-                        has_placeholders=False,
-                        prompt_options=prompt_options,
-                        context_manager=context_manager,
-                        runtime_state=runtime_state,
-                        refinement_phase=phase,
-                        source_translation=source_text,
-                        initial_translation=initial_text,
-                        previous_refined_translation=(
-                            same_segment_history[-1] if same_segment_history else ""
-                        ),
-                        refinement_history=same_segment_history,
-                    )
-                except RateLimitError as exc:
-                    # Preserve the completed prefix and the untouched suffix so
-                    # the caller can save a resumable output before propagating
-                    # the pause to the job runner.
-                    resumable_current = next_parts + current[index:]
-                    state = _save_state(phase, index, resumable_current)
-                    exc.partial_result = list(resumable_current)
-                    exc.refinement_state = state
-                    raise
-                refined_part = clean_translated_text(refined) if refined else draft
-                from .refine.structure import is_plain_text_structure_safe
-                if refined and not is_plain_text_structure_safe(draft, refined_part):
-                    if log_callback:
-                        log_callback(
-                            "refinement_structure_rejected",
-                            f"⚠️ Refinement pass {phase} changed protected text structure "
-                            f"for chunk {index + 1}; keeping the previous valid draft.",
-                        )
-                    refined_part = draft
-                next_parts.append(refined_part)
-                history[index].append(refined_part)
-                _save_state(phase, index + 1, next_parts + current[index + 1:])
-                if stats_callback:
-                    stats_callback({
-                        # Report one monotonic refinement stream across all
-                        # three passes. Consumers that expose workflow phases
-                        # can still use refinement_pass for labels.
-                        "total_chunks": base_total * 3,
-                        "completed_chunks": (phase - 1) * base_total + index + 1,
-                        "failed_chunks": 0 if refined else 1,
-                        "refinement_pass": phase,
-                        "refinement_total_passes": 3,
-                    })
-            current = next_parts
-            _save_state(phase + 1, 0, current)
-            start_segment = 0
-            if log_callback:
-                log_callback("refinement_phase_complete", f"Completed refinement pass {phase}/3.")
-    except (RateLimitError, RefinementInterrupted) as exc:
-        if not hasattr(exc, "partial_result") or exc.partial_result is None:
-            exc.partial_result = current
-        raise
-    finally:
-        await client.close()
-    if checkpoint_manager and translation_id:
-        try:
-            checkpoint_manager.delete_refinement_state(translation_id)
-        except Exception:
-            pass
-    return current

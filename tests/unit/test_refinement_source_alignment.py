@@ -34,7 +34,7 @@ async def test_txt_refiner_attaches_original_source_to_each_target_chunk(
         target_language="French",
         model_name="test-model",
         cli_api_endpoint="https://example.test/v1",
-        prompt_options={"four_pass_refinement": True},
+        prompt_options={},
     )
 
     assert result is True

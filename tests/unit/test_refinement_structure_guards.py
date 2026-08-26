@@ -16,7 +16,7 @@ async def test_epub_refinement_keeps_previous_chunks_on_alignment_mismatch():
         context_manager=None,
         placeholder_format=("[", "]"),
         log_callback=None,
-        prompt_options={"refinement_phase": 1},
+        prompt_options={"enable_refinement": True},
     )
 
     assert result == ["already translated"]
@@ -43,12 +43,13 @@ async def test_generic_refinement_keeps_draft_when_structure_changes(monkeypatch
 
     monkeypatch.setattr(translator, "_make_refinement_request", fake_request)
     draft = "# Chapter\n\n- Keep this [link](https://example.test)."
-    result = await translator._refine_chunks_four_pass(
+    result = await translator.refine_chunks(
         translated_chunks=[draft],
         original_chunks=[{"source_text": "source"}],
         target_language="French",
         model_name="test-model",
         api_endpoint="https://example.test/v1",
+        llm_provider="openai",
         auto_adjust_context=False,
     )
 

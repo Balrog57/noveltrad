@@ -1,62 +1,25 @@
-from src.prompts.prompts import generate_refinement_prompt
-from src.core.translator import REFINEMENT_PROMPT_VERSION
+from src.prompts.prompts import generate_refinement_prompt, generate_subtitle_refinement_block_prompt
 
 
-def test_refinement_prompt_version_is_v3():
-    assert REFINEMENT_PROMPT_VERSION == "source-aware-three-pass-v3"
-
-
-def test_refinement_prompt_anchors_source_and_full_history():
+def test_tbl_refinement_prompt_is_one_pass_literary():
     prompt = generate_refinement_prompt(
         draft_translation="draft",
         target_language="French",
-        refinement_phase=3,
-        source_translation="source passage",
-        initial_translation="initial draft",
-        previous_refined_translation="previous revision",
     )
 
-    assert "pass 3/3" in prompt.system
-    assert "natural human French" in prompt.system
-    assert "SOURCE TEXT (meaning anchor)" in prompt.user
-    assert "source passage" in prompt.user
-    assert "INITIAL TRANSLATION" in prompt.user
-    assert "initial draft" in prompt.user
-    assert "PREVIOUS REFINEMENT" in prompt.user
-    assert "previous revision" in prompt.user
-
-
-def test_refinement_phase_guidance_is_strengthened():
-    context = generate_refinement_prompt(
-        draft_translation="draft",
-        target_language="French",
-        refinement_phase=1,
-    )
-    correction = generate_refinement_prompt(
-        draft_translation="draft",
-        target_language="French",
-        refinement_phase=2,
-    )
-    final = generate_refinement_prompt(
-        draft_translation="draft",
-        target_language="French",
-        refinement_phase=3,
-    )
-
-    assert "calque" in context.system
-    assert "entirely in the target language" in context.system
-    assert "idiomatic target-language phrasing" in correction.system
-    assert "natural human French" in final.system
-    assert "smallest changes" not in final.system
-    assert "never leave source-language wording" in final.system
-
-
-def test_refinement_prompt_remains_monolingual_without_source():
-    prompt = generate_refinement_prompt(
-        draft_translation="texte déjà traduit",
-        target_language="French",
-        refinement_phase=1,
-    )
-
-    assert "pass 1/3" in prompt.system
+    assert "pass 3/3" not in prompt.system
+    assert "CURRENT REFINEMENT STAGE" not in prompt.system
+    assert "REWRITE it with perfect literary French style" in prompt.system
     assert "SOURCE TEXT (meaning anchor)" not in prompt.user
+    assert "Provide your refined version now:" in prompt.user
+
+
+def test_tbl_subtitle_refinement_prompt_is_one_pass():
+    prompt = generate_subtitle_refinement_block_prompt(
+        subtitle_blocks=[(0, "draft cue")],
+        target_language="French",
+    )
+
+    assert "pass 3/3" not in prompt.system
+    assert "SOURCE SUBTITLES" not in prompt.user
+    assert "Provide your refined block now:" in prompt.user
