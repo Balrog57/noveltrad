@@ -1645,6 +1645,12 @@ async def _refine_epub_chunks_once(
         local_context_before = _localize_placeholders(context_before)
         local_context_after = _localize_placeholders(context_after)
 
+        source_translation = ""
+        if source_chunks and idx < len(source_chunks):
+            source_chunk = source_chunks[idx] or {}
+            source_raw = source_chunk.get("text") or source_chunk.get("main_content") or ""
+            source_translation = _localize_placeholders(source_raw)
+
         # Generate refinement prompt using text with LOCAL indices
         prompt_pair = generate_post_processing_prompt(
             translated_text=text_for_refinement,  # Use localized version
@@ -1655,6 +1661,8 @@ async def _refine_epub_chunks_once(
             has_placeholders=True,
             placeholder_format=placeholder_format,
             prompt_options=prompt_options,
+            source_translation=source_translation,
+            source_language=(prompt_options or {}).get("source_language", ""),
         )
 
         # Make refinement request

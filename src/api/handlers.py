@@ -830,6 +830,11 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             if refinement_instructions:
                 config['prompt_options']['refinement_instructions'] = refinement_instructions
 
+        if config.get('source_language'):
+            if 'prompt_options' not in config:
+                config['prompt_options'] = {}
+            config['prompt_options'].setdefault('source_language', config['source_language'])
+
         # Surface glossary load result (snapshot was taken earlier, before start_job).
         glossary_terms_snapshot = config.get('prompt_options', {}).get('glossary_terms')
         glossary_load_error = config.get('prompt_options', {}).pop('glossary_load_error', None)

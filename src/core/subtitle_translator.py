@@ -354,9 +354,20 @@ async def _refine_subtitle_translations_once(
                     f"Missing indices last time: {missing_str}. Do NOT stop early."
                 )
 
+            source_subtitle_blocks = None
+            if source_subtitles:
+                source_subtitle_blocks = []
+                for local_idx, g_idx in enumerate(group):
+                    if 0 <= g_idx < len(source_subtitles):
+                        source_text = source_subtitles[g_idx].get("text", "")
+                    else:
+                        source_text = ""
+                    source_subtitle_blocks.append((local_idx, source_text))
+
             try:
                 prompt_pair = generate_subtitle_refinement_block_prompt(
                     subtitle_blocks=local_subtitle_tuples,
+                    source_subtitle_blocks=source_subtitle_blocks,
                     previous_refined_block=(
                         previous_refined_block
                         + (f"\n\nNext block context:\n{next_block_context}" if next_block_context else "")
@@ -364,6 +375,7 @@ async def _refine_subtitle_translations_once(
                     target_language=target_language,
                     additional_instructions=extra_instructions,
                     glossary_block=glossary_block,
+                    source_language=(prompt_options or {}).get("source_language", ""),
                 )
 
                 if log_callback and attempt > 0:

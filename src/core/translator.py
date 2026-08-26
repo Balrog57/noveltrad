@@ -631,6 +631,7 @@ async def _make_refinement_request(
     prompt_options: dict = None,
     context_manager: AdaptiveContextManager = None,
     runtime_state: Optional[dict] = None,
+    source_translation: str = "",
 ) -> Tuple[Optional[str], Optional[LLMResponse]]:
     """
     Make LLM request for refinement pass.
@@ -674,6 +675,8 @@ async def _make_refinement_request(
         prompt_options=prompt_options,
         additional_instructions=refinement_instructions,
         glossary_block=glossary_block,
+        source_translation=source_translation,
+        source_language=(prompt_options or {}).get("source_language", ""),
     )
 
     client = llm_client or default_client
@@ -1007,9 +1010,11 @@ async def refine_chunks(
             # Get context from original chunks if available
             context_before = ""
             context_after = ""
+            source_translation = ""
             if i < len(original_chunks):
                 context_before = original_chunks[i].get("context_before", "")
                 context_after = original_chunks[i].get("context_after", "")
+                source_translation = original_chunks[i].get("source_text", "") or ""
 
             # Make refinement request
             try:
@@ -1026,6 +1031,7 @@ async def refine_chunks(
                     prompt_options=prompt_options,
                     context_manager=context_manager,
                     runtime_state=runtime_state,
+                    source_translation=source_translation,
                 )
             except RateLimitError as e:
                 if log_callback:
