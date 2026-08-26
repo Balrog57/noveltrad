@@ -21,9 +21,9 @@ const STATUS_ID_MAP = {
     'nimApiKey': 'nimKeyStatus',
     'anthropicApiKey': 'anthropicKeyStatus',
     'xaiApiKey': 'xaiKeyStatus',
-    'nexumApiKey': 'nexumKeyStatus',
     'opencodeApiKey': 'opencodeKeyStatus',
-    'opencodegoApiKey': 'opencodegoKeyStatus'
+    'opencodegoApiKey': 'opencodegoKeyStatus',
+    'ollamacloudApiKey': 'ollamacloudKeyStatus'
 };
 
 /**
@@ -39,9 +39,9 @@ const PROVIDER_FIELD_MAP = {
     'nim': 'nimApiKey',
     'anthropic': 'anthropicApiKey',
     'xai': 'xaiApiKey',
-    'nexum': 'nexumApiKey',
     'opencode': 'opencodeApiKey',
-    'opencodego': 'opencodegoApiKey'
+    'opencodego': 'opencodegoApiKey',
+    'ollamacloud': 'ollamacloudApiKey'
 };
 
 export const ApiKeyUtils = {
@@ -223,8 +223,16 @@ export const ApiKeyUtils = {
             return { valid: false, message: t('errors:api_key_required_nim') };
         }
 
-        if (['anthropic', 'xai', 'nexum', 'opencode', 'opencodego'].includes(provider) && !isAvailable) {
+        if (['anthropic', 'xai', 'opencode', 'opencodego', 'ollamacloud'].includes(provider) && !isAvailable) {
             return { valid: false, message: t('errors:api_key_required') };
+        }
+
+        if (provider === 'chatgpt') {
+            const signedIn = document.getElementById('chatgptOauthStatus')
+                ?.getAttribute('data-i18n') === 'settings:chatgpt_signed_in';
+            if (!signedIn) {
+                return { valid: false, message: t('settings:chatgpt_sign_in_to_load') };
+            }
         }
 
         return { valid: true, message: '' };

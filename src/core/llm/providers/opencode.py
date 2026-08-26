@@ -39,7 +39,7 @@ class _OpenCodeCompatibleProvider(OpenAICompatibleProvider):
                       **generation_options):
         generation_options.setdefault("max_tokens", self.DEFAULT_MAX_OUTPUT_TOKENS)
         # DeepSeek V4 (default on Zen/Go) rejects a boolean thinking flag
-        # with HTTP 400 "expected struct ThinkingOptions". Match Nexum.
+        # with HTTP 400 "expected struct ThinkingOptions".
         if "deepseek" in (self.model or "").lower():
             generation_options.setdefault("thinking", {"type": "disabled"})
         return await super().generate(

@@ -47,7 +47,7 @@ def _clamp_parallel_workers(value):
 # '<PROVIDER>_API_KEY'. The mapping is mechanical, so supporting a new provider
 # in the resume-override path requires only adding it here (and nowhere else in
 # this file).
-_KEY_PROVIDERS = ('gemini', 'openai', 'openrouter', 'mistral', 'deepseek', 'poe', 'nim', 'anthropic', 'xai', 'nexum', 'opencode', 'opencodego')
+_KEY_PROVIDERS = ('gemini', 'openai', 'openrouter', 'mistral', 'deepseek', 'poe', 'nim', 'anthropic', 'xai', 'opencode', 'opencodego', 'ollamacloud')
 
 # Providers that talk to a user-supplied endpoint; the others use a built-in one.
 _ENDPOINT_PROVIDERS = ('ollama', 'openai')
@@ -58,7 +58,7 @@ _ENDPOINT_PROVIDERS = ('ollama', 'openai')
 # so an endpoint sent alongside them is inert and must not be treated as an
 # override — the frontend sends llm_api_endpoint unconditionally.
 _ENDPOINT_CONSUMING_PROVIDERS = (
-    'ollama', 'openai', 'nim', 'anthropic', 'xai', 'nexum', 'opencode', 'opencodego'
+    'ollama', 'openai', 'nim', 'anthropic', 'xai', 'opencode', 'opencodego',
 )
 
 
@@ -78,12 +78,12 @@ def _server_default_endpoint(provider):
         return _config.ANTHROPIC_API_ENDPOINT
     if provider == 'xai':
         return _config.XAI_API_ENDPOINT
-    if provider == 'nexum':
-        return _config.NEXUM_API_ENDPOINT
     if provider == 'opencode':
         return _config.OPENCODE_API_ENDPOINT
     if provider == 'opencodego':
         return _config.OPENCODE_GO_API_ENDPOINT
+    if provider == 'ollamacloud':
+        return _config.OLLAMA_CLOUD_API_ENDPOINT
     return ''
 
 
@@ -188,6 +188,15 @@ def _validate_provider_credentials(config):
     """
     provider = (config.get('llm_provider') or 'ollama').lower()
 
+    if provider == 'chatgpt':
+        from src.core.llm.chatgpt_oauth import status_payload
+        if not status_payload().get("signed_in"):
+            return jsonify({
+                "error": "ChatGPT is not signed in",
+                "message": "Sign in with ChatGPT in Settings before starting or resuming a job.",
+            }), 400
+        return None
+
     if provider in _KEY_PROVIDERS:
         env_var = _provider_env_var(provider)
         # 'openai' also covers OpenAI-compatible local endpoints (llama.cpp,
@@ -199,6 +208,8 @@ def _validate_provider_credentials(config):
             resolved = config.get(f"{provider}_api_key") or os.getenv(env_var)
             if provider == 'opencodego':
                 resolved = resolved or os.getenv('OPENCODE_API_KEY')
+            if provider == 'ollamacloud':
+                resolved = resolved or os.getenv('OLLAMA_API_KEY')
             if not resolved:
                 return jsonify({
                     "error": "Missing API key for provider",
@@ -372,11 +383,13 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
             'nim_api_key': _resolve_api_key(data.get('nim_api_key'), 'NIM_API_KEY'),
             'anthropic_api_key': _resolve_api_key(data.get('anthropic_api_key'), 'ANTHROPIC_API_KEY'),
             'xai_api_key': _resolve_api_key(data.get('xai_api_key'), 'XAI_API_KEY'),
-            'nexum_api_key': _resolve_api_key(data.get('nexum_api_key'), 'NEXUM_API_KEY'),
             'opencode_api_key': _resolve_api_key(data.get('opencode_api_key'), 'OPENCODE_API_KEY'),
             'opencodego_api_key': _resolve_api_key(
                 data.get('opencodego_api_key'), 'OPENCODE_GO_API_KEY'
             ) or _resolve_api_key(data.get('opencodego_api_key'), 'OPENCODE_API_KEY'),
+            'ollamacloud_api_key': _resolve_api_key(
+                data.get('ollamacloud_api_key'), 'OLLAMA_CLOUD_API_KEY'
+            ) or _resolve_api_key(data.get('ollamacloud_api_key'), 'OLLAMA_API_KEY'),
             # Prompt options (optional instructions to include in the system prompt)
             'prompt_options': data.get('prompt_options', {}),
             # Auto-pause on rate limit toggle (request overrides .env default)

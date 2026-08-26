@@ -1,7 +1,7 @@
 """Frontend job payloads must send UI-entered cloud API keys.
 
 A key typed only in the form (not stored in .env) used to be dropped for
-Anthropic / xAI / Nexum. Failed generate() calls then kept the source text.
+Anthropic / xAI / OpenCode. Failed generate() calls then kept the source text.
 """
 from pathlib import Path
 
@@ -12,9 +12,9 @@ FORM = ROOT / "src" / "web" / "static" / "js" / "ui" / "form-manager.js"
 CLOUD_KEY_FIELDS = (
     "anthropic_api_key",
     "xai_api_key",
-    "nexum_api_key",
     "opencode_api_key",
     "opencodego_api_key",
+    "ollamacloud_api_key",
 )
 
 
@@ -43,16 +43,16 @@ def test_form_manager_forwards_chunk_size():
     assert "maxTokensPerChunk" in source
 
 
-def test_settings_dirty_tracks_nexum_and_chunk_size():
+def test_settings_dirty_tracks_opencode_and_chunk_size():
     settings = (ROOT / "src" / "web" / "static" / "js" / "core" / "settings-manager.js").read_text(
         encoding="utf-8"
     )
     for field_id in (
-        "nexumApiKey",
+        "opencodeApiKey",
         "anthropicApiKey",
         "xaiApiKey",
-        "opencodeApiKey",
         "opencodegoApiKey",
+        "ollamacloudApiKey",
         "maxTokensPerChunk",
     ):
         assert f"id: '{field_id}'" in settings
@@ -68,7 +68,7 @@ def test_settings_save_uses_env_key_sentinel():
     settings = (ROOT / "src" / "web" / "static" / "js" / "core" / "settings-manager.js").read_text(
         encoding="utf-8"
     )
-    assert "ApiKeyUtils.getValue('nexumApiKey')" in settings
+    assert "ApiKeyUtils.getValue('opencodeApiKey')" in settings
     assert "from '../utils/api-key-utils.js'" in settings
 
 

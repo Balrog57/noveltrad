@@ -177,12 +177,14 @@ def create_config_blueprint(server_session_id=None):
             return _get_anthropic_models(api_key)
         elif provider == 'xai':
             return _get_xai_models(api_key)
-        elif provider == 'nexum':
-            return _get_nexum_models(api_key)
         elif provider == 'opencode':
             return _get_opencode_models(api_key)
         elif provider == 'opencodego':
             return _get_opencodego_models(api_key)
+        elif provider == 'ollamacloud':
+            return _get_ollamacloud_models(api_key)
+        elif provider == 'chatgpt':
+            return _get_chatgpt_models()
         elif provider == 'openai':
             # Get endpoint from request for LM Studio support
             if request.method == 'POST':
@@ -216,10 +218,12 @@ def create_config_blueprint(server_session_id=None):
         nim_mask, nim_count = mask_api_key(_config.NIM_API_KEY)
         anthropic_mask, anthropic_count = mask_api_key(_config.ANTHROPIC_API_KEY)
         xai_mask, xai_count = mask_api_key(_config.XAI_API_KEY)
-        nexum_mask, nexum_count = mask_api_key(_config.NEXUM_API_KEY)
         opencode_mask, opencode_count = mask_api_key(_config.OPENCODE_API_KEY)
         opencodego_mask, opencodego_count = mask_api_key(
             _config.OPENCODE_GO_API_KEY or _config.OPENCODE_API_KEY
+        )
+        ollamacloud_mask, ollamacloud_count = mask_api_key(
+            _config.OLLAMA_CLOUD_API_KEY or os.getenv('OLLAMA_API_KEY', '')
         )
 
         config_response = {
@@ -229,12 +233,12 @@ def create_config_blueprint(server_session_id=None):
             "default_model": _config.DEFAULT_MODEL,
             "anthropic_model": _config.ANTHROPIC_MODEL,
             "xai_model": _config.XAI_MODEL,
-            "nexum_model": _config.NEXUM_MODEL,
             "opencode_model": _config.OPENCODE_MODEL,
             "opencodego_model": _config.OPENCODE_GO_MODEL,
+            "ollamacloud_model": _config.OLLAMA_CLOUD_MODEL,
+            "chatgpt_model": _config.CHATGPT_MODEL,
             "anthropic_api_endpoint": _config.ANTHROPIC_API_ENDPOINT,
             "xai_api_endpoint": _config.XAI_API_ENDPOINT,
-            "nexum_api_endpoint": _config.NEXUM_API_ENDPOINT,
             "opencode_api_endpoint": _config.OPENCODE_API_ENDPOINT,
             "opencodego_api_endpoint": _config.OPENCODE_GO_API_ENDPOINT,
             "default_source_language": _config.DEFAULT_SOURCE_LANGUAGE,
@@ -253,9 +257,9 @@ def create_config_blueprint(server_session_id=None):
             "nim_api_key": nim_mask,
             "anthropic_api_key": anthropic_mask,
             "xai_api_key": xai_mask,
-            "nexum_api_key": nexum_mask,
             "opencode_api_key": opencode_mask,
             "opencodego_api_key": opencodego_mask,
+            "ollamacloud_api_key": ollamacloud_mask,
             "gemini_api_key_count": gemini_count,
             "openai_api_key_count": openai_count,
             "openrouter_api_key_count": openrouter_count,
@@ -265,9 +269,9 @@ def create_config_blueprint(server_session_id=None):
             "nim_api_key_count": nim_count,
             "anthropic_api_key_count": anthropic_count,
             "xai_api_key_count": xai_count,
-            "nexum_api_key_count": nexum_count,
             "opencode_api_key_count": opencode_count,
             "opencodego_api_key_count": opencodego_count,
+            "ollamacloud_api_key_count": ollamacloud_count,
             "gemini_api_key_configured": gemini_count > 0,
             "openai_api_key_configured": openai_count > 0,
             "openrouter_api_key_configured": openrouter_count > 0,
@@ -277,9 +281,9 @@ def create_config_blueprint(server_session_id=None):
             "nim_api_key_configured": nim_count > 0,
             "anthropic_api_key_configured": anthropic_count > 0,
             "xai_api_key_configured": xai_count > 0,
-            "nexum_api_key_configured": nexum_count > 0,
             "opencode_api_key_configured": opencode_count > 0,
             "opencodego_api_key_configured": opencodego_count > 0,
+            "ollamacloud_api_key_configured": ollamacloud_count > 0,
             "llm_provider": _config.LLM_PROVIDER,
             "output_filename_pattern": _config.OUTPUT_FILENAME_PATTERN,
             "max_tokens_per_chunk": int(_config.MAX_TOKENS_PER_CHUNK),
@@ -582,10 +586,6 @@ def create_config_blueprint(server_session_id=None):
         from src.core.llm import XAIProvider
         return _fetch_provider_models(provided_api_key=provided_api_key, env_var='XAI_API_KEY', config_api_key=_config.XAI_API_KEY, config_default_model=_config.XAI_MODEL, provider_class=XAIProvider, fallback_model='grok-4.5', status_prefix='xai', display_name='xAI', api_key_missing_message='xAI API key is required.')
 
-    def _get_nexum_models(provided_api_key=None):
-        from src.core.llm import NexumProvider
-        return _fetch_provider_models(provided_api_key=provided_api_key, env_var='NEXUM_API_KEY', config_api_key=_config.NEXUM_API_KEY, config_default_model=_config.NEXUM_MODEL, provider_class=NexumProvider, fallback_model='qwen-3.7-max', status_prefix='nexum', display_name='Nexum', api_key_missing_message='Nexum API key is required.')
-
     def _get_opencode_models(provided_api_key=None):
         from src.core.llm import OpenCodeProvider
         return _fetch_provider_models(
@@ -614,6 +614,56 @@ def create_config_blueprint(server_session_id=None):
             display_name='OpenCode Go',
             api_key_missing_message='OpenCode Go API key is required.',
         )
+
+    def _get_ollamacloud_models(provided_api_key=None):
+        from src.core.llm import OllamaCloudProvider
+        cloud_key = _config.OLLAMA_CLOUD_API_KEY or os.getenv('OLLAMA_API_KEY', '')
+        return _fetch_provider_models(
+            provided_api_key=provided_api_key,
+            env_var='OLLAMA_CLOUD_API_KEY',
+            config_api_key=cloud_key,
+            config_default_model=_config.OLLAMA_CLOUD_MODEL,
+            provider_class=OllamaCloudProvider,
+            fallback_model='gpt-oss:120b',
+            status_prefix='ollamacloud',
+            display_name='Ollama Cloud',
+            api_key_missing_message='Ollama Cloud API key is required.',
+        )
+
+    def _get_chatgpt_models():
+        from src.core.llm import ChatGPTProvider
+        from src.core.llm.chatgpt_oauth import status_payload
+        default_model = _config.CHATGPT_MODEL or 'gpt-5.4'
+        if not status_payload().get('signed_in'):
+            return jsonify({
+                "models": [],
+                "model_names": [],
+                "default": default_model,
+                "status": "chatgpt_signed_out",
+                "count": 0,
+                "error": "Sign in with ChatGPT to load models.",
+            })
+        try:
+            provider = ChatGPTProvider(model=default_model)
+            models = asyncio.run(provider.get_available_models())
+            model_names = [m.get('id') for m in models if m.get('id')]
+            resolved = default_model if default_model in model_names else (model_names[0] if model_names else default_model)
+            return jsonify({
+                "models": models,
+                "model_names": model_names,
+                "default": resolved,
+                "status": "chatgpt_connected",
+                "count": len(models),
+            })
+        except Exception as exc:
+            return jsonify({
+                "models": [],
+                "model_names": [],
+                "default": default_model,
+                "status": "chatgpt_error",
+                "count": 0,
+                "error": str(exc),
+            })
 
     def _get_openai_models(provided_api_key=None, api_endpoint=None):
         """Get available models from OpenAI-compatible API.
@@ -973,12 +1023,13 @@ def create_config_blueprint(server_session_id=None):
             'ANTHROPIC_MODEL',
             'XAI_API_KEY',
             'XAI_MODEL',
-            'NEXUM_API_KEY',
-            'NEXUM_MODEL',
             'OPENCODE_API_KEY',
             'OPENCODE_MODEL',
             'OPENCODE_GO_API_KEY',
             'OPENCODE_GO_MODEL',
+            'OLLAMA_CLOUD_API_KEY',
+            'OLLAMA_CLOUD_MODEL',
+            'CHATGPT_MODEL',
             'DEFAULT_MODEL',
             'LLM_PROVIDER',
             'OLLAMA_API_ENDPOINT',
@@ -1141,14 +1192,50 @@ def create_config_blueprint(server_session_id=None):
             "nim_api_key_configured": bool(_config.NIM_API_KEY),
             "anthropic_api_key_configured": bool(_config.ANTHROPIC_API_KEY),
             "xai_api_key_configured": bool(_config.XAI_API_KEY),
-            "nexum_api_key_configured": bool(_config.NEXUM_API_KEY),
             "opencode_api_key_configured": bool(_config.OPENCODE_API_KEY),
             "opencodego_api_key_configured": bool(_config.OPENCODE_GO_API_KEY or _config.OPENCODE_API_KEY),
+            "ollamacloud_api_key_configured": bool(_config.OLLAMA_CLOUD_API_KEY or os.getenv('OLLAMA_API_KEY', '')),
             "default_model": _config.DEFAULT_MODEL or "",
             "llm_provider": _config.LLM_PROVIDER,
             "api_endpoint": _config.API_ENDPOINT or "",
             "ollama_api_endpoint": _config.OLLAMA_API_ENDPOINT or "",
             "openai_api_endpoint": _config.OPENAI_API_ENDPOINT or ""
         })
+
+    @bp.route('/api/oauth/chatgpt/status', methods=['GET'])
+    def chatgpt_oauth_status():
+        from src.core.llm.chatgpt_oauth import status_payload
+        return jsonify(status_payload())
+
+    @bp.route('/api/oauth/chatgpt/device/start', methods=['POST'])
+    def chatgpt_oauth_device_start():
+        from src.core.llm.chatgpt_oauth import start_device_login
+        try:
+            payload = asyncio.run(start_device_login())
+        except Exception as exc:
+            return jsonify({"error": "Could not start ChatGPT sign-in", "message": str(exc)}), 502
+        return jsonify(payload)
+
+    @bp.route('/api/oauth/chatgpt/device/poll', methods=['POST'])
+    def chatgpt_oauth_device_poll():
+        from src.core.llm.chatgpt_oauth import poll_device_login, status_payload
+        data = request.get_json() or {}
+        device_auth_id = data.get('device_auth_id') or ''
+        user_code = data.get('user_code') or ''
+        if not device_auth_id or not user_code:
+            return jsonify({"error": "device_auth_id and user_code are required"}), 400
+        try:
+            tokens = asyncio.run(poll_device_login(device_auth_id, user_code))
+        except Exception as exc:
+            return jsonify({"error": "ChatGPT sign-in failed", "message": str(exc)}), 502
+        if not tokens:
+            return jsonify({"pending": True, **status_payload()})
+        return jsonify({"pending": False, **status_payload()})
+
+    @bp.route('/api/oauth/chatgpt/logout', methods=['POST'])
+    def chatgpt_oauth_logout():
+        from src.core.llm.chatgpt_oauth import delete_tokens, status_payload
+        delete_tokens()
+        return jsonify(status_payload())
 
     return bp

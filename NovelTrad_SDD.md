@@ -1,80 +1,82 @@
-# TBL fork — périmètre NovelTrad
+# TBL fork — NovelTrad scope
 
-Ce dépôt reste un fork direct de `hydropix/TranslateBooksWithLLMs`. Toutes les
-fonctionnalités, l'interface, le branding, l'attribution, les formats et les
-tests du projet amont sont conservés. Ce document ne spécifie que les deux
-écarts fonctionnels du fork.
+This repository remains a direct fork of `hydropix/TranslateBooksWithLLMs`. All
+upstream features, UI, branding, attribution, formats, and tests are kept. This
+document specifies only the two functional deltas of the fork.
 
-## 1. Providers supplémentaires
+## 1. Extra providers
 
-Ajouter les providers natifs suivants dans les mêmes points d'extension que les
-providers TBL existants :
+Add the following native providers at the same extension points as existing TBL
+providers:
 
-| Identifiant | Fournisseur | Clé | API |
+| Id | Vendor | Credential | API |
 |---|---|---|---|
 | `anthropic` | Anthropic / Claude | `ANTHROPIC_API_KEY` | Anthropic Messages API |
 | `xai` | xAI / Grok | `XAI_API_KEY` | OpenAI-compatible |
-| `nexum` | Nexum Router | `NEXUM_API_KEY` | OpenAI-compatible |
 | `opencode` | OpenCode Zen | `OPENCODE_API_KEY` | OpenAI-compatible Chat Completions |
 | `opencodego` | OpenCode Go | `OPENCODE_GO_API_KEY` (fallback `OPENCODE_API_KEY`) | OpenAI-compatible Chat Completions |
+| `ollamacloud` | Ollama Cloud | `OLLAMA_CLOUD_API_KEY` (fallback `OLLAMA_API_KEY`) | OpenAI-compatible Chat Completions |
+| `chatgpt` | ChatGPT (OAuth) | none (`data/chatgpt_oauth.json`) | Codex Responses API |
 
-Chaque provider doit fonctionner depuis la CLI, l'interface web, les tests de
-connexion, le chargement des modèles, les parcours glossaire/style et la
-reprise. Les clés multiples séparées par des virgules, la rotation sur 429,
-les erreurs normalisées, la validation d'endpoint et la non-persistance des
-secrets suivent les règles déjà présentes dans TBL.
+Each provider must work from the CLI, the web UI, connection tests, model
+loading, glossary/style paths, and resume. Comma-separated multi-keys, 429
+rotation, normalized errors, endpoint validation, and non-persistence of
+secrets follow the rules already present in TBL.
 
-Endpoints par défaut :
+Default endpoints:
 
-- Anthropic : `https://api.anthropic.com/v1` avec `POST /messages` et `GET /models`.
-- xAI : `https://api.x.ai/v1` avec `POST /chat/completions` et `GET /models`.
-- Nexum : `https://dialagram.me/router/v1` avec le contrat OpenAI-compatible.
-- OpenCode Zen : `https://opencode.ai/zen/v1` avec `POST /chat/completions` et `GET /models`.
-- OpenCode Go : `https://opencode.ai/zen/go/v1` avec le même contrat. Une clé Go
-  vide retombe sur `OPENCODE_API_KEY`.
+- Anthropic: `https://api.anthropic.com/v1` with `POST /messages` and `GET /models`.
+- xAI: `https://api.x.ai/v1` with `POST /chat/completions` and `GET /models`.
+- OpenCode Zen: `https://opencode.ai/zen/v1` with `POST /chat/completions` and `GET /models`.
+- OpenCode Go: `https://opencode.ai/zen/go/v1` with the same contract. An empty Go
+  key falls back to `OPENCODE_API_KEY`.
+- Ollama Cloud: `https://ollama.com/v1` with `POST /chat/completions` and `GET /models`.
+  Do not inherit the local Ollama endpoint field.
+- ChatGPT: device-code OAuth, tokens in `data/chatgpt_oauth.json`, no API key.
+  Models are listed from `GET /backend-api/codex/models`. Completions use
+  streamed `POST /backend-api/codex/responses`.
 
-Seuls les modèles Chat Completions sont routés (DeepSeek, Kimi, GLM, MiniMax,
-MiMo, Hy3). GPT (`/responses`), Claude (`/messages`) et Gemini via Zen/Go sont
-hors périmètre.
+OpenCode Zen/Go only route Chat Completions models (DeepSeek, Kimi, GLM,
+MiniMax, and similar). GPT (`/responses`), Claude (`/messages`), and Gemini
+through Zen/Go are out of scope.
 
-Les listes de modèles doivent être récupérées quand l'API le permet et
-disposer d'une liste de repli courte et documentée.
+Model lists must be fetched from the provider when the API allows it, with a
+short documented fallback list. The web UI selects models from the dropdown;
+it does not require typing a model id for these providers.
 
-## 2. Raffinement en quatre passes
+## 2. Four-pass refinement
 
-La traduction simple reste inchangée. Quand l'utilisateur active « Raffiner »,
-le pipeline complet est :
+Plain translation stays unchanged. When the user enables Refine, the full
+pipeline is:
 
-1. **Traduction** — passe TBL existante.
-2. **Contexte** — analyse de chaque bloc avec le bloc précédent et le bloc
-   suivant ; sortie : suggestions de cohérence, terminologie et continuité.
-3. **Correction** — correction orthographique, grammaticale, ponctuation et
-   fluidité du brouillon ; sortie : texte corrigé.
-4. **Final** — génération du texte définitif à partir de la traduction initiale,
-   des suggestions de la passe 2 et du texte corrigé de la passe 3.
+1. **Translation** — existing TBL pass.
+2. **Context** — analyse each block with the previous and next block; output:
+   consistency, terminology, and continuity suggestions.
+3. **Correction** — spelling, grammar, punctuation, and flow of the draft;
+   output: corrected text.
+4. **Final** — generate the definitive text from the initial translation, pass 2
+   suggestions, and the corrected text from pass 3.
 
-Les passes sont strictement ordonnées et utilisent le même provider et le même
-modèle. Les placeholders, balises, timecodes et structures de format doivent
-être préservés. `--refine-only` exécute les passes 2 à 4 sur un fichier déjà
-traduit. Les sorties intermédiaires restent internes aux checkpoints et ne
-changent pas le parcours utilisateur existant.
+Passes are strictly ordered and use the same provider and model. Placeholders,
+tags, timecodes, and format structure must be preserved. `--refine-only` runs
+passes 2–4 on an already translated file. Intermediate outputs stay inside
+checkpoints and do not change the existing user flow.
 
-Chaque passe est reprenable indépendamment au niveau du bloc. Une interruption
-ou une erreur conserve les artefacts déjà produits et reprend à la passe et au
-bloc courants sans rejouer le travail terminé. Après épuisement des tentatives,
-le job reste resumable et signale explicitement la passe et le bloc en échec.
+Each pass is independently resumable at block level. An interruption or error
+keeps artefacts already produced and resumes at the current pass and block
+without replaying finished work. After retries are exhausted, the job stays
+resumable and reports the failed pass and block.
 
-La progression web expose quatre phases pour Traduire + Raffiner et trois
-phases pour Raffiner seul, tout en conservant les champs historiques nécessaires
-aux consommateurs existants.
+Web progress exposes four phases for Translate + Refine and three phases for
+Refine-only, while keeping the historical fields existing consumers need.
 
-## 3. Critères d'acceptation
+## 3. Acceptance
 
-- Le fork est basé sur l'amont TBL 1.5.9 sans autre changement historique.
-- Les cinq providers sont utilisables depuis CLI et interface web avec une
-  réponse `LLMResponse` normale, une liste de modèles et des erreurs testées.
-- Les parcours EPUB, TXT, DOCX et SRT produisent une sortie valide en traduction
-  simple et en multipasse.
-- Les tests prouvent l'ordre 1→2→3→4, les blocs voisins, la reprise par passe,
-  `--refine-only`, la conservation des placeholders et l'absence de régression
-  sur les fonctionnalités TBL héritées.
+- The fork is based on upstream TBL 1.5.9 with no other historical rewrite.
+- The extra providers are usable from CLI and web UI with a normal
+  `LLMResponse`, a model list, and tested errors.
+- EPUB, TXT, DOCX, and SRT produce valid output for plain translation and for
+  the multi-pass refine path.
+- Tests prove order 1→2→3→4, neighboring blocks, per-pass resume,
+  `--refine-only`, placeholder preservation, and no regression on inherited TBL
+  features.

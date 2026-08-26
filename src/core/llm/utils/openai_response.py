@@ -1,6 +1,6 @@
 """Parse OpenAI-compatible chat completions and decide empty-response retries.
 
-Aggregator routers (Nexum/Dialagram, OpenRouter, OpenCode, …) frequently
+Aggregator routers (OpenRouter, OpenCode, …) frequently
 return HTTP 200 with no usable text: empty ``choices``, ``content: null``,
 a content-parts array, or a 0-token drop. Those are transient and worth
 retrying. An explicit refusal / content-filter is not.

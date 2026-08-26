@@ -179,7 +179,6 @@ def test_unresolvable_host_is_rejected_without_raising():
     'https://integrate.api.nvidia.com/v1/chat/completions',
     'https://api.anthropic.com/v1/messages',
     'https://api.x.ai/v1/chat/completions',
-    'https://dialagram.me/router/v1/chat/completions',
     'https://opencode.ai/zen/v1/chat/completions',
     'https://opencode.ai/zen/go/v1/chat/completions',
 ])
@@ -456,17 +455,17 @@ def test_custom_ollama_endpoint_needs_no_key(translate_app):
 
 
 def test_cloud_provider_accepts_missing_endpoint(translate_app, monkeypatch):
-    """A cloud provider (nexum) must not be forced to carry the local Ollama
+    """A cloud provider (xAI) must not be forced to carry the local Ollama
     endpoint. Without a request endpoint it falls back to the server default
-    (NEXUM_API_ENDPOINT); the pairing guard must not fire, and an empty
+    (XAI_API_ENDPOINT); the pairing guard must not fire, and an empty
     llm_api_endpoint is stored instead of the Ollama URL."""
     client, state_manager, _started = translate_app
-    monkeypatch.setenv('NEXUM_API_KEY', 'env-nexum-key')
+    monkeypatch.setenv('XAI_API_KEY', 'env-xai-key')
     resp = client.post('/api/translate', json=_payload(
-        llm_provider='nexum',
-        model='deepseek-v4',
+        llm_provider='xai',
+        model='grok-4.5',
         llm_api_endpoint='',
-        nexum_api_key='__USE_ENV__',
+        xai_api_key='__USE_ENV__',
     ))
     assert resp.status_code == 200
     assert len(state_manager.created) == 1
@@ -496,12 +495,12 @@ def test_cloud_provider_with_ollama_endpoint_is_rejected(translate_app, monkeypa
     the output in the source language. An endpoint that differs from the
     provider default is an override and must carry its own key."""
     client, state_manager, _started = translate_app
-    monkeypatch.setenv('NEXUM_API_KEY', 'env-nexum-key')
+    monkeypatch.setenv('XAI_API_KEY', 'env-xai-key')
     resp = client.post('/api/translate', json=_payload(
-        llm_provider='nexum',
-        model='deepseek-v4',
+        llm_provider='xai',
+        model='grok-4.5',
         llm_api_endpoint=_config.API_ENDPOINT,
-        nexum_api_key='__USE_ENV__',
+        xai_api_key='__USE_ENV__',
     ))
     assert resp.status_code == 400
     assert resp.get_json()['error'] == 'Endpoint override requires its own API key'

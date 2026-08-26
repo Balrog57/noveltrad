@@ -47,8 +47,9 @@ from .providers.deepseek import DeepSeekProvider
 from .providers.poe import PoeProvider
 from .providers.anthropic import AnthropicProvider
 from .providers.xai import XAIProvider
-from .providers.nexum import NexumProvider
 from .providers.opencode import OpenCodeProvider, OpenCodeGoProvider
+from .providers.ollama_cloud import OllamaCloudProvider
+from .providers.chatgpt import ChatGPTProvider
 
 # Factory
 from .factory import create_llm_provider
@@ -86,9 +87,10 @@ __all__ = [
     'PoeProvider',
     'AnthropicProvider',
     'XAIProvider',
-    'NexumProvider',
     'OpenCodeProvider',
     'OpenCodeGoProvider',
+    'OllamaCloudProvider',
+    'ChatGPTProvider',
 
     # Factory
     'create_llm_provider',

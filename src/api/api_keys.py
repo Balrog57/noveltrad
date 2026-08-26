@@ -28,9 +28,9 @@ PROVIDER_ENV_VARS = {
     'nim': 'NIM_API_KEY',
     'anthropic': 'ANTHROPIC_API_KEY',
     'xai': 'XAI_API_KEY',
-    'nexum': 'NEXUM_API_KEY',
     'opencode': 'OPENCODE_API_KEY',
     'opencodego': 'OPENCODE_GO_API_KEY',
+    'ollamacloud': 'OLLAMA_CLOUD_API_KEY',
 }
 
 

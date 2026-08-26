@@ -353,6 +353,13 @@ export const ApiClient = {
             return await apiRequest(`/api/models?${params.toString()}`);
         }
 
+        if (provider === 'chatgpt') {
+            return await apiRequest('/api/models', {
+                method: 'POST',
+                body: JSON.stringify({ provider: 'chatgpt' }),
+            });
+        }
+
         // Gemini/OpenRouter/OpenAI: POST request (API key in body - more secure)
         const body = {
             provider: provider,
@@ -368,6 +375,24 @@ export const ApiClient = {
             method: 'POST',
             body: JSON.stringify(body)
         });
+    },
+
+    async chatgptOAuthStart() {
+        return await apiRequest('/api/oauth/chatgpt/device/start', { method: 'POST' });
+    },
+
+    async chatgptOAuthPoll(deviceAuthId, userCode) {
+        return await apiRequest('/api/oauth/chatgpt/device/poll', {
+            method: 'POST',
+            body: JSON.stringify({
+                device_auth_id: deviceAuthId,
+                user_code: userCode,
+            }),
+        });
+    },
+
+    async chatgptOAuthLogout() {
+        return await apiRequest('/api/oauth/chatgpt/logout', { method: 'POST' });
     },
 
     // ========================================

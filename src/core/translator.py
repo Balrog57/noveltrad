@@ -308,7 +308,7 @@ async def _make_llm_request_with_adaptive_context(
             full_raw_response = llm_response.content or ""
 
             if not str(full_raw_response).strip():
-                # Empty/null content. Aggregators (Nexum, OpenRouter, …) drop
+                # Empty/null content. Aggregators (OpenRouter, OpenCode, …) drop
                 # completions with 0 tokens; that is usually transient, not a
                 # policy refusal. Retry with backoff before failing the chunk.
                 empty_retries += 1
@@ -363,7 +363,7 @@ async def _make_llm_request_with_adaptive_context(
             if translated_text and unclosed and llm_response.was_truncated:
                 # Salvaged a cut-off completion. Prefer a smaller slice over a
                 # mid-sentence chunk. Growing num_ctx does nothing on cloud
-                # routers (Nexum): the limit is max_tokens.
+                # routers (OpenRouter, OpenCode, …): the limit is max_tokens.
                 if reduction_attempt < MAX_CHUNK_REDUCTION_ATTEMPTS:
                     reduction_attempt += 1
                     reduction_factor = CHUNK_REDUCTION_FACTOR ** reduction_attempt
@@ -421,7 +421,7 @@ async def _make_llm_request_with_adaptive_context(
 
                 # Only grow context when the provider actually hit an output
                 # limit. A missing closer with finish_reason=stop is not a
-                # context-window problem (and Nexum ignores num_ctx anyway).
+                # context-window problem (and OpenRouter/OpenCode ignore num_ctx anyway).
                 if llm_response.was_truncated:
                     if context_manager and context_manager.should_retry_with_larger_context(
                         True, llm_response.context_used
@@ -728,7 +728,7 @@ async def _make_refinement_request(
             full_raw_response = llm_response.content or ""
 
             # Truncated empty completions already exhausted provider-side
-            # retries (Nexum/Dialagram CoT ate max_tokens). Extra loops stall
+            # retries (OpenRouter, OpenCode, … CoT ate max_tokens). Extra loops stall
             # 4-pass refine for minutes per chunk; keep the previous draft.
             if not str(full_raw_response).strip() and llm_response.was_truncated:
                 if log_callback:
@@ -872,9 +872,9 @@ async def refine_chunks(
     nim_api_key=None,
     anthropic_api_key=None,
     xai_api_key=None,
-    nexum_api_key=None,
     opencode_api_key=None,
     opencodego_api_key=None,
+    ollamacloud_api_key=None,
     context_window=2048,
     auto_adjust_context=True,
     prompt_options=None,
@@ -932,9 +932,9 @@ async def refine_chunks(
             nim_api_key=nim_api_key,
             anthropic_api_key=anthropic_api_key,
             xai_api_key=xai_api_key,
-            nexum_api_key=nexum_api_key,
             opencode_api_key=opencode_api_key,
             opencodego_api_key=opencodego_api_key,
+            ollamacloud_api_key=ollamacloud_api_key,
             context_window=context_window,
             auto_adjust_context=auto_adjust_context,
             prompt_options=prompt_options,
@@ -990,9 +990,9 @@ async def refine_chunks(
         nim_api_key=nim_api_key,
         anthropic_api_key=anthropic_api_key,
         xai_api_key=xai_api_key,
-        nexum_api_key=nexum_api_key,
         opencode_api_key=opencode_api_key,
         opencodego_api_key=opencodego_api_key,
+        ollamacloud_api_key=ollamacloud_api_key,
         context_window=initial_context, log_callback=log_callback
     )
 
@@ -1158,9 +1158,9 @@ async def _refine_chunks_four_pass(
     nim_api_key=None,
     anthropic_api_key=None,
     xai_api_key=None,
-    nexum_api_key=None,
     opencode_api_key=None,
     opencodego_api_key=None,
+    ollamacloud_api_key=None,
     context_window=2048,
     auto_adjust_context=True,
     prompt_options=None,
@@ -1187,8 +1187,9 @@ async def _refine_chunks_four_pass(
         mistral_api_key=mistral_api_key, deepseek_api_key=deepseek_api_key,
         poe_api_key=poe_api_key, nim_api_key=nim_api_key,
         anthropic_api_key=anthropic_api_key, xai_api_key=xai_api_key,
-        nexum_api_key=nexum_api_key, opencode_api_key=opencode_api_key,
-        opencodego_api_key=opencodego_api_key, context_window=initial_context,
+        opencode_api_key=opencode_api_key,
+        opencodego_api_key=opencodego_api_key,
+        ollamacloud_api_key=ollamacloud_api_key, context_window=initial_context,
         log_callback=log_callback,
     )
     if not client:

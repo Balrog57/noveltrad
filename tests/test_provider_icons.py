@@ -13,14 +13,14 @@ def provider_logos():
 
 def test_added_provider_logos_exist():
     static_root = Path(__file__).parents[1] / "src" / "web" / "static"
-    for provider in ("anthropic", "xai", "nexum", "opencode", "opencodego"):
+    for provider in ("anthropic", "xai", "opencode", "opencodego", "ollamacloud", "chatgpt"):
         asset = provider_logos()[provider].removeprefix("/static/")
         assert (static_root / asset).is_file(), f"missing logo for {provider}"
 
 
-def test_nexum_does_not_reuse_openai_logo():
+def test_xai_does_not_reuse_openai_logo():
     logos = provider_logos()
-    assert logos["nexum"] != logos["openai"]
+    assert logos["xai"] != logos["openai"]
 
 
 def test_opencode_logos_are_distinct():

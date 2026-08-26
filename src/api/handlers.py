@@ -245,8 +245,9 @@ async def _apply_auto_prep(config, log_callback, progress_callback=None, socketi
             llm_provider = config.get('llm_provider', 'ollama')
             extra_provider_keys = {
                 key: config.get(key, '') for key in (
-                    'anthropic_api_key', 'xai_api_key', 'nexum_api_key',
+                    'anthropic_api_key', 'xai_api_key',
                     'opencode_api_key', 'opencodego_api_key',
+                    'ollamacloud_api_key',
                 ) if config.get(key, '')
             }
             client = create_llm_client(
@@ -908,9 +909,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 nim_api_key=config.get('nim_api_key', ''),
                 anthropic_api_key=config.get('anthropic_api_key', ''),
                 xai_api_key=config.get('xai_api_key', ''),
-                nexum_api_key=config.get('nexum_api_key', ''),
                 opencode_api_key=config.get('opencode_api_key', ''),
                 opencodego_api_key=config.get('opencodego_api_key', ''),
+                ollamacloud_api_key=config.get('ollamacloud_api_key', ''),
                 context_window=config.get('context_window', 2048),
                 auto_adjust_context=config.get('auto_adjust_context', True),
                 max_tokens_per_chunk=config.get('max_tokens_per_chunk'),
@@ -945,9 +946,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 nim_api_key=config.get('nim_api_key', ''),
                 anthropic_api_key=config.get('anthropic_api_key', ''),
                 xai_api_key=config.get('xai_api_key', ''),
-                nexum_api_key=config.get('nexum_api_key', ''),
                 opencode_api_key=config.get('opencode_api_key', ''),
                 opencodego_api_key=config.get('opencodego_api_key', ''),
+                ollamacloud_api_key=config.get('ollamacloud_api_key', ''),
                 context_window=config.get('context_window', 2048),
                 auto_adjust_context=config.get('auto_adjust_context', True),
                 min_chunk_size=config.get('min_chunk_size', 5),
@@ -999,9 +1000,9 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     nim_api_key=config.get('nim_api_key', ''),
                     anthropic_api_key=config.get('anthropic_api_key', ''),
                     xai_api_key=config.get('xai_api_key', ''),
-                    nexum_api_key=config.get('nexum_api_key', ''),
                     opencode_api_key=config.get('opencode_api_key', ''),
                     opencodego_api_key=config.get('opencodego_api_key', ''),
+                    ollamacloud_api_key=config.get('ollamacloud_api_key', ''),
                     context_window=config.get('context_window', 2048),
                     auto_adjust_context=config.get('auto_adjust_context', True),
                     max_tokens_per_chunk=config.get('max_tokens_per_chunk'),

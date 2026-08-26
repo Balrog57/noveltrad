@@ -20,9 +20,10 @@ from src.config import (
     LITELLM_MODEL,
     ANTHROPIC_API_KEY, ANTHROPIC_MODEL, ANTHROPIC_API_ENDPOINT,
     XAI_API_KEY, XAI_MODEL, XAI_API_ENDPOINT,
-    NEXUM_API_KEY, NEXUM_MODEL, NEXUM_API_ENDPOINT,
     OPENCODE_API_KEY, OPENCODE_MODEL, OPENCODE_API_ENDPOINT,
     OPENCODE_GO_API_KEY, OPENCODE_GO_MODEL, OPENCODE_GO_API_ENDPOINT,
+    OLLAMA_CLOUD_API_KEY, OLLAMA_CLOUD_MODEL, OLLAMA_CLOUD_API_ENDPOINT,
+    CHATGPT_MODEL,
 )
 from .base import LLMProvider, normalize_api_keys
 from .providers.ollama import OllamaProvider
@@ -35,8 +36,9 @@ from .providers.poe import PoeProvider
 from .providers.litellm import LiteLLMProvider
 from .providers.anthropic import AnthropicProvider
 from .providers.xai import XAIProvider
-from .providers.nexum import NexumProvider
 from .providers.opencode import OpenCodeProvider, OpenCodeGoProvider
+from .providers.ollama_cloud import OllamaCloudProvider
+from .providers.chatgpt import ChatGPTProvider
 
 
 def _require_key(raw, error_message: str):
@@ -203,16 +205,6 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
             log_callback=kwargs.get("log_callback"),
         )
 
-    elif provider_type.lower() == "nexum":
-        api_key = _require_key(kwargs.get("api_key") or kwargs.get("nexum_api_key") or os.getenv("NEXUM_API_KEY", NEXUM_API_KEY), "Nexum provider requires an API key.")
-        return NexumProvider(
-            api_key=api_key,
-            model=kwargs.get("model", NEXUM_MODEL),
-            api_endpoint=kwargs.get("api_endpoint") or NEXUM_API_ENDPOINT,
-            context_window=kwargs.get("context_window"),
-            log_callback=kwargs.get("log_callback"),
-        )
-
     elif provider_type.lower() == "opencode":
         api_key = _require_key(
             kwargs.get("api_key") or kwargs.get("opencode_api_key") or os.getenv("OPENCODE_API_KEY", OPENCODE_API_KEY),
@@ -238,6 +230,29 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
             api_key=api_key,
             model=kwargs.get("model", OPENCODE_GO_MODEL),
             api_endpoint=kwargs.get("api_endpoint") or OPENCODE_GO_API_ENDPOINT,
+            context_window=kwargs.get("context_window"),
+            log_callback=kwargs.get("log_callback"),
+        )
+
+    elif provider_type.lower() == "ollamacloud":
+        api_key = _require_key(
+            kwargs.get("api_key")
+            or kwargs.get("ollamacloud_api_key")
+            or os.getenv("OLLAMA_CLOUD_API_KEY")
+            or os.getenv("OLLAMA_API_KEY", OLLAMA_CLOUD_API_KEY),
+            "Ollama Cloud requires an API key from ollama.com/settings/keys.",
+        )
+        return OllamaCloudProvider(
+            api_key=api_key,
+            model=kwargs.get("model", OLLAMA_CLOUD_MODEL),
+            api_endpoint=OLLAMA_CLOUD_API_ENDPOINT,
+            context_window=kwargs.get("context_window"),
+            log_callback=kwargs.get("log_callback"),
+        )
+
+    elif provider_type.lower() == "chatgpt":
+        return ChatGPTProvider(
+            model=kwargs.get("model", CHATGPT_MODEL),
             context_window=kwargs.get("context_window"),
             log_callback=kwargs.get("log_callback"),
         )

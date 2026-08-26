@@ -12,7 +12,6 @@ from src.api.blueprints import translation_routes
     [
         ("anthropic", "anthropic_api_key"),
         ("xai", "xai_api_key"),
-        ("nexum", "nexum_api_key"),
         ("opencode", "opencode_api_key"),
         ("opencodego", "opencodego_api_key"),
     ],
@@ -46,7 +45,33 @@ def test_create_llm_client_passes_runtime_provider_configuration(
     assert captured["log_callback"] is not None
 
 
-@pytest.mark.parametrize("provider", ["anthropic", "xai", "nexum", "opencode", "opencodego"])
+def test_create_llm_client_does_not_forward_ollama_endpoint_to_ollama_cloud(monkeypatch):
+    captured = {}
+
+    def fake_create(provider_type, **kwargs):
+        captured["provider_type"] = provider_type
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(llm_client_module, "create_llm_provider", fake_create)
+    client = llm_client_module.create_llm_client(
+        "ollamacloud",
+        None,
+        "http://localhost:11434/api/generate",
+        "gpt-oss:120b",
+        ollamacloud_api_key="secret",
+        context_window=8192,
+        log_callback=lambda *_: None,
+    )
+
+    client._get_provider()
+
+    assert captured["provider_type"] == "ollamacloud"
+    assert "api_endpoint" not in captured
+    assert captured["api_key"] == "secret"
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "xai", "opencode", "opencodego"])
 def test_provider_factory_preserves_runtime_configuration(monkeypatch, provider):
     captured = {}
 
@@ -57,7 +82,6 @@ def test_provider_factory_preserves_runtime_configuration(monkeypatch, provider)
     monkeypatch.setattr(factory, {
         "anthropic": "AnthropicProvider",
         "xai": "XAIProvider",
-        "nexum": "NexumProvider",
         "opencode": "OpenCodeProvider",
         "opencodego": "OpenCodeGoProvider",
     }[provider], CaptureProvider)
@@ -80,18 +104,46 @@ def test_provider_factory_preserves_runtime_configuration(monkeypatch, provider)
     }
 
 
+def test_ollama_cloud_factory_ignores_stale_local_endpoint(monkeypatch):
+    captured = {}
+
+    class CaptureProvider:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(factory, "OllamaCloudProvider", CaptureProvider)
+    factory.create_llm_provider(
+        "ollamacloud",
+        api_key="secret",
+        model="gpt-oss:120b",
+        api_endpoint="http://localhost:11434/api/generate",
+        context_window=8192,
+        log_callback=lambda *_: None,
+    )
+
+    from src.config import OLLAMA_CLOUD_API_ENDPOINT
+    assert captured["api_endpoint"] == OLLAMA_CLOUD_API_ENDPOINT
+    assert captured["api_key"] == "secret"
+
+
 def test_new_cloud_provider_endpoints_are_runtime_overrides():
-    assert {"anthropic", "xai", "nexum", "opencode", "opencodego"}.issubset(
+    assert {"anthropic", "xai", "opencode", "opencodego"}.issubset(
         set(translation_routes._ENDPOINT_CONSUMING_PROVIDERS)
     )
-    assert translation_routes._server_default_endpoint("nexum")
+    assert "ollamacloud" not in translation_routes._ENDPOINT_CONSUMING_PROVIDERS
+    assert "chatgpt" not in translation_routes._ENDPOINT_CONSUMING_PROVIDERS
+    assert translation_routes._server_default_endpoint("xai")
     assert translation_routes._server_default_endpoint("opencode")
     assert translation_routes._server_default_endpoint("opencodego")
+    assert translation_routes._server_default_endpoint("ollamacloud")
     assert translation_routes._is_endpoint_override(
-        {"llm_provider": "nexum"}, "https://custom.example/v1"
+        {"llm_provider": "xai"}, "https://custom.example/v1"
     )
     assert translation_routes._is_endpoint_override(
         {"llm_provider": "opencode"}, "https://custom.example/v1"
+    )
+    assert not translation_routes._is_endpoint_override(
+        {"llm_provider": "ollamacloud"}, "http://localhost:11434/api/generate"
     )
 
 

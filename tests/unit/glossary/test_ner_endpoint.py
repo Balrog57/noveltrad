@@ -175,7 +175,7 @@ class TestSuggestTermsApiKeyResolution:
         assert response.status_code == 200, response.get_json()
         assert captured.get("api_key") == "real-env-key"
 
-    def test_nexum_default_endpoint_still_resolves_env_key(self, client, store):
+    def test_opencode_default_endpoint_still_resolves_env_key(self, client, store):
         glossary = self._create_glossary(store)
 
         captured = {}
@@ -193,19 +193,19 @@ class TestSuggestTermsApiKeyResolution:
         ), patch(
             "src.api.blueprints.glossary_routes.ner_suggest_terms",
             side_effect=_fake_suggest,
-        ), patch.dict(os.environ, {"NEXUM_API_KEY": "nexum-env-key"}):
+        ), patch.dict(os.environ, {"OPENCODE_API_KEY": "opencode-env-key"}):
             response = client.post(
                 f"/api/glossaries/{glossary.id}/suggest-terms",
                 json={
                     "text": "Some sample source text to analyze.",
-                    "provider": "nexum",
-                    "model": "deepseek-v4",
+                    "provider": "opencode",
+                    "model": "deepseek-v4-flash",
                     "api_key": "__USE_ENV__",
                 },
             )
 
         assert response.status_code == 200, response.get_json()
-        assert captured.get("api_key") == "nexum-env-key"
+        assert captured.get("api_key") == "opencode-env-key"
 
 
 if __name__ == "__main__":

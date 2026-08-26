@@ -29,8 +29,9 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
       XAI_API_KEY: ${XAI_API_KEY:-}
       XAI_MODEL: ${XAI_MODEL:-grok-4.5}
-      NEXUM_API_KEY: ${NEXUM_API_KEY:-}
-      NEXUM_MODEL: ${NEXUM_MODEL:-qwen-3.7-max}
+      OLLAMA_CLOUD_API_KEY: ${OLLAMA_CLOUD_API_KEY:-}
+      OLLAMA_CLOUD_MODEL: ${OLLAMA_CLOUD_MODEL:-gpt-oss:120b}
+      CHATGPT_MODEL: ${CHATGPT_MODEL:-gpt-5.4}
     ports:
       - "0.0.0.0:8501:8501"
     volumes:

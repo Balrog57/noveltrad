@@ -153,9 +153,9 @@ export const SettingsManager = {
             { id: 'nimApiKey', event: 'input' },
             { id: 'anthropicApiKey', event: 'input' },
             { id: 'xaiApiKey', event: 'input' },
-            { id: 'nexumApiKey', event: 'input' },
             { id: 'opencodeApiKey', event: 'input' },
             { id: 'opencodegoApiKey', event: 'input' },
+            { id: 'ollamacloudApiKey', event: 'input' },
             { id: 'disableAutoPause', event: 'change' },
             { id: 'parallelWorkers', event: 'input' },
             { id: 'maxTokensPerChunk', event: 'input' }
@@ -480,15 +480,15 @@ export const SettingsManager = {
             } else if (provider === 'xai') {
                 const key = ApiKeyUtils.getValue('xaiApiKey');
                 if (key) envSettings['XAI_API_KEY'] = key;
-            } else if (provider === 'nexum') {
-                const key = ApiKeyUtils.getValue('nexumApiKey');
-                if (key) envSettings['NEXUM_API_KEY'] = key;
             } else if (provider === 'opencode') {
                 const key = ApiKeyUtils.getValue('opencodeApiKey');
                 if (key) envSettings['OPENCODE_API_KEY'] = key;
             } else if (provider === 'opencodego') {
                 const key = ApiKeyUtils.getValue('opencodegoApiKey');
                 if (key) envSettings['OPENCODE_GO_API_KEY'] = key;
+            } else if (provider === 'ollamacloud') {
+                const key = ApiKeyUtils.getValue('ollamacloudApiKey');
+                if (key) envSettings['OLLAMA_CLOUD_API_KEY'] = key;
             }
 
             // Save endpoints to .env
@@ -569,12 +569,14 @@ export const SettingsManager = {
                     envSettings['ANTHROPIC_MODEL'] = model;
                 } else if (provider === 'xai') {
                     envSettings['XAI_MODEL'] = model;
-                } else if (provider === 'nexum') {
-                    envSettings['NEXUM_MODEL'] = model;
                 } else if (provider === 'opencode') {
                     envSettings['OPENCODE_MODEL'] = model;
                 } else if (provider === 'opencodego') {
                     envSettings['OPENCODE_GO_MODEL'] = model;
+                } else if (provider === 'ollamacloud') {
+                    envSettings['OLLAMA_CLOUD_MODEL'] = model;
+                } else if (provider === 'chatgpt') {
+                    envSettings['CHATGPT_MODEL'] = model;
                 } else {
                     // Ollama and OpenAI use DEFAULT_MODEL
                     envSettings['DEFAULT_MODEL'] = model;

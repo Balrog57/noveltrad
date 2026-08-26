@@ -194,9 +194,9 @@ def create_llm_client(llm_provider: str, gemini_api_key: Optional[str],
                       nim_api_key: Optional[str] = None,
                       anthropic_api_key: Optional[str] = None,
                       xai_api_key: Optional[str] = None,
-                      nexum_api_key: Optional[str] = None,
                       opencode_api_key: Optional[str] = None,
                       opencodego_api_key: Optional[str] = None,
+                      ollamacloud_api_key: Optional[str] = None,
                       context_window: Optional[int] = None,
                       log_callback: Optional[callable] = None) -> Optional[LLMClient]:
     """
@@ -252,15 +252,6 @@ def create_llm_client(llm_provider: str, gemini_api_key: Optional[str],
             context_window=context_window,
             log_callback=log_callback,
         )
-    if llm_provider == "nexum":
-        return LLMClient(
-            provider_type="nexum",
-            model=model_name,
-            api_key=nexum_api_key,
-            api_endpoint=api_endpoint,
-            context_window=context_window,
-            log_callback=log_callback,
-        )
     if llm_provider == "opencode":
         return LLMClient(
             provider_type="opencode",
@@ -276,6 +267,23 @@ def create_llm_client(llm_provider: str, gemini_api_key: Optional[str],
             model=model_name,
             api_key=opencodego_api_key,
             api_endpoint=api_endpoint,
+            context_window=context_window,
+            log_callback=log_callback,
+        )
+    if llm_provider == "ollamacloud":
+        # Never inherit the Ollama/OpenAI endpoint field — that is almost
+        # always localhost and would send Cloud traffic to a local daemon.
+        return LLMClient(
+            provider_type="ollamacloud",
+            model=model_name,
+            api_key=ollamacloud_api_key,
+            context_window=context_window,
+            log_callback=log_callback,
+        )
+    if llm_provider == "chatgpt":
+        return LLMClient(
+            provider_type="chatgpt",
+            model=model_name,
             context_window=context_window,
             log_callback=log_callback,
         )
