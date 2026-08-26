@@ -1656,8 +1656,12 @@ async def _refine_epub_chunks_once(
         source_translation = ""
         if source_chunks and idx < len(source_chunks):
             source_chunk = source_chunks[idx] or {}
-            source_raw = source_chunk.get("text") or source_chunk.get("main_content") or ""
-            source_translation = _localize_placeholders(source_raw)
+            # HtmlChunker already stores locally numbered placeholders.
+            # Remapping with this chunk's translated global IDs would treat a
+            # local [1] as global 1 and corrupt the source segment.
+            source_translation = (
+                source_chunk.get("text") or source_chunk.get("main_content") or ""
+            )
 
         # Generate refinement prompt using text with LOCAL indices
         prompt_pair = generate_post_processing_prompt(

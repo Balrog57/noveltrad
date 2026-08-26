@@ -22,6 +22,56 @@ async def test_epub_refinement_keeps_previous_chunks_on_alignment_mismatch():
     assert result == ["already translated"]
 
 
+@pytest.mark.asyncio
+async def test_epub_refine_does_not_remap_local_source_placeholders(monkeypatch):
+    captured = {}
+
+    def fake_prompt(**kwargs):
+        captured.update(kwargs)
+
+        class Pair:
+            system = "sys"
+            user = "user"
+
+        return Pair()
+
+    monkeypatch.setattr(
+        "src.prompts.prompts.generate_post_processing_prompt", fake_prompt
+    )
+
+    class FakeClient:
+        async def make_request(self, *args, **kwargs):
+            class Response:
+                content = ""
+                prompt_tokens = 0
+                completion_tokens = 0
+                context_used = 0
+                context_limit = 0
+
+            return Response()
+
+    chunk = {
+        "text": "[0]Hello[1]",
+        "local_tag_map": {"[0]": "<p>", "[1]": "</p>"},
+        "global_indices": [1, 2],
+    }
+    await xhtml_translator._refine_epub_chunks_once(
+        translated_chunks=["[1]Bonjour[2]"],
+        chunks=[chunk],
+        target_language="French",
+        model_name="test-model",
+        llm_client=FakeClient(),
+        context_manager=None,
+        placeholder_format=("[", "]"),
+        log_callback=None,
+        prompt_options={},
+        source_chunks=[chunk],
+    )
+
+    assert captured["source_translation"] == "[0]Hello[1]"
+    assert captured["translated_text"] == "[0]Bonjour[1]"
+
+
 def test_plain_text_structure_guard_rejects_markdown_drift():
     original = "# Chapter\n\n- Keep this [link](https://example.test).\n\n```python\nprint(1)\n```"
     changed = "# Chapter\n\nKeep this link."
