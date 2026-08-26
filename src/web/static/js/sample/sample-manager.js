@@ -358,7 +358,7 @@ function buildColumnCard(idx, col) {
                     <span class="material-symbols-outlined" style="font-size: 1rem;">move_to_inbox</span>
                     <span data-i18n="sample:apply_to_settings">${t('sample:apply_to_settings')}</span>
                 </button>
-                <button type="button" class="btn btn-secondary sample-column-remove" data-i18n-attr="title:sample:remove_llm" title="${t('sample:remove_llm')}" style="padding: 0.3rem 0.6rem; font-size: 0.8125rem;">
+                <button type="button" class="btn btn-secondary sample-column-remove" data-i18n-attr="title:sample:remove_llm;aria-label:sample:remove_llm" title="${t('sample:remove_llm')}" aria-label="${t('sample:remove_llm')}" style="padding: 0.3rem 0.6rem; font-size: 0.8125rem;">
                     <span class="material-symbols-outlined" style="font-size: 1rem;">delete</span>
                 </button>
             </div>
