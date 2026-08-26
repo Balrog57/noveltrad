@@ -270,6 +270,32 @@ class TestCheckpointManagerXHTMLPartialState:
         assert loaded_state.updated_at is not None
         assert isinstance(loaded_state.updated_at, str)
 
+    def test_state_key_roundtrip_with_nested_href(self, temp_checkpoint_manager, sample_state):
+        """Test that an href with both '/' and '_' round-trips through save/list/delete/load."""
+        manager = temp_checkpoint_manager
+        translation_id = "test_trans_nested_underscore"
+        file_href = "OEBPS/text/chapter_1.xhtml"
+
+        # Update sample_state with the correct file_href so it is persisted in the payload
+        sample_state.file_href = file_href
+
+        # Save state
+        success = manager.save_xhtml_partial_state(translation_id, file_href, sample_state)
+        assert success is True
+
+        # list must return exactly the original file_href, not a lossy
+        # reconstruction of the sanitised filename
+        states = manager.list_xhtml_partial_states(translation_id)
+        assert states == [file_href]
+
+        # Delete state
+        success = manager.delete_xhtml_partial_state(translation_id, file_href)
+        assert success is True
+
+        # Load should now return None
+        loaded = manager.load_xhtml_partial_state(translation_id, file_href)
+        assert loaded is None
+
     def test_state_directory_creation(self, temp_checkpoint_manager, sample_state):
         """Test that the xhtml_states directory is created automatically."""
         manager = temp_checkpoint_manager

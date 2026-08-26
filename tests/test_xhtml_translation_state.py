@@ -4,7 +4,15 @@ Unit tests for XHTMLTranslationState serialization and validation.
 
 import pytest
 from datetime import datetime
-from src.core.epub.xhtml_translation_state import XHTMLTranslationState
+from src.core.epub.xhtml_translation_state import (
+    CHUNK_PENDING,
+    CHUNK_TOKEN_ALIGNED,
+    CHUNK_TRANSLATED,
+    CHUNK_UNTRANSLATED,
+    XHTMLTranslationState,
+    unfinished_chunk_indices,
+    untranslated_chunk_indices,
+)
 
 
 def create_sample_state() -> XHTMLTranslationState:
@@ -384,3 +392,145 @@ def test_empty_state():
     data = state.to_dict()
     restored = XHTMLTranslationState.from_dict(data)
     assert restored.validate() is True
+
+
+# ---------------------------------------------------------------------------
+# Per-chunk statuses (issue #261)
+# ---------------------------------------------------------------------------
+
+def test_chunk_statuses_roundtrip():
+    """Test that chunk_statuses survives to_dict() → from_dict()."""
+    state = create_sample_state()
+    state.chunk_statuses = [CHUNK_UNTRANSLATED, CHUNK_TOKEN_ALIGNED, CHUNK_PENDING]
+
+    data = state.to_dict()
+    assert data['chunk_statuses'] == state.chunk_statuses
+
+    restored = XHTMLTranslationState.from_dict(data)
+    assert restored.chunk_statuses == [CHUNK_UNTRANSLATED, CHUNK_TOKEN_ALIGNED,
+                                       CHUNK_PENDING]
+    assert restored.validate() is True
+    assert unfinished_chunk_indices(restored.chunk_statuses) == [0, 2]
+
+
+def test_legacy_payload_without_chunk_statuses_is_migrated():
+    """A state written before #261 reports 'nothing to retry' (D12).
+
+    The translated prefix becomes 'translated', the rest 'pending', which is
+    exactly the behaviour the state had before the field existed.
+    """
+    data = create_sample_state().to_dict()
+    del data['chunk_statuses']  # legacy payload
+
+    state = XHTMLTranslationState.from_dict(data)
+
+    # 2 translated chunks out of 3.
+    assert state.chunk_statuses == [CHUNK_TRANSLATED, CHUNK_TRANSLATED, CHUNK_PENDING]
+    assert state.validate() is True
+    assert unfinished_chunk_indices(state.chunk_statuses) == [2]
+
+
+def test_null_chunk_statuses_is_migrated_like_a_legacy_payload():
+    data = create_sample_state().to_dict()
+    data['chunk_statuses'] = None
+
+    state = XHTMLTranslationState.from_dict(data)
+
+    assert state.chunk_statuses == [CHUNK_TRANSLATED, CHUNK_TRANSLATED, CHUNK_PENDING]
+    assert state.validate() is True
+
+
+def test_stale_length_chunk_statuses_is_rebuilt():
+    """A statuses list that no longer lines up with chunks is not trusted."""
+    data = create_sample_state().to_dict()
+    data['chunk_statuses'] = [CHUNK_UNTRANSLATED]  # 1 status, 3 chunks
+
+    state = XHTMLTranslationState.from_dict(data)
+
+    assert state.chunk_statuses == [CHUNK_TRANSLATED, CHUNK_TRANSLATED, CHUNK_PENDING]
+    assert state.validate() is True
+
+
+def test_migration_clamps_an_out_of_range_chunk_index():
+    data = create_sample_state().to_dict()
+    del data['chunk_statuses']
+    data['current_chunk_index'] = 99  # defensive: more than len(chunks)
+
+    state = XHTMLTranslationState.from_dict(data)
+
+    assert state.chunk_statuses == [CHUNK_TRANSLATED] * 3
+
+
+def test_validation_chunk_statuses_wrong_length():
+    """Test validation fails when chunk_statuses does not cover every chunk."""
+    state = create_sample_state()
+    state.chunk_statuses = [CHUNK_TRANSLATED, CHUNK_TRANSLATED]  # 3 chunks
+    assert state.validate() is False
+
+
+def test_validation_chunk_statuses_unknown_value():
+    """Test validation fails on a status outside the four known constants."""
+    state = create_sample_state()
+    state.chunk_statuses = [CHUNK_TRANSLATED, CHUNK_TRANSLATED, 'in_progress']
+    assert state.validate() is False
+
+
+def test_validation_chunk_statuses_pending_below_current_index():
+    """Invariant D4: a chunk below current_chunk_index is never 'pending'."""
+    state = create_sample_state()
+    # current_chunk_index is 2, so index 1 must already have a terminal status.
+    state.chunk_statuses = [CHUNK_TRANSLATED, CHUNK_PENDING, CHUNK_PENDING]
+    assert state.validate() is False
+
+
+def test_validation_accepts_untranslated_below_current_index():
+    """A failed chunk keeps its source text in the slot, so it is not pending."""
+    state = create_sample_state()
+    state.chunk_statuses = [CHUNK_UNTRANSLATED, CHUNK_TRANSLATED, CHUNK_PENDING]
+    assert state.validate() is True
+
+
+def test_validation_ignores_chunk_statuses_when_none():
+    """A state that carries no statuses stays valid (nothing to check)."""
+    state = create_sample_state()
+    assert state.chunk_statuses is None
+    assert state.validate() is True
+
+
+def test_unfinished_chunk_indices_on_none():
+    assert unfinished_chunk_indices(None) == []
+    assert unfinished_chunk_indices([]) == []
+
+
+def test_untranslated_chunk_indices_on_none():
+    assert untranslated_chunk_indices(None) == []
+    assert untranslated_chunk_indices([]) == []
+
+
+def test_untranslated_chunk_indices_excludes_pending():
+    """The narrow projection: only Phase 3 fallbacks, never never-attempted work.
+
+    Both helpers read the same statuses list; they must disagree exactly on the
+    pending chunks. Otherwise the live Fallbacks stat card would report every
+    chunk an interrupted job has not reached yet as a fallback.
+    """
+    statuses = [
+        CHUNK_UNTRANSLATED,   # 0 - fell back to source text
+        CHUNK_TRANSLATED,     # 1 - Phase 1
+        CHUNK_PENDING,        # 2 - never attempted
+        CHUNK_TOKEN_ALIGNED,  # 3 - Phase 2, translated, never retried (D3)
+        CHUNK_UNTRANSLATED,   # 4 - fell back to source text
+        CHUNK_PENDING,        # 5 - never attempted
+    ]
+
+    assert unfinished_chunk_indices(statuses) == [0, 2, 4, 5]
+    assert untranslated_chunk_indices(statuses) == [0, 4]
+
+
+def test_untranslated_chunk_indices_is_empty_for_a_pending_only_backlog():
+    """An interrupted-but-healthy file owes work, but has no damage to report."""
+    statuses = [CHUNK_TRANSLATED, CHUNK_TOKEN_ALIGNED, CHUNK_PENDING,
+                CHUNK_PENDING]
+
+    assert unfinished_chunk_indices(statuses) == [2, 3]
+    assert untranslated_chunk_indices(statuses) == []

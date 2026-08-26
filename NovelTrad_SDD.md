@@ -70,7 +70,7 @@ aux consommateurs existants.
 
 ## 3. Critères d'acceptation
 
-- Le fork est basé sur l'amont TBL 1.5.6 sans autre changement historique.
+- Le fork est basé sur l'amont TBL 1.5.9 sans autre changement historique.
 - Les cinq providers sont utilisables depuis CLI et interface web avec une
   réponse `LLMResponse` normale, une liste de modèles et des erreurs testées.
 - Les parcours EPUB, TXT, DOCX et SRT produisent une sortie valide en traduction

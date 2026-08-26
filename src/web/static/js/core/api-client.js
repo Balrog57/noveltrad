@@ -48,6 +48,12 @@ export function reloadIfStaleApiToken() {
 
 /**
  * Handle API errors consistently
+ *
+ * The backend pairs a short `error` label with a `message` holding the actual
+ * reason and, usually, the fix ("add the host to LLM_ENDPOINT_ALLOWLIST").
+ * Keeping only the label left users with an unactionable one-liner and nothing
+ * in the logs (issue #263), so both parts are surfaced.
+ *
  * @param {Response} response - Fetch response
  * @returns {Promise<Object>} Parsed error data
  */
@@ -61,7 +67,10 @@ async function handleApiError(response) {
     if (response.status === 401 && errorData.code === 'missing_or_invalid_token') {
         reloadIfStaleApiToken();
     }
-    throw new Error(errorData.error || errorData.message || `Request failed with status ${response.status}`);
+    const label = errorData.error || '';
+    const detail = errorData.message || '';
+    const parts = [label, detail !== label ? detail : ''].filter(Boolean);
+    throw new Error(parts.join(' — ') || `Request failed with status ${response.status}`);
 }
 
 /**
