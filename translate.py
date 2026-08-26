@@ -295,9 +295,9 @@ if __name__ == "__main__":
     if args.refine_only and args.source_lang != args.target_lang:
         logger.warning(
             f"⚠️ --refine-only: source language ({args.source_lang}) differs from "
-            f"target language ({args.target_lang}). Refinement is monolingual; "
-            f"source_lang will be ignored and the file will be polished as "
-            f"{args.target_lang}."
+            f"target language ({args.target_lang}). The file is polished as "
+            f"{args.target_lang}; source_lang is used only to name the source "
+            f"segment in the post-edit prompt."
         )
 
     if args.refine_only:
@@ -396,6 +396,7 @@ if __name__ == "__main__":
                 opencodego_api_key=getattr(args, 'opencodego_api_key', None),
                 ollamacloud_api_key=getattr(args, 'ollamacloud_api_key', None),
                 prompt_options=prompt_options,
+                source_language=args.source_lang,
             ))
             logger.info("Refine-Only Completed Successfully", LogType.TRANSLATION_END, {
                 'output_file': args.output,

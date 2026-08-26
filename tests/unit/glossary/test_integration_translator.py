@@ -157,11 +157,11 @@ class TestMetadataPropagation:
 
 class TestRefinementPromptGlossary:
     """generate_refinement_prompt must inject the glossary block in the user
-    prompt, just before the DRAFT TO REFINE section (chunk-dynamic content
-    lives in the user prompt so the system prompt stays cacheable)."""
+    prompt, just before the candidate-to-post-edit section (chunk-dynamic
+    content lives in the user prompt so the system prompt stays cacheable)."""
 
     def test_refinement_includes_glossary_block(self):
-        from prompts.prompts import generate_refinement_prompt
+        from src.prompts.prompts import generate_refinement_prompt
 
         block = "# GLOSSARY (mandatory translations for this segment)\nfoo -> bar"
         pair = generate_refinement_prompt(
@@ -173,11 +173,11 @@ class TestRefinementPromptGlossary:
         # Block must appear in the user prompt, not the system prompt.
         assert block in pair.user
         assert block not in pair.system
-        # And it must come BEFORE the DRAFT TO REFINE section.
-        assert pair.user.index(block) < pair.user.index("DRAFT TO REFINE")
+        # And it must come BEFORE the candidate-to-post-edit section.
+        assert pair.user.index(block) < pair.user.index("candidate to post-edit")
 
     def test_refinement_without_glossary_block_unchanged(self):
-        from prompts.prompts import generate_refinement_prompt
+        from src.prompts.prompts import generate_refinement_prompt
 
         pair = generate_refinement_prompt(
             draft_translation="some draft",
@@ -194,7 +194,7 @@ class TestSubtitleBlockPromptGlossary:
     user prompt, just before the SUBTITLES TO TRANSLATE section."""
 
     def test_subtitle_block_includes_glossary_block(self):
-        from prompts.prompts import generate_subtitle_block_prompt
+        from src.prompts.prompts import generate_subtitle_block_prompt
 
         block = "# GLOSSARY (mandatory translations for this segment)\nfoo -> bar"
         pair = generate_subtitle_block_prompt(
@@ -209,7 +209,7 @@ class TestSubtitleBlockPromptGlossary:
         assert pair.user.index(block) < pair.user.index("SUBTITLES TO TRANSLATE")
 
     def test_subtitle_block_without_glossary_block_unchanged(self):
-        from prompts.prompts import generate_subtitle_block_prompt
+        from src.prompts.prompts import generate_subtitle_block_prompt
 
         pair = generate_subtitle_block_prompt(
             subtitle_blocks=[(0, "Hello")],

@@ -898,6 +898,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 auto_adjust_context=config.get('auto_adjust_context', True),
                 max_tokens_per_chunk=config.get('max_tokens_per_chunk'),
                 prompt_options=config.get('prompt_options', {}),
+                source_language=config.get('source_language') or '',
             )
             if refine_result is False:
                 raise RuntimeError("Refinement adapter did not produce a valid output")
@@ -989,6 +990,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                     auto_adjust_context=config.get('auto_adjust_context', True),
                     max_tokens_per_chunk=config.get('max_tokens_per_chunk'),
                     prompt_options=config.get('prompt_options', {}),
+                    source_language=config.get('source_language') or '',
                 )
                 if refine_result is False:
                     raise RuntimeError("Refinement adapter did not produce a valid output")

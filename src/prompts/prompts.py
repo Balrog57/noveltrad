@@ -621,6 +621,40 @@ Produce the JSON now. Output it between {STYLE_TAG_IN} and {STYLE_TAG_OUT}, noth
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
 
+def _language_pair_header(
+    source_language: str,
+    target_language: str,
+    prompt_options: Optional[dict] = None,
+) -> str:
+    """Named language-pair line. Codes are included only when already configured."""
+    opts = prompt_options or {}
+    src = (source_language or "").strip()
+    tgt = (target_language or "").strip()
+    src_code = str(opts.get("source_language_code") or "").strip()
+    tgt_code = str(opts.get("target_language_code") or "").strip()
+    src_label = f"{src} ({src_code})" if src and src_code else src
+    tgt_label = f"{tgt} ({tgt_code})" if tgt and tgt_code else tgt
+    if src_label and tgt_label:
+        return f"{src_label} → {tgt_label}"
+    return tgt_label or src_label
+
+
+def _ape_system_identity(source_language: str, target_language: str) -> str:
+    """TranslateGemma / Qwen professional-translator identity for post-editing."""
+    src = (source_language or "").strip()
+    tgt = (target_language or "").strip() or "the target language"
+    if src:
+        return (
+            f"You are a professional {src} to {tgt} translator doing automatic "
+            f"post-editing. Accurately convey the meaning and nuances of the original "
+            f"{src} text while producing natural {tgt}."
+        )
+    return (
+        f"You are a professional translator doing automatic post-editing into {tgt}. "
+        f"Preserve meaning and produce natural {tgt}."
+    )
+
+
 def _chimera_refinement_task(target_language: str, *, subtitles: bool = False) -> str:
     """Single Chimera instruction: Tencent ensembles in one call, not sequential edits."""
     if subtitles:
@@ -674,17 +708,16 @@ def _hy_mt2_refinement_tasks(
             f"source-language wording in the output."
         )
     )
+    extra = additional_instructions.strip() if additional_instructions else ""
+    if extra:
+        style_task = f"{style_task} {extra}"
     tasks = [
         "Preserve every fact, name, number, relation, tense, and point of view from the source.",
         delimiter_task,
         "When terminology is provided, apply those mappings exactly: source translates to target.",
         style_task,
         "Change a sentence only when the source or a demonstrable language issue justifies it.",
-        "Only output the refined translation, do not explain.",
     ]
-    extra = additional_instructions.strip() if additional_instructions else ""
-    if extra:
-        tasks.append(extra)
     numbered = "\n".join(f"{index}. {task}" for index, task in enumerate(tasks, start=1))
     return f"""[Translation Tasks]
 {numbered}"""
@@ -745,12 +778,12 @@ def generate_refinement_prompt(
     source_language: str = "",
 ) -> PromptPair:
     """
-    Generate a one-pass refinement prompt modelled on Tencent Hy-MT2 / Chimera.
+    Generate a one-pass Automatic Post-Editing prompt.
 
-    Chimera: analyze the source plus every candidate translation and return a
-    single refined result, with no extra explanation. Hy-MT2: numbered
-    translation tasks, terminology mappings, delimiter preservation, and
-    optional background / style constraints.
+    Source plus draft in, one tagged refined translation out. Inspired by
+    TranslateGemma (named pair, output-only), NLLB (source as meaning
+    anchor), Qwen-MT (terms / TM / domain), Hunyuan-MT (numbered tasks,
+    Chimera), and LibreTranslate (short, extractable output).
 
     Translation prompts are unchanged; this function is refine-only.
     """
@@ -789,6 +822,8 @@ def generate_refinement_prompt(
 
     optional_sections = _build_optional_prompt_sections(prompt_options)
     source_language = source_language or prompt_options.get("source_language", "") or ""
+    source_lang_label = source_language.strip() or "source"
+    pair_header = _language_pair_header(source_language, target_language, prompt_options)
 
     phase_task = _chimera_refinement_task(target_language)
     translation_tasks = _hy_mt2_refinement_tasks(
@@ -796,13 +831,12 @@ def generate_refinement_prompt(
         has_placeholders=has_placeholders,
         additional_instructions=additional_instructions,
     )
-    source_lang_label = source_language.strip() or "source"
 
-    system_prompt = f"""Analyze the following {target_language} translations of the {source_lang_label} segment and generate a single refined {target_language} translation. Only output the refined translation, do not explain.
+    system_prompt = f"""{_ape_system_identity(source_language, target_language)}
 
 {phase_task}
 
-{translation_tasks}
+Produce only the refined {target_language} text inside the tags. Do not explain.
 
 The output must be entirely in {target_language}.
 {optional_sections}
@@ -853,22 +887,17 @@ The output must be entirely in {target_language}.
     if candidates_section:
         candidates_section = candidates_section.rstrip() + "\n\n"
 
-    user_prompt = f"""{background_block}{source_section}{candidates_section}{glossary_section}# DRAFT TO REFINE
+    pair_block = f"{pair_header}\n\n" if pair_header else ""
 
-Analyze the following {target_language} translation of the {source_lang_label} segment and generate a single refined {target_language} translation. Only output the refined translation, do not explain:
+    user_prompt = f"""{pair_block}{background_block}{source_section}{candidates_section}{translation_tasks}
+
+{glossary_section}The {target_language} candidate to post-edit:
 
 {INPUT_TAG_IN}
 {draft_translation}
 {INPUT_TAG_OUT}
 
-REMINDER: Output ONLY your refined text in this exact format:
-{translate_tag_in}
-your refined text here
-{translate_tag_out}
-
-Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
-
-Provide your refined version now:"""
+Start with {translate_tag_in} and end with {translate_tag_out}."""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
@@ -886,7 +915,7 @@ def generate_subtitle_refinement_block_prompt(
     source_language: str = "",
 ) -> PromptPair:
     """
-    Generate a one-pass subtitle refinement prompt modelled on Hy-MT2 / Chimera.
+    Generate a one-pass subtitle Automatic Post-Editing prompt.
 
     Synthesizes each draft cue into a single refined translation while
     preserving the [index] markers. Translation prompts are unchanged.
@@ -902,6 +931,9 @@ def generate_subtitle_refinement_block_prompt(
         example_format=subtitle_example_format,
     )
 
+    source_lang_label = source_language.strip() or "source"
+    pair_header = _language_pair_header(source_language, target_language)
+
     phase_task = _chimera_refinement_task(target_language, subtitles=True)
     translation_tasks = _hy_mt2_refinement_tasks(
         target_language,
@@ -909,13 +941,12 @@ def generate_subtitle_refinement_block_prompt(
         subtitles=True,
         additional_instructions=additional_instructions,
     )
-    source_lang_label = source_language.strip() or "source"
 
-    system_prompt = f"""Analyze the following {target_language} subtitle translations of the {source_lang_label} cues and generate a single refined {target_language} block. Only output the refined translation, do not explain.
+    system_prompt = f"""{_ape_system_identity(source_language, target_language)}
 
 {phase_task}
 
-{translation_tasks}
+Produce only the refined {target_language} text inside the tags. Do not explain.
 
 The output must be entirely in {target_language}.
 Every input [N] must appear exactly once, in the same order, followed by the refined text for that subtitle.
@@ -965,23 +996,17 @@ Previous refined block:
         else ""
     )
 
-    user_prompt = f"""{previous_refined_block_text}{source_section}{history_section}{glossary_section}# SUBTITLES TO REFINE
+    pair_block = f"{pair_header}\n\n" if pair_header else ""
 
-Analyze the following {target_language} subtitle translations of the {source_lang_label} segment and generate a single refined {target_language} block. Only output the refined translation, do not explain:
+    user_prompt = f"""{pair_block}{previous_refined_block_text}{source_section}{history_section}{translation_tasks}
+
+{glossary_section}The {target_language} candidate to post-edit:
 
 {INPUT_TAG_IN}
 {formatted_subtitles_text}
 {INPUT_TAG_OUT}
 
-REMINDER: Output format must be:
-{translate_tag_in}
-[0]refined subtitle 0
-[1]refined subtitle 1
-{translate_tag_out}
-
-Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
-
-Provide your refined block now:"""
+Start with {translate_tag_in} and end with {translate_tag_out}."""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 

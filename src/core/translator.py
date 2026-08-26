@@ -143,6 +143,28 @@ def _build_chunk_glossary_block(
     return f"{cast_block}\n{glossary_block}"
 
 
+def _build_refinement_glossary_block(
+    source_text: str,
+    draft_text: str,
+    prompt_options: Optional[dict],
+    log_callback=None,
+    runtime_state: Optional[dict] = None,
+    *,
+    target_language: str = "",
+) -> str:
+    """Filter glossary against source text, falling back to source+draft."""
+    lookup = "\n".join(
+        part for part in (source_text or "", draft_text or "") if part.strip()
+    )
+    return _build_chunk_glossary_block(
+        lookup,
+        prompt_options,
+        log_callback=log_callback,
+        runtime_state=runtime_state,
+        target_language=target_language,
+    )
+
+
 def split_chunk_for_retry(main_content: str, target_ratio: float = 0.5) -> Tuple[str, str]:
     """
     Split a chunk into two parts for retry after context overflow.
@@ -657,11 +679,13 @@ async def _make_refinement_request(
     # Extract refinement instructions from prompt_options
     refinement_instructions = prompt_options.get('refinement_instructions', '') if prompt_options else ''
 
-    # Filter the glossary against the DRAFT (target language) — terms that survived
-    # the first pass are the ones we want to keep stable through refinement.
-    glossary_block = _build_chunk_glossary_block(
-        draft_translation, prompt_options, log_callback=log_callback,
-        runtime_state=runtime_state, target_language=target_language,
+    # Filter the glossary against the SOURCE (plus draft fallback) — Hy-MT2 /
+    # Qwen terms are source-language, so names that never survived the first
+    # pass still need to hit the glossary during post-editing.
+    glossary_block = _build_refinement_glossary_block(
+        source_translation, draft_translation, prompt_options,
+        log_callback=log_callback, runtime_state=runtime_state,
+        target_language=target_language,
     )
 
     # Generate refinement prompts

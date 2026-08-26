@@ -23,7 +23,7 @@ from src.config import (
 _NO_CHAR_CAP = 10 ** 12
 from .llm_client import create_llm_client
 from .post_processor import clean_translated_text
-from .translator import generate_translation_request, _build_chunk_glossary_block
+from .translator import generate_translation_request, _build_chunk_glossary_block, _build_refinement_glossary_block
 from .epub import TagPreserver
 
 
@@ -316,9 +316,24 @@ async def _refine_subtitle_translations_once(
             local_to_global[local_idx] = g_idx
 
         block_text_for_glossary = "\n".join(text for _, text in local_subtitle_tuples)
-        glossary_block = _build_chunk_glossary_block(
-            block_text_for_glossary, prompt_options, log_callback=log_callback,
-            runtime_state=runtime_state, target_language=target_language,
+        source_text_for_glossary = ""
+        source_subtitle_blocks = None
+        if source_subtitles:
+            source_subtitle_blocks = []
+            source_parts = []
+            for local_idx, g_idx in enumerate(group):
+                if 0 <= g_idx < len(source_subtitles):
+                    source_text = source_subtitles[g_idx].get("text", "")
+                else:
+                    source_text = ""
+                source_subtitle_blocks.append((local_idx, source_text))
+                if source_text:
+                    source_parts.append(source_text)
+            source_text_for_glossary = "\n".join(source_parts)
+        glossary_block = _build_refinement_glossary_block(
+            source_text_for_glossary, block_text_for_glossary, prompt_options,
+            log_callback=log_callback, runtime_state=runtime_state,
+            target_language=target_language,
         )
 
         block_refined: Dict[int, str] = {}
@@ -353,16 +368,6 @@ async def _refine_subtitle_translations_once(
                     f"each followed by the refined subtitle. "
                     f"Missing indices last time: {missing_str}. Do NOT stop early."
                 )
-
-            source_subtitle_blocks = None
-            if source_subtitles:
-                source_subtitle_blocks = []
-                for local_idx, g_idx in enumerate(group):
-                    if 0 <= g_idx < len(source_subtitles):
-                        source_text = source_subtitles[g_idx].get("text", "")
-                    else:
-                        source_text = ""
-                    source_subtitle_blocks.append((local_idx, source_text))
 
             try:
                 prompt_pair = generate_subtitle_refinement_block_prompt(
