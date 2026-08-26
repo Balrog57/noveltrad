@@ -464,20 +464,63 @@ async def refine_subtitle_translations(
     refinement_output_filepath: Optional[str] = None,
 ) -> Dict[int, str]:
     """Run a single TBL literary refinement pass on translated subtitles."""
-    return await _refine_subtitle_translations_once(
-        translations=translations,
-        target_language=target_language,
-        model_name=model_name,
-        llm_client=llm_client,
-        log_callback=log_callback,
-        prompt_options=prompt_options,
-        post_processing_instructions=post_processing_instructions,
-        stats_callback=stats_callback,
-        check_interruption_callback=check_interruption_callback,
-        subtitle_blocks=subtitle_blocks,
-        subtitle_positions=subtitle_positions,
-        source_subtitles=source_subtitles,
+    from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
+    from src.core.refine.refinement_checkpoint import (
+        clear_one_pass_state,
+        load_one_pass_state,
+        save_one_pass_state,
     )
+
+    start_block, checkpoint_current, _raw = load_one_pass_state(
+        checkpoint_manager, translation_id, total_segments=len(translations)
+    )
+    working = dict(translations)
+    if isinstance(checkpoint_current, dict):
+        working.update({int(k): v for k, v in checkpoint_current.items()})
+
+    def _persist(block_idx, partial):
+        save_one_pass_state(
+            checkpoint_manager, translation_id,
+            next_segment=block_idx,
+            total_segments=len(working),
+            current=dict(partial),
+            output_filepath=refinement_output_filepath,
+            log_callback=log_callback,
+        )
+
+    try:
+        result = await _refine_subtitle_translations_once(
+            translations=working,
+            target_language=target_language,
+            model_name=model_name,
+            llm_client=llm_client,
+            log_callback=log_callback,
+            prompt_options=prompt_options,
+            post_processing_instructions=post_processing_instructions,
+            stats_callback=stats_callback,
+            check_interruption_callback=check_interruption_callback,
+            subtitle_blocks=subtitle_blocks,
+            subtitle_positions=subtitle_positions,
+            source_subtitles=source_subtitles,
+            start_block_index=start_block,
+            block_checkpoint_callback=_persist if checkpoint_manager and translation_id else None,
+        )
+    except (RateLimitError, RefinementInterrupted) as exc:
+        partial = getattr(exc, "partial_result", None)
+        next_segment = getattr(exc, "refinement_index", start_block)
+        if isinstance(partial, dict):
+            exc.refinement_state = save_one_pass_state(
+                checkpoint_manager, translation_id,
+                next_segment=next_segment if isinstance(next_segment, int) else start_block,
+                total_segments=len(working),
+                current=dict(partial),
+                output_filepath=refinement_output_filepath,
+                log_callback=log_callback,
+            )
+        raise
+
+    clear_one_pass_state(checkpoint_manager, translation_id)
+    return result
 
 async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str]]],
                                       source_language: str, target_language: str,

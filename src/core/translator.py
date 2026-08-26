@@ -895,9 +895,25 @@ async def refine_chunks(
     Returns:
         List of refined text strings
     """
+    from src.core.refine.refinement_checkpoint import (
+        clear_one_pass_state,
+        load_one_pass_state,
+        save_one_pass_state,
+    )
+
     total_chunks = len(translated_chunks)
-    refined_parts = []
+    start_index, checkpoint_current, _checkpoint_state = load_one_pass_state(
+        checkpoint_manager, translation_id, total_segments=total_chunks
+    )
+    working_chunks = list(translated_chunks)
+    if isinstance(checkpoint_current, list) and len(checkpoint_current) == total_chunks:
+        working_chunks = list(checkpoint_current)
+
+    refined_parts = list(working_chunks[:start_index])
     last_refined_context = ""
+    if refined_parts:
+        previous = refined_parts[-1].split()
+        last_refined_context = " ".join(previous[-25:]) if len(previous) > 25 else refined_parts[-1]
     # Transient per-job state (e.g. glossary cap warning dedupe) — never persisted.
     runtime_state: dict = {}
 
@@ -967,13 +983,16 @@ async def refine_chunks(
 
     try:
         iterator = tqdm(
-            enumerate(translated_chunks),
+            enumerate(working_chunks),
             total=total_chunks,
             desc=f"Refining {target_language} translation",
             unit="seg"
-        ) if not log_callback else enumerate(translated_chunks)
+        ) if not log_callback else enumerate(working_chunks)
 
         for i, draft_text in iterator:
+            if i < start_index:
+                progress_tracker.mark_completed(i, 0)
+                continue
             # Check for interruption
             if check_interruption_callback and check_interruption_callback():
                 if log_callback:
@@ -981,8 +1000,13 @@ async def refine_chunks(
                         f"Refinement interrupted at chunk {i+1}/{total_chunks}")
                 else:
                     tqdm.write(f"\nRefinement interrupted at chunk {i+1}/{total_chunks}")
-                partial = refined_parts + translated_chunks[i:]
-                raise RefinementInterrupted(partial_result=list(partial))
+                partial = refined_parts + working_chunks[i:]
+                state = save_one_pass_state(
+                    checkpoint_manager, translation_id,
+                    next_segment=i, total_segments=total_chunks, current=list(partial),
+                    output_filepath=refinement_output_filepath, log_callback=log_callback,
+                )
+                raise RefinementInterrupted(partial_result=list(partial), refinement_state=state)
 
             # Progress update (token-based)
             # Measure refinement time for this chunk
@@ -1034,12 +1058,18 @@ async def refine_chunks(
                         f"⏸️ Rate limited by {e.provider or 'API'}{retry_msg}. "
                         f"Auto-pausing refinement at chunk {i+1}/{total_chunks}...")
                 # Add remaining unrefined chunks as-is
-                for remaining in translated_chunks[i:]:
+                for remaining in working_chunks[i:]:
                     refined_parts.append(remaining)
                 # Invariant: len(refined_parts) == len(translated_chunks) here —
                 # the list is complete, chunks at index >= i are the unrefined
                 # drafts. Hand it to the caller so the partial pass can be saved.
                 e.partial_result = list(refined_parts)
+                e.refinement_state = save_one_pass_state(
+                    checkpoint_manager, translation_id,
+                    next_segment=i, total_segments=total_chunks,
+                    current=list(refined_parts),
+                    output_filepath=refinement_output_filepath, log_callback=log_callback,
+                )
                 raise  # Re-raise to handlers.py
 
             # Record success in context manager
@@ -1094,6 +1124,7 @@ async def refine_chunks(
         log_callback("refinement_complete",
             f"✨ Refinement complete: {stats.completed_chunks} refined, {stats.failed_chunks} kept original")
 
+    clear_one_pass_state(checkpoint_manager, translation_id)
     return refined_parts
 
 
