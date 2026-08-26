@@ -2128,18 +2128,74 @@ async def _refine_epub_chunks(
     refinement_output_filepath: Optional[str] = None,
 ) -> List[str]:
     """Run a single TBL literary refinement pass on translated EPUB chunks."""
-    return await _refine_epub_chunks_once(
-        translated_chunks=translated_chunks,
-        chunks=chunks,
-        target_language=target_language,
-        model_name=model_name,
-        llm_client=llm_client,
-        context_manager=context_manager,
-        placeholder_format=placeholder_format,
-        log_callback=log_callback,
-        prompt_options=prompt_options,
-        stats_callback=stats_callback,
-        stats=stats,
-        source_chunks=source_chunks,
-        check_interruption_callback=check_interruption_callback,
+    from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
+    from src.core.refine.refinement_checkpoint import (
+        clear_one_pass_state,
+        load_one_pass_state,
+        save_one_pass_state,
     )
+
+    start_index, checkpoint_current, raw_state = load_one_pass_state(
+        checkpoint_manager, translation_id,
+        total_segments=len(translated_chunks), scope=checkpoint_scope,
+    )
+    working = list(translated_chunks)
+    if isinstance(checkpoint_current, list) and len(checkpoint_current) == len(translated_chunks):
+        working = list(checkpoint_current)
+
+    extra = {}
+    if isinstance(raw_state, dict):
+        extra = {
+            key: raw_state[key]
+            for key in ("completed_hrefs", "current_href", "format")
+            if key in raw_state
+        }
+
+    def _persist(idx, _accepted, resumable, advance=False):
+        save_one_pass_state(
+            checkpoint_manager, translation_id,
+            next_segment=idx + 1 if advance else idx,
+            total_segments=len(working),
+            current=list(resumable or working),
+            output_filepath=refinement_output_filepath,
+            extra=extra or None,
+            scope=checkpoint_scope,
+            log_callback=log_callback,
+        )
+
+    try:
+        result = await _refine_epub_chunks_once(
+            translated_chunks=working,
+            chunks=chunks,
+            target_language=target_language,
+            model_name=model_name,
+            llm_client=llm_client,
+            context_manager=context_manager,
+            placeholder_format=placeholder_format,
+            log_callback=log_callback,
+            prompt_options=prompt_options,
+            stats_callback=stats_callback,
+            stats=stats,
+            source_chunks=source_chunks,
+            start_index=start_index,
+            check_interruption_callback=check_interruption_callback,
+            chunk_checkpoint_callback=_persist if checkpoint_manager and translation_id else None,
+        )
+    except (RateLimitError, RefinementInterrupted) as exc:
+        partial = getattr(exc, "partial_result", None)
+        next_segment = getattr(exc, "refinement_index", start_index)
+        if isinstance(partial, list) and partial:
+            exc.refinement_state = save_one_pass_state(
+                checkpoint_manager, translation_id,
+                next_segment=next_segment if isinstance(next_segment, int) else start_index,
+                total_segments=len(working),
+                current=list(partial),
+                output_filepath=refinement_output_filepath,
+                extra=extra or None,
+                scope=checkpoint_scope,
+                log_callback=log_callback,
+            )
+        raise
+
+    clear_one_pass_state(checkpoint_manager, translation_id, scope=checkpoint_scope)
+    return result
