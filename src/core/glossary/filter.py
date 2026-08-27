@@ -16,9 +16,14 @@ the entry if ANY of the alternatives appears in the chunk; occurrence counts
 are summed across alternatives.
 """
 import re
-from typing import Dict, List, Tuple
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Dict, List, Tuple, Union
 
 from src.core.glossary.models import GlossaryConfig
+
+# Pre-compiled regex (Latin word-boundary terms) or lowercase needle (CJK/substring).
+_MatchPattern = Union[re.Pattern, str]
 
 _CJK_RE = re.compile(r'[぀-ゟ゠-ヿ一-鿿가-힯㐀-䶿]')
 
@@ -48,13 +53,49 @@ def _max_alt_length(source: str) -> int:
     return max((len(a) for a in alts), default=0)
 
 
-def _count_alternative(alt: str, chunk: str, haystack: str, flags: int, case_sensitive: bool) -> int:
-    """Count occurrences of a single alternative form in the chunk."""
-    if _is_cjk(alt) or not _has_word_char_at_edge(alt):
-        needle = alt if case_sensitive else alt.lower()
-        return haystack.count(needle)
-    pattern = r'\b' + re.escape(alt) + r'\b'
-    return len(re.findall(pattern, chunk, flags))
+@dataclass(frozen=True)
+class _IndexedGlossaryEntry:
+    source: str
+    target: str
+    patterns: Tuple[_MatchPattern, ...]
+
+
+@lru_cache(maxsize=32)
+def _build_glossary_index(
+    terms_items: Tuple[Tuple[str, str], ...],
+    case_sensitive: bool,
+) -> Tuple[_IndexedGlossaryEntry, ...]:
+    """Sort glossary terms and compile match patterns once per glossary.
+
+    Called on every chunk but cached by (terms snapshot, case_sensitive).
+    Avoids O(T log T) sort and O(T) regex compilation per chunk during
+    translation — the dominant setup cost when T is large.
+    """
+    flags = 0 if case_sensitive else re.IGNORECASE
+    sorted_terms = sorted(
+        terms_items,
+        key=lambda kv: _max_alt_length(kv[0]),
+        reverse=True,
+    )
+    entries: List[_IndexedGlossaryEntry] = []
+    for source, target in sorted_terms:
+        alternatives = _split_alternatives(source)
+        if not alternatives:
+            continue
+        patterns: List[_MatchPattern] = []
+        for alt in alternatives:
+            if _is_cjk(alt) or not _has_word_char_at_edge(alt):
+                patterns.append(alt if case_sensitive else alt.lower())
+            else:
+                patterns.append(re.compile(r'\b' + re.escape(alt) + r'\b', flags))
+        entries.append(_IndexedGlossaryEntry(source, target, tuple(patterns)))
+    return tuple(entries)
+
+
+def _count_with_pattern(pattern: _MatchPattern, chunk: str, haystack: str) -> int:
+    if isinstance(pattern, re.Pattern):
+        return len(pattern.findall(chunk))
+    return haystack.count(pattern)
 
 
 def filter_glossary(
@@ -79,30 +120,18 @@ def filter_glossary(
         return {}, False
 
     config = config or GlossaryConfig()
-    flags = 0 if config.case_sensitive else re.IGNORECASE
-
-    # Sort by longest alternative descending so longer terms (e.g.
-    # "Li Fanqing") are checked before shorter prefixes (e.g. "Li Fan").
-    sorted_terms = sorted(
-        glossary_terms.items(),
-        key=lambda kv: _max_alt_length(kv[0]),
-        reverse=True,
-    )
-
-    matched: List[Tuple[str, str, int]] = []  # (source, target, occurrence_count)
     haystack = chunk if config.case_sensitive else chunk.lower()
 
-    for source, target in sorted_terms:
-        alternatives = _split_alternatives(source)
-        if not alternatives:
-            continue
+    # Reuse pre-sorted, pre-compiled patterns for this glossary snapshot.
+    index = _build_glossary_index(tuple(glossary_terms.items()), config.case_sensitive)
 
+    matched: List[Tuple[str, str, int]] = []  # (source, target, occurrence_count)
+    for entry in index:
         total_count = sum(
-            _count_alternative(alt, chunk, haystack, flags, config.case_sensitive)
-            for alt in alternatives
+            _count_with_pattern(pattern, chunk, haystack) for pattern in entry.patterns
         )
         if total_count > 0:
-            matched.append((source, target, total_count))
+            matched.append((entry.source, entry.target, total_count))
 
     capped = False
     if config.max_entries and len(matched) > config.max_entries:
