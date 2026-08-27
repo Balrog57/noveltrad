@@ -375,7 +375,10 @@ async def refine_epub_file(
                         translation_id=translation_id,
                         checkpoint_scope=f"epub:{href}",
                         refinement_output_filepath=refinement_output_filepath or output_filepath,
-                        stats_callback=stats_callback,
+                        # File-level stats_callback only: inner per-chunk emits
+                        # reset total_chunks to the current XHTML and make the
+                        # global bar jump to 100% then regress.
+                        stats_callback=None,
                     )
                 except (RateLimitError, RefinementInterrupted) as exc:
                     interruption_error = exc

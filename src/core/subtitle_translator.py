@@ -188,13 +188,11 @@ async def _refine_subtitle_translations_once(
     subtitle_blocks: Optional[List[List[Dict[str, str]]]] = None,
     subtitle_positions: Optional[Dict[int, int]] = None,
     source_subtitles: Optional[List[Dict[str, str]]] = None,
-    initial_translations: Optional[Dict[int, str]] = None,
-    refinement_histories: Optional[Dict[int, List[str]]] = None,
     start_block_index: int = 0,
     block_checkpoint_callback=None,
 ) -> Dict[int, str]:
     """
-    Refine subtitle translations using a second LLM pass.
+    Refine subtitle translations with a one-pass Automatic Post-Editing call.
 
     Mirrors the block-based translate pass: subtitles are grouped into blocks
     and refined together in a single LLM call per block, with per-subtitle
@@ -480,7 +478,7 @@ async def refine_subtitle_translations(
     translation_id: Optional[str] = None,
     refinement_output_filepath: Optional[str] = None,
 ) -> Dict[int, str]:
-    """Run a single TBL literary refinement pass on translated subtitles."""
+    """Run a single one-pass Automatic Post-Editing pass on translated subtitles."""
     from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
     from src.core.refine.refinement_checkpoint import (
         clear_one_pass_state,

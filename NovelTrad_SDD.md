@@ -44,31 +44,29 @@ Model lists must be fetched from the provider when the API allows it, with a
 short documented fallback list. The web UI selects models from the dropdown;
 it does not require typing a model id for these providers.
 
-## 2. Four-pass refinement
+## 2. One-pass Automatic Post-Editing
 
-Plain translation stays unchanged. When the user enables Refine, the full
-pipeline is:
+Plain translation stays unchanged. When the user enables Refine, the pipeline
+is two steps:
 
-1. **Translation** — existing TBL pass.
-2. **Context** — analyse each block with the previous and next block; output:
-   consistency, terminology, and continuity suggestions.
-3. **Correction** — spelling, grammar, punctuation, and flow of the draft;
-   output: corrected text.
-4. **Final** — generate the definitive text from the initial translation, pass 2
-   suggestions, and the corrected text from pass 3.
+1. **Translation** — existing TBL pass (`translate_file`).
+2. **APE** — one source-aware Hy-MT2/Chimera Automatic Post-Editing call per
+   segment via `refine_file`, with the original input as `source_filepath`.
 
-Passes are strictly ordered and use the same provider and model. Placeholders,
-tags, timecodes, and format structure must be preserved. `--refine-only` runs
-passes 2–4 on an already translated file. Intermediate outputs stay inside
-checkpoints and do not change the existing user flow.
+`--refine-only` (web Refine-only / CLI `--refine-only`) runs step 2 on an
+already translated file. Translate+refine on the web uses `refine_after`; the
+CLI `--refine` flag translates, then calls `refine_file`. Neither product path
+sets `prompt_options.refine`, so EPUB/DOCX/SRT never run an in-pipeline refine
+and then a second `refine_file` pass.
 
-Each pass is independently resumable at block level. An interruption or error
-keeps artefacts already produced and resumes at the current pass and block
-without replaying finished work. After retries are exhausted, the job stays
-resumable and reports the failed pass and block.
+Placeholders, tags, timecodes, and format structure must be preserved.
+Checkpoints store one-pass state (`phase` remains `1` as a vestigial field,
+plus `next_segment` / `current`). An interruption or rate-limit keeps artefacts
+already produced and resumes at the current segment without replaying finished
+work.
 
-Web progress exposes four phases for Translate + Refine and three phases for
-Refine-only, while keeping the historical fields existing consumers need.
+Web progress exposes two phases for Translate + Refine and one phase for
+Refine-only.
 
 ## 3. Acceptance
 
@@ -76,7 +74,7 @@ Refine-only, while keeping the historical fields existing consumers need.
 - The extra providers are usable from CLI and web UI with a normal
   `LLMResponse`, a model list, and tested errors.
 - EPUB, TXT, DOCX, and SRT produce valid output for plain translation and for
-  the multi-pass refine path.
-- Tests prove order 1→2→3→4, neighboring blocks, per-pass resume,
-  `--refine-only`, placeholder preservation, and no regression on inherited TBL
-  features.
+  the one-pass APE refine path.
+- Tests prove there is no double refine, CLI/web parity for `--refine` /
+  refine-after / `--refine-only`, placeholder preservation, one-pass resume,
+  and no regression on inherited TBL features.

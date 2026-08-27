@@ -853,6 +853,13 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 f"⚠️ Could not load glossary: {glossary_load_error}"
             )
 
+        # Product translate+refine uses refine_file after translation. Clear
+        # prompt_options.refine so EPUB/DOCX/SRT cannot also run in-pipeline.
+        if config.get('refine_after') or config.get('refine_only') or refinement_resume:
+            if 'prompt_options' not in config or config['prompt_options'] is None:
+                config['prompt_options'] = {}
+            config['prompt_options']['refine'] = False
+
         if config.get('refine_only') or refinement_resume:
             _log_message_callback(
                 "refine_only_mode",

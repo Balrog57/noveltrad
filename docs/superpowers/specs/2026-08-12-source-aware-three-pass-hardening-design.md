@@ -1,5 +1,9 @@
 # Source-Aware Three-Pass Refinement Hardening
 
+> **Obsolete.** NovelTrad refine is a single one-pass Hy-MT2/Chimera Automatic
+> Post-Editing call per segment. See `NovelTrad_SDD.md` §2. Do not implement
+> this three-pass / four-pass design.
+
 ## Goal
 
 Make the three-pass refinement workflow truthful and resumable for TXT/Markdown, EPUB/DOCX, and SRT while making Anthropic, xAI, and OpenCode use the configured provider settings.

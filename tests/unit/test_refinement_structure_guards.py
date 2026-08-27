@@ -158,3 +158,52 @@ async def test_generic_refinement_keeps_draft_when_structure_changes(monkeypatch
     )
 
     assert result == [draft]
+
+
+def test_text_has_placeholders_matches_structure_signature():
+    from src.core.refine.structure import text_has_placeholders
+
+    assert text_has_placeholders("Keep [0] and [[id1]]")
+    assert text_has_placeholders("token __TEMP_TAG0__ here")
+    assert not text_has_placeholders("No markers in this draft.")
+
+
+@pytest.mark.asyncio
+async def test_txt_refine_enables_placeholder_instructions_when_draft_has_them(monkeypatch):
+    captured = {}
+    original = translator.generate_refinement_prompt
+
+    def spy(*args, **kwargs):
+        captured["has_placeholders"] = kwargs.get("has_placeholders")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(translator, "generate_refinement_prompt", spy)
+
+    from unittest.mock import AsyncMock, Mock
+    from src.core.llm.base import LLMResponse
+
+    llm = Mock()
+    llm.make_request = AsyncMock(return_value=LLMResponse(
+        content="<TRANSLATION>Keep [0]</TRANSLATION>",
+        prompt_tokens=1,
+        completion_tokens=1,
+        context_used=1,
+        context_limit=2048,
+        was_truncated=False,
+    ))
+    llm.extract_translation = Mock(return_value="Keep [0]")
+
+    await translator._make_refinement_request(
+        draft_translation="Keep [0] exactly.",
+        context_before="",
+        context_after="",
+        previous_refined_context="",
+        target_language="French",
+        model="test-model",
+        llm_client=llm,
+        log_callback=None,
+        has_placeholders=False,
+        prompt_options={},
+    )
+
+    assert captured["has_placeholders"] is True

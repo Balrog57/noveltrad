@@ -64,10 +64,13 @@ function getTranslationConfig(file) {
     const refineAfter = operation === 'translate' && !!file.refineAfter;
 
     const ciValue = DomHelpers.getValue('customInstructionSelect') || '';
+    // Product translate+refine uses refine_after → refine_file. Do not set
+    // prompt_options.refine: that flag still triggers an in-pipeline pass on
+    // EPUB/DOCX/SRT and would double-refine when combined with refine_after.
     const promptOptions = {
         preserve_technical_content: true,
         text_cleanup: DomHelpers.getElement('textCleanup')?.checked || false,
-        refine: refineAfter,
+        refine: false,
         plain_text_mode: DomHelpers.getElement('plainTextMode')?.checked || false,
         custom_instruction_file: ciValue === '__auto__' ? '' : ciValue
     };

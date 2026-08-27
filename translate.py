@@ -28,6 +28,111 @@ import time
 import uuid
 
 
+def build_cli_prompt_options(args) -> dict:
+    """Prompt options for the CLI product path.
+
+    ``prompt_options['refine']`` stays False: that flag still triggers an
+    in-pipeline refine on EPUB/DOCX/SRT. ``--refine`` instead runs
+    ``refine_file`` after a successful translate so TXT/EPUB/DOCX/SRT share
+    one source-aware APE pass.
+    """
+    return {
+        'preserve_technical_content': True,
+        'text_cleanup': bool(getattr(args, 'text_cleanup', False)),
+        'refine': False,
+    }
+
+
+def _cli_provider_kwargs(args) -> dict:
+    return {
+        'llm_api_endpoint': args.api_endpoint,
+        'gemini_api_key': args.gemini_api_key,
+        'openai_api_key': args.openai_api_key,
+        'openrouter_api_key': args.openrouter_api_key,
+        'mistral_api_key': args.mistral_api_key,
+        'deepseek_api_key': args.deepseek_api_key,
+        'poe_api_key': args.poe_api_key,
+        'nim_api_key': args.nim_api_key,
+        'anthropic_api_key': getattr(args, 'anthropic_api_key', None),
+        'xai_api_key': getattr(args, 'xai_api_key', None),
+        'opencode_api_key': getattr(args, 'opencode_api_key', None),
+        'opencodego_api_key': getattr(args, 'opencodego_api_key', None),
+        'ollamacloud_api_key': getattr(args, 'ollamacloud_api_key', None),
+    }
+
+
+async def run_cli_job(
+    args,
+    prompt_options,
+    checkpoint_manager,
+    translation_id,
+    log_callback,
+    stats_callback,
+) -> str:
+    """Translate and/or refine. Returns the completed mode name."""
+    provider_kwargs = _cli_provider_kwargs(args)
+    if args.refine_only:
+        ok = await refine_file(
+            input_filepath=args.input,
+            output_filepath=args.output,
+            target_language=args.target_lang,
+            model_name=args.model,
+            llm_provider=args.provider,
+            source_filepath=args.input,
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            log_callback=log_callback,
+            stats_callback=stats_callback,
+            check_interruption_callback=None,
+            prompt_options=prompt_options,
+            source_language=args.source_lang,
+            **provider_kwargs,
+        )
+        if ok is False:
+            raise RuntimeError("Refinement adapter did not produce a valid output")
+        return 'refine-only'
+
+    await translate_file(
+        input_filepath=args.input,
+        output_filepath=args.output,
+        source_language=args.source_lang,
+        target_language=args.target_lang,
+        model_name=args.model,
+        llm_provider=args.provider,
+        checkpoint_manager=checkpoint_manager,
+        translation_id=translation_id,
+        log_callback=log_callback,
+        stats_callback=stats_callback,
+        check_interruption_callback=None,
+        prompt_options=prompt_options,
+        parallel_workers=args.parallel,
+        **provider_kwargs,
+    )
+    if args.refine:
+        if not os.path.exists(args.output):
+            raise RuntimeError("Translation produced no output; skipping refine")
+        ok = await refine_file(
+            input_filepath=args.output,
+            output_filepath=args.output,
+            target_language=args.target_lang,
+            model_name=args.model,
+            llm_provider=args.provider,
+            source_filepath=args.input,
+            checkpoint_manager=checkpoint_manager,
+            translation_id=translation_id,
+            log_callback=log_callback,
+            stats_callback=stats_callback,
+            check_interruption_callback=None,
+            prompt_options=prompt_options,
+            source_language=args.source_lang,
+            **provider_kwargs,
+        )
+        if ok is False:
+            raise RuntimeError("Refinement adapter did not produce a valid output")
+        return 'translate_refine'
+    return 'translate'
+
+
 def _apply_cli_auto_prep(args, prompt_options, logger) -> None:
     """Merge auto glossary/style into `prompt_options` (in place). Never raises.
 
@@ -165,7 +270,7 @@ if __name__ == "__main__":
     # Prompt options (optional system prompt instructions)
     prompt_group = parser.add_argument_group('Prompt Options', 'Optional instructions to include in the translation prompt')
     prompt_group.add_argument("--text-cleanup", action="store_true", help="Enable OCR/typographic cleanup (fix broken lines, spacing, punctuation).")
-    prompt_group.add_argument("--refine", action="store_true", help="Enable refinement pass: runs a second pass to polish translation quality and literary style.")
+    prompt_group.add_argument("--refine", action="store_true", help="After translation, run a one-pass Automatic Post-Editing pass on the output (TXT, EPUB, DOCX, SRT).")
     prompt_group.add_argument("--refine-only", action="store_true", dest="refine_only", help="Run ONLY a refinement pass on an already-translated file (skips the translation phase). The input file is assumed to already be in the target language.")
     prompt_group.add_argument("--glossary", default=None, help="Path to a glossary file (.json or .csv) injected per-chunk to keep entity translations consistent.")
     prompt_group.add_argument(
@@ -335,13 +440,10 @@ if __name__ == "__main__":
 
     # Build prompt_options from CLI arguments
     # Technical content protection is now always enabled.
-    # In refine-only mode the refinement pass is implicit, so we force the
-    # `refine` flag off to avoid double-counting in the progress tracker.
-    prompt_options = {
-        'preserve_technical_content': True,
-        'text_cleanup': args.text_cleanup,
-        'refine': args.refine and not args.refine_only,
-    }
+    # Product --refine uses refine_file after translate_file; never set the
+    # in-pipeline prompt_options.refine flag (that would double-refine EPUB/DOCX/SRT
+    # and is ignored for TXT).
+    prompt_options = build_cli_prompt_options(args)
 
     # Load glossary file (JSON or CSV) into prompt_options
     if args.glossary:
@@ -370,68 +472,20 @@ if __name__ == "__main__":
         # Generate unique translation ID
         translation_id = f"cli_{uuid.uuid4().hex[:8]}"
 
-        if args.refine_only:
-            asyncio.run(refine_file(
-                input_filepath=args.input,
-                output_filepath=args.output,
-                target_language=args.target_lang,
-                model_name=args.model,
-                llm_provider=args.provider,
-                checkpoint_manager=checkpoint_manager,
-                translation_id=translation_id,
-                log_callback=log_callback,
-                stats_callback=stats_callback,
-                check_interruption_callback=None,
-                llm_api_endpoint=args.api_endpoint,
-                gemini_api_key=args.gemini_api_key,
-                openai_api_key=args.openai_api_key,
-                openrouter_api_key=args.openrouter_api_key,
-                mistral_api_key=args.mistral_api_key,
-                deepseek_api_key=args.deepseek_api_key,
-                poe_api_key=args.poe_api_key,
-                nim_api_key=args.nim_api_key,
-                anthropic_api_key=getattr(args, 'anthropic_api_key', None),
-                xai_api_key=getattr(args, 'xai_api_key', None),
-                opencode_api_key=getattr(args, 'opencode_api_key', None),
-                opencodego_api_key=getattr(args, 'opencodego_api_key', None),
-                ollamacloud_api_key=getattr(args, 'ollamacloud_api_key', None),
-                prompt_options=prompt_options,
-                source_language=args.source_lang,
-            ))
+        mode = asyncio.run(run_cli_job(
+            args,
+            prompt_options,
+            checkpoint_manager,
+            translation_id,
+            log_callback,
+            stats_callback,
+        ))
+        if mode == 'refine-only':
             logger.info("Refine-Only Completed Successfully", LogType.TRANSLATION_END, {
                 'output_file': args.output,
                 'mode': 'refine-only',
             })
         else:
-            asyncio.run(translate_file(
-                input_filepath=args.input,
-                output_filepath=args.output,
-                source_language=args.source_lang,
-                target_language=args.target_lang,
-                model_name=args.model,
-                llm_provider=args.provider,
-                checkpoint_manager=checkpoint_manager,
-                translation_id=translation_id,
-                log_callback=log_callback,
-                stats_callback=stats_callback,
-                check_interruption_callback=None,
-                llm_api_endpoint=args.api_endpoint,
-                gemini_api_key=args.gemini_api_key,
-                openai_api_key=args.openai_api_key,
-                openrouter_api_key=args.openrouter_api_key,
-                mistral_api_key=args.mistral_api_key,
-                deepseek_api_key=args.deepseek_api_key,
-                poe_api_key=args.poe_api_key,
-                nim_api_key=args.nim_api_key,
-                anthropic_api_key=getattr(args, 'anthropic_api_key', None),
-                xai_api_key=getattr(args, 'xai_api_key', None),
-                opencode_api_key=getattr(args, 'opencode_api_key', None),
-                opencodego_api_key=getattr(args, 'opencodego_api_key', None),
-                ollamacloud_api_key=getattr(args, 'ollamacloud_api_key', None),
-                prompt_options=prompt_options,
-                parallel_workers=args.parallel
-            ))
-
             logger.info("Translation Completed Successfully", LogType.TRANSLATION_END, {
                 'output_file': args.output
             })
@@ -444,7 +498,7 @@ if __name__ == "__main__":
             'model': args.model,
             'source_lang': None if args.refine_only else args.source_lang,
             'target_lang': args.target_lang,
-            'mode': 'refine-only' if args.refine_only else 'translate',
+            'mode': mode,
         })
 
         # TTS Generation (if enabled)

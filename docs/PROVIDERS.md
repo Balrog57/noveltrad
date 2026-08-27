@@ -282,6 +282,52 @@ Browse models: [build.nvidia.com](https://build.nvidia.com/)
 
 ---
 
+## Anthropic (Claude)
+
+Native Messages API. Not OpenAI-compatible.
+
+### Setup
+
+1. Create an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys)
+2. In TBL: Select "Anthropic (Claude)", enter your key
+3. Models load automatically into the dropdown
+
+### CLI Example
+
+```bash
+python translate.py -i book.txt -o book_fr.txt \
+    --provider anthropic \
+    --anthropic_api_key YOUR_API_KEY_HERE \
+    -m claude-sonnet-4-6
+```
+
+Endpoint: `https://api.anthropic.com/v1` (`POST /messages`, `GET /models`). Auth uses `x-api-key` plus `anthropic-version: 2023-06-01`.
+
+---
+
+## xAI (Grok)
+
+OpenAI-compatible Chat Completions.
+
+### Setup
+
+1. Create an API key at [console.x.ai](https://console.x.ai/)
+2. In TBL: Select "xAI (Grok)", enter your key
+3. Models load automatically into the dropdown
+
+### CLI Example
+
+```bash
+python translate.py -i book.txt -o book_fr.txt \
+    --provider xai \
+    --xai_api_key YOUR_API_KEY_HERE \
+    -m grok-4
+```
+
+Endpoint: `https://api.x.ai/v1` (`POST /chat/completions`, `GET /models`).
+
+---
+
 ## OpenCode Zen (Cloud)
 
 Pay-as-you-go Chat Completions gateway. Same console key as OpenCode Go.

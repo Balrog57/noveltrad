@@ -61,7 +61,7 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
     automatically switches to Gemini provider.
 
     Args:
-        provider_type: Type of provider ("ollama", "openai", "gemini", "openrouter", "mistral", "deepseek", "poe", "nim", "litellm")
+        provider_type: Type of provider ("ollama", "openai", "gemini", "openrouter", "mistral", "deepseek", "poe", "nim", "anthropic", "xai", "opencode", "opencodego", "ollamacloud", "chatgpt", "litellm")
         **kwargs: Provider-specific parameters:
             - api_endpoint: API endpoint URL (Ollama, OpenAI)
             - model: Model name/identifier

@@ -1552,18 +1552,15 @@ async def _refine_epub_chunks_once(
     stats_callback: Optional[Callable] = None,
     stats: Optional['TranslationMetrics'] = None,
     source_chunks: Optional[List[Dict]] = None,
-    initial_chunks: Optional[List[str]] = None,
-    refinement_histories: Optional[List[List[str]]] = None,
     start_index: int = 0,
     check_interruption_callback: Optional[Callable] = None,
     chunk_checkpoint_callback: Optional[Callable] = None,
 ) -> List[str]:
     """
-    Refine translated EPUB chunks using a second LLM pass.
+    Refine translated EPUB chunks with a one-pass Automatic Post-Editing call.
 
-    This function applies refinement to already-translated chunks while preserving
-    HTML placeholders. It uses the same generate_translation_request approach
-    but with a refinement-focused prompt.
+    This function applies APE to already-translated chunks while preserving
+    HTML placeholders.
 
     Args:
         translated_chunks: List of translated chunk texts (with placeholders)
@@ -1634,10 +1631,8 @@ async def _refine_epub_chunks_once(
         # 1. Convert global → local before sending to LLM
         # 2. Convert local → global after receiving refined result
 
-        # Create a mapping from global to local indices. Apply it to every
-        # revision shown to the model, not only the current draft; otherwise
-        # the history would contain placeholder IDs that do not exist in the
-        # current local tag map.
+        # Create a mapping from global to local indices for the current draft
+        # and its neighboring context before sending them to the model.
         def _localize_placeholders(value: str) -> str:
             localized = value or ""
             for local_idx, global_idx in enumerate(global_indices):
@@ -2127,7 +2122,7 @@ async def _refine_epub_chunks(
     checkpoint_scope: str = "global",
     refinement_output_filepath: Optional[str] = None,
 ) -> List[str]:
-    """Run a single TBL literary refinement pass on translated EPUB chunks."""
+    """Run a single one-pass Automatic Post-Editing pass on translated EPUB chunks."""
     from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
     from src.core.refine.refinement_checkpoint import (
         clear_one_pass_state,

@@ -689,6 +689,11 @@ async def _make_refinement_request(
         target_language=target_language,
     )
 
+    preserve_placeholders = bool(has_placeholders)
+    if not preserve_placeholders:
+        from src.core.refine.structure import text_has_placeholders
+        preserve_placeholders = text_has_placeholders(draft_translation)
+
     # Generate refinement prompts
     prompt_pair = generate_refinement_prompt(
         draft_translation=draft_translation,
@@ -696,7 +701,7 @@ async def _make_refinement_request(
         context_after=context_after,
         previous_refined_context=previous_refined_context,
         target_language=target_language,
-        has_placeholders=False,
+        has_placeholders=preserve_placeholders,
         prompt_options=prompt_options,
         additional_instructions=refinement_instructions,
         glossary_block=glossary_block,
@@ -898,11 +903,10 @@ async def refine_chunks(
     refinement_output_filepath=None,
 ) -> List[str]:
     """
-    Refine translated chunks with a second pass for literary quality improvement.
+    Refine translated chunks with a one-pass Automatic Post-Editing pass.
 
     This function takes already-translated chunks and runs them through a
-    refinement prompt that focuses on improving literary quality, natural flow,
-    and stylistic excellence.
+    Hy-MT2/Chimera APE prompt that post-edits the draft against the source.
 
     Args:
         translated_chunks: List of translated text strings from first pass
@@ -1067,6 +1071,7 @@ async def refine_chunks(
 
             # Make refinement request
             try:
+                from src.core.refine.structure import text_has_placeholders
                 refined_text, llm_response = await _make_refinement_request(
                     draft_translation=draft_text,
                     context_before=context_before,
@@ -1076,7 +1081,7 @@ async def refine_chunks(
                     model=model_name,
                     llm_client=llm_client,
                     log_callback=log_callback,
-                    has_placeholders=False,
+                    has_placeholders=text_has_placeholders(draft_text),
                     prompt_options=prompt_options,
                     context_manager=context_manager,
                     runtime_state=runtime_state,

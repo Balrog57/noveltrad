@@ -1,5 +1,9 @@
 # Source-Aware Three-Pass Refinement Hardening Implementation Plan
 
+> **Obsolete.** NovelTrad refine is a single one-pass Hy-MT2/Chimera Automatic
+> Post-Editing call per segment. See `NovelTrad_SDD.md` §2. Do not implement
+> this three-pass / four-pass design.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Correct the provider configuration and make the three-pass refinement pipeline source-aware, history-aware, structurally safe, and resumable.

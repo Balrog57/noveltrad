@@ -3,6 +3,15 @@
 import re
 from typing import Dict, List, Tuple
 
+PLACEHOLDER_RE = re.compile(
+    r"(?:\[\[(?:id)?\d+\]\]|\[(?:id)?\d+\]|__TEMP_[A-Z_]+\d+__)"
+)
+
+
+def text_has_placeholders(text: str) -> bool:
+    """True when the draft contains protected placeholder tokens."""
+    return bool(PLACEHOLDER_RE.search(text or ""))
+
 
 def _signature(text: str) -> Dict[str, List[str] | int]:
     return {
@@ -14,10 +23,7 @@ def _signature(text: str) -> Dict[str, List[str] | int]:
         "dialogue_markers": re.findall(
             r"^\s*(?:[-—]\s|[«\"“])", text or "", re.MULTILINE
         ),
-        "placeholders": sorted(re.findall(
-            r"(?:\[\[(?:id)?\d+\]\]|\[(?:id)?\d+\]|__TEMP_[A-Z_]+\d+__)",
-            text or "",
-        )),
+        "placeholders": sorted(PLACEHOLDER_RE.findall(text or "")),
     }
 
 
