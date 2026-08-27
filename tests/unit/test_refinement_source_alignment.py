@@ -68,3 +68,62 @@ async def test_refine_file_forwards_source_filepath(monkeypatch, tmp_path):
 
     assert result is True
     assert captured["source_filepath"].endswith("source.txt")
+
+
+@pytest.mark.asyncio
+async def test_refine_file_setdefaults_source_language(monkeypatch, tmp_path):
+    captured = {}
+
+    async def fake_refine_txt_file(**kwargs):
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(refine_file_module, "detect_file_type", lambda _: "txt")
+    monkeypatch.setattr(
+        "src.core.refine.txt_refiner.refine_txt_file", fake_refine_txt_file
+    )
+
+    result = await refine_file_module.refine_file(
+        input_filepath=str(tmp_path / "translated.txt"),
+        output_filepath=str(tmp_path / "out.txt"),
+        target_language="French",
+        model_name="test-model",
+        llm_provider="ollama",
+        source_language="English",
+        prompt_options={},
+    )
+
+    assert result is True
+    assert captured["prompt_options"]["source_language"] == "English"
+
+
+@pytest.mark.asyncio
+async def test_refine_chunks_forwards_source_text_to_request(monkeypatch):
+    from src.core import translator
+
+    captured = {}
+
+    class FakeClient:
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(translator, "create_llm_client", lambda *args, **kwargs: FakeClient())
+
+    async def fake_request(**kwargs):
+        captured.update(kwargs)
+        return "refined", object()
+
+    monkeypatch.setattr(translator, "_make_refinement_request", fake_request)
+
+    result = await translator.refine_chunks(
+        translated_chunks=["Premier paragraphe."],
+        original_chunks=[{"source_text": "Source paragraph one."}],
+        target_language="French",
+        model_name="test-model",
+        api_endpoint="https://example.test/v1",
+        llm_provider="openai",
+        auto_adjust_context=False,
+    )
+
+    assert result == ["refined"]
+    assert captured["source_translation"] == "Source paragraph one."

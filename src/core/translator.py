@@ -143,6 +143,28 @@ def _build_chunk_glossary_block(
     return f"{cast_block}\n{glossary_block}"
 
 
+def _build_refinement_glossary_block(
+    source_text: str,
+    draft_text: str,
+    prompt_options: Optional[dict],
+    log_callback=None,
+    runtime_state: Optional[dict] = None,
+    *,
+    target_language: str = "",
+) -> str:
+    """Filter glossary against source text, falling back to source+draft."""
+    lookup = "\n".join(
+        part for part in (source_text or "", draft_text or "") if part.strip()
+    )
+    return _build_chunk_glossary_block(
+        lookup,
+        prompt_options,
+        log_callback=log_callback,
+        runtime_state=runtime_state,
+        target_language=target_language,
+    )
+
+
 def split_chunk_for_retry(main_content: str, target_ratio: float = 0.5) -> Tuple[str, str]:
     """
     Split a chunk into two parts for retry after context overflow.
@@ -631,6 +653,7 @@ async def _make_refinement_request(
     prompt_options: dict = None,
     context_manager: AdaptiveContextManager = None,
     runtime_state: Optional[dict] = None,
+    source_translation: str = "",
 ) -> Tuple[Optional[str], Optional[LLMResponse]]:
     """
     Make LLM request for refinement pass.
@@ -656,11 +679,13 @@ async def _make_refinement_request(
     # Extract refinement instructions from prompt_options
     refinement_instructions = prompt_options.get('refinement_instructions', '') if prompt_options else ''
 
-    # Filter the glossary against the DRAFT (target language) — terms that survived
-    # the first pass are the ones we want to keep stable through refinement.
-    glossary_block = _build_chunk_glossary_block(
-        draft_translation, prompt_options, log_callback=log_callback,
-        runtime_state=runtime_state, target_language=target_language,
+    # Filter the glossary against the SOURCE (plus draft fallback) — Hy-MT2 /
+    # Qwen terms are source-language, so names that never survived the first
+    # pass still need to hit the glossary during post-editing.
+    glossary_block = _build_refinement_glossary_block(
+        source_translation, draft_translation, prompt_options,
+        log_callback=log_callback, runtime_state=runtime_state,
+        target_language=target_language,
     )
 
     # Generate refinement prompts
@@ -674,6 +699,8 @@ async def _make_refinement_request(
         prompt_options=prompt_options,
         additional_instructions=refinement_instructions,
         glossary_block=glossary_block,
+        source_translation=source_translation,
+        source_language=(prompt_options or {}).get("source_language", ""),
     )
 
     client = llm_client or default_client
@@ -1031,9 +1058,11 @@ async def refine_chunks(
             # Get context from original chunks if available
             context_before = ""
             context_after = ""
+            source_translation = ""
             if i < len(original_chunks):
                 context_before = original_chunks[i].get("context_before", "")
                 context_after = original_chunks[i].get("context_after", "")
+                source_translation = original_chunks[i].get("source_text", "") or ""
 
             # Make refinement request
             try:
@@ -1050,6 +1079,7 @@ async def refine_chunks(
                     prompt_options=prompt_options,
                     context_manager=context_manager,
                     runtime_state=runtime_state,
+                    source_translation=source_translation,
                 )
             except RateLimitError as e:
                 if log_callback:

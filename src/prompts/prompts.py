@@ -621,6 +621,143 @@ Produce the JSON now. Output it between {STYLE_TAG_IN} and {STYLE_TAG_OUT}, noth
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
 
+def _language_pair_header(
+    source_language: str,
+    target_language: str,
+    prompt_options: Optional[dict] = None,
+) -> str:
+    """Named language-pair line. Codes are included only when already configured."""
+    opts = prompt_options or {}
+    src = (source_language or "").strip()
+    tgt = (target_language or "").strip()
+    src_code = str(opts.get("source_language_code") or "").strip()
+    tgt_code = str(opts.get("target_language_code") or "").strip()
+    src_label = f"{src} ({src_code})" if src and src_code else src
+    tgt_label = f"{tgt} ({tgt_code})" if tgt and tgt_code else tgt
+    if src_label and tgt_label:
+        return f"{src_label} → {tgt_label}"
+    return tgt_label or src_label
+
+
+def _ape_system_identity(source_language: str, target_language: str) -> str:
+    """TranslateGemma / Qwen professional-translator identity for post-editing."""
+    src = (source_language or "").strip()
+    tgt = (target_language or "").strip() or "the target language"
+    if src:
+        return (
+            f"You are a professional {src} to {tgt} translator doing automatic "
+            f"post-editing. Accurately convey the meaning and nuances of the original "
+            f"{src} text while producing natural {tgt}."
+        )
+    return (
+        f"You are a professional translator doing automatic post-editing into {tgt}. "
+        f"Preserve meaning and produce natural {tgt}."
+    )
+
+
+def _chimera_refinement_task(target_language: str, *, subtitles: bool = False) -> str:
+    """Single Chimera instruction: Tencent ensembles in one call, not sequential edits."""
+    if subtitles:
+        return (
+            f"Analyze the source cues and every candidate {target_language} subtitle, "
+            f"then generate a single refined {target_language} block. Anchor continuity, "
+            "terminology, and speaker identity to the source; repair any calque; prefer "
+            "idiomatic target-language dialogue; keep justified improvements and drop "
+            "regressions."
+        )
+    return (
+        f"Analyze the source segment and every candidate {target_language} translation, "
+        f"then generate a single refined {target_language} translation. Anchor facts, names, "
+        "terminology, and continuity to the source; repair any calque that still reads "
+        "like the source language; prefer idiomatic target-language phrasing; keep "
+        "justified improvements and drop regressions."
+    )
+
+
+def _hy_mt2_refinement_tasks(
+    target_language: str,
+    *,
+    has_placeholders: bool,
+    subtitles: bool = False,
+    additional_instructions: str = "",
+) -> str:
+    """Numbered translation tasks, following Hy-MT2 personalization / delimiter prompts."""
+    delimiter_task = (
+        "Retain the exact same [index] markers, line breaks, and one-cue-per-marker "
+        "boundaries. Strictly do not omit, escape, merge, split, or translate these "
+        "delimiters, and pay close attention to their placement."
+        if subtitles
+        else (
+            "You must retain the exact same placeholders and delimiters in the "
+            "translation. Strictly do not omit, escape, or translate these symbols, "
+            "and pay close attention to their placement."
+            if has_placeholders
+            else (
+                "Preserve line breaks, markup, and output boundaries exactly. Do not "
+                "omit, escape, or invent structural markers."
+            )
+        )
+    )
+    style_task = (
+        f"The translation style must strictly conform to natural spoken {target_language} "
+        "suited to subtitling. Keep subtitle length viewer-friendly."
+        if subtitles
+        else (
+            f"The translation style must strictly conform to fluent, natural "
+            f"{target_language}. Rewrite residual source-language wording; never leave "
+            f"source-language wording in the output."
+        )
+    )
+    extra = additional_instructions.strip() if additional_instructions else ""
+    if extra:
+        style_task = f"{style_task} {extra}"
+    tasks = [
+        "Preserve every fact, name, number, relation, tense, and point of view from the source.",
+        delimiter_task,
+        "When terminology is provided, apply those mappings exactly: source translates to target.",
+        style_task,
+        "Change a sentence only when the source or a demonstrable language issue justifies it.",
+    ]
+    numbered = "\n".join(f"{index}. {task}" for index, task in enumerate(tasks, start=1))
+    return f"""[Translation Tasks]
+{numbered}"""
+
+
+def _build_candidate_translations(
+    target_language: str,
+    draft_translation: str,
+    initial_translation: str = "",
+    previous_refined_translation: str = "",
+    refinement_history: Optional[List[str]] = None,
+) -> str:
+    """Chimera-style numbered candidates, excluding the current draft."""
+    draft = (draft_translation or "").strip()
+    seen = {draft} if draft else set()
+    entries: List[Tuple[str, str]] = []
+
+    def _add(label: str, text: str) -> None:
+        cleaned = (text or "").strip()
+        if not cleaned or cleaned in seen:
+            return
+        seen.add(cleaned)
+        entries.append((label, cleaned))
+
+    _add("Initial translation", initial_translation)
+    for index, item in enumerate(refinement_history or [], start=1):
+        _add(f"Revision {index}", item)
+    _add("Previous refinement", previous_refined_translation)
+
+    if not entries:
+        return ""
+
+    lines = [f"The multiple {target_language} translations:", ""]
+    for index, (label, text) in enumerate(entries, start=1):
+        lines.append(f"{index}. {label}:")
+        lines.append(text)
+        lines.append("")
+    return "\n".join(lines)
+
+
 def generate_refinement_prompt(
     draft_translation: str,
     context_before: str = "",
@@ -634,35 +771,25 @@ def generate_refinement_prompt(
     placeholder_format: Optional[Tuple[str, str]] = None,
     additional_instructions: str = "",
     glossary_block: str = "",
+    source_translation: str = "",
+    initial_translation: str = "",
+    previous_refined_translation: str = "",
+    refinement_history: Optional[List[str]] = None,
+    source_language: str = "",
 ) -> PromptPair:
     """
-    Generate a refinement prompt to polish a draft translation.
+    Generate a one-pass Automatic Post-Editing prompt.
 
-    This is used for a second pass where the LLM improves a first-pass translation,
-    focusing on literary quality, natural flow, and stylistic excellence.
+    Source plus draft in, one tagged refined translation out. Inspired by
+    TranslateGemma (named pair, output-only), NLLB (source as meaning
+    anchor), Qwen-MT (terms / TM / domain), Hunyuan-MT (numbered tasks,
+    Chimera), and LibreTranslate (short, extractable output).
 
-    Args:
-        draft_translation: The first-pass translation to refine
-        context_before: Previously refined text for context (default: "")
-        context_after: Text appearing after for context (default: "")
-        previous_refined_context: Last refined text for consistency (default: "")
-        target_language: Target language name
-        translate_tag_in: Opening tag for translation output
-        translate_tag_out: Closing tag for translation output
-        has_placeholders: If True, includes placeholder preservation instructions
-        prompt_options: Optional dict with prompt customization options
-        placeholder_format: Optional tuple of (prefix, suffix) for placeholders.
-            e.g., ('[', ']') for [0] format or ('[[', ']]') for [[0]] format.
-            If None, uses default [[0]] format
-        additional_instructions: Additional refinement instructions to include in the prompt (default: "")
-
-    Returns:
-        PromptPair: A named tuple with 'system' and 'user' prompts
+    Translation prompts are unchanged; this function is refine-only.
     """
     if prompt_options is None:
         prompt_options = {}
 
-    # Get target-language-specific example text for output format
     example_texts = {
         "chinese": "您润色后的文本在这里",
         "french": "Votre texte affiné ici",
@@ -688,140 +815,110 @@ def generate_refinement_prompt(
         example_format=example_format_text
     )
 
-    # Build placeholder preservation section if needed
     if has_placeholders:
         placeholder_section = build_placeholder_section(target_language, target_language, placeholder_format)
     else:
         placeholder_section = ""
 
-    # Build optional prompt sections
     optional_sections = _build_optional_prompt_sections(prompt_options)
+    source_language = source_language or prompt_options.get("source_language", "") or ""
+    source_lang_label = source_language.strip() or "source"
+    pair_header = _language_pair_header(source_language, target_language, prompt_options)
 
-    # Add additional instructions section if provided
-    additional_instructions_section = ""
-    if additional_instructions and additional_instructions.strip():
-        additional_instructions_section = f"""
+    phase_task = _chimera_refinement_task(target_language)
+    translation_tasks = _hy_mt2_refinement_tasks(
+        target_language,
+        has_placeholders=has_placeholders,
+        additional_instructions=additional_instructions,
+    )
 
-# ADDITIONAL REFINEMENT INSTRUCTIONS
+    system_prompt = f"""{_ape_system_identity(source_language, target_language)}
 
-{additional_instructions.strip()}"""
+{phase_task}
 
-    # SYSTEM PROMPT for refinement
-    system_prompt = f"""You are an elite {target_language} literary editor and prose stylist.
+Produce only the refined {target_language} text inside the tags. Do not explain.
 
-# YOUR TASK: REFINE AND POLISH
-
-You will receive a DRAFT {target_language} translation that needs significant improvement.
-Your job is to REWRITE it with perfect literary {target_language} style.
-
-**THE INPUT IS:**
-- A amator, literal, or awkward {target_language} translation
-- It may have unnatural phrasing, stilted expressions, or poor flow
-- Consider it a "bad" first draft that probably needs substantial reworking
-
-**YOUR OUTPUT MUST BE:**
-- Fluent, natural {target_language} prose
-- Stylistically excellent - as if written by a skilled {target_language} author
-
-# REFINEMENT PRINCIPLES
-
-**PRIORITY ORDER:**
-1. **Natural flow** - Sentences should flow beautifully in {target_language}
-2. **Idiomatic expressions** - Use natural {target_language} idioms and phrasings
-3. **Elegant word choice** - Select the most appropriate and refined vocabulary
-4. **Rhythm and cadence** - The text should have pleasant reading rhythm
-5. **Preserve meaning** - Keep the original meaning intact while improving style
-
-**WHAT TO FIX:**
-- Awkward literal translations → Natural {target_language} expressions
-- Repetitive or dull vocabulary → Rich, varied word choices
-- Unnatural word order → Proper {target_language} syntax
-- **Lexical repetitions and cacophony** → Use synonyms to avoid same-root word repetition
-  (e.g., "the singer sang a song" → "the singer performed a song" or "the vocalist sang a melody")
-
-**WHAT TO PRESERVE:**
-- All factual content and meaning
-- Character names and proper nouns
-- Technical terms (if any)
+The output must be entirely in {target_language}.
 {optional_sections}
 {placeholder_section}
-{additional_instructions_section}
-
-# CRITICAL REMINDER
-
-You are NOT translating - you are REWRITING in {target_language.upper()}.
-The input is already in {target_language}, but poorly written.
-Your output must be polished, literary-quality {target_language}.
-
-**⚠️ PLACEHOLDER PRESERVATION IS ABSOLUTELY CRITICAL:**
-If the input contains ANY placeholders (like [id0], [id1], etc.), you MUST preserve them EXACTLY.
-Removing or corrupting placeholders will corrupt the document structure.
-Your refinement MUST maintain the exact same placeholders in the exact same positions.
 
 {output_format_section}"""
 
-    # USER PROMPT
-    previous_context_block = ""
+    background_parts = []
     if previous_refined_context and previous_refined_context.strip():
-        previous_context_block = f"""# CONTEXT - Previous Refined Paragraph
+        background_parts.append(
+            "Previous refined paragraph:\n" + previous_refined_context.strip()
+        )
+    if context_before.strip() or context_after.strip():
+        background_parts.append(
+            "Previous block:\n"
+            + (context_before.strip() or "(none)")
+            + "\n\nNext block:\n"
+            + (context_after.strip() or "(none)")
+        )
+    background_block = ""
+    if background_parts:
+        background_block = (
+            "[Background Information]\n"
+            + "\n\n".join(background_parts)
+            + "\n\n"
+        )
 
-For consistency and natural flow, here's what came immediately before:
+    glossary_section = (
+        f"{glossary_block.strip()}\n\n"
+        if glossary_block and glossary_block.strip()
+        else ""
+    )
 
-{previous_refined_context}
+    source_section = ""
+    if source_translation and source_translation.strip():
+        source_section = (
+            f"The {source_lang_label} segment:\n"
+            f"{source_translation.strip()}\n\n"
+        )
 
-"""
+    candidates_section = _build_candidate_translations(
+        target_language,
+        draft_translation,
+        initial_translation=initial_translation,
+        previous_refined_translation=previous_refined_translation,
+        refinement_history=refinement_history,
+    )
+    if candidates_section:
+        candidates_section = candidates_section.rstrip() + "\n\n"
 
-    # Glossary block injected here (per-chunk dynamic) so the system prompt
-    # stays cacheable across chunks.
-    glossary_section = f"{glossary_block}\n" if glossary_block and glossary_block.strip() else ""
+    pair_block = f"{pair_header}\n\n" if pair_header else ""
 
-    user_prompt = f"""{previous_context_block}{glossary_section}# DRAFT TO REFINE
+    user_prompt = f"""{pair_block}{background_block}{source_section}{candidates_section}{translation_tasks}
 
-The following is a rough {target_language} translation that needs significant improvement.
-Rewrite it with elegant, literary-quality {target_language} prose:
+{glossary_section}The {target_language} candidate to post-edit:
 
 {INPUT_TAG_IN}
 {draft_translation}
 {INPUT_TAG_OUT}
 
-REMINDER: Output ONLY your refined text in this exact format:
-{translate_tag_in}
-your refined text here
-{translate_tag_out}
-
-Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
-
-Provide your refined version now:"""
+Start with {translate_tag_in} and end with {translate_tag_out}."""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
 
 def generate_subtitle_refinement_block_prompt(
     subtitle_blocks: List[Tuple[int, str]],
+    source_subtitle_blocks: Optional[List[Tuple[int, str]]] = None,
     previous_refined_block: str = "",
     target_language: str = "English",
     translate_tag_in: str = TRANSLATE_TAG_IN,
     translate_tag_out: str = TRANSLATE_TAG_OUT,
     additional_instructions: str = "",
     glossary_block: str = "",
+    refinement_history: Optional[Dict[int, List[str]]] = None,
+    source_language: str = "",
 ) -> PromptPair:
     """
-    Generate a refinement prompt for multiple subtitles in a single LLM call.
+    Generate a one-pass subtitle Automatic Post-Editing prompt.
 
-    Mirrors generate_subtitle_block_prompt but rewrites each draft subtitle into
-    polished target-language prose while preserving the [index] markers.
-
-    Args:
-        subtitle_blocks: List of tuples (local_index, draft_translated_text)
-        previous_refined_block: Last refined block for continuity
-        target_language: Target language
-        translate_tag_in: Opening tag for refinement output
-        translate_tag_out: Closing tag for refinement output
-        additional_instructions: Extra refinement guidance
-        glossary_block: Optional glossary block
-
-    Returns:
-        PromptPair: A named tuple with 'system' and 'user' prompts
+    Synthesizes each draft cue into a single refined translation while
+    preserving the [index] markers. Translation prompts are unchanged.
     """
     subtitle_additional_rules = _SUBTITLE_FORMAT_RULES
     subtitle_example_format = "[0]Première ligne affinée\n[1]Deuxième ligne affinée"
@@ -834,68 +931,32 @@ def generate_subtitle_refinement_block_prompt(
         example_format=subtitle_example_format,
     )
 
-    additional_instructions_section = ""
-    if additional_instructions and additional_instructions.strip():
-        additional_instructions_section = f"""
+    source_lang_label = source_language.strip() or "source"
+    pair_header = _language_pair_header(source_language, target_language)
 
-# ADDITIONAL REFINEMENT INSTRUCTIONS
+    phase_task = _chimera_refinement_task(target_language, subtitles=True)
+    translation_tasks = _hy_mt2_refinement_tasks(
+        target_language,
+        has_placeholders=True,
+        subtitles=True,
+        additional_instructions=additional_instructions,
+    )
 
-{additional_instructions.strip()}"""
+    system_prompt = f"""{_ape_system_identity(source_language, target_language)}
 
-    system_prompt = f"""You are an elite {target_language} subtitle editor and dialogue stylist.
+{phase_task}
 
-# YOUR TASK: REFINE A BLOCK OF SUBTITLES
+Produce only the refined {target_language} text inside the tags. Do not explain.
 
-You will receive a block of DRAFT {target_language} subtitles, each prefixed with an [index] marker.
-Your job is to REWRITE each subtitle with natural, idiomatic {target_language} dialogue while
-preserving the index markers and the one-subtitle-per-marker structure.
-
-**THE INPUT IS:**
-- A block of draft {target_language} subtitles, possibly literal or awkward
-- Each subtitle is prefixed with [N] where N is its local index
-
-**YOUR OUTPUT MUST BE:**
-- The same number of subtitles, each prefixed with the SAME [N] marker
-- Fluent, natural spoken {target_language} suited to subtitling
-
-# REFINEMENT PRINCIPLES
-
-**PRIORITY ORDER:**
-1. **Natural dialogue** - sound like real {target_language} speech, not translation
-2. **Reading speed** - keep subtitle length viewer-friendly
-3. **Continuity** - terminology and tone consistent across the block
-4. **Preserve meaning** - keep the original meaning intact while improving style
-
-**WHAT TO FIX:**
-- Awkward literal phrasing -> natural {target_language} expressions
-- Repetitive vocabulary that is clearly an artefact of literal translation -> varied word choices
-- Unnatural word order -> proper {target_language} syntax
-
-**WHAT TO PRESERVE:**
-- The [index] markers exactly as given
-- All factual content and meaning
-- Character names and proper nouns
-- The one-subtitle-per-[index] structure (no merging, no splitting)
-- Intentional repetitions (e.g. "No. No. No.") and dialogue dashes ("- ...\\n- ...") when present in the draft
-- Inline formatting tags and any \\n line breaks inside a subtitle{additional_instructions_section}
-
-# CRITICAL REMINDERS
-
-You are NOT translating - you are REWRITING in {target_language.upper()}.
-The input is already in {target_language}, but possibly poorly written.
-Your output must be polished, natural {target_language} dialogue.
-
-**Index markers are MANDATORY:** every input [N] must appear exactly once in the output,
-in the same order, followed by the refined text for that subtitle.
+The output must be entirely in {target_language}.
+Every input [N] must appear exactly once, in the same order, followed by the refined text for that subtitle.
 
 {subtitle_output_format_section}"""
 
     previous_refined_block_text = ""
     if previous_refined_block and previous_refined_block.strip():
-        previous_refined_block_text = f"""# CONTEXT - Previous Refined Block
-
-For continuity and consistency, here's the previous refined block:
-
+        previous_refined_block_text = f"""[Background Information]
+Previous refined block:
 {previous_refined_block}
 
 """
@@ -903,23 +964,49 @@ For continuity and consistency, here's the previous refined block:
     formatted_subtitles = [f"[{idx}]{text}" for idx, text in subtitle_blocks]
     formatted_subtitles_text = "\n".join(formatted_subtitles)
 
-    glossary_section = f"{glossary_block}\n" if glossary_block and glossary_block.strip() else ""
+    source_section = ""
+    if source_subtitle_blocks:
+        source_section = (
+            f"The {source_lang_label} segment:\n"
+            + "\n".join(f"[{idx}]{text}" for idx, text in source_subtitle_blocks)
+            + "\n\n"
+        )
 
-    user_prompt = f"""{previous_refined_block_text}{glossary_section}# SUBTITLES TO REFINE
+    history_section = ""
+    if refinement_history:
+        entries = []
+        for idx, revisions in refinement_history.items():
+            cleaned = [revision.strip() for revision in revisions if revision and revision.strip()]
+            if cleaned:
+                numbered = "\n".join(
+                    f"{number}. Revision {number}:\n{revision}"
+                    for number, revision in enumerate(cleaned, start=1)
+                )
+                entries.append(f"[{idx}]\n{numbered}")
+        if entries:
+            history_section = (
+                f"The multiple {target_language} translations:\n\n"
+                + "\n\n".join(entries)
+                + "\n\n"
+            )
+
+    glossary_section = (
+        f"{glossary_block.strip()}\n\n"
+        if glossary_block and glossary_block.strip()
+        else ""
+    )
+
+    pair_block = f"{pair_header}\n\n" if pair_header else ""
+
+    user_prompt = f"""{pair_block}{previous_refined_block_text}{source_section}{history_section}{translation_tasks}
+
+{glossary_section}The {target_language} candidate to post-edit:
 
 {INPUT_TAG_IN}
 {formatted_subtitles_text}
 {INPUT_TAG_OUT}
 
-REMINDER: Output format must be:
-{translate_tag_in}
-[0]refined subtitle 0
-[1]refined subtitle 1
-{translate_tag_out}
-
-Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
-
-Provide your refined block now:"""
+Start with {translate_tag_in} and end with {translate_tag_out}."""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
@@ -1198,25 +1285,17 @@ def generate_post_processing_prompt(
     prompt_options: dict = None,
     placeholder_format: Optional[Tuple[str, str]] = None,
     glossary_block: str = "",
+    source_translation: str = "",
+    initial_translation: str = "",
+    previous_refined_translation: str = "",
+    refinement_history: Optional[List[str]] = None,
+    source_language: str = "",
 ) -> PromptPair:
     """
     Alias for generate_refinement_prompt with parameter name mapping.
 
     This function exists for backwards compatibility and to provide a more intuitive
     API for post-processing/refinement use cases.
-
-    Args:
-        translated_text: The draft translation to refine (mapped to draft_translation)
-        target_language: Target language name
-        context_before: Previously refined text for context
-        context_after: Text appearing after for context
-        additional_instructions: Additional refinement instructions
-        has_placeholders: If True, includes placeholder preservation instructions
-        prompt_options: Optional dict with prompt customization options
-        placeholder_format: Optional tuple of (prefix, suffix) for placeholders
-
-    Returns:
-        PromptPair: A named tuple with 'system' and 'user' prompts
     """
     return generate_refinement_prompt(
         draft_translation=translated_text,
@@ -1229,4 +1308,9 @@ def generate_post_processing_prompt(
         placeholder_format=placeholder_format,
         additional_instructions=additional_instructions,
         glossary_block=glossary_block,
+        source_translation=source_translation,
+        initial_translation=initial_translation,
+        previous_refined_translation=previous_refined_translation,
+        refinement_history=refinement_history,
+        source_language=source_language,
     )

@@ -64,7 +64,7 @@ from .exceptions import (
 )
 from .placeholder_validator import PlaceholderValidator
 from .container import TranslationContainer
-from ..translator import generate_translation_request
+from ..translator import generate_translation_request, _build_refinement_glossary_block
 from ..context_optimizer import AdaptiveContextManager, INITIAL_CONTEXT_SIZE, CONTEXT_STEP, MAX_CONTEXT_SIZE
 from src.config import (
     PLACEHOLDER_PATTERN,
@@ -1585,6 +1585,7 @@ async def _refine_epub_chunks_once(
 
     total_chunks = len(translated_chunks)
     refined_chunks = list(translated_chunks[:start_index])
+    runtime_state: Dict[str, Any] = {}
 
     if log_callback:
         log_callback("epub_refinement_info",
@@ -1653,6 +1654,25 @@ async def _refine_epub_chunks_once(
         local_context_before = _localize_placeholders(context_before)
         local_context_after = _localize_placeholders(context_after)
 
+        source_translation = ""
+        if source_chunks and idx < len(source_chunks):
+            source_chunk = source_chunks[idx] or {}
+            # HtmlChunker already stores locally numbered placeholders.
+            # Remapping with this chunk's translated global IDs would treat a
+            # local [1] as global 1 and corrupt the source segment.
+            source_translation = (
+                source_chunk.get("text") or source_chunk.get("main_content") or ""
+            )
+
+        glossary_block = _build_refinement_glossary_block(
+            source_translation,
+            text_for_refinement,
+            prompt_options,
+            log_callback=log_callback,
+            runtime_state=runtime_state,
+            target_language=target_language,
+        )
+
         # Generate refinement prompt using text with LOCAL indices
         prompt_pair = generate_post_processing_prompt(
             translated_text=text_for_refinement,  # Use localized version
@@ -1663,6 +1683,9 @@ async def _refine_epub_chunks_once(
             has_placeholders=True,
             placeholder_format=placeholder_format,
             prompt_options=prompt_options,
+            glossary_block=glossary_block,
+            source_translation=source_translation,
+            source_language=(prompt_options or {}).get("source_language", ""),
         )
 
         # Make refinement request

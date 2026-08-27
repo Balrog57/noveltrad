@@ -42,17 +42,20 @@ async def refine_file(
     auto_adjust_context: bool = True,
     max_tokens_per_chunk: Optional[int] = None,
     prompt_options: Optional[Dict[str, Any]] = None,
+    source_language: Optional[str] = None,
     **additional_config,
 ) -> bool:
     """Run a refinement-only pass on an already-translated file.
 
     `target_language` names the language the file is already in: refinement
-    is monolingual and does not translate.
+    is monolingual and does not translate. `source_language`, when known, is
+    forwarded into prompt_options so the post-edit prompt can name the pair.
 
     Raises UnsupportedFormatError when the file format cannot be refined.
     """
-    if prompt_options is None:
-        prompt_options = {}
+    prompt_options = dict(prompt_options or {})
+    if source_language:
+        prompt_options.setdefault("source_language", source_language)
 
     # Resolve max_tokens_per_chunk lazily so a reload_config() between calls is
     # honoured for subsequent runs (the .env value can change at runtime via

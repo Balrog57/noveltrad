@@ -146,6 +146,27 @@ class TestRefinementPathCarriesTargetLanguage:
         assert INFLECTION_MARKER in block
         assert "Russian" in block
 
+    @pytest.mark.asyncio
+    async def test_source_term_matches_when_draft_dropped_it(self, monkeypatch):
+        captured = _capture(monkeypatch, "generate_refinement_prompt")
+
+        await _make_refinement_request(
+            draft_translation="The visitor spoke to nobody.",
+            context_before="",
+            context_after="",
+            previous_refined_context="",
+            target_language="Russian",
+            model="test-model",
+            llm_client=_fake_client(),
+            log_callback=None,
+            has_placeholders=False,
+            prompt_options={"glossary_terms": RUSSIAN_TERMS},
+            source_translation="The Muggle spoke to nobody.",
+        )
+
+        block = captured["glossary_block"]
+        assert "Muggle -> магл" in block
+
 
 class TestBackwardCompatibleDefault:
     """The new parameter is keyword-only and defaulted, so a caller that does
