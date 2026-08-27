@@ -274,7 +274,7 @@
                     <span class="material-symbols-outlined" style="font-size: 1rem; vertical-align: middle;">download</span>
                     <span data-i18n="common:update_now">Update now</span>
                 </button>
-                <button type="button" id="updateBannerCloseBtn" class="update-banner__close" data-i18n-attr="title:common:update_dismiss" title="Dismiss">
+                <button type="button" id="updateBannerCloseBtn" class="update-banner__close" data-i18n-attr="title:common:update_dismiss;aria-label:common:update_dismiss" title="Dismiss" aria-label="Dismiss">
                     <span class="material-symbols-outlined" style="font-size: 1.1rem;">close</span>
                 </button>
             </div>
@@ -752,7 +752,7 @@
             <div class="card-header">
                 <span class="material-symbols-outlined">pause_circle</span>
                 <h2 data-i18n="translation:paused_translations">Paused Translations</h2>
-                <button class="btn btn-secondary" onclick="loadResumableJobs()" data-i18n-attr="title:translation:refresh_list_title" title="Refresh list" style="margin-left: auto; padding: 0.5rem 1rem;">
+                <button class="btn btn-secondary" onclick="loadResumableJobs()" data-i18n-attr="title:translation:refresh_list_title;aria-label:translation:refresh_list_title" title="Refresh list" aria-label="Refresh list" style="margin-left: auto; padding: 0.5rem 1rem;">
                     <span class="material-symbols-outlined">refresh</span>
                 </button>
             </div>
@@ -980,7 +980,7 @@
                             </label>
                             <div class="neu-inset-light" style="display: flex; gap: 8px;">
                                 <input type="text" class="form-control" id="apiEndpoint" value="http://localhost:11434/api/generate" style="flex: 1;">
-                                <button type="button" id="resetApiEndpointBtn" class="btn btn-secondary" data-i18n-attr="title:settings:reset_endpoint_title" style="display: none; padding: 8px 12px; white-space: nowrap;" title="Reset to server configuration">
+                                <button type="button" id="resetApiEndpointBtn" class="btn btn-secondary" data-i18n-attr="title:settings:reset_endpoint_title;aria-label:settings:reset_endpoint_title" style="display: none; padding: 8px 12px; white-space: nowrap;" title="Reset to server configuration" aria-label="Reset to server configuration">
                                     <span class="material-symbols-outlined" style="font-size: 18px;">restart_alt</span>
                                 </button>
                             </div>
@@ -1078,7 +1078,7 @@
                                 <p id="thinkingModelWarningText" style="margin: 0; font-size: 13px; color: #991b1b; white-space: pre-line;"></p>
                             </div>
                         </div>
-                        <button class="btn btn-secondary" onclick="refreshModels()" data-i18n-attr="title:settings:refresh_models_title" title="Refresh model list" style="height: 44px; padding: 0 1rem;">
+                        <button class="btn btn-secondary" onclick="refreshModels()" data-i18n-attr="title:settings:refresh_models_title;aria-label:settings:refresh_models_title" title="Refresh model list" aria-label="Refresh model list" style="height: 44px; padding: 0 1rem;">
                             <span class="material-symbols-outlined">refresh</span>
                         </button>
                     </div>
@@ -1092,7 +1092,7 @@
                             </label>
                             <div class="neu-inset-light" style="display: flex; gap: 8px;">
                                 <input type="text" class="form-control" id="openaiEndpoint" value="https://api.openai.com/v1/chat/completions" placeholder="https://api.openai.com/v1/chat/completions" style="flex: 1;">
-                                <button type="button" id="resetOpenaiEndpointBtn" class="btn btn-secondary" data-i18n-attr="title:settings:reset_endpoint_title" style="display: none; padding: 8px 12px; white-space: nowrap;" title="Reset to server configuration">
+                                <button type="button" id="resetOpenaiEndpointBtn" class="btn btn-secondary" data-i18n-attr="title:settings:reset_endpoint_title;aria-label:settings:reset_endpoint_title" style="display: none; padding: 8px 12px; white-space: nowrap;" title="Reset to server configuration" aria-label="Reset to server configuration">
                                     <span class="material-symbols-outlined" style="font-size: 18px;">restart_alt</span>
                                 </button>
                             </div>
@@ -1306,11 +1306,11 @@
                 <span class="material-symbols-outlined">folder_open</span>
                 <h2 data-i18n="files:title">File Management</h2>
                 <div style="margin-left: auto; display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="openOutputFolder()" data-i18n-attr="title:files:open_folder_title" title="Open translations folder" style="padding: 0.5rem 1rem;">
+                    <button class="btn btn-secondary" onclick="openOutputFolder()" data-i18n-attr="title:files:open_folder_title;aria-label:files:open_folder_title" title="Open translations folder" aria-label="Open translations folder" style="padding: 0.5rem 1rem;">
                         <span class="material-symbols-outlined">folder_open</span>
                         <span data-i18n="files:open_folder">Open folder</span>
                     </button>
-                    <button class="btn btn-secondary" onclick="refreshFileList()" data-i18n-attr="title:files:refresh_list_title" title="Refresh file list" style="padding: 0.5rem 1rem;">
+                    <button class="btn btn-secondary" onclick="refreshFileList()" data-i18n-attr="title:files:refresh_list_title;aria-label:files:refresh_list_title" title="Refresh file list" aria-label="Refresh file list" style="padding: 0.5rem 1rem;">
                         <span class="material-symbols-outlined">refresh</span>
                     </button>
                 </div>
@@ -1428,11 +1428,11 @@
             <!-- EDITOR VIEW -->
             <div class="main-card hidden" id="glossaryEditorView">
                 <div class="card-header">
-                    <button type="button" class="btn btn-secondary" id="glossaryEditorBackBtn" data-i18n-attr="title:glossary:editor_back_title" title="Back to list" style="padding: 0.5rem;">
+                    <button type="button" class="btn btn-secondary" id="glossaryEditorBackBtn" data-i18n-attr="title:glossary:editor_back_title;aria-label:glossary:editor_back_title" title="Back to list" aria-label="Back to list" style="padding: 0.5rem;">
                         <span class="material-symbols-outlined">arrow_back</span>
                     </button>
                     <h2 id="glossaryEditorTitle" data-i18n="glossary:editor_title" style="margin: 0;">Edit glossary</h2>
-                    <button type="button" class="btn btn-secondary" id="glossaryEditorDeleteBtn" data-i18n-attr="title:glossary:editor_delete_title" title="Delete this glossary" style="margin-left: auto; padding: 0.5rem; color: #ef4444;">
+                    <button type="button" class="btn btn-secondary" id="glossaryEditorDeleteBtn" data-i18n-attr="title:glossary:editor_delete_title;aria-label:glossary:editor_delete_title" title="Delete this glossary" aria-label="Delete this glossary" style="margin-left: auto; padding: 0.5rem; color: #ef4444;">
                         <span class="material-symbols-outlined">delete</span>
                     </button>
                 </div>
