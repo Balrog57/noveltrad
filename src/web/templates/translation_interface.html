@@ -727,13 +727,16 @@
                 </div>
 
                 <!-- Activity Log (Collapsible) -->
-                <div class="prompt-options-toggle" onclick="toggleActivityLog()" style="margin-top: 30px;">
+                <button type="button" id="activityLogToggle" class="prompt-options-toggle" onclick="toggleActivityLog()"
+                        aria-expanded="false" aria-controls="activityLogSection"
+                        data-i18n-attr="aria-label:common:activity_log" aria-label="Activity Log"
+                        style="margin-top: 30px;">
                     <span style="display: flex; align-items: center; gap: 0.75rem;">
-                        <span class="material-symbols-outlined">terminal</span>
+                        <span class="material-symbols-outlined" aria-hidden="true">terminal</span>
                         <span data-i18n="common:activity_log">Activity Log</span>
                     </span>
-                    <span id="activityLogIcon" class="material-symbols-outlined">expand_more</span>
-                </div>
+                    <span id="activityLogIcon" class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+                </button>
 
                 <div id="activityLogSection" class="hidden">
                     <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
