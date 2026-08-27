@@ -16,6 +16,7 @@ the entry if ANY of the alternatives appears in the chunk; occurrence counts
 are summed across alternatives.
 """
 import re
+from functools import lru_cache
 from typing import Dict, List, Tuple
 
 from src.core.glossary.models import GlossaryConfig
@@ -48,13 +49,20 @@ def _max_alt_length(source: str) -> int:
     return max((len(a) for a in alts), default=0)
 
 
+@lru_cache(maxsize=4096)
+def _word_boundary_pattern(alt: str, flags: int) -> re.Pattern:
+    # Cache compiled patterns: filter_glossary scans every glossary term on
+    # every chunk, so re.findall(str_pattern, ...) would re-parse ~terms×chunks
+    # distinct patterns per book (Python's internal regex cache doesn't help).
+    return re.compile(r'\b' + re.escape(alt) + r'\b', flags)
+
+
 def _count_alternative(alt: str, chunk: str, haystack: str, flags: int, case_sensitive: bool) -> int:
     """Count occurrences of a single alternative form in the chunk."""
     if _is_cjk(alt) or not _has_word_char_at_edge(alt):
         needle = alt if case_sensitive else alt.lower()
         return haystack.count(needle)
-    pattern = r'\b' + re.escape(alt) + r'\b'
-    return len(re.findall(pattern, chunk, flags))
+    return len(_word_boundary_pattern(alt, flags).findall(chunk))
 
 
 def filter_glossary(
