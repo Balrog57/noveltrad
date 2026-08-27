@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify, current_app
 
 from src.utils.security import SecureFileHandler, rate_limiter, get_client_ip, SecurityError
 from src.utils.language_detector import LanguageDetector
+from src.api.services.path_validator import PathValidator
 
 
 def create_security_blueprint(output_dir):
@@ -212,6 +213,8 @@ def create_security_blueprint(output_dir):
 
             for file_path_str in file_paths:
                 file_path = Path(file_path_str)
+                if not PathValidator.is_within_directory(file_path, secure_file_handler.upload_dir):
+                    return jsonify({"error": "Access denied"}), 403
                 if file_path.exists():
                     existing_files.append(file_path_str)
                 else:
@@ -237,15 +240,12 @@ def create_security_blueprint(output_dir):
             file_path_str = data['file_path']
             file_path = Path(file_path_str)
 
-            # Security: ensure file exists
+            # Security: containment before existence (don't leak out-of-bounds files).
+            if not PathValidator.is_within_directory(file_path, secure_file_handler.upload_dir):
+                return jsonify({"error": "Access denied"}), 403
+
             if not file_path.exists():
                 return jsonify({"error": "File not found"}), 404
-
-            # Security: ensure file is within upload directory
-            resolved = file_path.resolve()
-            upload_resolved = secure_file_handler.upload_dir.resolve()
-            if not str(resolved).startswith(str(upload_resolved)):
-                return jsonify({"error": "Access denied"}), 403
 
             # Read file and detect language
             with open(file_path, 'rb') as f:
@@ -291,8 +291,7 @@ def create_security_blueprint(output_dir):
             thumbnail_path = thumbnails_dir / safe_filename
 
             # Security: ensure path is within thumbnails directory
-            resolved = thumbnail_path.resolve()
-            if not str(resolved).startswith(str(thumbnails_dir.resolve())):
+            if not PathValidator.is_within_directory(thumbnail_path, thumbnails_dir):
                 return jsonify({"error": "Access denied"}), 403
 
             if not thumbnail_path.exists():

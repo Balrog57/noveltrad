@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional, List, Dict
 
 from src.utils.container import running_in_container
+from src.api.services.path_validator import PathValidator
 
 # Returned as the message when explorer cannot be used (Docker/CasaOS).
 DOCKER_NO_DESKTOP = "DOCKER_NO_DESKTOP"
@@ -153,12 +154,10 @@ class FileService:
         try:
             file_path = Path(file_path_str)
 
-            # Resolve to absolute paths for comparison
             file_path_resolved = file_path.resolve()
-            upload_dir_resolved = self.uploads_dir.resolve()
 
-            # Security check - ensure file is within uploads directory
-            if not str(file_path_resolved).startswith(str(upload_dir_resolved)):
+            # Security: component-wise containment (never str.startswith).
+            if not PathValidator.is_within_directory(file_path_resolved, self.uploads_dir):
                 return False, "Security: File not in uploads directory"
 
             # Delete the file if it exists

@@ -357,11 +357,10 @@ class SecureFileHandler:
         """Get secure file path within upload directory"""
         file_path = self.upload_dir / filename
         
-        # Resolve path and ensure it's within upload directory
+        # Resolve path and ensure it's within upload directory (component-wise,
+        # not str.startswith — '/uploads-evil' must not match '/uploads').
         resolved_path = file_path.resolve()
-        upload_dir_resolved = self.upload_dir.resolve()
-        
-        if not str(resolved_path).startswith(str(upload_dir_resolved)):
+        if not _is_within(self.upload_dir, resolved_path):
             raise SecurityError("Path traversal attempt detected")
         
         return resolved_path

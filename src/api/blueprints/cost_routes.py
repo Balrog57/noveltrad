@@ -19,6 +19,7 @@ from src.core.pricing import (
     CostEstimator,
 )
 from src.config import MAX_TOKENS_PER_CHUNK
+from src.api.services.path_validator import PathValidator
 
 
 logger = logging.getLogger('cost_routes')
@@ -173,10 +174,8 @@ def _resolve_text_input(data: dict, uploads_dir: Path) -> str | None:
         return None
 
     try:
-        resolved = file_path.resolve()
-        uploads_resolved = uploads_dir.resolve()
-        if not str(resolved).startswith(str(uploads_resolved)):
-            logger.warning("Refused estimation: path outside uploads dir: %s", resolved)
+        if not PathValidator.is_within_directory(file_path, uploads_dir):
+            logger.warning("Refused estimation: path outside uploads dir: %s", file_path)
             return None
     except OSError:
         return None
