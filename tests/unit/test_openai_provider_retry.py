@@ -1,6 +1,6 @@
 """OpenAICompatibleProvider retries empty and malformed 200s.
 
-Aggregator routers (Nexum/Dialagram, OpenCode, …) often return HTTP 200 with
+Aggregator routers (OpenRouter, OpenCode, …) often return HTTP 200 with
 no usable text: empty ``content`` after billed reasoning, a 0-token drop, empty
 ``choices``, or a content-parts array. Those must be retried. An explicit
 content-filter / refusal must not.

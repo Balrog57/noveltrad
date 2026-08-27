@@ -22,9 +22,10 @@ export const PROVIDER_LOGOS = {
     nim: '/static/img/providers/nvidia.png',
     anthropic: '/static/img/providers/anthropic.svg',
     xai: '/static/img/providers/xai.svg',
-    nexum: '/static/img/providers/nexum.svg',
     opencode: '/static/img/providers/opencode.svg',
     opencodego: '/static/img/providers/opencodego.svg',
+    ollamacloud: '/static/img/providers/ollama.png',
+    chatgpt: '/static/img/providers/openai.png',
 };
 
 export const PROVIDER_META = {
@@ -38,13 +39,14 @@ export const PROVIDER_META = {
     nim: { name: 'NVIDIA NIM', description: 'Cloud API' },
     anthropic: { name: 'Anthropic', description: 'Claude API' },
     xai: { name: 'xAI', description: 'Grok API' },
-    nexum: { name: 'Nexum', description: 'Router' },
     opencode: { name: 'OpenCode Zen', description: 'Pay-as-you-go' },
     opencodego: { name: 'OpenCode Go', description: 'Subscription' },
+    ollamacloud: { name: 'Ollama Cloud', description: 'Hosted' },
+    chatgpt: { name: 'ChatGPT', description: 'OAuth' },
 };
 
 // Canonical A-Z order used everywhere a provider dropdown is built.
-export const PROVIDER_ORDER = ['anthropic', 'deepseek', 'gemini', 'mistral', 'nexum', 'nim', 'ollama', 'openai', 'opencode', 'opencodego', 'openrouter', 'poe', 'xai'];
+export const PROVIDER_ORDER = ['anthropic', 'chatgpt', 'deepseek', 'gemini', 'mistral', 'nim', 'ollama', 'ollamacloud', 'openai', 'opencode', 'opencodego', 'openrouter', 'poe', 'xai'];
 
 /**
  * Replace the dropdown content with a single placeholder option whose text

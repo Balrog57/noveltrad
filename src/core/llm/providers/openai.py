@@ -30,7 +30,7 @@ from src.config import (
 class OpenAICompatibleProvider(LLMProvider):
     """OpenAI-compatible API provider (works with llama.cpp, LM Studio, vLLM, OpenAI, etc.)"""
 
-    # Flaky aggregators (Nexum, …) override this so empty/5xx drops get more
+    # Flaky aggregators (OpenRouter, OpenCode, …) override this so empty/5xx drops get more
     # attempts than the global MAX_TRANSLATION_ATTEMPTS default.
     MAX_GENERATE_ATTEMPTS: Optional[int] = None
 

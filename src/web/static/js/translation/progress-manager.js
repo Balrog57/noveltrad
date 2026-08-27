@@ -9,6 +9,21 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { t } from '../i18n/i18n.js';
 import { navigateToSetting } from '../ui/settings-summary.js';
 
+/**
+ * Is a stats key actually present in the payload? Precedence in this module is
+ * by presence, not truthiness — the same discipline as `_unfinished()` in
+ * src/api/completion_status.py and `runCounter()` in translation-tracker.js: a
+ * key that is present and 0 is trusted, and only an absent one falls back to an
+ * older counter (legacy payloads, formats that never emit it).
+ *
+ * @param {Object} stats - Job stats payload
+ * @param {string} key - Key to test
+ * @returns {boolean}
+ */
+function statPresent(stats, key) {
+    return !!stats && stats[key] !== undefined && stats[key] !== null;
+}
+
 // State for tracking chunk completion times (for ETA calculation)
 let chunkCompletionTimes = [];
 let lastCompletedChunks = 0;
@@ -216,15 +231,36 @@ function exceedsQualityThreshold(stats) {
  * Compute the rate metrics the critical intro line surfaces. We re-derive them
  * client-side from the cumulative stats payload so the numbers stay in sync
  * across multi-file EPUB runs (the per-file backend warning text would drift).
+ *
+ * The `run_*` counters are preferred over their accumulated twins whenever the
+ * backend sends them. The accumulated ones are deliberately rehydrated across
+ * resume passes (issue #180: the Fallbacks card must not reset to zero on
+ * resume), so both the denominator and the numerators would carry work from
+ * earlier passes — that is what produced "Across 34 chunks: 100% needed
+ * retries" for a 12-chunk book. Percentages must describe one run.
+ *
+ * Precedence is by presence, not truthiness — the same discipline as
+ * `_unfinished()` in src/api/completion_status.py: a `run_*` key that is
+ * present and 0 is trusted (that run really did zero retries); only an absent
+ * one falls back to the accumulated field (legacy payloads, formats that never
+ * emit it).
  */
 export function deriveRateContext(stats) {
-    const processed = stats.processed_chunks || stats.completed_chunks || 0;
+    const s = stats || {};
+    const present = (key) => statPresent(s, key);
+    const pick = (runKey, accKey) => (present(runKey) ? (s[runKey] || 0) : (s[accKey] || 0));
+
+    const processed = present('run_processed_chunks')
+        ? (s.run_processed_chunks || 0)
+        : (s.processed_chunks || s.completed_chunks || 0);
     if (processed <= 0) {
         return { retryPct: 0, fallbackPct: 0, avgErrors: '0.0', processed: 0 };
     }
-    const fallbackCount = (stats.token_alignment_used || 0) + (stats.fallback_used || 0);
-    const notFirstTry = (stats.successful_after_retry || 0) + fallbackCount;
-    const placeholderErrors = stats.placeholder_errors || 0;
+    const fallbackCount = pick('run_token_alignment_used', 'token_alignment_used')
+        + pick('run_fallback_used', 'fallback_used');
+    const notFirstTry = pick('run_successful_after_retry', 'successful_after_retry')
+        + fallbackCount;
+    const placeholderErrors = pick('run_placeholder_errors', 'placeholder_errors');
     return {
         retryPct: Math.round((notFirstTry / processed) * 100),
         fallbackPct: Math.round((fallbackCount / processed) * 100),
@@ -400,6 +436,49 @@ window.addEventListener('localeChanged', () => {
 });
 
 /**
+ * The chunk pair the live panel must display: the scope of the pass in flight.
+ *
+ * A repair pass (the "Fix these N chunks" button on a `partial` job) retries a
+ * handful of chunks of an otherwise finished book. Reported against the book it
+ * reads "12 TOTAL / 10 COMPLETED, 83%", creeps to 100% in tiny steps and hands
+ * `updateEstimatedTimeRemaining` a denominator that has nothing to do with the
+ * work being done. `run_is_repair` / `run_total_chunks` (src/core/epub/translator.py,
+ * `_global_stats_payload`) describe that pass, so the panel reports it as the
+ * little job it is: "1 TOTAL / 1 COMPLETED".
+ *
+ * Deliberately NOT applied to a plain interrupted resume (`run_is_repair` is
+ * False there): someone resuming a book at 50% expects 50→100% of the book, not
+ * 0→100% of the remainder.
+ *
+ * `total_chunks` / `completed_chunks` keep their book-level meaning everywhere
+ * else - they feed the checkpoint and the resumable-job card's
+ * "Progress: X/Y chunks (Z%)", which must never read "1/1 (100%)" for a
+ * 12-chunk book.
+ *
+ * Precedence is by presence, not truthiness (see `statPresent`): a present
+ * `run_processed_chunks` of 0 is trusted (the pass really has done nothing
+ * yet), and an absent key - legacy payloads, and the TXT/SRT/DOCX path which
+ * has no repair concept and emits neither flag - leaves the whole-book pair in
+ * place, i.e. today's behaviour.
+ *
+ * @param {Object} stats - Job stats payload
+ * @returns {{total: number, completed: number, isRepair: boolean}}
+ */
+function resolveDisplayChunks(stats) {
+    const s = stats || {};
+    const runTotal = statPresent(s, 'run_total_chunks') ? Number(s.run_total_chunks) : NaN;
+    if (s.run_is_repair === true && Number.isFinite(runTotal) && runTotal > 0) {
+        const done = statPresent(s, 'run_processed_chunks') ? (s.run_processed_chunks || 0) : 0;
+        return { total: runTotal, completed: Math.min(done, runTotal), isRepair: true };
+    }
+    return {
+        total: s.total_chunks || 0,
+        completed: s.completed_chunks || 0,
+        isRepair: false,
+    };
+}
+
+/**
  * Update statistics display based on file type
  * All file types (txt, epub, srt) show stats uniformly
  * @param {Object} stats - Statistics object from server
@@ -410,8 +489,12 @@ function updateStatistics(stats, fileType) {
 
     DomHelpers.show('statsGrid');
 
-    DomHelpers.setText('totalChunks', stats.total_chunks || '0');
-    DomHelpers.setText('completedChunks', stats.completed_chunks || '0');
+    // Book-level by default, pass-level on a repair pass (see
+    // resolveDisplayChunks). `failedChunks` stays book-level: it counts the
+    // damage in the document, not the work in flight.
+    const scope = resolveDisplayChunks(stats);
+    DomHelpers.setText('totalChunks', scope.total || '0');
+    DomHelpers.setText('completedChunks', scope.completed || '0');
     DomHelpers.setText('failedChunks', stats.failed_chunks || '0');
 
     if (fileType === 'srt') {
@@ -419,16 +502,33 @@ function updateStatistics(stats, fileType) {
         DomHelpers.setText('fallbackChunks', '0');
         updateFallbackHighlight(0, stats);
     } else {
-        const fallbacks = (stats.token_alignment_used || 0) + (stats.fallback_used || 0);
+        // Live count of degraded chunks: Phase 2 (token alignment, an accumulated
+        // tally — those chunks are translated and are never retried) plus the
+        // chunks *currently* sitting in their source text after Phase 3.
+        //
+        // `untranslated_chunks` is a live projection of the per-chunk statuses,
+        // so a retry that heals a chunk makes this card count down, while
+        // `fallback_used` is an accumulated cross-pass tally that only ever
+        // grows and would stay frozen at its historical value. Precedence is by
+        // presence: present and 0 is trusted (a retry healed everything), and
+        // only an absent key — legacy payloads, and the TXT/SRT/DOCX path which
+        // has no chunk statuses — falls back to the historical counter.
+        const untranslated = statPresent(stats, 'untranslated_chunks')
+            ? (stats.untranslated_chunks || 0)
+            : (stats.fallback_used || 0);
+        const fallbacks = (stats.token_alignment_used || 0) + untranslated;
         DomHelpers.setText('fallbackChunks', String(fallbacks));
         updateFallbackHighlight(fallbacks, stats);
     }
 
     if (stats.elapsed_time !== undefined) {
         DomHelpers.setText('elapsedTime', formatElapsedTime(stats.elapsed_time));
+        // Same pair as the two cards above, so the ETA describes the work in
+        // flight instead of a book whose remaining 2 chunks would be paced by
+        // the 10 it already had.
         updateEstimatedTimeRemaining(
-            stats.completed_chunks || 0,
-            stats.total_chunks || 0,
+            scope.completed,
+            scope.total,
             stats.elapsed_time
         );
     }
@@ -462,16 +562,29 @@ export const ProgressManager = {
         if (!data.stats) return;
 
         const stats = data.stats;
-        const completed = stats.completed_chunks || 0;
-        const total = stats.total_chunks || 0;
+        const scope = resolveDisplayChunks(stats);
+        const completed = scope.completed;
+        const total = scope.total;
 
         // The bar value is server-authoritative: the backend emits a single
         // canonical `percent` (see src/core/progress) with the phase mapping
         // and monotonic floor already applied. Display it verbatim; the chunk
         // ratio is only a defensive fallback should `percent` ever be absent.
-        const globalPercent = typeof stats.percent === 'number'
-            ? stats.percent
-            : (total > 0 ? (completed / total) * 100 : 0);
+        //
+        // The one exception is a repair pass, where the canonical `percent`
+        // answers a different question (how much of the *book* is done, which
+        // is what the checkpoint and the resumable-job card need) than the one
+        // the panel is asking. It is overridden here rather than in
+        // `snapshot_from_legacy_stats`, so the server-side contract - the
+        // canonical percent, its monotonic floor in handlers.py, and the
+        // DB-facing `progress_percentage` - keeps its book-level meaning. The
+        // bar is only ever written from this one site per socket update, so the
+        // two routes cannot fight each other.
+        const globalPercent = scope.isRepair
+            ? (total > 0 ? Math.min(100, (completed / total) * 100) : 0)
+            : (typeof stats.percent === 'number'
+                ? stats.percent
+                : (total > 0 ? (completed / total) * 100 : 0));
         updateProgressBar(globalPercent);
 
         updateOperationLabel(stats);

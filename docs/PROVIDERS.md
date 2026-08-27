@@ -330,9 +330,68 @@ Endpoint: `https://opencode.ai/zen/go/v1`
 
 ---
 
+## Ollama Cloud
+
+Hosted Ollama models at [ollama.com](https://ollama.com). OpenAI-compatible Chat Completions. Distinct from local Ollama (`ollama` provider).
+
+### Setup
+
+1. Create an API key at [ollama.com/settings/keys](https://ollama.com/settings/keys)
+2. In TBL: Select "Ollama Cloud", enter your key
+3. Models load automatically into the dropdown
+4. Default model: `gpt-oss:120b`
+
+`OLLAMA_CLOUD_API_KEY` falls back to `OLLAMA_API_KEY` when unset.
+
+### CLI Example
+
+```bash
+python translate.py -i book.txt -o book_fr.txt \
+    --provider ollamacloud \
+    --ollamacloud_api_key YOUR_API_KEY_HERE \
+    -m gpt-oss:120b
+```
+
+Endpoint: `https://ollama.com/v1`
+
+---
+
+## ChatGPT (OAuth)
+
+Uses a ChatGPT Plus or Pro account via device-code sign-in (no platform API key). Tokens are stored in `data/chatgpt_oauth.json` next to `.env` and are never sent from the browser.
+
+### Setup
+
+1. In TBL: Select "ChatGPT (OAuth)"
+2. Click "Sign in with ChatGPT"
+3. Open the verification link, enter the device code
+4. Models load automatically into the dropdown after sign-in
+5. Default model: `gpt-5.4`
+
+Sign-in is only available from the web UI. The CLI uses the same token file once you have signed in.
+
+### CLI Example
+
+```bash
+python translate.py -i book.txt -o book_fr.txt \
+    --provider chatgpt \
+    -m gpt-5.4
+```
+
+---
+
 ## Endpoint Allowlist
 
-The web API lets a request choose the endpoint the server calls, so the server checks that endpoint against an allowlist before using it. Accepted out of the box: the known provider hosts (`api.openai.com`, `generativelanguage.googleapis.com`, `openrouter.ai`, `api.mistral.ai`, `api.deepseek.com`, `api.poe.com`, `integrate.api.nvidia.com`, `api.anthropic.com`, `api.x.ai`, `dialagram.me`, `opencode.ai`), every `*_API_ENDPOINT` configured in your `.env`, and any loopback, LAN or `host.docker.internal` address so self-hosted Ollama, LM Studio, llama.cpp and vLLM keep working. Anything else returns HTTP 400.
+The web API lets a request choose the endpoint the server calls, so the server checks that endpoint against an allowlist before using it. Accepted out of the box:
+
+- the known provider hosts (`api.openai.com`, `generativelanguage.googleapis.com`, `openrouter.ai`, `api.mistral.ai`, `api.deepseek.com`, `api.poe.com`, `integrate.api.nvidia.com`, `api.anthropic.com`, `api.x.ai`, `opencode.ai`, `ollama.com`);
+- every `*_API_ENDPOINT` configured in your `.env`;
+- anything on your own network, so self-hosted Ollama, LM Studio, llama.cpp and vLLM keep working: loopback and LAN addresses (including `100.64.0.0/10`, the range Tailscale uses), `localhost`, `host.docker.internal`, a single-label hostname such as `http://ollama:11434` (a Docker service or LXC name), and any host under `.local`, `.lan`, `.home`, `.home.arpa`, `.internal`, `.intranet`, `.corp`, `.private` or `.ts.net`;
+- any other hostname that **resolves entirely to your local network**, so a LAN machine named under a domain you own (`ai-server.example.com` answering `192.168.1.50` from your internal DNS) works without any configuration. The lookup only happens for a host none of the rules above accepted, and the verdict is cached for a minute.
+
+Anything else returns HTTP 400 with the rejected host and the fix in the response, and a `WARNING` line in the server log. A host that resolves to a public address, or does not resolve at all, is rejected.
+
+The endpoint is only checked for the providers that actually read it (`ollama`, `openai`, `nim`, `anthropic`, `xai`, `opencode`, `opencodego`, `ollamacloud`). The web UI sends the field with every provider, so a stale value there never blocks a Gemini or OpenRouter job.
 
 To allow a self-hosted gateway on a public hostname, add it to `LLM_ENDPOINT_ALLOWLIST` in `.env` (comma-separated; subdomains of a listed host are covered):
 
@@ -368,9 +427,9 @@ POE_API_KEY=...
 NIM_API_KEY=...
 ANTHROPIC_API_KEY=...
 XAI_API_KEY=...
-NEXUM_API_KEY=...
 OPENCODE_API_KEY=...
 OPENCODE_GO_API_KEY=...
+OLLAMA_CLOUD_API_KEY=...
 
 # Ollama settings
 API_ENDPOINT=http://localhost:11434/api/generate

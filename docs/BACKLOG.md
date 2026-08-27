@@ -33,7 +33,7 @@ reorder sprints without a reason written into the item.
 Goal: stop reporting success when the output is incomplete, stop generating support tickets for trivial
 causes, and unblock the UI. Everything here is small or medium effort with directly visible user impact.
 
-### [ ] 1.1 — Issue #239: jobs marked `completed` while chunks stayed in the source language
+### [x] 1.1 — Issue #239 (commit `3d310be`): jobs marked `completed` while chunks stayed in the source language
 
 **Symptom.** A book finishes as "Complete", but scattered paragraphs are still in the source language.
 No partial-completion card is shown and no resume option is offered, because the checkpoint has already
@@ -58,11 +58,20 @@ status is right.
 checkpoint, offers resume, and the completion card names the number of untranslated chunks. Add a unit
 test that drives the classifier with `fallback_used=1, failed_chunks=0`.
 
+**Shipped.** Commit `3d310be`: the decision moved out of `handlers.py` into
+`src/api/completion_status.py::classify_completion`, which returns `partial` when a chunk fell back to
+its source text, and `src/api/handlers.py` now keeps the checkpoint for `partial` and `error`. Covered by
+`tests/unit/test_completion_status.py`. Rule 4 of the classifier has since moved from `fallback_used` to
+the `unfinished_chunks` counter (item 1.8, design decision D9), so a job that retried every fallen-back
+chunk successfully can reach `completed`; `fallback_used` stays the input when that key is absent, which
+is the regression net for this item. Making the kept checkpoint actually usable — retrying those chunks —
+is item 1.8.
+
 **Effort.** S/M. **Blocks.** Item 1.2, item 5.5.
 
 ---
 
-### [ ] 1.2 — Issue #246: UI reports success, download fails, output directory is empty
+### [x] 1.2 — Issue #246 (commit `3d310be`): UI reports success, download fails, output directory is empty
 
 **Symptom.** Reported in Chinese: the interface shows the translation as finished, downloading raises an
 error, and the output directory turns out to be empty.
@@ -80,7 +89,66 @@ the checkpoint.
 **Done when.** Either the reporter confirms it is gone after 1.1, or a repro is obtained and the
 existence guard is in place with a test.
 
+**Shipped.** The existence guard landed with 1.1 in commit `3d310be`: rules 2 and 3 of
+`classify_completion` return `error` when the output path is missing, or exists at 0 bytes with
+`total_chunks > 0`, and `handlers.py` keeps the checkpoint in that case. A job can no longer reach
+`completed` with nothing on disk, which is the reported symptom. Covered by
+`tests/unit/test_completion_status.py`. The reporter's retest is still outstanding; if it recurs, the
+remaining suspect is unchanged — an exception thrown between "mark completed" and final assembly.
+
 **Effort.** S once 1.1 lands. **Depends on.** Item 1.1.
+
+---
+
+### [x] 1.8 — Issue #261 (plan `plan/PLAN_Issue261_RetryFailedChunks.md`): a `partial` job could never be finished
+
+Numbered 1.8 because that is the next free number in this sprint, but placed here on purpose: #239, #246
+and #261 are three faces of one defect ("we announce a success that is not one"), and splitting them
+across the file costs more than the out-of-order number.
+
+**Symptom.** Once items 1.1/1.2 made a run with fallback chunks end as `partial`, that job became
+unfinishable. Resume translated nothing and the card said "0 failed", so the user had no way to recover
+the paragraphs left in the source language and no information about which ones they were.
+
+**Verified cause.** Three defects stacked. The EPUB resume pointer is a *file* index, so the file holding
+a fallen-back chunk counted as finished (the TXT/SRT path already derived pending work from per-unit
+statuses; EPUB never got it). Nothing persisted *which* chunk had failed: every EPUB checkpoint row was
+stamped `completed` and `progress.failed_chunks` excluded `fallback_used`. And the per-file XHTML partial
+states were saved under `chapter1.xhtml` but deleted under `OEBPS/chapter1.xhtml`, so the delete never
+matched and every stale state declared its file finished at chunk N/N. Measured on the repro: pass 1 made
+6 chunk-level LLM calls, the resume made 0, and even rewinding the file pointer to 0 made 0.
+
+**Shipped.** Six phases, per `plan/PLAN_Issue261_RetryFailedChunks.md`. One shared helper computes a
+partial state's path so save/load/delete/list can never disagree again, and the file loop deletes with
+the authoritative `content_href`. The partial state now carries a per-chunk status (`pending`,
+`translated`, `token_aligned`, `untranslated`; `token_aligned` is never retried — those chunks are
+translated, only their placeholder positions were approximated) and is *kept* while the file still has
+unfinished chunks instead of always being deleted. The job progress carries
+`epub_unfinished_units: {file_href: [chunk_index, ...]}`, the complete current picture of what is owed,
+rewritten whole and never merged. Resume *is* the retry: the file loop re-enters a file below the resume
+pointer when it has both a ticket in that map and a loadable partial state, retranslates exactly its
+unfinished chunks, and never rewinds the pointer itself. And the verdict stopped depending on history —
+`classify_completion` now bases `partial` on `unfinished_chunks` (work still owed) and falls back to the
+`fallback_used` tally only when that key is absent, so a job that retried every fallen-back chunk
+successfully can finally reach `completed`. The partial card and the resumable-job badge name the count
+and the files holding it, in all seven locales.
+
+**Verified by.** `tests/test_epub_retry_failed_chunks.py` (no network, under a second, the CI-side gate)
+plus the two-mode real-Ollama acceptance harness
+`tests/standalone/repro_issue_261_failed_chunks_unrecoverable.py`: `--mode heal` (resume with the
+starvation lifted → the chunk is retried exactly once, the chapter comes out translated, verdict
+`completed`, ticket and partial state gone, checkpoint cleaned up) and `--mode persist` (starvation kept
+→ retried exactly once, still `partial`, ticket and state kept, output unchanged — no false success, no
+retry loop). Both exit 0; before the fix `--mode heal` failed with `retried=0` and the chapter still in
+the source language.
+
+**Known follow-up.** Plain Text Mode retry is out of scope (§5 of the plan). Its per-paragraph failures
+fall back to source text inside `src/core/common/plain_text_pipeline.py` and never touch `fallback_used`,
+so they are invisible to both the old and the new verdict. Its checkpoint key was fixed here, its retry
+semantics were not: applying the same per-chunk status treatment to `translate_paragraphs_plain` is the
+follow-up.
+
+**Effort.** L (shipped). **Unblocks.** Item 5.5.
 
 ---
 
@@ -582,9 +650,13 @@ knob is undiscoverable. Cheap win, and it also answers the recurring class of qu
 A power user asked for an optional `.txt` export summarizing which chapters fell back or failed, in a
 `Cap_1.html = ...` form, to review quickly in Calibre. Nothing like it exists.
 
-This pairs naturally with item 1.1: correctly tracking `fallback_used` per chunk produces exactly the
-data this export needs, so build it immediately after.
-**Effort.** S/M. **Depends on.** Item 1.1.
+The dependency on item 1.1 is satisfied, and the data this export needs now exists: item 1.8 persists a
+per-chunk status in each file's XHTML partial state and indexes the remaining work per file in
+`progress['epub_unfinished_units']` (`{file_href: [chunk_index, ...]}`), which is exactly the
+`Cap_1.html = ...` shape the reporter asked for. What is left is rendering it to a `.txt` next to the
+output. Caveat: that index covers the EPUB path only — plain-text mode still has no per-paragraph status
+(the follow-up flagged in item 1.8), so a plain-text run would produce an empty log.
+**Effort.** S/M. **Depends on.** Item 1.1 (done), item 1.8 (done).
 
 ---
 
@@ -756,9 +828,11 @@ self-hosted. The one in-scope item became #198 (item 5.8). Close with a pointer.
 
 ## Cross-cutting notes
 
-**Item 1.1 unlocks two other items.** Correctly separating "failed" from "fell back to source" is the
-prerequisite for both the #246 diagnosis (item 1.2) and the failure-log export (item 5.5). Do it first
-and the two that follow get much cheaper.
+**Item 1.1 unlocked three other items, and is done.** Correctly separating "failed" from "fell back to
+source" was the prerequisite for the #246 diagnosis (item 1.2, shipped with it), for making those chunks
+retryable (item 1.8, shipped) and for the failure-log export (item 5.5, now only a rendering job over
+data that already exists). The one gap left in that chain is plain-text mode, which still has no
+per-paragraph status — see the follow-up in item 1.8.
 
 **PR #233 changed reachability, not correctness.** Items 2.2, and the deferred #212 and #214, all had
 their delivery vector closed by the CORS and session-token work while the underlying flaw stayed. When

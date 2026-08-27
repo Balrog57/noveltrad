@@ -1,6 +1,7 @@
 """
 Translation job management routes
 """
+import logging
 import os
 import time
 import copy
@@ -25,6 +26,8 @@ from src.api.api_keys import (
     USE_ENV_SENTINEL,
 )
 
+logger = logging.getLogger('translation_routes')
+
 
 def _clamp_parallel_workers(value):
     """Clamp the requested worker count to [1, MAX_PARALLEL_TRANSLATIONS].
@@ -44,7 +47,7 @@ def _clamp_parallel_workers(value):
 # '<PROVIDER>_API_KEY'. The mapping is mechanical, so supporting a new provider
 # in the resume-override path requires only adding it here (and nowhere else in
 # this file).
-_KEY_PROVIDERS = ('gemini', 'openai', 'openrouter', 'mistral', 'deepseek', 'poe', 'nim', 'anthropic', 'xai', 'nexum', 'opencode', 'opencodego')
+_KEY_PROVIDERS = ('gemini', 'openai', 'openrouter', 'mistral', 'deepseek', 'poe', 'nim', 'anthropic', 'xai', 'opencode', 'opencodego', 'ollamacloud')
 
 # Providers that talk to a user-supplied endpoint; the others use a built-in one.
 _ENDPOINT_PROVIDERS = ('ollama', 'openai')
@@ -55,7 +58,7 @@ _ENDPOINT_PROVIDERS = ('ollama', 'openai')
 # so an endpoint sent alongside them is inert and must not be treated as an
 # override — the frontend sends llm_api_endpoint unconditionally.
 _ENDPOINT_CONSUMING_PROVIDERS = (
-    'ollama', 'openai', 'nim', 'anthropic', 'xai', 'nexum', 'opencode', 'opencodego'
+    'ollama', 'openai', 'nim', 'anthropic', 'xai', 'opencode', 'opencodego',
 )
 
 
@@ -75,12 +78,12 @@ def _server_default_endpoint(provider):
         return _config.ANTHROPIC_API_ENDPOINT
     if provider == 'xai':
         return _config.XAI_API_ENDPOINT
-    if provider == 'nexum':
-        return _config.NEXUM_API_ENDPOINT
     if provider == 'opencode':
         return _config.OPENCODE_API_ENDPOINT
     if provider == 'opencodego':
         return _config.OPENCODE_GO_API_ENDPOINT
+    if provider == 'ollamacloud':
+        return _config.OLLAMA_CLOUD_API_ENDPOINT
     return ''
 
 
@@ -111,8 +114,9 @@ def _validate_endpoint_and_key_pairing(config, requested_endpoint, request_key=N
 
     A request that chooses its own host must also bring its own credential:
     otherwise the server would forward a .env key to a destination the client
-    picked. Providers that ignore the request's endpoint are exempt, and
-    'ollama' has no key to leak so it needs none.
+    picked. Providers that ignore the request's endpoint are exempt from both
+    checks — the field is inert for them — and 'ollama' has no key to leak so
+    it needs no pairing.
 
     Args:
         config: The job config being built or resumed.
@@ -123,14 +127,25 @@ def _validate_endpoint_and_key_pairing(config, requested_endpoint, request_key=N
     Returns a Flask (response, status) tuple to abort with, or None when the
     request is acceptable.
     """
+    provider = (config.get('llm_provider') or 'ollama').lower()
+
+    # The frontend sends llm_api_endpoint unconditionally, so a provider that
+    # never reads it still carries whatever host sits in the Ollama field. That
+    # value reaches no HTTP client, so validating it would reject a perfectly
+    # valid cloud job over a stale field (issue #263).
+    if provider not in _ENDPOINT_CONSUMING_PROVIDERS:
+        return None
+
     ok, err = EndpointValidator.validate(requested_endpoint)
     if not ok:
+        logger.warning(
+            "Rejected client-supplied endpoint for provider '%s': %s", provider, err
+        )
         return jsonify({"error": "Endpoint not allowed", "message": err}), 400
 
     if not _is_endpoint_override(config, requested_endpoint):
         return None
 
-    provider = (config.get('llm_provider') or 'ollama').lower()
     if provider in _KEY_PROVIDERS and (not request_key or request_key == USE_ENV_SENTINEL):
         # Only refuse when a stored key actually exists, i.e. when there is
         # something to leak. 'openai' also covers keyless local servers
@@ -173,6 +188,15 @@ def _validate_provider_credentials(config):
     """
     provider = (config.get('llm_provider') or 'ollama').lower()
 
+    if provider == 'chatgpt':
+        from src.core.llm.chatgpt_oauth import status_payload
+        if not status_payload().get("signed_in"):
+            return jsonify({
+                "error": "ChatGPT is not signed in",
+                "message": "Sign in with ChatGPT in Settings before starting or resuming a job.",
+            }), 400
+        return None
+
     if provider in _KEY_PROVIDERS:
         env_var = _provider_env_var(provider)
         # 'openai' also covers OpenAI-compatible local endpoints (llama.cpp,
@@ -180,15 +204,19 @@ def _validate_provider_credentials(config):
         # one for the official API, mirroring the factory's heuristic.
         key_required = (provider != 'openai'
                         or 'api.openai.com' in (config.get('llm_api_endpoint') or ''))
-        stored_key = config.get(f"{provider}_api_key") or os.getenv(env_var)
-        if provider == 'opencodego':
-            stored_key = stored_key or os.getenv('OPENCODE_API_KEY')
-        if key_required and not stored_key:
-            return jsonify({
-                "error": "Missing API key for provider",
-                "message": (f"Resuming with '{provider}' requires an API key. "
-                            f"Set {env_var} in .env or include it in the request."),
-            }), 400
+        if key_required:
+            resolved = config.get(f"{provider}_api_key") or os.getenv(env_var)
+            if provider == 'opencodego':
+                resolved = resolved or os.getenv('OPENCODE_API_KEY')
+            if provider == 'ollamacloud':
+                resolved = resolved or os.getenv('OLLAMA_API_KEY')
+            if not resolved:
+                return jsonify({
+                    "error": "Missing API key for provider",
+                    "message": (f"Resuming with '{provider}' requires an API key. "
+                                f"Set {env_var} in .env or include it in the request."),
+                }), 400
+            config[f"{provider}_api_key"] = resolved
 
     if provider in _ENDPOINT_PROVIDERS and not config.get('llm_api_endpoint'):
         return jsonify({
@@ -203,18 +231,41 @@ def _apply_resume_overrides(config, overrides):
     """Merge optional model/provider override fields into a resume config in place.
 
     Lets the resume request switch model/provider for the remaining chunks
-    (issue #183). An empty/absent body leaves `config` untouched. API keys flow
-    through `_resolve_api_key` exactly like the start endpoint, and a multi-key
-    string is passed through unchanged so the key-rotation pool still works.
+    (issue #183). An empty/absent body leaves model, provider and endpoint
+    untouched; `auto_pause_on_rate_limit` is refreshed either way, see below.
+    API keys flow through `_resolve_api_key` exactly like the start endpoint,
+    and a multi-key string is passed through unchanged so the key-rotation
+    pool still works.
 
     Credentials are validated even with an empty body: checkpoints no longer
     persist API keys (issue #213), so every resume must find its key in .env
     or in the request.
 
+    auto_pause_on_rate_limit isn't a secret, but a job's config is otherwise a
+    snapshot taken at creation time, so it has the same staleness problem as
+    the credentials above: without refreshing it here, flipping "Disable
+    Auto-Pause" in Settings after a job started would never take effect on
+    that job's resumes. Refreshed from the live setting on every resume,
+    unless this specific resume overrides it.
+
+    Note: this reads `_config.DISABLE_AUTO_PAUSE` as already refreshed by
+    `/api/settings` (which calls `reload_config()` itself after writing to
+    .env) rather than calling `reload_config()` here. `reload_config()` does
+    `load_dotenv(..., override=True)`, which would clobber any provider API
+    key set via a real environment variable (docker/shell) rather than via
+    the .env file -- not something a routine resume should ever do.
+
     Returns a Flask (response, status) tuple to abort with on validation failure,
     or None on success.
     """
     raw_key = None
+
+    if isinstance(overrides, dict) and overrides.get('auto_pause_on_rate_limit') is not None:
+        config['auto_pause_on_rate_limit'] = bool(overrides['auto_pause_on_rate_limit'])
+    else:
+        config['auto_pause_on_rate_limit'] = not (
+            str(_config.DISABLE_AUTO_PAUSE).strip().lower() == 'true'
+        )
 
     if isinstance(overrides, dict) and overrides:
         if overrides.get('model'):
@@ -332,11 +383,13 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
             'nim_api_key': _resolve_api_key(data.get('nim_api_key'), 'NIM_API_KEY'),
             'anthropic_api_key': _resolve_api_key(data.get('anthropic_api_key'), 'ANTHROPIC_API_KEY'),
             'xai_api_key': _resolve_api_key(data.get('xai_api_key'), 'XAI_API_KEY'),
-            'nexum_api_key': _resolve_api_key(data.get('nexum_api_key'), 'NEXUM_API_KEY'),
             'opencode_api_key': _resolve_api_key(data.get('opencode_api_key'), 'OPENCODE_API_KEY'),
             'opencodego_api_key': _resolve_api_key(
                 data.get('opencodego_api_key'), 'OPENCODE_GO_API_KEY'
             ) or _resolve_api_key(data.get('opencodego_api_key'), 'OPENCODE_API_KEY'),
+            'ollamacloud_api_key': _resolve_api_key(
+                data.get('ollamacloud_api_key'), 'OLLAMA_CLOUD_API_KEY'
+            ) or _resolve_api_key(data.get('ollamacloud_api_key'), 'OLLAMA_API_KEY'),
             # Prompt options (optional instructions to include in the system prompt)
             'prompt_options': data.get('prompt_options', {}),
             # Auto-pause on rate limit toggle (request overrides .env default)

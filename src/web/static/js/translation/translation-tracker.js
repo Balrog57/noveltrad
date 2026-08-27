@@ -16,6 +16,13 @@ import { ProgressManager, formatElapsedTime, deriveRateContext, buildRecommendat
 import { renderTranslationTitle, getFileIcon, createGenericEPUBIcon } from './progress-title.js';
 import { LifecycleManager } from '../utils/lifecycle-manager.js';
 import { t } from '../i18n/i18n.js';
+import {
+    overridePanelHtml,
+    openOverridePanel,
+    toggleOverridePanel,
+    readOverrideConfig,
+    destroyOverridePickers,
+} from './model-override-panel.js';
 
 // Storage configuration with versioning
 const STORAGE_VERSION = 1;
@@ -54,6 +61,45 @@ function validateTranslationState(data) {
     }
 
     return true;
+}
+
+/**
+ * Read a per-run counter from a finished job's stats, falling back to its
+ * accumulated twin only when the `run_*` key is absent.
+ *
+ * Same presence-based precedence as `_unfinished()` in
+ * src/api/completion_status.py and `deriveRateContext` in progress-manager.js:
+ * a `run_*` key that is present and 0 is trusted (that pass really did zero),
+ * and only a missing key falls back to the accumulated field (legacy payloads,
+ * or a format that never learned to emit the twin).
+ *
+ * @param {Object} stats - Job stats payload
+ * @param {string} runKey - Per-run key (e.g. 'run_placeholder_errors')
+ * @param {string} accumulatedKey - Cross-pass twin (e.g. 'placeholder_errors')
+ * @returns {number}
+ */
+function runCounter(stats, runKey, accumulatedKey) {
+    const s = stats || {};
+    return (s[runKey] !== undefined && s[runKey] !== null)
+        ? (s[runKey] || 0)
+        : (s[accumulatedKey] || 0);
+}
+
+/**
+ * Number of chunks the delivered file still owes (issue #261, design decision
+ * D9). Trust `unfinished_chunks` whenever the key is present — including when
+ * it is 0 while `fallback_used` is not, which is exactly what a fully healed
+ * retry pass looks like — and fall back to the historical `fallback_used`
+ * counter only for legacy payloads that never emitted it.
+ *
+ * @param {Object} stats - Job stats payload
+ * @returns {number}
+ */
+function unfinishedChunkCount(stats) {
+    const s = stats || {};
+    return typeof s.unfinished_chunks === 'number'
+        ? s.unfinished_chunks
+        : (s.fallback_used || 0);
 }
 
 export const TranslationTracker = {
@@ -687,6 +733,12 @@ export const TranslationTracker = {
     _populateCompletionCard(card, file, resultData) {
         card._tblPayload = { file, resultData };
 
+        // The card is rebuilt in place (locale switch, active-state change), so
+        // any override picker created by a previous render is about to lose its
+        // DOM. Release it first, otherwise its SearchableSelect registrations
+        // leak and a second picker gets registered for the same job.
+        destroyOverridePickers(card);
+
         const outputFilename = resultData.output_filename || file.outputFilename || file.name;
         const safeFilename = DomHelpers.escapeHtml(outputFilename);
         const statsHtml = this._buildCompletionStatsHtml(file, resultData);
@@ -733,7 +785,10 @@ export const TranslationTracker = {
         actionsGroup.classList.add('completion-card__actions');
         card.appendChild(actionsGroup);
 
-        card.querySelector('.completion-card__close').addEventListener('click', () => card.remove());
+        card.querySelector('.completion-card__close').addEventListener('click', () => {
+            destroyOverridePickers(card);
+            card.remove();
+        });
     },
 
     /**
@@ -745,14 +800,48 @@ export const TranslationTracker = {
     _ensureCompletionCardsLocaleListener() {
         if (this._completionLocaleListenerBound) return;
         this._completionLocaleListenerBound = true;
-        window.addEventListener('localeChanged', () => {
-            const container = DomHelpers.getElement('completionCardsContainer');
-            if (!container) return;
-            container.querySelectorAll('.completion-card').forEach((card) => {
-                if (card._tblPayload) {
-                    this._populateCompletionCard(card, card._tblPayload.file, card._tblPayload.resultData);
-                }
-            });
+        window.addEventListener('localeChanged', () => this._refreshCompletionCards());
+
+        // The "fix these chunks" affordance mirrors the resumable-job card's
+        // active-translation guard, and that guard is only correct at render
+        // time. The resumable list solves it by reloading on this same state
+        // key; do the equivalent here so a card rendered while the batch was
+        // still running does not keep a permanently disabled button (or offer
+        // a resume while another job is running).
+        // `translation.hasActive` is re-set on every poll of the active-jobs
+        // endpoint, so only a real transition triggers a rebuild — otherwise an
+        // open panel would be torn down and re-created for nothing.
+        StateManager.subscribe('translation.hasActive', (hasActive, wasActive) => {
+            if (hasActive === wasActive) return;
+            this._refreshCompletionCards();
+        });
+    },
+
+    /**
+     * Rebuild every visible completion card from its stashed payload.
+     *
+     * A rebuild replaces the model-override panel, so an open one is reopened
+     * afterwards (with a fresh picker — the old one is destroyed by
+     * `_populateCompletionCard`, never left orphaned). The picker is only
+     * created once the card is back in the document, which is why this lives
+     * here rather than in the builder.
+     * @private
+     */
+    _refreshCompletionCards() {
+        const container = DomHelpers.getElement('completionCardsContainer');
+        if (!container) return;
+        container.querySelectorAll('.completion-card').forEach((card) => {
+            if (!card._tblPayload) return;
+            const previousPanel = card.querySelector('.completion-override');
+            const wasOpen = !!previousPanel && previousPanel.style.display !== 'none';
+
+            this._populateCompletionCard(card, card._tblPayload.file, card._tblPayload.resultData);
+
+            if (!wasOpen) return;
+            const panel = card.querySelector('.completion-override');
+            if (!panel) return;
+            panel.style.display = 'block';
+            openOverridePanel(panel);
         });
     },
 
@@ -783,6 +872,19 @@ export const TranslationTracker = {
 
     /**
      * Build the stats block HTML for the completion card.
+     *
+     * The chips describe the state of the file that was just delivered, not
+     * the accumulated history of the job (issue #261). Concretely:
+     *   - `token_alignment_used` is read accumulated on purpose: Phase 2 chunks
+     *     are never retried (design decision D3), so their tags are still
+     *     approximate in the book on disk however many retry passes ran.
+     *   - Phase 3 fallbacks are no longer merged into that number. A chunk left
+     *     in the source language is not "approximately tagged", and once it has
+     *     been retried successfully it is neither — it gets its own chip driven
+     *     by the current unfinished count (D9).
+     *   - `placeholder_errors` is read per-run: retry-attempt noise from an
+     *     earlier pass is not a property of the output.
+     *
      * @param {Object} file - File object (for fileType)
      * @param {Object} resultData - Final payload (contains stats)
      * @returns {string} HTML for the stats block (empty string if no stats)
@@ -792,12 +894,17 @@ export const TranslationTracker = {
 
         const failed = stats.failed_chunks || 0;
         const elapsed = stats.elapsed_time;
-        const fallbacks = (file && file.fileType === 'srt')
+        const isSrt = !!(file && file.fileType === 'srt');
+        const fallbacks = isSrt ? 0 : (stats.token_alignment_used || 0);
+        const placeholderErrors = isSrt
             ? 0
-            : (stats.token_alignment_used || 0) + (stats.fallback_used || 0);
-        const placeholderErrors = (file && file.fileType === 'srt')
-            ? 0
-            : (stats.placeholder_errors || 0);
+            : runCounter(stats, 'run_placeholder_errors', 'placeholder_errors');
+
+        // Content still in the source language in the delivered file. On the
+        // TXT/SRT/DOCX path every unfinished unit is also counted in
+        // `failed_chunks` (which has its own chip), so subtracting avoids
+        // reporting the same chunks twice in the header.
+        const untranslated = Math.max(0, unfinishedChunkCount(stats) - failed);
 
         // Plain Text Mode paragraph alignment (issue #253). Zero on every other
         // path, so no gating by file type is needed: a segment the model
@@ -820,6 +927,12 @@ export const TranslationTracker = {
 
         if (failed > 0) {
             items.push(`<span class="completion-card__stat--error">${t('translation:completion_failed_chunks', { count: failed })}</span>`);
+        }
+
+        // Missing content, not a formatting blemish: same severity styling as
+        // the failed-chunks chip rather than the `--warn` formatting ones.
+        if (untranslated > 0) {
+            items.push(`<span class="completion-card__stat--error">${t('translation:completion_warning_untranslated', { count: untranslated })}</span>`);
         }
 
         if (fallbacks > 0) {
@@ -848,10 +961,17 @@ export const TranslationTracker = {
     },
 
     /**
-     * Build the warning block surfaced beneath the title when the run produced
-     * fallbacks, placeholder errors, or failed chunks. Mirrors the live
-     * recommendation panel from progress-manager so the post-translation
-     * advice stays in sync with what was shown during the run.
+     * Build the warning block surfaced beneath the title when something is
+     * still worth saying about the delivered file: work the job still owes,
+     * chunks that failed, chunks whose tags are only approximate, or
+     * placeholder trouble in this run. Mirrors the live recommendation panel
+     * from progress-manager so the post-translation advice stays in sync with
+     * what was shown during the run.
+     *
+     * Issue #261: the block claims only what is currently true of the output.
+     * A healed retry pass must not be told to "use a more capable LLM" for
+     * chunks it just fixed, so the rate-based advice is gated on this pass's
+     * own counters — the same `run_*` values `deriveRateContext` divides by.
      *
      * @param {Object} file - File object (used to gate by file type)
      * @param {Object} resultData - Final payload (contains stats)
@@ -864,13 +984,57 @@ export const TranslationTracker = {
             return this._buildSrtCompletionWarningBlock(stats);
         }
 
-        const fallbacks = (stats.token_alignment_used || 0) + (stats.fallback_used || 0);
-        const placeholderErrors = stats.placeholder_errors || 0;
+        // What is still true of the delivered file. `token_alignment_used` stays
+        // accumulated: those chunks are never retried (D3), so they are still
+        // approximately tagged in the book. `placeholder_errors` becomes
+        // per-run — an earlier pass's retry noise says nothing about the output.
+        const placeholderErrors = runCounter(stats, 'run_placeholder_errors', 'placeholder_errors');
         const failed = stats.failed_chunks || 0;
         const tokenAlignment = stats.token_alignment_used || 0;
-        const untranslated = stats.fallback_used || 0;
 
-        if (fallbacks === 0 && placeholderErrors === 0 && failed === 0) {
+        // What THIS pass struggled with. Only these may gate the rate-based
+        // recommendation, whose percentages `deriveRateContext` already derives
+        // from the same `run_*` values: advising "use a more capable LLM" after
+        // a flawless retry pass — on chunks that pass just healed — is exactly
+        // the defect being fixed here.
+        const runFallbacks = runCounter(stats, 'run_token_alignment_used', 'token_alignment_used')
+            + runCounter(stats, 'run_fallback_used', 'fallback_used');
+
+        // Issue #261: `stats.unfinished_chunks` / `stats.unfinished_files` are
+        // the authoritative "work still pending" signals. They cover both
+        // outright failures and Phase 3 fallbacks, and — unlike the counters
+        // above — they go back to 0 once those chunks have been retried
+        // successfully. `fallback_used` is a historical tally of what happened
+        // during the run: reading it here would claim a fully healed job still
+        // holds source-language content. Same precedence as `_unfinished()` in
+        // src/api/completion_status.py (D9): trust `unfinished_chunks` whenever
+        // the key is present — including when it is 0 — and fall back to
+        // `fallback_used` only when it is absent (legacy payloads).
+        const unfinishedFiles = stats.unfinished_files;
+        const hasUnfinishedFilesMap = !!unfinishedFiles
+            && typeof unfinishedFiles === 'object'
+            && !Array.isArray(unfinishedFiles)
+            && Object.keys(unfinishedFiles).length > 0;
+        const unfinishedNow = typeof stats.unfinished_chunks === 'number'
+            ? stats.unfinished_chunks
+            : (stats.fallback_used || 0);
+
+        // The part of the remaining work to attribute to "kept in source
+        // language". On the TXT/SRT/DOCX path every unfinished unit is also
+        // counted in `failed_chunks`, so subtracting avoids reporting the same
+        // chunks twice in the breakdown below.
+        const untranslated = Math.max(0, unfinishedNow - failed);
+
+        // The rate-based advice describes the pass that just ran, so it is
+        // gated on the per-run signals only.
+        const showRecommendations = runFallbacks > 0 || placeholderErrors > 0;
+        // The block itself renders when there is something currently true to
+        // say: work still owed, chunks that failed, approximate tags still in
+        // the book, or placeholder trouble in this run. `showRecommendations` is
+        // ORed in so the advice can never be computed without a home.
+        const hasCurrentIssue = unfinishedNow > 0 || hasUnfinishedFilesMap
+            || failed > 0 || tokenAlignment > 0 || placeholderErrors > 0;
+        if (!hasCurrentIssue && !showRecommendations) {
             return null;
         }
 
@@ -884,10 +1048,13 @@ export const TranslationTracker = {
         icon.textContent = 'warning';
         heading.appendChild(icon);
         const headingText = document.createElement('span');
-        // When chunks were left in the source language (Phase 3 fallback) or
-        // outright failed, the optimistic "translations are correct" heading is
-        // misleading — surface the missing-content message instead.
-        const hasUntranslatedContent = untranslated > 0 || failed > 0;
+        // When chunks are still in the source language or outright failed, the
+        // optimistic "translations are correct" heading is misleading — surface
+        // the missing-content message instead. A run whose fallbacks were all
+        // retried successfully has no remaining work, so it keeps the
+        // optimistic heading (issue #261).
+        const hasUntranslatedContent = unfinishedNow > 0 || failed > 0
+            || hasUnfinishedFilesMap;
         headingText.textContent = t(hasUntranslatedContent
             ? 'translation:completion_warning_heading_untranslated'
             : 'translation:completion_warning_heading');
@@ -914,10 +1081,69 @@ export const TranslationTracker = {
             block.appendChild(breakdown);
         }
 
-        // Only renew the rate-based recommendations when there were actual
-        // fallbacks or placeholder issues — a run with only `failed_chunks`
-        // (e.g. provider errors) is not really a "tune the LLM" situation.
-        if (fallbacks > 0 || placeholderErrors > 0) {
+        // Name the files still holding untranslated content (issue #261), so
+        // the user knows where to look instead of just a count. Reuses the
+        // breakdown line's style rather than introducing a new class.
+        if (hasUnfinishedFilesMap) {
+            const fileHrefs = Object.keys(unfinishedFiles);
+            const shown = fileHrefs.slice(0, 5);
+            const extra = fileHrefs.length - shown.length;
+            const filesLine = document.createElement('div');
+            filesLine.className = 'completion-card__warning-breakdown';
+            filesLine.textContent = t('translation:completion_warning_untranslated_files', {
+                files: shown.join(', '),
+                // A neutral numeric suffix ("(+N)") rather than a worded
+                // "N more" — it needs no translation of its own and is simply
+                // '' when nothing was truncated (5 or fewer files).
+                more: extra > 0 ? ` (+${extra})` : '',
+            });
+            block.appendChild(filesLine);
+        }
+
+        // Issue #261: those chunks are kept and retryable, so the card can offer
+        // the fix instead of only advising "use a more capable LLM".
+        //
+        // CRITICAL: gated on `partial`. A `completed` job had its checkpoint
+        // destroyed by checkpoint_manager.cleanup_completed_job (see
+        // src/api/handlers.py), so there is nothing left to resume and the
+        // button would only produce an error. Without a translation id there is
+        // nothing to act on either — in both cases the block stays exactly as
+        // it was before this feature (breakdown, file list, recommendations).
+        const unfinishedFromMap = hasUnfinishedFilesMap
+            ? Object.values(unfinishedFiles)
+                .reduce((sum, indices) => sum + (Array.isArray(indices) ? indices.length : 0), 0)
+            : 0;
+        const retryableChunks = unfinishedNow > 0 ? unfinishedNow : unfinishedFromMap;
+        const translationId = resultData.translation_id || (file && file.translationId) || '';
+        if (resultData.status === 'partial' && translationId && retryableChunks > 0) {
+            this._appendCompletionFixAffordance(block, {
+                translationId,
+                count: retryableChunks,
+                resultData,
+            });
+        }
+
+        // Expert-level note about the Phase 2 trade-off
+        // (EPUB_TOKEN_ALIGNMENT_ENABLED, src/config.py): these chunks were
+        // salvaged with approximate tag placement. Turning the setting off
+        // would leave them untranslated instead — which is now a defensible
+        // choice, since untranslated chunks are retryable (issue #261).
+        // Only shown when it is actionable: EPUB, and at least one chunk
+        // actually went through token alignment. Built here rather than inside
+        // the recommendations sub-block so it survives a pass that earns no
+        // advice: it describes chunks still in the book, not this run.
+        let tokenAlignmentNote = null;
+        if (file && file.fileType === 'epub' && tokenAlignment > 0) {
+            tokenAlignmentNote = document.createElement('p');
+            tokenAlignmentNote.className = 'completion-card__warning-note';
+            tokenAlignmentNote.textContent = t('translation:completion_token_alignment_note', { count: tokenAlignment });
+        }
+
+        // Only renew the rate-based recommendations when this pass actually
+        // produced fallbacks or placeholder issues — a run with only
+        // `failed_chunks` (e.g. provider errors) is not really a "tune the LLM"
+        // situation, and neither is a retry pass that healed everything.
+        if (showRecommendations) {
             const recommendations = document.createElement('div');
             recommendations.className = 'completion-card__warning-recommendations';
             buildRecommendationContent(
@@ -925,10 +1151,130 @@ export const TranslationTracker = {
                 deriveRateContext(stats),
                 'translation:completion_warning_intro',
             );
+            if (tokenAlignmentNote) {
+                recommendations.appendChild(tokenAlignmentNote);
+            }
             block.appendChild(recommendations);
+        } else if (tokenAlignmentNote) {
+            block.appendChild(tokenAlignmentNote);
         }
 
         return block;
+    },
+
+    /**
+     * Append the inline "fix the unfinished chunks with a better model"
+     * affordance to a completion warning block: one advice sentence, a
+     * disclosure button, and the shared model-override panel.
+     *
+     * Applying calls `window.resumeJob` (bound in index.js) rather than
+     * importing ResumeManager: resume-manager.js already imports this module,
+     * so an import here would close the cycle.
+     *
+     * @param {HTMLElement} block - Warning block to append to
+     * @param {Object} opts
+     * @param {string} opts.translationId - Job to resume
+     * @param {number} opts.count - Number of retryable chunks
+     * @param {Object} opts.resultData - Final payload (model/provider seed)
+     * @private
+     */
+    _appendCompletionFixAffordance(block, { translationId, count, resultData }) {
+        // Same source of truth as the resumable-job card: a resume is refused
+        // server-side while another job runs, so the affordance is disabled
+        // rather than failing on click. The card is re-rendered when this state
+        // flips (see _ensureCompletionCardsLocaleListener).
+        const hasActiveTranslation = StateManager.getState('translation.hasActive') || false;
+
+        const advice = document.createElement('div');
+        advice.className = 'completion-card__warning-breakdown';
+        advice.textContent = t('translation:completion_fix_advice', { count });
+        block.appendChild(advice);
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'completion-card__fix-toggle';
+        toggle.title = hasActiveTranslation
+            ? t('translation:cannot_resume_in_progress_title')
+            : t('translation:completion_fix_toggle_title');
+        const toggleIcon = document.createElement('span');
+        toggleIcon.className = 'material-symbols-outlined';
+        toggleIcon.textContent = 'tune';
+        toggle.appendChild(toggleIcon);
+        const toggleLabel = document.createElement('span');
+        toggleLabel.textContent = t('translation:completion_fix_toggle', { count });
+        toggle.appendChild(toggleLabel);
+        toggle.disabled = hasActiveTranslation;
+        block.appendChild(toggle);
+
+        const holder = document.createElement('div');
+        holder.innerHTML = overridePanelHtml({
+            tid: translationId,
+            provider: resultData.llm_provider,
+            model: resultData.model,
+            endpoint: resultData.llm_api_endpoint,
+            applyLabelKey: 'translation:completion_fix_apply_btn',
+            panelClass: 'completion-override',
+        });
+        const panel = holder.firstElementChild;
+        if (!panel) return;
+        block.appendChild(panel);
+
+        toggle.addEventListener('click', () => {
+            if (toggle.disabled) return;
+            toggleOverridePanel(panel);
+        });
+
+        const applyBtn = panel.querySelector('.resume-apply');
+        if (!applyBtn) return;
+        applyBtn.disabled = hasActiveTranslation;
+        if (hasActiveTranslation) {
+            applyBtn.title = t('translation:cannot_resume_in_progress_title');
+        }
+        applyBtn.addEventListener('click', () => {
+            if (applyBtn.disabled) return;
+            const overrides = readOverrideConfig(panel);
+            // `undefined` means the panel refused the input (no model picked)
+            // and already told the user; `null` means "resume as configured".
+            if (overrides === undefined) return;
+            if (typeof window.resumeJob !== 'function') {
+                console.error('window.resumeJob is not available; cannot retry unfinished chunks');
+                return;
+            }
+
+            // This card is superseded the moment the retry starts: the resumed
+            // run overwrites the very file its Download button points at, and a
+            // fresh completion card is rendered when the retry finishes. Two
+            // cards for one book — the stale one first — is exactly what we do
+            // not want, so drop it once the resume is really under way.
+            //
+            // "Really" matters: ResumeManager.resumeJob returns undefined in
+            // every case (it is async and reports nothing), and it can bail out
+            // before doing anything — another job is active, or the user
+            // dismisses its confirm() dialog — in which case this card must
+            // survive. Its only success signal is the `translationResumed`
+            // event, dispatched after the server accepted the resume, so that
+            // is what we listen for.
+            const card = block.closest('.completion-card');
+            const onResumed = (event) => {
+                if (!event.detail || event.detail.translationId !== translationId) return;
+                window.removeEventListener('translationResumed', onResumed);
+                if (!card) return;
+                // Same discipline as _populateCompletionCard and the dismiss
+                // handler: release the override picker before its DOM goes
+                // away, or its SearchableSelect registration leaks.
+                destroyOverridePickers(card);
+                card.remove();
+            };
+            window.addEventListener('translationResumed', onResumed);
+            Promise.resolve(window.resumeJob(translationId, overrides))
+                .catch(() => { /* resumeJob reports its own errors */ })
+                .finally(() => {
+                    // Cancelled or rejected: the event never fired, so tear the
+                    // listener down instead of leaving it on the window. On the
+                    // success path onResumed already removed it.
+                    window.removeEventListener('translationResumed', onResumed);
+                });
+        });
     },
 
     /**

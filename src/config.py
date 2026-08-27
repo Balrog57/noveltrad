@@ -144,12 +144,13 @@ _RELOADABLE_ENV_SETTINGS = (
     ('ANTHROPIC_MODEL',     'ANTHROPIC_MODEL',     'claude-sonnet-4-6'),
     ('XAI_API_KEY',         'XAI_API_KEY',         ''),
     ('XAI_MODEL',           'XAI_MODEL',           'grok-4.5'),
-    ('NEXUM_API_KEY',       'NEXUM_API_KEY',       ''),
-    ('NEXUM_MODEL',         'NEXUM_MODEL',         'qwen-3.7-max'),
     ('OPENCODE_API_KEY',    'OPENCODE_API_KEY',    ''),
     ('OPENCODE_MODEL',      'OPENCODE_MODEL',      'deepseek-v4-flash'),
     ('OPENCODE_GO_API_KEY', 'OPENCODE_GO_API_KEY', ''),
     ('OPENCODE_GO_MODEL',   'OPENCODE_GO_MODEL',   'deepseek-v4-pro'),
+    ('OLLAMA_CLOUD_API_KEY', 'OLLAMA_CLOUD_API_KEY', ''),
+    ('OLLAMA_CLOUD_MODEL',  'OLLAMA_CLOUD_MODEL',  'gpt-oss:120b'),
+    ('CHATGPT_MODEL',       'CHATGPT_MODEL',       'gpt-5.4'),
     # LiteLLM gateway (CLI-only). Provider-prefixed model name, e.g.
     # "anthropic/claude-sonnet-4-6". Keys are read from each provider's native
     # env var (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), not from a single key.
@@ -457,9 +458,14 @@ POE_DISABLE_WEB_SEARCH = os.getenv('POE_DISABLE_WEB_SEARCH', 'true').lower() == 
 NIM_API_ENDPOINT = os.getenv('NIM_API_ENDPOINT', 'https://integrate.api.nvidia.com/v1/chat/completions')
 ANTHROPIC_API_ENDPOINT = os.getenv('ANTHROPIC_API_ENDPOINT', 'https://api.anthropic.com/v1')
 XAI_API_ENDPOINT = os.getenv('XAI_API_ENDPOINT', 'https://api.x.ai/v1')
-NEXUM_API_ENDPOINT = os.getenv('NEXUM_API_ENDPOINT', 'https://dialagram.me/router/v1')
 OPENCODE_API_ENDPOINT = os.getenv('OPENCODE_API_ENDPOINT', 'https://opencode.ai/zen/v1')
 OPENCODE_GO_API_ENDPOINT = os.getenv('OPENCODE_GO_API_ENDPOINT', 'https://opencode.ai/zen/go/v1')
+OLLAMA_CLOUD_API_ENDPOINT = os.getenv('OLLAMA_CLOUD_API_ENDPOINT', 'https://ollama.com/v1')
+# Official env is OLLAMA_API_KEY; prefer the NovelTrad-specific name so local
+# Ollama is never confused with the hosted cloud key.
+OLLAMA_CLOUD_API_KEY = os.getenv('OLLAMA_CLOUD_API_KEY') or os.getenv('OLLAMA_API_KEY', '')
+OLLAMA_CLOUD_MODEL = os.getenv('OLLAMA_CLOUD_MODEL', 'gpt-oss:120b')
+CHATGPT_MODEL = os.getenv('CHATGPT_MODEL', 'gpt-5.4')
 
 
 def provider_default_endpoint(provider: str) -> str:
@@ -468,7 +474,7 @@ def provider_default_endpoint(provider: str) -> str:
     Used wherever a request may omit ``api_endpoint`` (NER, auto glossary,
     auto style, …): the fallback must be the provider's own endpoint, never
     the local Ollama one. Forwarding the Ollama endpoint for a cloud provider
-    (e.g. nexum → Dialagram) used to send every request to the local server,
+    (e.g. opencode → OpenCode Zen) used to send every request to the local server,
     which answered 404 "model not found" and silently kept the source text.
     """
     provider = (provider or '').lower()
@@ -490,12 +496,12 @@ def provider_default_endpoint(provider: str) -> str:
         return ANTHROPIC_API_ENDPOINT
     if provider == 'xai':
         return XAI_API_ENDPOINT
-    if provider == 'nexum':
-        return NEXUM_API_ENDPOINT
     if provider == 'opencode':
         return OPENCODE_API_ENDPOINT
     if provider == 'opencodego':
         return OPENCODE_GO_API_ENDPOINT
+    if provider == 'ollamacloud':
+        return OLLAMA_CLOUD_API_ENDPOINT
     return API_ENDPOINT
 
 
@@ -503,7 +509,7 @@ def is_provider_endpoint_override(provider: str, requested_endpoint: str) -> boo
     """True when the request chose a host other than this provider's default.
 
     Glossary NER and style extraction used to compare against Ollama's
-    ``API_ENDPOINT``, which treated every cloud default (Nexum, Anthropic, …)
+    ``API_ENDPOINT``, which treated every cloud default (Anthropic, OpenCode, …)
     as an override and stripped the ``.env`` key.
     """
     normalized = (requested_endpoint or "").strip().rstrip("/")
@@ -820,9 +826,9 @@ class TranslationConfig:
     nim_api_key: str = NIM_API_KEY
     anthropic_api_key: str = ANTHROPIC_API_KEY
     xai_api_key: str = XAI_API_KEY
-    nexum_api_key: str = NEXUM_API_KEY
     opencode_api_key: str = OPENCODE_API_KEY
     opencodego_api_key: str = OPENCODE_GO_API_KEY
+    ollamacloud_api_key: str = OLLAMA_CLOUD_API_KEY
 
     # LLM parameters
     timeout: int = REQUEST_TIMEOUT
@@ -868,9 +874,9 @@ class TranslationConfig:
             nim_api_key=getattr(args, 'nim_api_key', NIM_API_KEY),
             anthropic_api_key=getattr(args, 'anthropic_api_key', ANTHROPIC_API_KEY),
             xai_api_key=getattr(args, 'xai_api_key', XAI_API_KEY),
-            nexum_api_key=getattr(args, 'nexum_api_key', NEXUM_API_KEY),
             opencode_api_key=getattr(args, 'opencode_api_key', OPENCODE_API_KEY),
             opencodego_api_key=getattr(args, 'opencodego_api_key', OPENCODE_GO_API_KEY),
+            ollamacloud_api_key=getattr(args, 'ollamacloud_api_key', OLLAMA_CLOUD_API_KEY),
             max_tokens_per_chunk=getattr(args, 'max_tokens_per_chunk', MAX_TOKENS_PER_CHUNK),
             soft_limit_ratio=getattr(args, 'soft_limit_ratio', SOFT_LIMIT_RATIO),
             parallel_workers=getattr(args, 'parallel', PARALLEL_TRANSLATIONS)
@@ -922,9 +928,9 @@ class TranslationConfig:
             nim_api_key=request_data.get('nim_api_key', NIM_API_KEY),
             anthropic_api_key=request_data.get('anthropic_api_key', ANTHROPIC_API_KEY),
             xai_api_key=request_data.get('xai_api_key', XAI_API_KEY),
-            nexum_api_key=request_data.get('nexum_api_key', NEXUM_API_KEY),
             opencode_api_key=request_data.get('opencode_api_key', OPENCODE_API_KEY),
             opencodego_api_key=request_data.get('opencodego_api_key', OPENCODE_GO_API_KEY),
+            ollamacloud_api_key=request_data.get('ollamacloud_api_key', OLLAMA_CLOUD_API_KEY),
             max_tokens_per_chunk=clamped_max_tokens,
             soft_limit_ratio=request_data.get('soft_limit_ratio', SOFT_LIMIT_RATIO),
             parallel_workers=clamped_workers
@@ -951,9 +957,9 @@ class TranslationConfig:
             'nim_api_key': self.nim_api_key,
             'anthropic_api_key': self.anthropic_api_key,
             'xai_api_key': self.xai_api_key,
-            'nexum_api_key': self.nexum_api_key,
             'opencode_api_key': self.opencode_api_key,
             'opencodego_api_key': self.opencodego_api_key,
+            'ollamacloud_api_key': self.ollamacloud_api_key,
             'max_tokens_per_chunk': self.max_tokens_per_chunk,
             'soft_limit_ratio': self.soft_limit_ratio,
             'parallel_workers': self.parallel_workers

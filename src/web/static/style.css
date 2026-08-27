@@ -2358,6 +2358,108 @@ input[type="checkbox"] {
     color: rgba(255, 255, 255, 0.85);
 }
 
+/* Expert-level note appended under the recommendations (Phase 2 tag alignment
+   trade-off). Deliberately quieter than the tips above it. */
+.completion-card__warning-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    opacity: 0.9;
+}
+
+/* "Fix these N chunks" disclosure: same affordance as the resumable-job
+   card's "Change model" toggle, restyled for the blue warning block. */
+.completion-card__fix-toggle {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+    color: white;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.completion-card__fix-toggle:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.completion-card__fix-toggle:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.completion-card__fix-toggle .material-symbols-outlined {
+    font-size: 1rem;
+}
+
+/* ========================================
+   Shared model-override panel
+   (resumable-job card + completion card)
+   ======================================== */
+
+.model-override-panel {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.model-override-panel__original {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 10px;
+}
+
+.model-override-panel__actions {
+    margin-top: 12px;
+}
+
+/* Shown only once the chosen model diverges from the one the job started on.
+   Colors come from the theme's warning vars (which html.dark redefines) rather
+   than the literals this markup used to carry inline, so it stays readable in
+   both themes. */
+.model-override-panel .resume-style-warning {
+    margin-top: 10px;
+    padding: 8px;
+    border: 1px solid var(--warning-light-border);
+    border-radius: 6px;
+    background: var(--warning-light-bg);
+    color: var(--warning-light-text);
+    font-size: 12px;
+}
+
+/* Inside the completion card the panel sits on the blue warning block, and the
+   neumorphic .form-control / .btn styles are built against the light surface:
+   on blue a <select> loses its box entirely and .btn-primary loses its fill, so
+   the panel read as a paragraph with a bold heading instead of a form with a
+   submit button.
+   Rather than repainting every control white-on-blue (one override per control,
+   each needing its own dark-theme twin), give the panel back the surface those
+   styles expect. Every control then renders exactly as it does elsewhere in the
+   app, and dark mode follows for free because html.dark redefines these vars. */
+.completion-card__warning .model-override-panel {
+    margin-top: 0.85rem;
+    padding: 0.9rem 1rem 1rem;
+    border-top: none;
+    border-radius: 10px;
+    background: var(--background-light);
+    color: var(--text-dark);
+}
+
+.completion-card__warning .model-override-panel__original,
+.completion-card__warning .model-override-panel__original strong {
+    color: var(--text-muted-light);
+}
+
+.completion-card__warning .resume-apply:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 /* ========================================
    Utility Classes
    ======================================== */

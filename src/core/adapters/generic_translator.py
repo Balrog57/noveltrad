@@ -24,6 +24,29 @@ class _ValidationFailed:
         self.content = content
 
 
+def _run_counters(completed_count: int, restored_count: int) -> Dict[str, int]:
+    """Per-run twins of the counters the UI's rate context reads.
+
+    The progress payload's `completed_chunks` includes the units restored from
+    the checkpoint, so on a resumed run it cannot answer "how much did THIS run
+    do?" - which is the denominator the completion card's percentages need.
+
+    The four numerators are structurally 0 here: this pipeline (TXT/SRT/DOCX)
+    has no placeholder/token-alignment machinery and never emits their
+    accumulated counterparts either, so the UI already reads them as 0. They are
+    emitted anyway, so the payload shape is the same for every format and
+    `state_manager.update_stats` (which merges key by key) never sees one of
+    them appear or vanish mid-job.
+    """
+    return {
+        'run_processed_chunks': max(0, completed_count - restored_count),
+        'run_successful_after_retry': 0,
+        'run_token_alignment_used': 0,
+        'run_fallback_used': 0,
+        'run_placeholder_errors': 0,
+    }
+
+
 class GenericTranslator:
     """
     Generic orchestrator for translating files using format adapters.
@@ -83,7 +106,8 @@ class GenericTranslator:
             model_name: LLM model identifier
             llm_provider: LLM provider name (ollama, gemini, openai, openrouter)
             log_callback: Optional callback for logging (receives type and message)
-            stats_callback: Optional callback for statistics updates (receives dict with total_chunks, completed_chunks, failed_chunks)
+            stats_callback: Optional callback for statistics updates (receives dict with
+                total_chunks, completed_chunks, failed_chunks, unfinished_chunks)
             check_interruption_callback: Optional callback to check if translation should be interrupted
             bilingual_output: If True, output will contain both original and translated text
             parallel_workers: Number of chunks translated concurrently (resolved
@@ -122,7 +146,15 @@ class GenericTranslator:
                 stats_callback({
                     'total_chunks': total_units,
                     'completed_chunks': 0,
-                    'failed_chunks': 0
+                    'failed_chunks': 0,
+                    # Emitted from the first stats update so the key is never
+                    # absent while the job runs (issue #261, D9): a checkpoint
+                    # resumed with nothing left pending never reaches the
+                    # per-unit callback below, and classify_completion must not
+                    # fall back to the historical fallback_used counter in that
+                    # case.
+                    'unfinished_chunks': total_units,
+                    **_run_counters(0, 0),
                 })
 
             # 3. Check for checkpoint and resume
@@ -147,7 +179,9 @@ class GenericTranslator:
                     stats_callback({
                         'total_chunks': total_units,
                         'completed_chunks': len(restored_completed),
-                        'failed_chunks': 0
+                        'failed_chunks': 0,
+                        'unfinished_chunks': max(0, total_units - len(restored_completed)),
+                        **_run_counters(len(restored_completed), len(restored_completed)),
                     })
             else:
                 # 4. Create new translation job
@@ -297,7 +331,9 @@ class GenericTranslator:
                     stats_callback({
                         'total_chunks': total_units,
                         'completed_chunks': completed_count,
-                        'failed_chunks': failed_count
+                        'failed_chunks': failed_count,
+                        'unfinished_chunks': max(0, total_units - completed_count),
+                        **_run_counters(completed_count, len(restored_completed)),
                     })
 
             # Everything without a committed translation is (re)translated:
@@ -374,7 +410,9 @@ class GenericTranslator:
                             stats_callback({
                                 'total_chunks': total_units,
                                 'completed_chunks': completed_count,
-                                'failed_chunks': failed_count
+                                'failed_chunks': failed_count,
+                                'unfinished_chunks': max(0, total_units - completed_count),
+                                **_run_counters(completed_count, len(restored_completed)),
                             })
 
                         if sequential:

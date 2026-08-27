@@ -33,7 +33,7 @@ def test_data_env_overrides_compose_defaults(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / ".env").write_text(
-        "LLM_PROVIDER=nexum\nMAX_TOKENS_PER_CHUNK=800\nPARALLEL_TRANSLATIONS=4\n",
+        "LLM_PROVIDER=opencode\nMAX_TOKENS_PER_CHUNK=800\nPARALLEL_TRANSLATIONS=4\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
@@ -45,7 +45,7 @@ def test_data_env_overrides_compose_defaults(tmp_path, monkeypatch):
         cfg.load_env_files(override=True)
         cfg._apply_reloadable_env_settings()
 
-        assert cfg.LLM_PROVIDER == "nexum"
+        assert cfg.LLM_PROVIDER == "opencode"
         assert cfg.MAX_TOKENS_PER_CHUNK == 800
         assert cfg.PARALLEL_TRANSLATIONS == 4
     finally:
@@ -56,7 +56,7 @@ def test_candidates_load_cwd_then_data(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
     (tmp_path / ".env").write_text("LLM_PROVIDER=openai\n", encoding="utf-8")
-    (tmp_path / "data" / ".env").write_text("LLM_PROVIDER=nexum\n", encoding="utf-8")
+    (tmp_path / "data" / ".env").write_text("LLM_PROVIDER=opencode\n", encoding="utf-8")
     candidates = cfg.env_file_candidates()
     assert candidates[0] == tmp_path / ".env"
     assert candidates[-1] == tmp_path / "data" / ".env"

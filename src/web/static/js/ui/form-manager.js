@@ -470,9 +470,9 @@ export const FormManager = {
             ApiKeyUtils.setupField('nimApiKey', config.nim_api_key_configured, config.nim_api_key, config.nim_api_key_count);
             ApiKeyUtils.setupField('anthropicApiKey', config.anthropic_api_key_configured, config.anthropic_api_key, config.anthropic_api_key_count);
             ApiKeyUtils.setupField('xaiApiKey', config.xai_api_key_configured, config.xai_api_key, config.xai_api_key_count);
-            ApiKeyUtils.setupField('nexumApiKey', config.nexum_api_key_configured, config.nexum_api_key, config.nexum_api_key_count);
             ApiKeyUtils.setupField('opencodeApiKey', config.opencode_api_key_configured, config.opencode_api_key, config.opencode_api_key_count);
             ApiKeyUtils.setupField('opencodegoApiKey', config.opencodego_api_key_configured, config.opencodego_api_key, config.opencodego_api_key_count);
+            ApiKeyUtils.setupField('ollamacloudApiKey', config.ollamacloud_api_key_configured, config.ollamacloud_api_key, config.ollamacloud_api_key_count);
 
             // After loading defaults, dispatch event to notify other modules
             console.log('[FormManager] Default config loaded, dispatching event');
@@ -666,7 +666,7 @@ export const FormManager = {
 
         // Get API endpoint based on provider. Only providers with a visible
         // endpoint field (ollama, openai) send one from the form. Cloud
-        // providers (nexum, anthropic, xai, ...) resolve their endpoint
+        // providers (anthropic, xai, opencode, ...) resolve their endpoint
         // server-side from the .env/config defaults; forwarding the Ollama
         // endpoint here used to redirect every request to the local server,
         // which answered 404 "model not found" and silently kept the source
@@ -706,9 +706,9 @@ export const FormManager = {
             openrouter_api_key: openrouterApiKey,
             anthropic_api_key: provider === 'anthropic' ? ApiKeyUtils.getValue('anthropicApiKey') : '',
             xai_api_key: provider === 'xai' ? ApiKeyUtils.getValue('xaiApiKey') : '',
-            nexum_api_key: provider === 'nexum' ? ApiKeyUtils.getValue('nexumApiKey') : '',
             opencode_api_key: provider === 'opencode' ? ApiKeyUtils.getValue('opencodeApiKey') : '',
             opencodego_api_key: provider === 'opencodego' ? ApiKeyUtils.getValue('opencodegoApiKey') : '',
+            ollamacloud_api_key: provider === 'ollamacloud' ? ApiKeyUtils.getValue('ollamacloudApiKey') : '',
             // Prompt options (optional system prompt instructions)
             // Technical content protection is always enabled
             prompt_options: promptOptions,

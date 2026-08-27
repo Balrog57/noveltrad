@@ -82,6 +82,28 @@ class TranslationMetrics:
     max_chunk_size: int = 0
     total_chunk_size: int = 0
 
+    # === Per-chunk outcomes (issue #261) ===
+    chunk_outcomes: Dict[int, str] = field(default_factory=dict)
+    """Map of chunk_index -> chunk status constant from xhtml_translation_state.
+
+    File-local: the indices are positions inside the current XHTML file's chunk
+    list. The chunk loop consumes them to build the persisted `chunk_statuses`
+    of the file's partial state.
+
+    Deliberately NOT part of to_dict()/from_dict() and NOT merged by merge():
+      - to_dict() is a UI/aggregation payload; the authoritative statuses live
+        in XHTMLTranslationState.chunk_statuses. Shipping them twice would
+        create two truths that can disagree.
+      - merge() combines per-file metrics into job-wide totals, where these
+        file-local indices would collide across files.
+
+    Concurrency: entries are written from inside translate_chunk_with_fallback
+    while several chunks are in flight. That is safe because each write is a
+    single-key dict assignment in one asyncio event loop, with no `await`
+    between reading and writing. A future *thread*-based executor would break
+    this and would need explicit synchronisation.
+    """
+
     def record_success(self, attempt: int, chunk_size: int) -> None:
         """Record successful translation.
 
@@ -122,6 +144,22 @@ class TranslationMetrics:
         self.failed_chunks += 1
         self._update_chunk_stats(chunk_size)
     
+    def record_chunk_outcome(self, chunk_index: Optional[int], status: str) -> None:
+        """Record the terminal outcome of one chunk (issue #261).
+
+        Overwrites any previous status for that index: a retry supersedes the
+        outcome of the earlier attempt on the same chunk.
+
+        Args:
+            chunk_index: Index of the chunk inside the current file's chunk
+                list. None means "caller does not track indices" and the call
+                is a no-op.
+            status: One of the CHUNK_* constants of xhtml_translation_state.
+        """
+        if chunk_index is None:
+            return
+        self.chunk_outcomes[chunk_index] = status
+
     def record_processed(self) -> None:
         """Record that a chunk has been fully processed (success or failure).
         

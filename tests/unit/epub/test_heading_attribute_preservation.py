@@ -154,7 +154,12 @@ async def test_placeholder_path_preserves_heading_class(monkeypatch):
     tag preservation, chunking, placeholder renumbering, reconstruction and
     body reinjection all keep the attribute.
     """
-    monkeypatch.setenv('EPUB_TOKEN_ALIGNMENT_ENABLED', 'true')
+    # setattr, not setenv: src/config.py reads this variable once at import
+    # time, so setting the environment variable here has no effect on the
+    # already-computed module attribute. translate_chunk_with_fallback re-reads
+    # `src.config.EPUB_TOKEN_ALIGNMENT_ENABLED` on every call, which is what
+    # makes patching the attribute work.
+    monkeypatch.setattr('src.config.EPUB_TOKEN_ALIGNMENT_ENABLED', True)
     doc_root = _parse_doc()
     client = StubLLMClient([WELL_BEHAVED_RESPONSE])
 
@@ -175,7 +180,7 @@ async def test_placeholder_path_preserves_heading_class(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_placeholder_path_preserves_heading_class_when_model_emits_literal_tags():
+async def test_placeholder_path_preserves_heading_class_when_model_emits_literal_tags(monkeypatch):
     """Control: literal-tag output does not lose the attribute either.
 
     When the model answers with `<h3>Chapitre 1</h3>` instead of the
@@ -184,6 +189,10 @@ async def test_placeholder_path_preserves_heading_class_when_model_emits_literal
     tag still comes from the tag map, so `class="head"` survives — which rules
     out "a recovery path accepts the model's literal tags" as the cause of F3.
     """
+    # This test IS the token-alignment path, so it must not inherit the flag
+    # from the developer's .env: with EPUB_TOKEN_ALIGNMENT_ENABLED=false the
+    # chunk drops straight to Phase 3 and only one prompt is ever sent.
+    monkeypatch.setattr('src.config.EPUB_TOKEN_ALIGNMENT_ENABLED', True)
     doc_root = _parse_doc()
     client = StubLLMClient([LITERAL_TAGS_RESPONSE])
 

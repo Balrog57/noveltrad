@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make the three-pass refinement workflow truthful and resumable for TXT/Markdown, EPUB/DOCX, and SRT while making Anthropic, xAI, and Nexum use the configured provider settings.
+Make the three-pass refinement workflow truthful and resumable for TXT/Markdown, EPUB/DOCX, and SRT while making Anthropic, xAI, and OpenCode use the configured provider settings.
 
 ## Architecture
 

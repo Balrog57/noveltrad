@@ -27,6 +27,10 @@ from src.config import (
 )
 from ..common.translation_orchestrator import GenericTranslationOrchestrator
 from .epub_translation_adapter import EpubTranslationAdapter
+from .xhtml_translation_state import (
+    unfinished_chunk_indices,
+    untranslated_chunk_indices,
+)
 from ..post_processor import clean_residual_tag_placeholders
 from ..context_optimizer import AdaptiveContextManager, INITIAL_CONTEXT_SIZE, CONTEXT_STEP, MAX_CONTEXT_SIZE
 from .rtl_support import apply_rtl_to_epub_directory, is_rtl_language
@@ -57,9 +61,9 @@ async def translate_epub_file(
     nim_api_key: Optional[str] = None,
     anthropic_api_key: Optional[str] = None,
     xai_api_key: Optional[str] = None,
-    nexum_api_key: Optional[str] = None,
     opencode_api_key: Optional[str] = None,
     opencodego_api_key: Optional[str] = None,
+    ollamacloud_api_key: Optional[str] = None,
     context_window: int = 2048,
     auto_adjust_context: bool = True,
     min_chunk_size: int = 5,
@@ -106,7 +110,6 @@ async def translate_epub_file(
         nim_api_key: NVIDIA NIM API key
         anthropic_api_key: Anthropic API key
         xai_api_key: xAI API key
-        nexum_api_key: Nexum Router API key
         context_window: Context window size for LLM
         auto_adjust_context: Auto-adjust context based on model
         min_chunk_size: Minimum chunk size
@@ -158,9 +161,9 @@ async def translate_epub_file(
         nim_api_key=nim_api_key,
         anthropic_api_key=anthropic_api_key,
         xai_api_key=xai_api_key,
-        nexum_api_key=nexum_api_key,
         opencode_api_key=opencode_api_key,
         opencodego_api_key=opencodego_api_key,
+        ollamacloud_api_key=ollamacloud_api_key,
         cli_api_endpoint=cli_api_endpoint,
         initial_context=initial_context,
         log_callback=log_callback
@@ -570,9 +573,9 @@ def _create_llm_client(
     nim_api_key: Optional[str],
     anthropic_api_key: Optional[str],
     xai_api_key: Optional[str],
-    nexum_api_key: Optional[str],
     opencode_api_key: Optional[str],
     opencodego_api_key: Optional[str],
+    ollamacloud_api_key: Optional[str],
     cli_api_endpoint: str,
     initial_context: int,
     log_callback: Optional[Callable] = None
@@ -587,9 +590,9 @@ def _create_llm_client(
         nim_api_key=nim_api_key,
         anthropic_api_key=anthropic_api_key,
         xai_api_key=xai_api_key,
-        nexum_api_key=nexum_api_key,
         opencode_api_key=opencode_api_key,
         opencodego_api_key=opencodego_api_key,
+        ollamacloud_api_key=ollamacloud_api_key,
         context_window=initial_context,
         log_callback=log_callback
     )
@@ -927,7 +930,24 @@ def _precount_chunks_plain_text(doc_root, max_tokens_per_chunk: int) -> int:
         return 0
 
 
-def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None):
+# Counters the UI's rate context (retry %, fallback %, avg placeholder errors)
+# divides by or displays. They are the only ones that need a per-run twin: the
+# accumulated versions are deliberately rehydrated across resume passes
+# (issue #180, the Fallbacks card must not reset to zero), which makes any
+# percentage derived from them a cross-pass average nobody asked for.
+_RUN_RATE_COUNTERS = (
+    'processed_chunks',
+    'successful_after_retry',
+    'token_alignment_used',
+    'fallback_used',
+    'placeholder_errors',
+)
+
+
+def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None,
+                           unfinished_units=None, run_prior_counts=None,
+                           untranslated_units=None, run_total_chunks=None,
+                           run_is_repair=False):
     """Build the EPUB global-stats dict emitted to the progress callback.
 
     Single source of the cross-file payload shape, shared by the resume-initial
@@ -936,17 +956,64 @@ def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None):
     are computed by the caller (they differ per site); the cumulative counters
     come from ``acc`` (a TranslationMetrics) plus, when given, the current
     file's not-yet-merged ``file_stats`` dict.
+
+    ``unfinished_units`` (issue #261, design decisions D8/D9) is the job-level
+    ``{file_href: [chunk_index, ...]}`` map of chunks still owed. It is emitted
+    unconditionally as ``unfinished_chunks`` (the flat count) and
+    ``unfinished_files`` (the map itself, so the completion card can name the
+    files - Phase 5 of the plan reuses this one field, no second source of
+    truth). Callers pass a live reference; it is copied here so a later
+    in-place mutation of the caller's dict never reaches back into an
+    already-emitted payload. When the current file's own outcome has not yet
+    been folded into the map (the per-chunk callback fires mid-file, before the
+    file returns), the emitted count legitimately lags by one file's worth of
+    work; the post-file emit folds it in first, so it is always exact.
+
+    ``untranslated_units`` is the same map narrowed to the chunks that actually
+    fell back to their source text (CHUNK_UNTRANSLATED only, never
+    CHUNK_PENDING). Its total is emitted as ``untranslated_chunks`` and is what
+    the live Fallbacks stat card counts, so a retry that heals a chunk makes the
+    card go down. It is deliberately NOT the same number as
+    ``unfinished_chunks``: an interrupted job owes every chunk it never reached,
+    and none of those is a fallback.
+
+    ``run_total_chunks`` / ``run_is_repair`` describe the scope of *this pass*
+    so the live panel can report a repair pass as its own little job ("1 TOTAL
+    / 1 COMPLETED") instead of the book it is patching ("12 TOTAL / 10
+    COMPLETED, 83%"). ``run_total_chunks`` is the number of chunks the pass will
+    attempt - known before the first one, so the bar has a denominator
+    immediately - and ``run_processed_chunks`` below is its completed
+    counterpart. ``run_is_repair`` is True only when the work set came from
+    retry tickets; it is an explicit flag rather than a shape the frontend has
+    to infer from the numbers. Both are live-payload only: nothing here is
+    persisted, and ``total_chunks`` / ``completed_chunks`` keep their
+    book-level meaning for the checkpoint and the resumable-job card.
+
+    ``run_prior_counts`` is the part of those cumulative counters that belongs
+    to *earlier* passes of a resumed job (see ``_process_all_content_files``).
+    Subtracting it yields the ``run_*`` twins the UI needs to express honest
+    per-run percentages. They are emitted unconditionally - equal to the
+    accumulated values on a fresh run, where nothing was restored - because
+    ``state_manager.update_stats`` merges key by key: a key that appears only
+    sometimes would leave a stale value behind.
     """
     fs = file_stats or {}
-    return {
+    uu = unfinished_units or {}
+    ut = untranslated_units or {}
+    prior = run_prior_counts or {}
+    combined = {
+        name: getattr(acc, name) + fs.get(name, 0)
+        for name in _RUN_RATE_COUNTERS
+    }
+    payload = {
         'total_chunks': total_chunks,
         'completed_chunks': completed_chunks,
         'failed_chunks': acc.failed_chunks + fs.get('failed_chunks', 0),
-        'token_alignment_used': acc.token_alignment_used + fs.get('token_alignment_used', 0),
-        'fallback_used': acc.fallback_used + fs.get('fallback_used', 0),
-        'placeholder_errors': acc.placeholder_errors + fs.get('placeholder_errors', 0),
-        'processed_chunks': acc.processed_chunks + fs.get('processed_chunks', 0),
-        'successful_after_retry': acc.successful_after_retry + fs.get('successful_after_retry', 0),
+        'token_alignment_used': combined['token_alignment_used'],
+        'fallback_used': combined['fallback_used'],
+        'placeholder_errors': combined['placeholder_errors'],
+        'processed_chunks': combined['processed_chunks'],
+        'successful_after_retry': combined['successful_after_retry'],
         'quality_warning_fired': acc.quality_warning_fired or fs.get('quality_warning_fired', False),
         # Plain Text Mode paragraph alignment (issue #253). Emitted for every
         # format: they are 0 on any path that is not Plain Text Mode, and a
@@ -959,7 +1026,32 @@ def _global_stats_payload(total_chunks, completed_chunks, acc, file_stats=None):
                                     + fs.get('paragraph_repair_failed', 0)),
         'total_tokens': (acc.total_tokens_processed + acc.total_tokens_generated
                          + fs.get('total_tokens_processed', 0) + fs.get('total_tokens_generated', 0)),
+        # Chunk-level unfinished work (issue #261, D8/D9). Emitted
+        # unconditionally (0 / {} when there is nothing) because
+        # state_manager.update_stats merges key by key: once these keys exist
+        # they must be refreshed on every payload, or a stale non-zero value
+        # would survive to the completion verdict.
+        'unfinished_chunks': sum(len(v) for v in uu.values()),
+        'unfinished_files': dict(uu),
+        # Chunks currently sitting in their source text (Phase 3 fallback), as
+        # opposed to chunks merely not reached yet. Emitted unconditionally for
+        # the same key-by-key merge reason as above: the live Fallbacks card
+        # trusts this key whenever it is present, so it must always be present
+        # and always be fresh.
+        'untranslated_chunks': sum(len(v) for v in ut.values()),
+        # Scope of this pass, for the live progress panel (see the docstring).
+        # Emitted unconditionally for the same key-by-key merge reason as the
+        # keys above: a key that appears only on repair passes would leave a
+        # stale True (or a stale denominator) behind on the next pass.
+        'run_total_chunks': (total_chunks if run_total_chunks is None
+                             else max(0, int(run_total_chunks))),
+        'run_is_repair': bool(run_is_repair),
     }
+    # Per-run twins. Clamped at 0: a stale snapshot must never produce a
+    # negative counter, whatever the arithmetic says.
+    for name in _RUN_RATE_COUNTERS:
+        payload[f'run_{name}'] = max(0, combined[name] - prior.get(name, 0))
+    return payload
 
 
 async def _process_all_content_files(
@@ -1006,7 +1098,9 @@ async def _process_all_content_files(
         restored_docs: Restored documents from checkpoint
 
     Returns:
-        Dictionary with processing results
+        Dictionary with processing results, including 'unfinished_units':
+        {file_href: [chunk_index, ...]} - the complete current picture of the
+        chunks this job still has to translate (issue #261).
     """
     from .translation_metrics import TranslationMetrics
 
@@ -1034,27 +1128,161 @@ async def _process_all_content_files(
     # not restart at zero (issue #180). Per-file metrics are still restored
     # from the partial XHTML state inside xhtml_translator.
     accumulated_stats = TranslationMetrics()
+    job_progress: Dict = {}
     if (checkpoint_manager and translation_id and resume_from_index > 0):
         try:
             job = checkpoint_manager.get_job(translation_id)
         except Exception:
             job = None
         if job:
-            snapshot = (job.get('progress') or {}).get('epub_accumulated_stats')
+            job_progress = job.get('progress') or {}
+            snapshot = job_progress.get('epub_accumulated_stats')
             _restore_accumulated_stats(snapshot, accumulated_stats)
 
-    # Track global chunk progress
+    # Everything in the emitted cumulative counters that was NOT produced by
+    # this pass. The UI divides by a per-run denominator, so it needs the
+    # accumulated values minus this baseline; the accumulated values themselves
+    # stay untouched (issue #180).
+    #
+    # It starts as the cross-file snapshot just restored, and grows by each
+    # re-entered file's own restored counters: `xhtml_translator` rebuilds a
+    # file's TranslationMetrics from its XHTML partial state, so a re-entered
+    # file's `file_stats` replay the chunks it already did in an earlier pass -
+    # chunks the snapshot above *also* counts (they were merged into
+    # `accumulated_stats` before the pause). Without that second term the
+    # per-run numbers would carry every re-entered file's prior work.
+    run_prior_counts = {name: getattr(accumulated_stats, name)
+                        for name in _RUN_RATE_COUNTERS}
+
+    # === Re-entry tickets: files below the resume pointer that still hold
+    # unfinished chunks (issue #261) ===
+    #
+    # `unfinished_units` is the job-level index of remaining work
+    # ({file_href: [chunk_index, ...]}, design decision D8). It starts from what
+    # the job already recorded, so a file that is not re-entered during this
+    # pass keeps its ticket; every file this pass processes overwrites (or
+    # clears) its own entry, and the whole dict is written back - never merged.
+    #
+    # A ticket is only granted when the per-file partial state exists, validates
+    # and still reports unfinished chunks (D7). The state is the payload, the map
+    # is only the index. Without a state the file must stay skipped: the copy on
+    # disk was overwritten with its translated version by restore_epub_files, so
+    # re-entering would re-chunk an already-translated body and translate it a
+    # second time.
+    #
+    # The lookup is restricted to the hrefs the map lists, so a clean resume
+    # touches no extra file on disk.
+    unfinished_units: Dict[str, List[int]] = {}
+    # In-memory projection of the very same `chunk_statuses`, narrowed to the
+    # chunks that fell back to their source text. It feeds the live Fallbacks
+    # stat card, which must count damage (untranslated) and not backlog
+    # (pending). It is deliberately NOT persisted: it is derivable from the
+    # per-file partial states, and a second stored map would be a second truth.
+    untranslated_units: Dict[str, List[int]] = {}
+    retry_tickets: Dict[str, List[int]] = {}
+    if resume_from_index > 0:
+        listed_units = job_progress.get('epub_unfinished_units')
+        if isinstance(listed_units, dict):
+            unfinished_units = {str(href): list(indices or [])
+                                for href, indices in listed_units.items()}
+        for href in unfinished_units:
+            state = None
+            if checkpoint_manager and translation_id:
+                try:
+                    state = checkpoint_manager.load_xhtml_partial_state(
+                        translation_id, href)
+                except Exception:
+                    state = None
+            # Two projections of one truth, not two sources of truth: both lists
+            # come from this single read of `state.chunk_statuses`, so they can
+            # never disagree. The stored `epub_unfinished_units` map merges
+            # pending with untranslated and cannot yield the narrow subset - the
+            # state can, and the loop has to load it anyway to grant the ticket.
+            statuses = state.chunk_statuses if state else None
+            indices = unfinished_chunk_indices(statuses)
+            ticket_untranslated = untranslated_chunk_indices(statuses)
+            if ticket_untranslated:
+                untranslated_units[href] = ticket_untranslated
+            if indices:
+                retry_tickets[href] = indices
+            elif log_callback:
+                log_callback("epub_retry_state_missing",
+                             f"WARNING: {href} is listed as unfinished but has no "
+                             f"usable partial state - skipped (re-entering it "
+                             f"without one would re-translate a translated file)")
+
+    # Track global chunk progress. A file that is going to be re-entered must
+    # NOT be pre-counted here: the loop adds its full chunk count again once it
+    # has been processed, and counting it twice pushes the progress past 100%.
     completed_chunks_global = 0
     for idx in range(resume_from_index):
-        if idx < len(chunks_per_file):
+        if idx < len(chunks_per_file) and content_files[idx] not in retry_tickets:
             completed_chunks_global += chunks_per_file[idx]
+
+    # === Scope of THIS pass, for the live progress panel ===
+    #
+    # A repair pass re-translates a handful of chunks of an otherwise finished
+    # book. Reporting it against the book ("12 TOTAL / 10 COMPLETED, 83%",
+    # creeping to 100% in tiny steps, ETA computed from a denominator that has
+    # nothing to do with the work in flight) describes nothing the user asked
+    # for, so the panel gets the pass's own numerator/denominator instead.
+    #
+    # The arithmetic, per file index:
+    #   - below the resume pointer: only the chunks its retry ticket lists. The
+    #     ticket IS the file's work set - `_translate_all_chunks_with_checkpoint`
+    #     computes `unfinished_chunk_indices(statuses) | range(start, len)` and
+    #     the second term is already inside the first (invariant D4: every chunk
+    #     at or above `current_chunk_index` is `pending`, hence unfinished). A
+    #     file with no ticket is skipped and contributes nothing.
+    #   - at or above the pointer: its full pre-counted chunk count.
+    # Indexing by position rather than summing the ticket dict keeps the two
+    # terms disjoint, exactly like the `completed_chunks_global` loop above.
+    #
+    # The file *at* the pointer is the one a previous pass was interrupted
+    # inside, so it carries a partial state and will attempt only its remaining
+    # chunks - fewer than `chunks_per_file` says. It has no ticket (a ticket is
+    # written by `_save_checkpoint`, which only runs for files that completed),
+    # so its state has to be read directly. Only that one index can be in this
+    # situation: files above it were never touched.
+    #
+    # This matters whenever a book was interrupted *and* an earlier file left a
+    # fallback behind: the tickets make `run_is_repair` True, so the panel does
+    # use these numbers, and an over-counted denominator would leave the repair
+    # bar stalled below 100%.
+    run_is_repair = bool(retry_tickets)
+    run_total_chunks = 0
+    for idx, href in enumerate(content_files):
+        if idx < resume_from_index:
+            run_total_chunks += len(retry_tickets.get(href) or ())
+        elif idx >= len(chunks_per_file):
+            continue
+        elif idx == resume_from_index and resume_from_index > 0:
+            run_total_chunks += _pending_chunk_count(
+                checkpoint_manager, translation_id, href, chunks_per_file[idx])
+        else:
+            run_total_chunks += chunks_per_file[idx]
+
+    # The file index written to the checkpoint must never rewind. `chunk_index`
+    # is turned back into `resume_from_index = current_chunk_index + 1` by
+    # load_checkpoint, so writing the index of a re-entered *early* file (say
+    # file 0 of 3, resumed at 3) would drop the pointer to 1 - and the next
+    # resume would re-enter files 1 and 2 with no partial state, re-chunk their
+    # already-translated bodies and translate them a second time. Tracking the
+    # last completed index monotonically, floored at the pointer we resumed
+    # from, is what prevents that. DO NOT replace this with `file_idx`.
+    last_completed_file_idx = resume_from_index - 1
 
     # Send initial stats if resuming (to update UI immediately). Forward the
     # restored fallback counters so the UI hydrates the Fallbacks card with
     # the work already done before the pause, instead of showing 0.
     if stats_callback and resume_from_index > 0:
         stats_callback(_global_stats_payload(
-            effective_total_chunks, completed_chunks_global, accumulated_stats))
+            effective_total_chunks, completed_chunks_global, accumulated_stats,
+            unfinished_units=unfinished_units,
+            run_prior_counts=run_prior_counts,
+            untranslated_units=untranslated_units,
+            run_total_chunks=run_total_chunks,
+            run_is_repair=run_is_repair))
 
     for file_idx, content_href in enumerate(content_files):
         # Check for interruption
@@ -1065,13 +1293,33 @@ async def _process_all_content_files(
                              f"Translation interrupted at file {file_idx + 1}/{total_files}")
             break
 
-        # Skip if already processed (resume)
-        if file_idx < resume_from_index:
+        # Skip if already processed (resume), unless the file still holds
+        # unfinished chunks and has a partial state to re-enter it with.
+        retry_indices = retry_tickets.get(content_href)
+        if file_idx < resume_from_index and not retry_indices:
             completed_files += 1
             continue
 
+        if retry_indices and log_callback:
+            log_callback("epub_retry_file",
+                         f"Re-entering {content_href} to retry "
+                         f"{len(retry_indices)} unfinished chunk(s): {retry_indices}")
+
         file_path = _resolve_content_path(opf_dir, content_href)
         chunks_in_this_file = chunks_per_file[file_idx] if file_idx < len(chunks_per_file) else 0
+        # A re-entered file is already in parsed_xhtml_docs (it came from
+        # restored_docs, which seeded completed_files), so its successful
+        # translation must not be counted a second time.
+        already_translated = file_path in parsed_xhtml_docs
+
+        # Fold this file's already-counted work into the per-run baseline before
+        # it is translated (the chunk loop overwrites its partial state as it
+        # goes, so it has to be read now). Only files that were entered in an
+        # earlier pass can have one: a file the loop completed had its state
+        # deleted, and files above the pointer were never touched.
+        if resume_from_index > 0:
+            _add_file_prior_counts(run_prior_counts, checkpoint_manager,
+                                   translation_id, content_href)
 
         if log_callback:
             log_callback("epub_file_translate_start",
@@ -1092,8 +1340,17 @@ async def _process_all_content_files(
 
             # Report combined stats (accumulated + current file). The fallback
             # counters are included so the Fallbacks stat card updates live.
+            # `unfinished_units` still reflects the picture as of the *previous*
+            # file at this point (the current file's own outcome is only known
+            # once it returns, folded in below) - an accepted one-file lag for
+            # this live mid-file callback; the post-file emit is exact.
             stats_callback(_global_stats_payload(
-                total_chunks, global_completed, accumulated_stats, file_stats_dict))
+                total_chunks, global_completed, accumulated_stats, file_stats_dict,
+                unfinished_units=unfinished_units,
+                run_prior_counts=run_prior_counts,
+                untranslated_units=untranslated_units,
+                run_total_chunks=run_total_chunks,
+                run_is_repair=run_is_repair))
 
         # Translate using orchestrator WITH checkpoint support
         doc_root, success, file_stats = await _translate_single_xhtml_file(
@@ -1132,15 +1389,53 @@ async def _process_all_content_files(
         if file_stats:
             accumulated_stats.merge(file_stats)
 
+        # What this file still owes, read from the partial state the chunk loop
+        # just wrote. This has to happen BEFORE the post-file stats report below
+        # (so 'unfinished_chunks'/'unfinished_files' reflect this file's own
+        # outcome instead of lagging by one file) and BEFORE _save_checkpoint,
+        # which deletes that state when the file comes back clean.
+        file_unfinished: List[int] = []
+        file_untranslated: List[int] = []
+        if checkpoint_manager and translation_id:
+            try:
+                state_after = checkpoint_manager.load_xhtml_partial_state(
+                    translation_id, content_href)
+            except Exception:
+                state_after = None
+            if state_after is not None:
+                # Two projections of one truth, not two sources of truth: the
+                # persisted `unfinished` set (pending + untranslated, D8) and the
+                # in-memory `untranslated`-only set are both derived from this
+                # single read of `chunk_statuses`, so they cannot drift apart.
+                statuses_after = state_after.chunk_statuses
+                file_unfinished = unfinished_chunk_indices(statuses_after)
+                file_untranslated = untranslated_chunk_indices(statuses_after)
+
+        if file_unfinished:
+            unfinished_units[content_href] = file_unfinished
+        else:
+            unfinished_units.pop(content_href, None)
+
+        if file_untranslated:
+            untranslated_units[content_href] = file_untranslated
+        else:
+            untranslated_units.pop(content_href, None)
+
         # Report stats if callback provided
         if stats_callback and file_stats:
             stats_callback(_global_stats_payload(
-                effective_total_chunks, completed_chunks_global, accumulated_stats))
+                effective_total_chunks, completed_chunks_global, accumulated_stats,
+                unfinished_units=unfinished_units,
+                run_prior_counts=run_prior_counts,
+                untranslated_units=untranslated_units,
+                run_total_chunks=run_total_chunks,
+                run_is_repair=run_is_repair))
 
         # Save the document if translation succeeded
         if success and doc_root is not None:
             parsed_xhtml_docs[file_path] = doc_root
-            completed_files += 1
+            if not already_translated:
+                completed_files += 1
         elif not success and doc_root is not None:
             # Save original document if translation failed
             parsed_xhtml_docs[file_path] = doc_root
@@ -1153,13 +1448,16 @@ async def _process_all_content_files(
 
         # Save checkpoint
         if checkpoint_manager and translation_id and success and doc_root is not None:
+            last_completed_file_idx = max(last_completed_file_idx, file_idx)
             await _save_checkpoint(
-                checkpoint_manager, translation_id, file_idx, content_href,
-                doc_root, file_path, temp_dir, log_callback,
+                checkpoint_manager, translation_id, last_completed_file_idx,
+                content_href, doc_root, file_path, temp_dir, log_callback,
                 total_chunks=total_chunks,
                 completed_chunks=completed_chunks_global,
                 failed_chunks=accumulated_stats.failed_chunks,
-                epub_accumulated_stats=_snapshot_accumulated_stats(accumulated_stats)
+                epub_accumulated_stats=_snapshot_accumulated_stats(accumulated_stats),
+                unfinished_units=unfinished_units,
+                file_unfinished=file_unfinished
             )
 
     # Final progress
@@ -1171,7 +1469,10 @@ async def _process_all_content_files(
         'completed_chunks': completed_chunks_global,
         'failed_chunks': accumulated_stats.failed_chunks,
         'translation_stats': accumulated_stats,
-        'was_interrupted': was_interrupted
+        'was_interrupted': was_interrupted,
+        # Complete current picture of the chunks still to translate, so callers
+        # do not have to recompute it from disk (issue #261).
+        'unfinished_units': unfinished_units
     }
 
 
@@ -1204,6 +1505,62 @@ def _snapshot_accumulated_stats(metrics) -> Dict:
         'total_tokens_generated': metrics.total_tokens_generated,
         'refinement_chunks_completed': metrics.refinement_chunks_completed,
     }
+
+
+def _pending_chunk_count(checkpoint_manager, translation_id, content_href: str,
+                         precounted: int) -> int:
+    """How many chunks a file will actually attempt on this pass.
+
+    A file that a previous pass was interrupted inside carries a partial state,
+    so it resumes from `current_chunk_index` and attempts only what that state
+    still reports as unfinished - fewer than the pre-counted total. Used for the
+    repair-progress denominator, where over-counting would leave the bar stalled
+    below 100%.
+
+    Falls back to `precounted` whenever there is no usable state, which is the
+    correct answer for a file that has never been entered.
+    """
+    if not (checkpoint_manager and translation_id):
+        return precounted
+    try:
+        state = checkpoint_manager.load_xhtml_partial_state(
+            translation_id, content_href)
+    except Exception:
+        state = None
+    if state is None:
+        return precounted
+    return len(unfinished_chunk_indices(state.chunk_statuses))
+
+
+def _add_file_prior_counts(prior_counts: Dict, checkpoint_manager, translation_id,
+                           content_href: str) -> None:
+    """Fold one file's already-counted work into the per-run baseline.
+
+    A file re-entered on a resume has its TranslationMetrics rebuilt from its
+    XHTML partial state, so the `file_stats` it reports include the chunks it
+    translated in an earlier pass. Those same chunks are already inside the
+    restored cross-file snapshot, so they appear twice in the cumulative
+    counters the payload emits; counting them once more in the baseline is what
+    keeps the `run_*` twins equal to this pass's own work.
+
+    Best effort by design: no state (fresh file), an unreadable one, or a state
+    the translator ends up ignoring simply means nothing is subtracted, and the
+    payload's `max(0, ...)` clamp absorbs the rest.
+    """
+    if not (checkpoint_manager and translation_id):
+        return
+    try:
+        state = checkpoint_manager.load_xhtml_partial_state(translation_id, content_href)
+    except Exception:
+        return
+    stats = getattr(state, 'stats', None) if state is not None else None
+    if not isinstance(stats, dict):
+        return
+    for name in _RUN_RATE_COUNTERS:
+        try:
+            prior_counts[name] = prior_counts.get(name, 0) + int(stats.get(name, 0) or 0)
+        except (TypeError, ValueError):
+            continue
 
 
 def _restore_accumulated_stats(snapshot: Dict, metrics) -> None:
@@ -1243,9 +1600,21 @@ async def _save_checkpoint(
     total_chunks: int = 0,
     completed_chunks: int = 0,
     failed_chunks: int = 0,
-    epub_accumulated_stats: Optional[Dict] = None
+    epub_accumulated_stats: Optional[Dict] = None,
+    unfinished_units: Optional[Dict[str, List[int]]] = None,
+    file_unfinished: Optional[List[int]] = None
 ) -> None:
-    """Save checkpoint for a translated file."""
+    """Save checkpoint for a translated file.
+
+    Args:
+        unfinished_units: Job-level index of the chunks still to translate
+            ({file_href: [chunk_index, ...]}, issue #261). Stored verbatim in
+            the job progress so the next resume knows which files to re-enter.
+        file_unfinished: The chunk indices this file still owes. When it is
+            empty the per-file partial state is deleted (the file is done);
+            when it is not, the state is KEPT, because it is the only place
+            that records which chunk is still in the source language.
+    """
     try:
         # Serialize document
         file_content = etree.tostring(
@@ -1267,11 +1636,29 @@ async def _save_checkpoint(
         )
 
         if save_result:
-            # Delete partial state AFTER successful file save (atomicity guarantee)
-            checkpoint_manager.delete_xhtml_partial_state(translation_id, file_rel_path)
-            if log_callback:
-                log_callback("xhtml_partial_state_deleted_after_save",
-                    f"🗑️ Partial state deleted for {file_rel_path} (file saved successfully)")
+            # Delete partial state AFTER successful file save (atomicity guarantee),
+            # and ONLY when the file has nothing left to translate. A file with
+            # unfinished chunks keeps its state: that state is what records which
+            # chunk is still in the source language, and deleting it would make
+            # the chunk unrecoverable all over again (issue #261).
+            #
+            # `content_href` is the authoritative partial-state key: it is what
+            # `xhtml_translator._save_state` saves under and what
+            # `_translate_single_xhtml_file` loads with. `file_rel_path` (the
+            # temp-dir-relative path) is a different string and is only the key
+            # used by `save_epub_file` above; deleting with it here never matched
+            # the state actually written, which is what left stale "finished"
+            # partial states on disk and blocked retries (issue #261).
+            if file_unfinished:
+                if log_callback:
+                    log_callback("xhtml_partial_state_kept_unfinished",
+                        f"📌 Partial state kept for {content_href}: "
+                        f"chunk(s) {file_unfinished} still untranslated")
+            else:
+                checkpoint_manager.delete_xhtml_partial_state(translation_id, content_href)
+                if log_callback:
+                    log_callback("xhtml_partial_state_deleted_after_save",
+                        f"🗑️ Partial state deleted for {content_href} (file saved successfully)")
 
             # Update checkpoint progress with chunk statistics. The
             # `epub_accumulated_stats` snapshot is what rehydrates the
@@ -1289,7 +1676,8 @@ async def _save_checkpoint(
                 total_chunks=total_chunks,
                 completed_chunks=completed_chunks,
                 failed_chunks=failed_chunks,
-                epub_accumulated_stats=epub_accumulated_stats
+                epub_accumulated_stats=epub_accumulated_stats,
+                unfinished_units=unfinished_units
             )
 
             if log_callback:

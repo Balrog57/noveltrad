@@ -108,3 +108,66 @@ def test_none_output_path_is_error():
     assert verdict.status == 'error'
     assert verdict.error is not None
     assert '(none)' in verdict.error
+
+
+def test_all_fallbacks_retried_successfully_is_completed(tmp_path):
+    """Issue #261, D9: unfinished_chunks == 0 is trusted even when
+    fallback_used is not — the fallback counter is historical, not live.
+    Three chunks fell back during the run and were all retried
+    successfully; the job must be able to reach 'completed'."""
+    verdict = classify_completion(
+        {'unfinished_chunks': 0, 'fallback_used': 3, 'total_chunks': 10},
+        _output_file(tmp_path),
+    )
+    assert verdict.status == 'completed'
+    assert verdict.unfinished_chunks == 0
+    assert verdict.fallback_chunks == 3
+    assert verdict.error is None
+
+
+def test_unfinished_chunks_present_and_positive_is_partial(tmp_path):
+    """unfinished_chunks is the authority for rule 4, independent of
+    fallback_used."""
+    verdict = classify_completion(
+        {'unfinished_chunks': 2, 'fallback_used': 0, 'total_chunks': 10},
+        _output_file(tmp_path),
+    )
+    assert verdict.status == 'partial'
+    assert verdict.unfinished_chunks == 2
+    assert verdict.fallback_chunks == 0
+
+
+def test_unfinished_chunks_absent_falls_back_to_fallback_used(tmp_path):
+    """Regression net for #239: a missing 'unfinished_chunks' key (a job
+    predating this counter, or a path that never learned to emit it) must
+    never be read as "all good" - it falls back to the historical
+    fallback_used counter instead."""
+    verdict = classify_completion(
+        {'fallback_used': 1, 'total_chunks': 10},
+        _output_file(tmp_path),
+    )
+    assert verdict.status == 'partial'
+    assert verdict.unfinished_chunks == 1
+
+
+def test_unfinished_chunks_zero_but_missing_output_is_still_error(tmp_path):
+    """Rule order: rules 1-3 (output-file checks) win over rule 4, even
+    when unfinished_chunks reports a clean 0."""
+    missing = str(tmp_path / "never_written.txt")
+    verdict = classify_completion({'unfinished_chunks': 0, 'total_chunks': 10}, missing)
+    assert verdict.status == 'error'
+    assert verdict.unfinished_chunks == 0
+    assert verdict.error is not None
+
+
+def test_unfinished_chunks_zero_but_empty_output_is_still_error(tmp_path):
+    """Rule order: a 0-byte output with total_chunks > 0 is an error even
+    when unfinished_chunks reports a clean 0."""
+    verdict = classify_completion(
+        {'unfinished_chunks': 0, 'total_chunks': 10},
+        _output_file(tmp_path, content=""),
+    )
+    assert verdict.status == 'error'
+    assert verdict.unfinished_chunks == 0
+    assert verdict.error is not None
+    assert "0 bytes" in verdict.error

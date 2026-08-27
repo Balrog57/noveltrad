@@ -89,7 +89,7 @@ function getTranslationConfig(file) {
         model: currentModel,
         // Cloud providers resolve their endpoint from server defaults; only
         // ollama/openai expose an endpoint field in the form. Forwarding the
-        // Ollama endpoint for e.g. nexum redirected requests to the local
+        // Ollama endpoint for e.g. opencode redirected requests to the local
         // server (404 "model not found") and left the output untranslated.
         llm_api_endpoint: provider === 'openai' ?
                          DomHelpers.getValue('openaiEndpoint') :
@@ -104,9 +104,9 @@ function getTranslationConfig(file) {
         nim_api_key: provider === 'nim' ? ApiKeyUtils.getValue('nimApiKey') : '',
         anthropic_api_key: provider === 'anthropic' ? ApiKeyUtils.getValue('anthropicApiKey') : '',
         xai_api_key: provider === 'xai' ? ApiKeyUtils.getValue('xaiApiKey') : '',
-        nexum_api_key: provider === 'nexum' ? ApiKeyUtils.getValue('nexumApiKey') : '',
         opencode_api_key: provider === 'opencode' ? ApiKeyUtils.getValue('opencodeApiKey') : '',
         opencodego_api_key: provider === 'opencodego' ? ApiKeyUtils.getValue('opencodegoApiKey') : '',
+        ollamacloud_api_key: provider === 'ollamacloud' ? ApiKeyUtils.getValue('ollamacloudApiKey') : '',
         input_filename: file.name,
         output_filename: resolvedOutputFilename,
         file_type: file.fileType,

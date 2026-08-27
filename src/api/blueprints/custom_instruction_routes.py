@@ -435,7 +435,7 @@ def create_custom_instruction_blueprint():
             provider_type = (data.get('provider') or _config.LLM_PROVIDER or 'ollama').lower()
             model = data.get('model') or _config.DEFAULT_MODEL
             # An absent endpoint must fall back to the provider's own default
-            # (e.g. nexum → NEXUM_API_ENDPOINT). Falling back to the local
+            # (e.g. opencode → OPENCODE_API_ENDPOINT). Falling back to the local
             # Ollama endpoint used to redirect cloud-provider requests to the
             # local server, which answered 404 "model not found".
             api_endpoint = data.get('api_endpoint') or _config.provider_default_endpoint(provider_type)

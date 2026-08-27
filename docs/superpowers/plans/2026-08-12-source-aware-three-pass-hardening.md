@@ -24,7 +24,6 @@
 **Files:**
 - Modify: `src/core/llm_client.py:166-224`
 - Modify: `src/core/llm/providers/xai.py:7-16`
-- Modify: `src/core/llm/providers/nexum.py:7-24`
 - Modify: `src/core/llm/providers/anthropic.py:13-100`
 - Modify: `src/api/blueprints/translation_routes.py:51-92`
 - Test: `tests/unit/test_provider_runtime_configuration.py`
@@ -32,7 +31,7 @@
 **Interfaces:**
 - `create_llm_client(..., api_endpoint, context_window, log_callback)` passes all three values to every cloud provider.
 - OpenAI-compatible provider constructors accept those values without changing existing call sites.
-- `_ENDPOINT_CONSUMING_PROVIDERS` includes `anthropic`, `xai`, and `nexum`.
+- `_ENDPOINT_CONSUMING_PROVIDERS` includes `anthropic`, `xai`, and `opencode`.
 
 - [x] **Step 1: Write failing tests** for endpoint/context/log propagation and endpoint override recognition.
 - [x] **Step 2: Run the focused tests and verify they fail because the values are dropped.
