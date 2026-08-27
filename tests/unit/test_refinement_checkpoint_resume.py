@@ -30,11 +30,9 @@ def test_checkpoint_manager_persists_refinement_state(tmp_path):
     manager.uploads_dir.mkdir()
     state = {
         "version": 1,
-        "phase": 2,
+        "phase": 1,
         "next_segment": 3,
-        "initial": ["a"],
-        "current": ["b"],
-        "history": [["a", "b"]],
+        "current": ["a", "b"],
         "output_filepath": str(tmp_path / "translated.txt"),
     }
 
@@ -46,11 +44,14 @@ def test_checkpoint_manager_persists_refinement_state(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_three_pass_interruption_is_distinct_and_resume_starts_at_saved_segment(monkeypatch):
+async def test_one_pass_interruption_saves_and_resume_starts_at_saved_segment(monkeypatch):
     calls = []
 
     class FakeClient:
         async def close(self):
+            return None
+
+        async def detect_thinking_model(self):
             return None
 
     monkeypatch.setattr(
@@ -60,8 +61,8 @@ async def test_three_pass_interruption_is_distinct_and_resume_starts_at_saved_se
     )
 
     async def fake_request(**kwargs):
-        calls.append(kwargs)
-        return f"{kwargs['draft_translation']}|p{kwargs['refinement_phase']}", object()
+        calls.append(kwargs["draft_translation"])
+        return f"{kwargs['draft_translation']}|refined", object()
 
     monkeypatch.setattr(translator, "_make_refinement_request", fake_request)
     checkpoint = _MemoryCheckpoint()
@@ -71,9 +72,9 @@ async def test_three_pass_interruption_is_distinct_and_resume_starts_at_saved_se
         return len(calls) == 1 and not interrupted["value"]
 
     with pytest.raises(RefinementInterrupted) as exc_info:
-        await translator._refine_chunks_four_pass(
+        await translator.refine_chunks(
             translated_chunks=["one", "two"],
-            original_chunks=[{"source_text": "source one"}, {"source_text": "source two"}],
+            original_chunks=[{}, {}],
             target_language="French",
             model_name="test-model",
             api_endpoint="https://example.test/v1",
@@ -85,17 +86,18 @@ async def test_three_pass_interruption_is_distinct_and_resume_starts_at_saved_se
             refinement_output_filepath="/tmp/translated.txt",
         )
 
-    assert exc_info.value.partial_result == ["one|p1", "two"]
+    assert exc_info.value.partial_result == ["one|refined", "two"]
     saved = checkpoint.load_refinement_state("trans_resume")
     assert saved["phase"] == 1
     assert saved["next_segment"] == 1
-    assert saved["current"] == ["one|p1", "two"]
+    assert saved["current"] == ["one|refined", "two"]
+    assert saved["output_filepath"] == "/tmp/translated.txt"
 
     interrupted["value"] = True
     calls.clear()
-    result = await translator._refine_chunks_four_pass(
+    result = await translator.refine_chunks(
         translated_chunks=["one", "two"],
-        original_chunks=[{"source_text": "source one"}, {"source_text": "source two"}],
+        original_chunks=[{}, {}],
         target_language="French",
         model_name="test-model",
         api_endpoint="https://example.test/v1",
@@ -106,21 +108,20 @@ async def test_three_pass_interruption_is_distinct_and_resume_starts_at_saved_se
         refinement_output_filepath="/tmp/translated.txt",
     )
 
-    assert result == ["one|p1|p2|p3", "two|p1|p2|p3"]
-    # The saved segment is not re-run for pass 1; subsequent passes still run
-    # for every segment so the final output is complete.
-    assert calls[0]["refinement_phase"] == 1
-    assert calls[0]["draft_translation"] == "two"
+    assert result == ["one|refined", "two|refined"]
+    assert calls == ["two"]
     assert checkpoint.load_refinement_state("trans_resume") is None
 
 
 @pytest.mark.asyncio
-async def test_three_pass_resume_from_partial_output_keeps_checkpoint(monkeypatch):
-    """Handlers re-read the partial refined file; that must not drop the checkpoint."""
+async def test_one_pass_resume_from_partial_output_keeps_checkpoint(monkeypatch):
     calls = []
 
     class FakeClient:
         async def close(self):
+            return None
+
+        async def detect_thinking_model(self):
             return None
 
     monkeypatch.setattr(
@@ -130,8 +131,8 @@ async def test_three_pass_resume_from_partial_output_keeps_checkpoint(monkeypatc
     )
 
     async def fake_request(**kwargs):
-        calls.append(kwargs)
-        return f"{kwargs['draft_translation']}|p{kwargs['refinement_phase']}", object()
+        calls.append(kwargs["draft_translation"])
+        return f"{kwargs['draft_translation']}|refined", object()
 
     monkeypatch.setattr(translator, "_make_refinement_request", fake_request)
     checkpoint = _MemoryCheckpoint()
@@ -141,9 +142,9 @@ async def test_three_pass_resume_from_partial_output_keeps_checkpoint(monkeypatc
         return len(calls) == 1 and not interrupted["value"]
 
     with pytest.raises(RefinementInterrupted):
-        await translator._refine_chunks_four_pass(
+        await translator.refine_chunks(
             translated_chunks=["one", "two"],
-            original_chunks=[{"source_text": "source one"}, {"source_text": "source two"}],
+            original_chunks=[{}, {}],
             target_language="French",
             model_name="test-model",
             api_endpoint="https://example.test/v1",
@@ -157,10 +158,9 @@ async def test_three_pass_resume_from_partial_output_keeps_checkpoint(monkeypatc
 
     interrupted["value"] = True
     calls.clear()
-    # Simulate the handler feeding the already-written partial file back in.
-    result = await translator._refine_chunks_four_pass(
-        translated_chunks=["one|p1", "two"],
-        original_chunks=[{"source_text": "source one"}, {"source_text": "source two"}],
+    result = await translator.refine_chunks(
+        translated_chunks=["one|refined", "two"],
+        original_chunks=[{}, {}],
         target_language="French",
         model_name="test-model",
         api_endpoint="https://example.test/v1",
@@ -171,47 +171,52 @@ async def test_three_pass_resume_from_partial_output_keeps_checkpoint(monkeypatc
         refinement_output_filepath="/tmp/translated.txt",
     )
 
-    assert result == ["one|p1|p2|p3", "two|p1|p2|p3"]
-    assert calls[0]["refinement_phase"] == 1
-    assert calls[0]["draft_translation"] == "two"
+    assert result == ["one|refined", "two|refined"]
+    assert calls == ["two"]
 
 
 @pytest.mark.asyncio
-async def test_srt_three_pass_checkpoint_resumes_at_block(monkeypatch):
+async def test_srt_one_pass_checkpoint_resumes_at_block(monkeypatch):
     from src.core import subtitle_translator
 
-    class FakeClient:
-        def extract_translation(self, content):
-            return content
-
-        async def make_request(self, prompt, model, system_prompt=None):
-            return type("Response", (), {"content": prompt.split("\n", 1)[-1]})()
-
-    # Keep the LLM deterministic and return the first marker payload. The
-    # checkpoint assertions exercise orchestration, not model parsing quality.
     checkpoint = _MemoryCheckpoint()
-    blocks = [[{"number": "1", "text": "one"}], [{"number": "2", "text": "two"}]]
-    positions = {id(blocks[0][0]): 0, id(blocks[1][0]): 1}
     calls = []
 
     async def fake_once(**kwargs):
-        calls.append(kwargs)
-        return kwargs["translations"]
+        calls.append(kwargs["start_block_index"])
+        if kwargs["start_block_index"] == 0:
+            from src.core.llm.exceptions import RefinementInterrupted
+            exc = RefinementInterrupted(partial_result={0: "one-partial", 1: "two"})
+            exc.refinement_index = 1
+            raise exc
+        return {0: "one-partial", 1: "two-refined"}
 
     monkeypatch.setattr(subtitle_translator, "_refine_subtitle_translations_once", fake_once)
-    # The test uses a real phase loop but a fake pass; save/load semantics are
-    # still verified without depending on prompt parsing.
+
+    with pytest.raises(RefinementInterrupted) as exc_info:
+        await subtitle_translator.refine_subtitle_translations(
+            translations={0: "one", 1: "two"},
+            target_language="French",
+            model_name="test-model",
+            llm_client=object(),
+            checkpoint_manager=checkpoint,
+            translation_id="srt_resume",
+            refinement_output_filepath="/tmp/out.srt",
+        )
+
+    assert exc_info.value.refinement_state["current"][0] == "one-partial"
+    saved = checkpoint.load_refinement_state("srt_resume")
+    assert saved["next_segment"] == 1
+
     result = await subtitle_translator.refine_subtitle_translations(
         translations={0: "one", 1: "two"},
         target_language="French",
         model_name="test-model",
-        llm_client=FakeClient(),
-        subtitle_blocks=blocks,
-        subtitle_positions=positions,
+        llm_client=object(),
         checkpoint_manager=checkpoint,
         translation_id="srt_resume",
         refinement_output_filepath="/tmp/out.srt",
     )
-    assert result == {0: "one", 1: "two"}
-    assert len(calls) == 3
+    assert result == {0: "one-partial", 1: "two-refined"}
+    assert calls == [0, 1]
     assert checkpoint.load_refinement_state("srt_resume") is None

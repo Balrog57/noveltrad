@@ -90,8 +90,6 @@ async def refine_txt_file(
     """
     prompt_options = {
         **(prompt_options or {}),
-        "four_pass_refinement": True,  # backward-compatible option name
-        "three_pass_refinement": True,
     }
     if not os.path.exists(input_filepath):
         err_msg = f"ERROR: Input file '{input_filepath}' not found."

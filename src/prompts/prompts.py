@@ -634,11 +634,6 @@ def generate_refinement_prompt(
     placeholder_format: Optional[Tuple[str, str]] = None,
     additional_instructions: str = "",
     glossary_block: str = "",
-    refinement_phase: int = 3,
-    source_translation: str = "",
-    initial_translation: str = "",
-    previous_refined_translation: str = "",
-    refinement_history: Optional[List[str]] = None,
 ) -> PromptPair:
     """
     Generate a refinement prompt to polish a draft translation.
@@ -711,61 +706,31 @@ def generate_refinement_prompt(
 
 {additional_instructions.strip()}"""
 
-    phase_guidance = {
-        1: (
-            "First, anchor the draft to the source when it is available. "
-            "Resolve context, continuity, terminology, omissions, additions, "
-            "character relationships, tense, and point of view. Repair any "
-            "calque that still reads like the source language. Return a "
-            "corrected working version entirely in the target language."
-        ),
-        2: (
-            "Now perform a rigorous orthography, grammar, syntax, punctuation, "
-            "and fluency correction while preserving the source meaning and the "
-            "contextual decisions already established. Prefer idiomatic target-"
-            "language phrasing over word-for-word residue. Keep a sentence "
-            "unchanged only when it is already fluent and certain."
-        ),
-        3: (
-            "Finally, arbitrate between the initial translation and every earlier "
-            "revision for this same segment. Keep justified improvements, remove "
-            "regressions, and preserve every fact, name, number, relation, and "
-            f"placeholder. Rewrite into natural human {target_language} whenever "
-            "the draft still sounds translated: vary rhythm and lexicon, restore "
-            "a literary voice, and produce a publication-ready paragraph that a "
-            "skilled native author could have written."
-        ),
-    }.get(refinement_phase, "Polish the draft into fluent, literary prose while preserving meaning.")
-
     # SYSTEM PROMPT for refinement
     system_prompt = f"""You are an elite {target_language} literary editor and prose stylist.
 
 # YOUR TASK: REFINE AND POLISH
 
-You will receive a DRAFT {target_language} translation.
-Your job is to improve it only where the source and the editing rules justify a change.
-
-**CURRENT REFINEMENT STAGE (pass {refinement_phase}/3):**
-{phase_guidance}
+You will receive a DRAFT {target_language} translation that needs significant improvement.
+Your job is to REWRITE it with perfect literary {target_language} style.
 
 **THE INPUT IS:**
-- A first-pass or previously refined {target_language} translation
-- It may contain factual, grammatical, terminological, or stylistic issues
-- Some sentences may already be correct and must remain unchanged
+- A amator, literal, or awkward {target_language} translation
+- It may have unnatural phrasing, stilted expressions, or poor flow
+- Consider it a "bad" first draft that probably needs substantial reworking
 
 **YOUR OUTPUT MUST BE:**
-- Entirely in {target_language} - never leave source-language wording
 - Fluent, natural {target_language} prose
 - Stylistically excellent - as if written by a skilled {target_language} author
 
 # REFINEMENT PRINCIPLES
 
 **PRIORITY ORDER:**
-1. **Fidelity to the source** - Do not change facts, events, relations, names, numbers, tense, or point of view
-2. **Structural integrity** - Preserve placeholders, line breaks, markup, and output boundaries exactly
-3. **Correctness** - Fix demonstrable omissions, additions, mistranslations, grammar, punctuation, and terminology
-4. **Natural flow** - Use idiomatic {target_language} only when meaning remains unchanged
-5. **Literary polish** - Improve rhythm, voice, and word choice so the prose reads as native {target_language}, not as a translation
+1. **Natural flow** - Sentences should flow beautifully in {target_language}
+2. **Idiomatic expressions** - Use natural {target_language} idioms and phrasings
+3. **Elegant word choice** - Select the most appropriate and refined vocabulary
+4. **Rhythm and cadence** - The text should have pleasant reading rhythm
+5. **Preserve meaning** - Keep the original meaning intact while improving style
 
 **WHAT TO FIX:**
 - Awkward literal translations → Natural {target_language} expressions
@@ -810,38 +775,10 @@ For consistency and natural flow, here's what came immediately before:
     # stays cacheable across chunks.
     glossary_section = f"{glossary_block}\n" if glossary_block and glossary_block.strip() else ""
 
-    source_section = ""
-    if source_translation and source_translation.strip():
-        source_section += f"# SOURCE TEXT (meaning anchor)\n{source_translation.strip()}\n\n"
-    if initial_translation and initial_translation.strip() and initial_translation.strip() != draft_translation.strip():
-        source_section += f"# INITIAL TRANSLATION\n{initial_translation.strip()}\n\n"
-    if previous_refined_translation and previous_refined_translation.strip() and previous_refined_translation.strip() != draft_translation.strip():
-        source_section += f"# PREVIOUS REFINEMENT\n{previous_refined_translation.strip()}\n\n"
-    history_items = [item.strip() for item in (refinement_history or []) if item and item.strip()]
-    if history_items:
-        history_section = "# REFINEMENT HISTORY (same segment, oldest first)\n\n"
-        history_section += "\n\n".join(
-            f"Revision {index}:\n{item}" for index, item in enumerate(history_items, start=1)
-        )
-        source_section += f"{history_section}\n\n"
+    user_prompt = f"""{previous_context_block}{glossary_section}# DRAFT TO REFINE
 
-    neighbor_block = ""
-    if context_before.strip() or context_after.strip():
-        neighbor_block = f"""# NEIGHBORING BLOCK CONTEXT
-Previous block:
-{context_before or '(none)'}
-
-Next block:
-{context_after or '(none)'}
-
-"""
-
-    user_prompt = f"""{previous_context_block}{neighbor_block}{source_section}{glossary_section}# DRAFT TO REFINE
-
-Treat the following as a valid working translation. Change only what is
-justified by the source or a demonstrable language/consistency issue; keep
-correct sentences and the original meaning intact. Return the complete draft
-with restrained, publication-ready {target_language} prose:
+The following is a rough {target_language} translation that needs significant improvement.
+Rewrite it with elegant, literary-quality {target_language} prose:
 
 {INPUT_TAG_IN}
 {draft_translation}
@@ -854,22 +791,19 @@ your refined text here
 
 Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
 
-Provide your refined version for pass {refinement_phase}/3 now:"""
+Provide your refined version now:"""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
 
 def generate_subtitle_refinement_block_prompt(
     subtitle_blocks: List[Tuple[int, str]],
-    source_subtitle_blocks: Optional[List[Tuple[int, str]]] = None,
     previous_refined_block: str = "",
     target_language: str = "English",
     translate_tag_in: str = TRANSLATE_TAG_IN,
     translate_tag_out: str = TRANSLATE_TAG_OUT,
     additional_instructions: str = "",
     glossary_block: str = "",
-    refinement_history: Optional[Dict[int, List[str]]] = None,
-    refinement_phase: int = 3,
 ) -> PromptPair:
     """
     Generate a refinement prompt for multiple subtitles in a single LLM call.
@@ -900,12 +834,6 @@ def generate_subtitle_refinement_block_prompt(
         example_format=subtitle_example_format,
     )
 
-    phase_guidance = {
-        1: "Anchor the subtitles to the source and prioritize continuity, terminology, omissions, and speaker identity.",
-        2: "Prioritize orthography, grammar, agreement, punctuation, syntax, and spoken fluency.",
-        3: "Arbitrate between the initial translation and every earlier revision for this same cue. Keep justified improvements only.",
-    }.get(refinement_phase, "Polish the subtitles into fluent target-language dialogue while preserving meaning.")
-
     additional_instructions_section = ""
     if additional_instructions and additional_instructions.strip():
         additional_instructions_section = f"""
@@ -918,15 +846,12 @@ def generate_subtitle_refinement_block_prompt(
 
 # YOUR TASK: REFINE A BLOCK OF SUBTITLES
 
-You will receive a block of valid working {target_language} subtitles, each prefixed with an [index] marker.
-Your job is to make only source-justified or demonstrably correct language edits, using natural
-idiomatic {target_language} dialogue when the meaning remains unchanged.
-
-**CURRENT REFINEMENT STAGE (pass {refinement_phase}/3):**
-{phase_guidance}
+You will receive a block of DRAFT {target_language} subtitles, each prefixed with an [index] marker.
+Your job is to REWRITE each subtitle with natural, idiomatic {target_language} dialogue while
+preserving the index markers and the one-subtitle-per-marker structure.
 
 **THE INPUT IS:**
-- A block of working {target_language} subtitles; some cues may need correction
+- A block of draft {target_language} subtitles, possibly literal or awkward
 - Each subtitle is prefixed with [N] where N is its local index
 
 **YOUR OUTPUT MUST BE:**
@@ -936,15 +861,15 @@ idiomatic {target_language} dialogue when the meaning remains unchanged.
 # REFINEMENT PRINCIPLES
 
 **PRIORITY ORDER:**
-1. **Fidelity** - preserve facts, intent, relations, names, numbers, and tone
-2. **Structure** - preserve every [index], line break, and one-cue-per-marker boundary
-3. **Correctness** - fix demonstrable mistranslations, grammar, punctuation, and terminology
-4. **Natural dialogue** - sound like real {target_language} speech when meaning is unchanged
-5. **Reading speed** - keep subtitle length viewer-friendly
+1. **Natural dialogue** - sound like real {target_language} speech, not translation
+2. **Reading speed** - keep subtitle length viewer-friendly
+3. **Continuity** - terminology and tone consistent across the block
+4. **Preserve meaning** - keep the original meaning intact while improving style
 
 **WHAT TO FIX:**
-- Demonstrable mistranslations, grammar, punctuation, terminology, or continuity errors
-- Awkward phrasing only when a clear, meaning-preserving alternative exists
+- Awkward literal phrasing -> natural {target_language} expressions
+- Repetitive vocabulary that is clearly an artefact of literal translation -> varied word choices
+- Unnatural word order -> proper {target_language} syntax
 
 **WHAT TO PRESERVE:**
 - The [index] markers exactly as given
@@ -956,9 +881,9 @@ idiomatic {target_language} dialogue when the meaning remains unchanged.
 
 # CRITICAL REMINDERS
 
-You are NOT translating - you are EDITING in {target_language.upper()}.
-The input is already in {target_language}; preserve correct cues and make restrained improvements.
-Your output must be natural {target_language} dialogue without changing meaning.
+You are NOT translating - you are REWRITING in {target_language.upper()}.
+The input is already in {target_language}, but possibly poorly written.
+Your output must be polished, natural {target_language} dialogue.
 
 **Index markers are MANDATORY:** every input [N] must appear exactly once in the output,
 in the same order, followed by the refined text for that subtitle.
@@ -978,30 +903,9 @@ For continuity and consistency, here's the previous refined block:
     formatted_subtitles = [f"[{idx}]{text}" for idx, text in subtitle_blocks]
     formatted_subtitles_text = "\n".join(formatted_subtitles)
 
-    source_section = ""
-    if source_subtitle_blocks:
-        source_section = "# SOURCE SUBTITLES (meaning anchor)\n\n" + "\n".join(
-            f"[{idx}]{text}" for idx, text in source_subtitle_blocks
-        ) + "\n\n"
-
-    history_section = ""
-    if refinement_history:
-        entries = []
-        for idx, revisions in refinement_history.items():
-            cleaned = [revision.strip() for revision in revisions if revision and revision.strip()]
-            if cleaned:
-                entries.append(
-                    f"[{idx}]\n" + "\n".join(
-                        f"Revision {number}:\n{revision}"
-                        for number, revision in enumerate(cleaned, start=1)
-                    )
-                )
-        if entries:
-            history_section = "# REFINEMENT HISTORY (same subtitle, oldest first)\n\n" + "\n\n".join(entries) + "\n\n"
-
     glossary_section = f"{glossary_block}\n" if glossary_block and glossary_block.strip() else ""
 
-    user_prompt = f"""{previous_refined_block_text}{source_section}{history_section}{glossary_section}# SUBTITLES TO REFINE
+    user_prompt = f"""{previous_refined_block_text}{glossary_section}# SUBTITLES TO REFINE
 
 {INPUT_TAG_IN}
 {formatted_subtitles_text}
@@ -1015,7 +919,7 @@ REMINDER: Output format must be:
 
 Start with {translate_tag_in} and end with {translate_tag_out}. Nothing before or after.
 
-Provide your refined block for pass {refinement_phase}/3 now:"""
+Provide your refined block now:"""
 
     return PromptPair(system=system_prompt.strip(), user=user_prompt.strip())
 
@@ -1294,11 +1198,6 @@ def generate_post_processing_prompt(
     prompt_options: dict = None,
     placeholder_format: Optional[Tuple[str, str]] = None,
     glossary_block: str = "",
-    source_translation: str = "",
-    initial_translation: str = "",
-    previous_refined_translation: str = "",
-    refinement_phase: int = 3,
-    refinement_history: Optional[List[str]] = None,
 ) -> PromptPair:
     """
     Alias for generate_refinement_prompt with parameter name mapping.
@@ -1330,9 +1229,4 @@ def generate_post_processing_prompt(
         placeholder_format=placeholder_format,
         additional_instructions=additional_instructions,
         glossary_block=glossary_block,
-        source_translation=source_translation,
-        initial_translation=initial_translation,
-        previous_refined_translation=previous_refined_translation,
-        refinement_phase=refinement_phase,
-        refinement_history=refinement_history,
     )

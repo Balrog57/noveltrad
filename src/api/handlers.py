@@ -628,40 +628,21 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
             logger.update_progress(completed, total)
 
     def _translate_stats_callback(new_stats_dict):
-        # Phase 1 of the four-phase workflow (translation + three refinements).
+        # Phase 1. enable_refinement advertises the two-phase bar up-front when
+        # a refine-after pass will follow, so phase 1 maps to the [0, 50] band.
         _emit_progress(new_stats_dict, {
             'enable_refinement': bool(config.get('refine_after')),
             'current_phase': 1,
-            'total_phases': 4,
         })
 
     def _refine_after_stats_callback(new_stats_dict):
-        # The refiner reports one monotonic counter across its three passes;
-        # project it back to the current workflow phase for the four-phase UI.
-        stats = dict(new_stats_dict)
-        refinement_pass = stats.get('refinement_pass')
-        if refinement_pass:
-            base_total = max(1, int(stats.get('total_chunks', 0) / 3))
-            stats['total_chunks'] = base_total
-            stats['completed_chunks'] = max(0, int(stats.get('completed_chunks', 0)) - (int(refinement_pass) - 1) * base_total)
-        _emit_progress(stats, {
-            'enable_refinement': True,
-            'current_phase': (int(refinement_pass) + 1) if refinement_pass else 2,
-            'total_phases': 4,
-        })
+        # Phase 2 of a refine-after workflow: maps to the [50, 100] band.
+        _emit_progress(new_stats_dict, {'enable_refinement': True, 'current_phase': 2})
 
     def _refine_only_stats_callback(new_stats_dict):
-        # Refine-only executes the same three passes, exposed as phases 2-4.
-        stats = dict(new_stats_dict)
-        refinement_pass = stats.get('refinement_pass')
-        if refinement_pass:
-            base_total = max(1, int(stats.get('total_chunks', 0) / 3))
-            stats['total_chunks'] = base_total
-            stats['completed_chunks'] = max(0, int(stats.get('completed_chunks', 0)) - (int(refinement_pass) - 1) * base_total)
-        _emit_progress(stats, {
-            'enable_refinement': False, 'refine_only': True,
-            'current_phase': int(refinement_pass) if refinement_pass else 1,
-            'total_phases': 3,
+        # Single-phase refine-only: the whole bar is the refinement pass.
+        _emit_progress(new_stats_dict, {
+            'enable_refinement': False, 'refine_only': True, 'current_phase': 1,
         })
 
     def _finalize_stats_callback(new_stats_dict):
@@ -848,10 +829,6 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 config['prompt_options']['custom_instructions'] = translation_instructions
             if refinement_instructions:
                 config['prompt_options']['refinement_instructions'] = refinement_instructions
-
-        if config.get('refine_after') or config.get('refine_only'):
-            config.setdefault('prompt_options', {})['four_pass_refinement'] = True
-            config['prompt_options']['three_pass_refinement'] = True
 
         # Surface glossary load result (snapshot was taken earlier, before start_job).
         glossary_terms_snapshot = config.get('prompt_options', {}).get('glossary_terms')

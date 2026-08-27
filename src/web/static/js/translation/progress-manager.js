@@ -138,16 +138,13 @@ export function resolveOperationLabel(stats) {
     if (stats.auto_prep_active) return t('translation:preparing_auto');
 
     if (stats.enable_refinement) {
-        const phase = stats.current_phase || 1;
-        const total = stats.total_phases || 4;
-        if (phase === 1) return t('translation:translating_step', { step: 1, total, defaultValue: `Translating (1/${total})` });
-        return t('translation:refining_step', { step: phase, total, defaultValue: `Refining (${phase}/${total})` });
+        return stats.current_phase === 2
+            ? t('translation:refining_step', { step: 2, total: 2, defaultValue: 'Refining (2/2)' })
+            : t('translation:translating_step', { step: 1, total: 2, defaultValue: 'Translating (1/2)' });
     }
 
     if (stats.refine_only) {
-        const phase = stats.current_phase || 1;
-        const total = stats.total_phases || 3;
-        return t('translation:refining_step', { step: phase, total, defaultValue: `Refining (${phase}/${total})` });
+        return t('translation:refining');
     }
 
     return t('translation:translating');
