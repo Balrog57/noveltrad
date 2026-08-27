@@ -705,6 +705,17 @@ select.form-control {
     box-shadow: 0 12px 30px rgba(239, 68, 68, 0.35);
 }
 
+/* Keyboard focus ring — mirrors the preflight-toggle pattern so Tab users can
+   see which control is active without affecting mouse clicks (:focus-visible). */
+.btn:focus-visible,
+.tab-nav .tab-btn:focus-visible,
+.close-btn:focus-visible,
+.update-banner__close:focus-visible,
+.completion-card__close:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
 /* Compact variant, for buttons that sit inside a row of text rather than in a
    footer. The class was already used in the template before it had any rule of
    its own, so those call sites carried per-button inline padding; their inline

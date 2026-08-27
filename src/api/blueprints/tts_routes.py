@@ -15,6 +15,7 @@ from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
 
 from src.tts.tts_config import TTSConfig, DEFAULT_VOICES
+from src.api.services.path_validator import PathValidator
 from src.tts.providers import (
     is_chatterbox_available,
     get_gpu_status,
@@ -493,8 +494,12 @@ def create_tts_blueprint(output_dir, socketio):
         Returns:
             JSON with success status
         """
+        is_valid, error = PathValidator.validate_filename(filename)
+        if not is_valid:
+            return jsonify({"error": error}), 400
+
         voice_prompts_dir = os.path.join(output_dir, 'voice_prompts')
-        filepath = os.path.join(voice_prompts_dir, secure_filename(filename))
+        filepath = os.path.join(voice_prompts_dir, filename)
 
         if not os.path.exists(filepath):
             return jsonify({"error": "Voice prompt not found"}), 404

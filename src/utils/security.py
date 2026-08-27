@@ -293,8 +293,11 @@ class SecureFileHandler:
         if not filename or not filename.strip():
             return FileValidationResult(is_valid=False, error_message="Filename cannot be empty")
 
-        # Remove any path components (security)
-        clean_filename = os.path.basename(filename.strip())
+        # Remove any path components (security).
+        # Normalize backslashes first: on POSIX, os.path.basename does not treat
+        # '\' as a separator, allowing bypasses like "..\evil.ext".
+        normalized_filename = filename.strip().replace('\\', '/')
+        clean_filename = os.path.basename(normalized_filename)
 
         if not clean_filename:
             return FileValidationResult(is_valid=False, error_message="Invalid filename")
@@ -335,8 +338,10 @@ class SecureFileHandler:
     
     def _create_secure_filename(self, original_filename: str) -> str:
         """Create a secure filename preventing path traversal and conflicts"""
-        # Get clean filename
-        clean_name = os.path.basename(original_filename.strip())
+        # Get clean filename. Normalize backslashes first: on POSIX,
+        # os.path.basename does not treat '\' as a separator.
+        normalized_filename = original_filename.strip().replace('\\', '/')
+        clean_name = os.path.basename(normalized_filename)
         
         # Generate random prefix to prevent conflicts and add security
         random_prefix = secrets.token_hex(8)
