@@ -122,6 +122,15 @@ class TechnicalContentDetector:
             r'\b([A-Z]{2,}(?:[/-][A-Z\d]+)*(?:-[A-Z\d]+)?|[A-Z]+\d{3,})\b'
         )
 
+        # Pre-compiled validators for _is_latex_formula (called per $...$ match).
+        self._latex_indicator_re = re.compile(r'[_^\\{}]')
+        self._currency_amount_re = re.compile(r'^\d+(?:\.\d{1,2})?$')
+        self._alpha_word_re = re.compile(r'^[a-zA-Z]+$')
+        self._math_operators_re = re.compile(r'[+\-*/=<>].*[+\-*/=<>]')
+        self._greek_letter_re = re.compile(
+            r'\\(alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|pi|omega)'
+        )
+
     def _is_latex_formula(self, content: str) -> bool:
         """
         Determine if content within $...$ is a LaTeX formula or currency/variable.
@@ -151,22 +160,22 @@ class TechnicalContentDetector:
             True  # Has superscript
         """
         # Strong LaTeX indicators: subscript, superscript, backslash, braces
-        if re.search(r'[_^\\{}]', content):
+        if self._latex_indicator_re.search(content):
             return True
 
         # Simple number with optional cents → currency
-        if re.match(r'^\d+(?:\.\d{1,2})?$', content):
+        if self._currency_amount_re.match(content):
             return False
 
         # Single word (letters only) → variable/currency reference
-        if re.match(r'^[a-zA-Z]+$', content):
+        if self._alpha_word_re.match(content):
             return False
 
         # Multiple math operators or Greek letters → LaTeX
-        if re.search(r'[+\-*/=<>].*[+\-*/=<>]', content):
+        if self._math_operators_re.search(content):
             return True
 
-        if re.search(r'\\(alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|pi|omega)', content):
+        if self._greek_letter_re.search(content):
             return True
 
         # Default: assume LaTeX (conservative - prefer protection)

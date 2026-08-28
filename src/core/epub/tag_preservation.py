@@ -15,6 +15,12 @@ from typing import Dict, List, Tuple
 from .placeholder_validator import PlaceholderValidator
 from src.common.placeholder_format import PlaceholderFormat
 
+# Compiled once: is_non_translatable() runs per HTML segment in preserve_tags().
+_NON_TRANSLATABLE_RE = re.compile(
+    r'^[\d\.\-\–\—\)\(\s\u00A0\u2000-\u200F\u2028\u2029IVXLCDM]+$',
+    re.IGNORECASE,
+)
+
 
 def is_non_translatable(text: str) -> bool:
     """
@@ -48,8 +54,7 @@ def is_non_translatable(text: str) -> bool:
     # Check if it's just numbers/roman numerals with optional formatting
     # Matches: "1", "1.", "1.2", "42", "III", "IV.", "1-", "1)", "(1)"
     # Also matches invisible Unicode characters
-    non_translatable_pattern = r'^[\d\.\-\–\—\)\(\s\u00A0\u2000-\u200F\u2028\u2029IVXLCDM]+$'
-    return bool(re.match(non_translatable_pattern, stripped, re.IGNORECASE))
+    return bool(_NON_TRANSLATABLE_RE.match(stripped))
 
 class TagPreserver:
     """
@@ -193,34 +198,56 @@ class TagPreserver:
         if not self.protect_technical:
             return self.preserve_tags(text)
 
-        # Step 1: Extract multiline blocks (code blocks, $$...$$)
-        # These are replaced with temporary markers to keep them atomic
-        text_with_markers, multiline_block_map = self._extract_multiline_blocks(text)
+        from .technical_content_detector import PatternPriority
+
+        detector = self._get_detector()
+        # Two detector passes total (original + marker text), not once per HTML segment.
+        # Previously each segment was re-scanned for splitting and again in grouping.
+        all_patterns = detector.find_all_technical_content(text)
+        text_with_markers, multiline_block_map = self._extract_multiline_blocks(
+            text, all_patterns
+        )
+        inline_patterns = [
+            p for p in detector.find_all_technical_content(text_with_markers)
+            if p.priority < PatternPriority.MULTILINE_BLOCK
+        ]
 
         # Step 2: Split on HTML tags
         tag_segments = re.split(r'(<[^>]+>)', text_with_markers)
 
-        # Step 3 & 4: For each segment, split on technical patterns and group
-        all_segments = []
+        # Step 3: Split each segment using the pre-scanned inline patterns
+        all_segments: List[Tuple[str, bool]] = []
+        offset = 0
         for segment in tag_segments:
             if not segment:
                 continue
 
+            seg_start = offset
+            seg_end = offset + len(segment)
+            offset = seg_end
+
             is_tag = segment.startswith('<') and segment.endswith('>')
 
             if is_tag:
-                # Keep tag as-is
-                all_segments.append(segment)
+                all_segments.append((segment, False))
+            elif '__TECH_BLOCK_' in segment:
+                parts = re.split(r'(__TECH_BLOCK_\d+__)', segment)
+                for part in parts:
+                    if not part:
+                        continue
+                    all_segments.append(
+                        (part, part.startswith('__TECH_BLOCK_'))
+                    )
             else:
-                # Check if segment contains block markers - if so, split on them specially
-                if '__TECH_BLOCK_' in segment:
-                    # Split on block markers manually to preserve them
-                    parts = re.split(r'(__TECH_BLOCK_\d+__)', segment)
-                    all_segments.extend(parts)
-                else:
-                    # Split on inline technical patterns (code, LaTeX, measurements)
-                    technical_split = self._split_on_technical_patterns(segment)
-                    all_segments.extend(technical_split)
+                seg_patterns = [
+                    p for p in inline_patterns
+                    if p.start >= seg_start and p.end <= seg_end
+                ]
+                all_segments.extend(
+                    self._split_segment_with_inline_patterns(
+                        segment, seg_patterns, seg_start
+                    )
+                )
 
         # Step 4: Group adjacent non-translatable segments
         # BUT: Technical content should get its own placeholder (not grouped with tags)
@@ -241,17 +268,16 @@ class TagPreserver:
                 self.counter += 1
                 current_group.clear()
 
-        for segment in all_segments:
+        for segment, is_tech_segment in all_segments:
             if not segment:
                 continue
 
             is_tag = segment.startswith('<') and segment.endswith('>')
             is_non_trans = is_non_translatable(segment)
-            is_tech = self._is_technical_content(segment)
             is_block_marker = segment.startswith('__TECH_BLOCK_')
 
             # Technical content and block markers get their own placeholders
-            if is_tech or is_block_marker:
+            if is_tech_segment or is_block_marker:
                 # Flush any pending tag group
                 flush_group()
 
@@ -387,7 +413,9 @@ class TagPreserver:
             self._detector = TechnicalContentDetector()
         return self._detector
 
-    def _extract_multiline_blocks(self, text: str) -> Tuple[str, Dict[str, str]]:
+    def _extract_multiline_blocks(
+        self, text: str, patterns=None
+    ) -> Tuple[str, Dict[str, str]]:
         """
         Extract multiline technical blocks (code blocks, LaTeX display) from text.
 
@@ -410,8 +438,9 @@ class TagPreserver:
         if not self.protect_technical:
             return text, {}
 
-        detector = self._get_detector()
-        patterns = detector.find_all_technical_content(text)
+        if patterns is None:
+            detector = self._get_detector()
+            patterns = detector.find_all_technical_content(text)
 
         # Filter for multiline blocks only (priority 10)
         from .technical_content_detector import PatternPriority
@@ -433,54 +462,34 @@ class TagPreserver:
 
         return result_text, block_map
 
-    def _split_on_technical_patterns(self, text: str) -> List[str]:
+    def _split_segment_with_inline_patterns(
+        self,
+        segment: str,
+        patterns: List,
+        seg_start: int,
+    ) -> List[Tuple[str, bool]]:
+        """Split one text segment using pre-scanned inline patterns.
+
+        Pattern positions are document-relative (from the marker-substituted
+        text). ``seg_start`` maps them back into this segment so we avoid
+        re-running TechnicalContentDetector per paragraph.
         """
-        Split text on inline technical patterns (code, LaTeX, measurements).
+        if not patterns:
+            return [(segment, False)]
 
-        This creates segments where technical content is separated from regular text.
-
-        Args:
-            text: Text to split (should have multiline blocks already extracted)
-
-        Returns:
-            List of text segments, alternating between regular text and technical content
-
-        Example:
-            Input:  "The $V_{cm}$ voltage is `MAX1482` chip"
-            Output: ["The ", "$V_{cm}$", " voltage is ", "`MAX1482`", " chip"]
-        """
-        if not self.protect_technical:
-            return [text]
-
-        detector = self._get_detector()
-        patterns = detector.find_all_technical_content(text)
-
-        # Filter out multiline blocks (already handled)
-        from .technical_content_detector import PatternPriority
-        inline_patterns = [
-            p for p in patterns
-            if p.priority < PatternPriority.MULTILINE_BLOCK
-        ]
-
-        if not inline_patterns:
-            return [text]
-
-        # Build segments
-        segments = []
+        segments: List[Tuple[str, bool]] = []
         last_end = 0
 
-        for pattern in inline_patterns:
-            # Add text before pattern
-            if pattern.start > last_end:
-                segments.append(text[last_end:pattern.start])
+        for pattern in patterns:
+            rel_start = pattern.start - seg_start
+            rel_end = pattern.end - seg_start
+            if rel_start > last_end:
+                segments.append((segment[last_end:rel_start], False))
+            segments.append((segment[rel_start:rel_end], True))
+            last_end = rel_end
 
-            # Add pattern itself
-            segments.append(pattern.content)
-            last_end = pattern.end
-
-        # Add remaining text
-        if last_end < len(text):
-            segments.append(text[last_end:])
+        if last_end < len(segment):
+            segments.append((segment[last_end:], False))
 
         return segments
 
