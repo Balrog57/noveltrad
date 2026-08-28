@@ -943,13 +943,15 @@
         <div class="main-card">
             <div class="card-body">
                 <!-- Provider & Defaults (Collapsible) -->
-                <div class="prompt-options-toggle" onclick="toggleSettingsOptions()">
+                <button type="button" id="settingsOptionsToggle" class="prompt-options-toggle" onclick="toggleSettingsOptions()"
+                        aria-expanded="false" aria-controls="settingsOptionsSection"
+                        data-i18n-attr="aria-label:settings:provider_and_defaults" aria-label="Provider &amp; Defaults">
                     <span style="display: flex; align-items: center; gap: 0.75rem;">
-                        <span class="material-symbols-outlined">tune</span>
+                        <span class="material-symbols-outlined" aria-hidden="true">tune</span>
                         <span data-i18n="settings:provider_and_defaults">Provider &amp; Defaults</span>
                     </span>
-                    <span id="settingsOptionsIcon" class="material-symbols-outlined">expand_more</span>
-                </div>
+                    <span id="settingsOptionsIcon" class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+                </button>
 
                 <div id="settingsOptionsSection" class="hidden">
                     <!-- Provider + API Settings Row -->
@@ -1177,14 +1179,16 @@
                 </div>
 
                 <!-- Notifications (Collapsible) -->
-                <div class="prompt-options-toggle" onclick="toggleNotificationOptions()">
+                <button type="button" id="notificationOptionsToggle" class="prompt-options-toggle" onclick="toggleNotificationOptions()"
+                        aria-expanded="false" aria-controls="notificationOptionsSection"
+                        data-i18n-attr="aria-label:settings:notifications" aria-label="Notifications">
                     <span style="display: flex; align-items: center; gap: 0.75rem;">
-                        <span class="material-symbols-outlined">notifications_active</span>
+                        <span class="material-symbols-outlined" aria-hidden="true">notifications_active</span>
                         <span data-i18n="settings:notifications">Notifications</span>
                         <span id="notifyStatusBadge" style="display: none; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #10b981; color: white;">ON</span>
                     </span>
-                    <span id="notificationOptionsIcon" class="material-symbols-outlined">expand_more</span>
-                </div>
+                    <span id="notificationOptionsIcon" class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+                </button>
 
                 <div id="notificationOptionsSection" class="hidden">
                     <p data-i18n-html="settings:notifications_intro" style="margin: 5px 0 15px 0; font-size: 0.875rem; color: var(--text-muted-light); line-height: 1.5;">

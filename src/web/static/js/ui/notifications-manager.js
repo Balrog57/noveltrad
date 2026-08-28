@@ -105,6 +105,8 @@ export const NotificationsManager = {
                 if (section && section.classList.contains('hidden')) {
                     section.classList.remove('hidden');
                     if (icon) icon.style.transform = 'rotate(180deg)';
+                    const toggle = DomHelpers.getElement('notificationOptionsToggle');
+                    if (toggle) toggle.setAttribute('aria-expanded', 'true');
                 }
             }
         }, { once: true });
@@ -113,12 +115,14 @@ export const NotificationsManager = {
     toggleOptions() {
         const section = DomHelpers.getElement('notificationOptionsSection');
         const icon = DomHelpers.getElement('notificationOptionsIcon');
+        const toggle = DomHelpers.getElement('notificationOptionsToggle');
         if (!section) return;
-        section.classList.toggle('hidden');
+        const isHidden = section.classList.toggle('hidden');
         if (icon) {
-            icon.style.transform = section.classList.contains('hidden')
-                ? 'rotate(0deg)'
-                : 'rotate(180deg)';
+            icon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', String(!isHidden));
         }
     },
 

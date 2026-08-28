@@ -67,8 +67,8 @@ const TARGETS = {
 };
 
 const SECTION_IDS = {
-    settings: { section: 'settingsOptionsSection',     icon: 'settingsOptionsIcon',     stateKey: 'ui.isSettingsOptionsOpen' },
-    notify:   { section: 'notificationOptionsSection', icon: 'notificationOptionsIcon', stateKey: null },
+    settings: { section: 'settingsOptionsSection',     icon: 'settingsOptionsIcon',     toggle: 'settingsOptionsToggle',     stateKey: 'ui.isSettingsOptionsOpen' },
+    notify:   { section: 'notificationOptionsSection', icon: 'notificationOptionsIcon', toggle: 'notificationOptionsToggle', stateKey: null },
 };
 
 // Set by preflight-zone.js at init. Inverted rather than imported: this module
@@ -225,6 +225,7 @@ function setSectionOpen(sectionKey, open) {
     if (!ids) return;
     const section = DomHelpers.getElement(ids.section);
     const icon = DomHelpers.getElement(ids.icon);
+    const toggle = ids.toggle ? DomHelpers.getElement(ids.toggle) : null;
     if (!section) return;
     const isHidden = section.classList.contains('hidden');
     if (open && isHidden) {
@@ -233,6 +234,9 @@ function setSectionOpen(sectionKey, open) {
     } else if (!open && !isHidden) {
         section.classList.add('hidden');
         if (icon) icon.style.transform = 'rotate(0deg)';
+    }
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', String(open));
     }
     if (ids.stateKey) {
         StateManager.setState(ids.stateKey, open);
