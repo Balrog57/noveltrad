@@ -47,3 +47,6 @@ credentials.*
 .wiki_repo_archive/
 Custom_Instructions/visceral_dramatic_fantasy.yaml
 .venv/
+
+# Archify visual-check sidecars (local Chrome path + screenshots)
+docs/architecture/*.visual-check.*

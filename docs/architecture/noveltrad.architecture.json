@@ -1,0 +1,278 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "NovelTrad Runtime Architecture",
+    "output": "noveltrad-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Balrog57/noveltrad.git",
+      "revision": "aa015723997d08994f6e6479d4642caa1ab5effb"
+    },
+    "views": [
+      {
+        "id": "web-path",
+        "label": "Web translation path",
+        "focus": ["browser", "flask", "auth", "handlers", "translate", "llm", "providers"],
+        "note": "Follow a browser upload through REST, token auth, job threads, and LLM inference."
+      },
+      {
+        "id": "cli-path",
+        "label": "CLI and packaged entry",
+        "focus": ["entry", "translate", "llm", "providers", "sqlite", "filesystem"],
+        "note": "See direct translate.py and launcher paths that bypass the web tier."
+      },
+      {
+        "id": "persistence",
+        "label": "Local state and outputs",
+        "focus": ["translate", "sqlite", "filesystem", "handlers", "tts-hook"],
+        "note": "Checkpoint jobs, store glossaries, write translated files, and optional post-processing."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Web SPA",
+      "sublabel": "ES modules + i18n",
+      "pos": [40, 300],
+      "size": [130, 60],
+      "sources": [
+        { "path": "src/web/templates/translation_interface.html", "label": "SPA shell" },
+        { "path": "src/web/static/js/index.js", "label": "UI modules" }
+      ]
+    },
+    {
+      "id": "entry",
+      "type": "external",
+      "label": "CLI / Launcher",
+      "sublabel": "translate.py · Docker",
+      "pos": [40, 520],
+      "size": [130, 60],
+      "sources": [
+        { "path": "translate.py", "label": "CLI entry" },
+        { "path": "launcher.py", "label": "packaged start" }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "API Token Gate",
+      "sublabel": "per-session secret",
+      "pos": [40, 120],
+      "size": [130, 64],
+      "tag": "X-API-Token",
+      "sources": [
+        { "path": "src/api/auth.py", "label": "token check" }
+      ]
+    },
+    {
+      "id": "flask",
+      "type": "backend",
+      "label": "Flask API",
+      "sublabel": "REST + Socket.IO",
+      "pos": [250, 300],
+      "size": [140, 60],
+      "sources": [
+        { "path": "translation_api.py", "label": "server boot" },
+        { "path": "src/api/routes.py", "label": "blueprints" }
+      ]
+    },
+    {
+      "id": "handlers",
+      "type": "backend",
+      "label": "Job Orchestrator",
+      "sublabel": "threads + progress",
+      "pos": [470, 300],
+      "size": [140, 60],
+      "sources": [
+        { "path": "src/api/handlers.py", "label": "job threads" },
+        { "path": "src/api/translation_state.py", "label": "state" }
+      ]
+    },
+    {
+      "id": "translate",
+      "type": "backend",
+      "label": "Translation Core",
+      "sublabel": "adapters + chunking",
+      "pos": [690, 300],
+      "size": [150, 60],
+      "sources": [
+        { "path": "src/core/adapters/translate_file.py", "label": "translate" },
+        { "path": "src/core/adapters/refine_file.py", "label": "refine" }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "backend",
+      "label": "LLMClient",
+      "sublabel": "provider factory",
+      "pos": [900, 300],
+      "size": [130, 60],
+      "sources": [
+        { "path": "src/core/llm_client.py", "label": "client" },
+        { "path": "src/core/llm/factory.py", "label": "providers" }
+      ]
+    },
+    {
+      "id": "providers",
+      "type": "external",
+      "label": "LLM Providers",
+      "sublabel": "Ollama + cloud APIs",
+      "pos": [1110, 300],
+      "size": [140, 60],
+      "tag": "HTTPS"
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "jobs + glossaries",
+      "pos": [470, 120],
+      "size": [130, 60],
+      "sources": [
+        { "path": "src/persistence/checkpoint_manager.py", "label": "jobs db" },
+        { "path": "src/core/glossary/store.py", "label": "glossary db" }
+      ]
+    },
+    {
+      "id": "filesystem",
+      "type": "database",
+      "label": "Local Files",
+      "sublabel": "uploads + output",
+      "pos": [690, 120],
+      "size": [140, 60],
+      "sources": [
+        { "path": "src/config.py", "label": "uploads" },
+        { "path": "src/config.py", "label": "OUTPUT_DIR" }
+      ]
+    },
+    {
+      "id": "tts-hook",
+      "type": "external",
+      "label": "TTS + Webhooks",
+      "sublabel": "Edge-TTS · notify",
+      "pos": [900, 520],
+      "size": [140, 60],
+      "sources": [
+        { "path": "src/tts/audio_processor.py", "label": "audio" },
+        { "path": "src/utils/notifier.py", "label": "webhook" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Local machine (trusted zone)",
+      "wraps": ["browser", "entry", "auth", "flask", "handlers", "translate", "llm", "sqlite", "filesystem"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Token-gated API surface",
+      "wraps": ["flask", "auth", "handlers"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-rest",
+      "from": "browser",
+      "to": "flask",
+      "label": "REST + token",
+      "variant": "emphasis"
+    },
+    {
+      "id": "browser-ws",
+      "from": "browser",
+      "to": "flask",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    },
+    {
+      "id": "auth-gate",
+      "from": "auth",
+      "to": "flask",
+      "label": "verify token",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "flask-handlers",
+      "from": "flask",
+      "to": "handlers",
+      "label": "start job"
+    },
+    {
+      "id": "handlers-translate",
+      "from": "handlers",
+      "to": "translate",
+      "variant": "emphasis"
+    },
+    {
+      "id": "translate-llm",
+      "from": "translate",
+      "to": "llm",
+      "label": "chunk prompts",
+      "labelDy": 54
+    },
+    {
+      "id": "llm-providers",
+      "from": "llm",
+      "to": "providers",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "flask-glossary",
+      "from": "flask",
+      "to": "sqlite",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "translate-persist",
+      "from": "translate",
+      "to": "sqlite",
+      "label": "checkpoints",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [610, 195]
+    },
+    {
+      "id": "translate-files",
+      "from": "translate",
+      "to": "filesystem",
+      "label": "output files",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [790, 215]
+    },
+    {
+      "id": "handlers-tts",
+      "from": "handlers",
+      "to": "tts-hook",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Security",
+      "items": [
+        "Per-process API token on every /api call and Socket.IO handshake",
+        "Secrets live in .env; job config is sanitized before persistence"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Translation Pipeline",
+      "items": [
+        "CLI, launcher, and Docker all call the same translation core",
+        "TXT/SRT adapters plus EPUB/DOCX pipelines; jobs resume from SQLite"
+      ]
+    }
+  ]
+}
