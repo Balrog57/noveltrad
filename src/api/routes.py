@@ -11,7 +11,7 @@ into separate modules for better maintainability:
 - blueprints/security_routes.py: File upload and security endpoints
 - blueprints/tts_routes.py: TTS audio generation from existing files
 """
-from flask import jsonify
+from flask import jsonify, current_app
 
 from .blueprints import (
     create_config_blueprint,
@@ -101,7 +101,7 @@ def _register_error_handlers(app):
 
     @app.errorhandler(500)
     def internal_server_error(error):
-        import traceback
-        tb_str = traceback.format_exc()
-        print(f"INTERNAL SERVER ERROR: {error}\nTRACEBACK:\n{tb_str}")
-        return jsonify({"error": "Internal server error", "details": str(error)}), 500
+        # Log full traceback server-side only. Exception text can leak paths,
+        # provider responses, or other internals to any API client.
+        current_app.logger.exception("Internal server error")
+        return jsonify({"error": "Internal server error"}), 500
