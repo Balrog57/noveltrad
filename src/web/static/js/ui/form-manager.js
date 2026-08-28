@@ -216,11 +216,15 @@ export const FormManager = {
     toggleSettingsOptions() {
         const section = DomHelpers.getElement('settingsOptionsSection');
         const icon = DomHelpers.getElement('settingsOptionsIcon');
+        const toggle = DomHelpers.getElement('settingsOptionsToggle');
 
         if (!section || !icon) return;
 
         const isHidden = section.classList.toggle('hidden');
         icon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', String(!isHidden));
+        }
 
         // Update state
         StateManager.setState('ui.isSettingsOptionsOpen', !isHidden);

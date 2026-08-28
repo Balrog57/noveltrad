@@ -133,11 +133,15 @@ export const StatusManager = {
         requestAnimationFrame(() => {
             const section = document.getElementById('settingsOptionsSection');
             const icon = document.getElementById('settingsOptionsIcon');
+            const toggle = document.getElementById('settingsOptionsToggle');
 
             if (section && section.classList.contains('hidden')) {
                 section.classList.remove('hidden');
                 if (icon) {
                     icon.style.transform = 'rotate(180deg)';
+                }
+                if (toggle) {
+                    toggle.setAttribute('aria-expanded', 'true');
                 }
             }
         });
