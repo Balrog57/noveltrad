@@ -231,6 +231,22 @@ function switchTopTab(name) {
     buttons.forEach((btn) => {
         const isActive = btn.dataset.tab === name;
         btn.classList.toggle('tab-btn-active', isActive);
+        btn.setAttribute('aria-selected', String(isActive));
+        btn.tabIndex = isActive ? 0 : -1;
+    });
+
+    const panels = [
+        ['translate', translateTab],
+        ['settings', settingsTab],
+        ['glossaries', glossariesTab],
+        ['files', filesTab],
+        ['sample', sampleTab],
+        ['styles', stylesTab],
+    ];
+    panels.forEach(([tabName, panel]) => {
+        if (!panel) return;
+        const isActive = tabName === name;
+        panel.setAttribute('aria-hidden', String(!isActive));
     });
 
     if (name === 'glossaries') {

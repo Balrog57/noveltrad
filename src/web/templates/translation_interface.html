@@ -294,35 +294,35 @@
         </div>
 
         <!-- Top-level Tab Navigation -->
-        <div class="tab-nav" id="topTabNav" style="display: flex; gap: 8px; margin-bottom: 20px;">
-            <button type="button" class="tab-btn tab-btn-active" data-tab="translate" onclick="switchTopTab('translate')">
+        <div class="tab-nav" id="topTabNav" role="tablist" data-i18n-attr="aria-label:common:main_nav_label" aria-label="Main navigation" style="display: flex; gap: 8px; margin-bottom: 20px;">
+            <button type="button" class="tab-btn tab-btn-active" role="tab" id="top-tab-translate" data-tab="translate" aria-controls="tab-translate" aria-selected="true" tabindex="0" onclick="switchTopTab('translate')">
                 <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">translate</span>
                 <span data-i18n="common:tab_translate">Translate</span>
             </button>
-            <button type="button" class="tab-btn" data-tab="sample" onclick="switchTopTab('sample')">
+            <button type="button" class="tab-btn" role="tab" id="top-tab-sample" data-tab="sample" aria-controls="tab-sample" aria-selected="false" tabindex="-1" onclick="switchTopTab('sample')">
                 <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">science</span>
                 <span data-i18n="common:tab_sample">Sample</span>
             </button>
-            <button type="button" class="tab-btn" data-tab="settings" onclick="switchTopTab('settings')">
+            <button type="button" class="tab-btn" role="tab" id="top-tab-settings" data-tab="settings" aria-controls="tab-settings" aria-selected="false" tabindex="-1" onclick="switchTopTab('settings')">
                 <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">tune</span>
                 <span data-i18n="common:tab_settings">Settings</span>
             </button>
-            <button type="button" class="tab-btn" data-tab="glossaries" onclick="switchTopTab('glossaries')">
+            <button type="button" class="tab-btn" role="tab" id="top-tab-glossaries" data-tab="glossaries" aria-controls="tab-glossaries" aria-selected="false" tabindex="-1" onclick="switchTopTab('glossaries')">
                 <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">menu_book</span>
                 <span data-i18n="common:tab_glossaries">Glossaries</span>
             </button>
-            <button type="button" class="tab-btn" data-tab="styles" onclick="switchTopTab('styles')">
+            <button type="button" class="tab-btn" role="tab" id="top-tab-styles" data-tab="styles" aria-controls="tab-styles" aria-selected="false" tabindex="-1" onclick="switchTopTab('styles')">
                 <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">brush</span>
                 <span data-i18n="common:tab_styles">Styles</span>
             </button>
-            <button type="button" class="tab-btn" data-tab="files" onclick="switchTopTab('files')">
+            <button type="button" class="tab-btn" role="tab" id="top-tab-files" data-tab="files" aria-controls="tab-files" aria-selected="false" tabindex="-1" onclick="switchTopTab('files')">
                 <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem;">folder_open</span>
                 <span data-i18n="common:tab_files">Files</span>
             </button>
         </div>
 
         <!-- Tab: Translate -->
-        <div id="tab-translate">
+        <div id="tab-translate" role="tabpanel" aria-labelledby="top-tab-translate" tabindex="0" aria-hidden="false">
 
         <!-- Main Translation Configuration Card -->
         <div class="main-card">
@@ -780,7 +780,7 @@
         </div><!-- /#tab-translate -->
 
         <!-- Tab: Sample & Compare -->
-        <div id="tab-sample" class="hidden">
+        <div id="tab-sample" class="hidden" role="tabpanel" aria-labelledby="top-tab-sample" tabindex="0" aria-hidden="true">
             <div class="main-card">
                 <div class="card-body">
                     <h2 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
@@ -939,7 +939,7 @@
         </div>
 
         <!-- Tab: Settings -->
-        <div id="tab-settings" class="hidden">
+        <div id="tab-settings" class="hidden" role="tabpanel" aria-labelledby="top-tab-settings" tabindex="0" aria-hidden="true">
         <div class="main-card">
             <div class="card-body">
                 <!-- Provider & Defaults (Collapsible) -->
@@ -1319,7 +1319,7 @@
         </div><!-- /#tab-settings -->
 
         <!-- Tab: Files -->
-        <div id="tab-files" class="hidden">
+        <div id="tab-files" class="hidden" role="tabpanel" aria-labelledby="top-tab-files" tabindex="0" aria-hidden="true">
 
         <!-- File Management Section -->
         <div class="main-card">
@@ -1389,7 +1389,7 @@
         </div><!-- /#tab-files -->
 
         <!-- Tab: Glossaries -->
-        <div id="tab-glossaries" class="hidden">
+        <div id="tab-glossaries" class="hidden" role="tabpanel" aria-labelledby="top-tab-glossaries" tabindex="0" aria-hidden="true">
 
             <!-- LIST VIEW -->
             <div class="main-card" id="glossaryListView">
@@ -1715,7 +1715,7 @@
         </div><!-- /#tab-glossaries -->
 
         <!-- Tab: Styles -->
-        <div id="tab-styles" class="hidden">
+        <div id="tab-styles" class="hidden" role="tabpanel" aria-labelledby="top-tab-styles" tabindex="0" aria-hidden="true">
 
             <!-- LIST VIEW -->
             <div class="main-card" id="styleListView">
