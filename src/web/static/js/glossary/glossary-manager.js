@@ -258,6 +258,38 @@ function switchTopTab(name) {
     }
 }
 
+function onTopTabKeydown(event) {
+    const nav = document.getElementById('topTabNav');
+    if (!nav || !nav.contains(event.target)) return;
+    const tabs = Array.from(nav.querySelectorAll('[role="tab"]'));
+    const current = tabs.indexOf(event.target);
+    if (current < 0) return;
+
+    let next = current;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        next = (current + 1) % tabs.length;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        next = (current - 1 + tabs.length) % tabs.length;
+    } else if (event.key === 'Home') {
+        next = 0;
+    } else if (event.key === 'End') {
+        next = tabs.length - 1;
+    } else {
+        return;
+    }
+    event.preventDefault();
+    const name = tabs[next].dataset.tab;
+    switchTopTab(name);
+    tabs[next].focus();
+}
+
+function initTopTabKeyboard() {
+    const nav = document.getElementById('topTabNav');
+    if (!nav || nav.dataset.keyboardBound === '1') return;
+    nav.dataset.keyboardBound = '1';
+    nav.addEventListener('keydown', onTopTabKeydown);
+}
+
 // ========================================
 // Translate-tab dropdown
 // ========================================
@@ -2151,6 +2183,7 @@ function wirePreviewModal() {
 
 export const GlossaryManager = {
     initialize() {
+        initTopTabKeyboard();
         wireTranslateTabDropdown();
         wireListView();
         wireEditorView();
