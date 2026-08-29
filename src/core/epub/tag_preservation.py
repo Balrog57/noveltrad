@@ -20,6 +20,8 @@ _NON_TRANSLATABLE_RE = re.compile(
     r'^[\d\.\-\–\—\)\(\s\u00A0\u2000-\u200F\u2028\u2029IVXLCDM]+$',
     re.IGNORECASE,
 )
+# Compiled once: preserve_tags* splits on every tag; re.compile avoids per-call setup.
+_HTML_TAG_SPLIT_RE = re.compile(r'(<[^>]+>)')
 
 
 def is_non_translatable(text: str) -> bool:
@@ -119,7 +121,7 @@ class TagPreserver:
 
         # Split text into segments: tags vs non-tags
         # This preserves the order and allows us to analyze each segment
-        segments = re.split(r'(<[^>]+>)', text)
+        segments = _HTML_TAG_SPLIT_RE.split(text)
 
         # Build output by grouping tags and non-translatable content
         merged_segments = []
@@ -213,11 +215,15 @@ class TagPreserver:
         ]
 
         # Step 2: Split on HTML tags
-        tag_segments = re.split(r'(<[^>]+>)', text_with_markers)
+        tag_segments = _HTML_TAG_SPLIT_RE.split(text_with_markers)
 
-        # Step 3: Split each segment using the pre-scanned inline patterns
+        # Step 3: Split each segment using the pre-scanned inline patterns.
+        # Patterns and segments are both document-order; walk them with one
+        # pointer instead of scanning all patterns per segment (O(S+P) not O(S*P)).
         all_segments: List[Tuple[str, bool]] = []
         offset = 0
+        pattern_idx = 0
+        num_inline_patterns = len(inline_patterns)
         for segment in tag_segments:
             if not segment:
                 continue
@@ -239,10 +245,22 @@ class TagPreserver:
                         (part, part.startswith('__TECH_BLOCK_'))
                     )
             else:
-                seg_patterns = [
-                    p for p in inline_patterns
-                    if p.start >= seg_start and p.end <= seg_end
-                ]
+                while (
+                    pattern_idx < num_inline_patterns
+                    and inline_patterns[pattern_idx].end <= seg_start
+                ):
+                    pattern_idx += 1
+                seg_patterns = []
+                scan_idx = pattern_idx
+                while (
+                    scan_idx < num_inline_patterns
+                    and inline_patterns[scan_idx].start < seg_end
+                ):
+                    pattern = inline_patterns[scan_idx]
+                    if pattern.start >= seg_start and pattern.end <= seg_end:
+                        seg_patterns.append(pattern)
+                    scan_idx += 1
+                pattern_idx = scan_idx
                 all_segments.extend(
                     self._split_segment_with_inline_patterns(
                         segment, seg_patterns, seg_start
@@ -273,7 +291,10 @@ class TagPreserver:
                 continue
 
             is_tag = segment.startswith('<') and segment.endswith('>')
-            is_non_trans = is_non_translatable(segment)
+            # Tags are never "non-translatable text"; skip regex on ~half the segments.
+            is_non_trans = (
+                False if is_tag else is_non_translatable(segment)
+            )
             is_block_marker = segment.startswith('__TECH_BLOCK_')
 
             # Technical content and block markers get their own placeholders
