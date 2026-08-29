@@ -34,9 +34,9 @@ def create_file_blueprint(output_dir):
                 "total_size_mb": total_mb
             })
 
-        except Exception as e:
-            current_app.logger.error(f"Error listing files: {str(e)}")
-            return jsonify({"error": "Failed to list files", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error listing files")
+            return jsonify({"error": "Failed to list files"}), 500
 
     @bp.route('/api/files/<path:filename>', methods=['GET'])
     def download_file_by_name(filename):
@@ -58,9 +58,9 @@ def create_file_blueprint(output_dir):
             else:
                 return send_from_directory(output_dir, filename, as_attachment=True)
 
-        except Exception as e:
-            current_app.logger.error(f"Error downloading file {filename}: {str(e)}")
-            return jsonify({"error": "Download failed", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error downloading file %s", filename)
+            return jsonify({"error": "Download failed"}), 500
 
     @bp.route('/api/files/<path:filename>', methods=['DELETE'])
     def delete_file(filename):
@@ -80,9 +80,9 @@ def create_file_blueprint(output_dir):
             else:
                 return jsonify({"error": "File not found"}), 404
 
-        except Exception as e:
-            current_app.logger.error(f"Error deleting file {filename}: {str(e)}")
-            return jsonify({"error": "Delete failed", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error deleting file %s", filename)
+            return jsonify({"error": "Delete failed"}), 500
 
     @bp.route('/api/files/batch/download', methods=['POST'])
     def batch_download_files():
@@ -127,9 +127,9 @@ def create_file_blueprint(output_dir):
                 download_name=zip_filename
             )
 
-        except Exception as e:
-            current_app.logger.error(f"Error creating batch download: {str(e)}")
-            return jsonify({"error": "Batch download failed", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error creating batch download")
+            return jsonify({"error": "Batch download failed"}), 500
 
     @bp.route('/api/files/batch/delete', methods=['POST'])
     def batch_delete_files():
@@ -155,8 +155,9 @@ def create_file_blueprint(output_dir):
                         deleted_files.append(filename)
                     else:
                         failed_files.append({"filename": filename, "reason": "File not found"})
-                except Exception as e:
-                    failed_files.append({"filename": filename, "reason": str(e)})
+                except Exception:
+                    current_app.logger.exception("Error deleting file %s in batch", filename)
+                    failed_files.append({"filename": filename, "reason": "Delete failed"})
 
             return jsonify({
                 "success": True,
@@ -165,9 +166,9 @@ def create_file_blueprint(output_dir):
                 "total_deleted": len(deleted_files)
             })
 
-        except Exception as e:
-            current_app.logger.error(f"Error in batch delete: {str(e)}")
-            return jsonify({"error": "Batch delete failed", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error in batch delete")
+            return jsonify({"error": "Batch delete failed"}), 500
 
     @bp.route('/api/uploads/clear', methods=['POST'])
     def clear_uploaded_files():
@@ -200,9 +201,9 @@ def create_file_blueprint(output_dir):
                 "total_deleted": len(deleted_files)
             })
 
-        except Exception as e:
-            current_app.logger.error(f"Error clearing uploaded files: {str(e)}")
-            return jsonify({"error": "Clear uploads failed", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error clearing uploaded files")
+            return jsonify({"error": "Clear uploads failed"}), 500
 
     @bp.route('/api/files/<path:filename>/open', methods=['POST'])
     def open_local_file(filename):
@@ -230,9 +231,9 @@ def create_file_blueprint(output_dir):
                 current_app.logger.error(f"Error opening file {filename}: {message}")
                 return jsonify({"error": message}), 404 if "not found" in message.lower() else 500
 
-        except Exception as e:
-            current_app.logger.error(f"Error in open_local_file for {filename}: {str(e)}")
-            return jsonify({"error": "Failed to open file", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error in open_local_file for %s", filename)
+            return jsonify({"error": "Failed to open file"}), 500
 
     @bp.route('/api/folders/output/open', methods=['POST'])
     def open_output_folder():
@@ -247,9 +248,9 @@ def create_file_blueprint(output_dir):
                 return jsonify(payload)
             current_app.logger.error(f"Error opening output folder: {message}")
             return jsonify({"error": message, "folder_path": abs_path}), 500
-        except Exception as e:
-            current_app.logger.error(f"Error in open_output_folder: {str(e)}")
-            return jsonify({"error": "Failed to open output folder", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error in open_output_folder")
+            return jsonify({"error": "Failed to open output folder"}), 500
 
     @bp.route('/api/files/<path:filename>/reveal', methods=['POST'])
     def reveal_local_file(filename):
@@ -275,8 +276,8 @@ def create_file_blueprint(output_dir):
                 current_app.logger.error(f"Error revealing file {filename}: {message}")
                 return jsonify({"error": message}), 404 if "not found" in message.lower() else 500
 
-        except Exception as e:
-            current_app.logger.error(f"Error in reveal_local_file for {filename}: {str(e)}")
-            return jsonify({"error": "Failed to reveal file", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error in reveal_local_file for %s", filename)
+            return jsonify({"error": "Failed to reveal file"}), 500
 
     return bp
