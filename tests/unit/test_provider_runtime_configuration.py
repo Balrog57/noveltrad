@@ -71,6 +71,39 @@ def test_create_llm_client_does_not_forward_ollama_endpoint_to_ollama_cloud(monk
     assert captured["api_key"] == "secret"
 
 
+def test_nim_factory_uses_per_job_key_not_env(monkeypatch):
+    """Issue #230: TXT/SRT/DOCX must forward nim_api_key into the factory."""
+    monkeypatch.setenv("NIM_API_KEY", "env-secret")
+    provider = factory.create_llm_provider(
+        "nim",
+        nim_api_key="job-secret",
+        model="meta/llama-3.1-8b-instruct",
+    )
+    assert provider.api_key == "job-secret"
+
+
+def test_create_llm_client_forwards_nim_api_key(monkeypatch):
+    captured = {}
+
+    def fake_create(provider_type, **kwargs):
+        captured["provider_type"] = provider_type
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(llm_client_module, "create_llm_provider", fake_create)
+    client = llm_client_module.create_llm_client(
+        "nim",
+        None,
+        "https://integrate.api.nvidia.com/v1",
+        "meta/llama-3.1-8b-instruct",
+        nim_api_key="job-secret",
+    )
+    client._get_provider()
+
+    assert captured["provider_type"] == "nim"
+    assert captured["api_key"] == "job-secret"
+
+
 @pytest.mark.parametrize("provider", ["anthropic", "xai", "opencode", "opencodego"])
 def test_provider_factory_preserves_runtime_configuration(monkeypatch, provider):
     captured = {}

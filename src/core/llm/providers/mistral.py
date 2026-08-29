@@ -237,7 +237,8 @@ class MistralProvider(LLMProvider):
 
                 # Handle specific error codes
                 if response.status_code == 401:
-                    raise ValueError("Invalid Mistral API key")
+                    print("❌ Mistral: Invalid API key!")
+                    return None
 
                 if response.status_code == 429:
                     rate_limit_events += 1
