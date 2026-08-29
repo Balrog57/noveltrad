@@ -152,7 +152,7 @@ follow-up.
 
 ---
 
-### [ ] 1.3 — Issue #241: Docker version check reports an update that is already installed
+### [x] 1.3 — Issue #241: Docker version check reports an update that is already installed
 
 **Symptom.** Two users, one on Docker and one on Linux, see the update banner claiming a new version is
 available immediately after updating.
@@ -167,11 +167,13 @@ version string itself is a one-line fix that will be forgotten again otherwise.
 
 **Done when.** `src/__version__.py` matches the latest tag, and a CI job rejects a mismatched tag.
 
+**Shipped.** `src/__version__.py` is `1.5.9` and matches tag `v1.5.9`. `scripts/check_tag_version.py` plus `.github/workflows/verify-tag-version.yml` are required by the Docker, Windows, and macOS tag workflows. Covered by `tests/unit/test_check_tag_version.py`. Upstream issue #241 is closed.
+
 **Effort.** S.
 
 ---
 
-### [ ] 1.4 — Issue #208: TXT output loses paragraph breaks at every chunk boundary
+### [x] 1.4 — Issue #208: TXT output loses paragraph breaks at every chunk boundary
 
 **Symptom.** In non-bilingual TXT mode, paragraph separations disappear at each chunk seam. The chunker
 splits on `\n\n` (`src/core/chunking/token_chunker.py:59`), but reassembly does not restore it.
@@ -186,11 +188,15 @@ already ends with a newline; strip trailing whitespace per chunk before joining.
 **Done when.** A multi-chunk TXT translation reproduces the source paragraph structure at every seam, in
 both the translate and refine paths. Covered by a test with a three-paragraph, two-chunk input.
 
+**Shipped.** Commit `fa270b0`: chunks carry `join_with`, and both `TxtAdapter.reconstruct_output` and
+`refine_txt_file` call `join_translated_chunks`. Covered by `tests/unit/test_txt_reassembly.py` and
+`tests/e2e/test_completion_classification.py`. Upstream issue #208 is closed.
+
 **Effort.** S.
 
 ---
 
-### [ ] 1.5 — Issue #225: a late or foreign `completed` event resets the UI mid-batch
+### [x] 1.5 — Issue #225: a late or foreign `completed` event resets the UI mid-batch
 
 **Symptom.** During a batch, the whole UI resets to idle and the queue display is lost, while
 translation continues server-side.
@@ -208,11 +214,15 @@ unknown IDs. Alternatively, do not null `currentJob` until the next file's job i
 **Done when.** A synthetic terminal event with an unknown `translation_id` no longer resets the UI, and a
 batch of three files completes without visual reset between files.
 
+**Shipped.** `translation.ownedJobIds` tracks jobs this tab started; `handleTranslationUpdate` ignores
+terminal events for unknown IDs and retires an id before nulling `currentJob`. Covered by
+`tests/e2e/test_job_ownership.py`. Upstream issue #225 is closed.
+
 **Effort.** S.
 
 ---
 
-### [ ] 1.6 — Issue #224: desync recovery dispatches events nobody listens to
+### [x] 1.6 — Issue #224: desync recovery dispatches events nobody listens to
 
 **Symptom.** After a WebSocket drop, the UI stays stuck on "in progress" until a manual page reload,
 even though the recovery code believes it resynced.
@@ -229,11 +239,16 @@ the direct call and delete the dead dispatch, one less indirection.
 
 **Done when.** Killing the WebSocket mid-job and letting it reconnect resyncs the UI without a reload.
 
+**Shipped.** Commit `46d2837`: `lifecycle-manager.js` calls `TranslationTracker.handleTranslationUpdate`
+and `resetUIToIdle` via `_desyncHandlers` instead of dead CustomEvents. Covered by
+`tests/unit/test_no_dead_custom_events.py` and `tests/e2e/test_desync_recovery.py`. Upstream issue #224
+is closed.
+
 **Effort.** S. **Related.** Item 1.5, same file cluster, ship together.
 
 ---
 
-### [ ] 1.7 — Close five stale issues
+### [x] 1.7 — Close five stale issues
 
 All verified as already resolved in code. Closing them removes a third of the open-issue noise and makes
 future triage cheaper.
@@ -256,6 +271,9 @@ future triage cheaper.
 
 **Also.** Consolidate #140 and #234 into a single PDF tracking issue (see item 5.1), and close #196 with
 a pointer to #198, which already tracks its only in-scope part.
+
+**Shipped.** Upstream issues #183, #167, #155, #174, and #229 are closed. No remaining code gap on this
+fork; issues are disabled on `Balrog57/noveltrad`.
 
 **Effort.** S, no code.
 
@@ -397,7 +415,7 @@ already-orphaned rows.
 Goal: a batch of independent small fixes in the LLM layer. Individually low severity, collectively the
 reason cost reporting, key handling and error messages cannot be trusted.
 
-### [ ] 3.1 — Issue #230: per-job NIM API key is silently dropped for TXT, SRT and DOCX
+### [x] 3.1 — Issue #230: per-job NIM API key is silently dropped for TXT, SRT and DOCX
 
 `nim_api_key` is threaded through the EPUB path only. The TXT and SRT `llm_config` dict and the DOCX
 `create_llm_provider` call in `src/core/adapters/translate_file.py` omit it, so
@@ -405,11 +423,16 @@ reason cost reporting, key handling and error messages cannot be trusted.
 the UI silently gets the server's key, or none at all.
 
 **Done when.** All four formats forward the per-job key. Add a test asserting the factory receives it.
+
+**Shipped.** `translate_file.py` already put `nim_api_key` in the TXT/SRT `llm_config` and the DOCX
+`create_llm_provider` call. Regression coverage is `test_nim_factory_uses_per_job_key_not_env` and
+`test_create_llm_client_forwards_nim_api_key` in `tests/unit/test_provider_runtime_configuration.py`.
+
 **Effort.** S.
 
 ---
 
-### [ ] 3.2 — Issue #218: OpenRouter and Poe cost tracking is shared across jobs and reads a missing field
+### [x] 3.2 — Issue #218: OpenRouter and Poe cost tracking is shared across jobs and reads a missing field
 
 Two defects:
 - `src/core/llm/providers/openrouter.py:62-64` and `poe.py:76-78` declare `_session_cost`,
@@ -422,11 +445,16 @@ Two defects:
 
 **Done when.** Cost state is per-instance, and OpenRouter requests ask for usage so real costs are used
 when available, with the estimate kept as an explicit fallback.
+
+**Shipped.** Session cost/tokens/callback live on each provider instance. OpenRouter sends
+`usage: {include: true}` and prefers `usage.cost` (then top-level `cost`) before the estimate.
+Covered by `tests/unit/test_provider_cost_isolation.py`.
+
 **Effort.** S.
 
 ---
 
-### [ ] 3.3 — Issue #219: an invalid Mistral or DeepSeek key is retried instead of failing fast
+### [x] 3.3 — Issue #219: an invalid Mistral or DeepSeek key is retried instead of failing fast
 
 In `mistral.py`, `raise ValueError("Invalid Mistral API key")` on `status_code == 401` sits inside the
 same `try` whose trailing `except Exception` (around `:329`) catches it, logs "API Unknown Error", sleeps
@@ -435,11 +463,15 @@ and retries, eventually returning `None`. `deepseek.py` has the identical shape.
 `raise_for_status()`. `poe.py` gets this right and returns `None` immediately, use it as the model.
 
 **Done when.** A bad key surfaces a clear credential error on the first attempt, with no retry storm.
+
+**Shipped.** A 401 now returns `None` immediately, matching Poe, instead of raising `ValueError` into
+the catch-all retry loop. Covered by `tests/unit/test_auth_fail_fast.py`.
+
 **Effort.** S.
 
 ---
 
-### [ ] 3.4 — Issue #220: thinking-model detection is a no-op after the Ollama refactor
+### [x] 3.4 — Issue #220: thinking-model detection is a no-op after the Ollama refactor
 
 `src/core/llm_client.py:139-140` and `:154-158` still probe for `_is_thinking_model` and
 `_detect_thinking_model`, but `src/core/llm/providers/ollama.py` now exposes `_detect_thinking_behavior()`
@@ -450,6 +482,11 @@ Separately, `gemini.py:79` and `deepseek.py:101` define `_is_thinking_model` as 
 `get_is_thinking_model()` returns a truthy bound method rather than a boolean, and never reports `False`.
 
 **Done when.** Ollama detection runs again, and the Gemini/DeepSeek accessor returns a real boolean.
+
+**Shipped.** `LLMClient.get_is_thinking_model` calls `_is_thinking_model()` when it is a method, and
+`detect_thinking_model` drives Ollama's `_detect_thinking_behavior`. Covered by
+`tests/unit/test_thinking_model_detection.py`.
+
 **Effort.** S/M.
 
 ---

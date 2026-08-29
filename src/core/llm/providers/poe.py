@@ -76,10 +76,8 @@ class PoeProvider(LLMProvider):
         "Grok-4",
     ]
 
-    # Session cost tracking (class-level)
-    _session_cost = 0.0
-    _session_tokens = {"prompt": 0, "completion": 0}
-    _cost_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+    # Copied onto each instance so concurrent jobs cannot share totals (issue #218).
+    _default_cost_callback: Optional[Callable[[Dict[str, Any]], None]] = None
 
     # --- Bot default overrides ---------------------------------------------
     # Poe has no universal switch for reasoning or web search: each bot
@@ -142,6 +140,9 @@ class PoeProvider(LLMProvider):
         self.api_endpoint = api_endpoint or self.API_URL
         self.disable_thinking = disable_thinking
         self.disable_web_search = disable_web_search
+        self._session_cost = 0.0
+        self._session_tokens = {"prompt": 0, "completion": 0}
+        self._cost_callback = type(self)._default_cost_callback
 
     def _get_context_limit(self) -> int:
         """
@@ -247,31 +248,23 @@ class PoeProvider(LLMProvider):
             print(f"⚙️ Poe ({self.model}): bot defaults overridden: {overrides}")
         return dict(overrides)
 
-    @classmethod
-    def get_session_cost(cls) -> tuple:
+    def get_session_cost(self) -> tuple:
         """
         Get the current session cost and token usage.
 
         Returns:
             Tuple of (total_cost_usd, token_counts_dict)
         """
-        return cls._session_cost, cls._session_tokens.copy()
+        return self._session_cost, self._session_tokens.copy()
 
     @classmethod
     def reset_session_cost(cls) -> None:
-        """Reset the session cost tracking."""
-        cls._session_cost = 0.0
-        cls._session_tokens = {"prompt": 0, "completion": 0}
+        """Kept for API compatibility. New instances start at zero."""
 
     @classmethod
     def set_cost_callback(cls, callback: Optional[Callable[[Dict[str, Any]], None]]) -> None:
-        """
-        Set a callback to receive cost updates after each API call.
-
-        Args:
-            callback: Function that receives a dict with token usage info
-        """
-        cls._cost_callback = callback
+        """Attach a cost callback to subsequently created instances."""
+        cls._default_cost_callback = callback
 
     # Known official providers to filter models (excludes community bots)
     # Note: Poe sometimes hosts models via intermediaries like "Novita AI", "Together AI", etc.
@@ -563,19 +556,19 @@ class PoeProvider(LLMProvider):
                 completion_tokens = usage.get("completion_tokens", 0)
 
                 # Update session tracking
-                PoeProvider._session_tokens["prompt"] += prompt_tokens
-                PoeProvider._session_tokens["completion"] += completion_tokens
+                self._session_tokens["prompt"] += prompt_tokens
+                self._session_tokens["completion"] += completion_tokens
 
                 print(f"💬 Poe ({self.model}): {prompt_tokens}+{completion_tokens} tokens")
 
                 # Call cost callback if set
-                if PoeProvider._cost_callback:
+                if self._cost_callback:
                     try:
-                        PoeProvider._cost_callback({
+                        self._cost_callback({
                             "prompt_tokens": prompt_tokens,
                             "completion_tokens": completion_tokens,
-                            "total_prompt_tokens": PoeProvider._session_tokens["prompt"],
-                            "total_completion_tokens": PoeProvider._session_tokens["completion"],
+                            "total_prompt_tokens": self._session_tokens["prompt"],
+                            "total_completion_tokens": self._session_tokens["completion"],
                         })
                     except Exception as cb_err:
                         print(f"⚠️ Cost callback error: {cb_err}")

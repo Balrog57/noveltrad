@@ -157,8 +157,17 @@ class LLMClient:
         Returns:
             True if model produces thinking output, False if not, None if unknown/not detected yet
         """
-        if self._provider and hasattr(self._provider, '_is_thinking_model'):
-            return self._provider._is_thinking_model
+        if not self._provider:
+            return None
+        method = getattr(self._provider, "_is_thinking_model", None)
+        if callable(method):
+            return bool(method())
+        if method is not None:
+            return bool(method)
+        behavior = getattr(self._provider, "_thinking_behavior", None)
+        if behavior is not None:
+            from src.core.llm.thinking.behavior import ThinkingBehavior
+            return behavior != ThinkingBehavior.STANDARD
         return None
 
     async def detect_thinking_model(self) -> Optional[bool]:
@@ -172,12 +181,22 @@ class LLMClient:
             True if model produces thinking output, False if not, None if detection not supported
         """
         provider = self._get_provider()
-        if hasattr(provider, '_detect_thinking_model'):
-            # Trigger detection if not already done
-            if provider._is_thinking_model is None:
-                provider._is_thinking_model = await provider._detect_thinking_model()
-            return provider._is_thinking_model
-        return None
+        detect = getattr(provider, "_detect_thinking_model", None)
+        if callable(detect):
+            current = getattr(provider, "_is_thinking_model", None)
+            if current is None:
+                provider._is_thinking_model = await detect()
+            attr = provider._is_thinking_model
+            return attr() if callable(attr) else attr
+
+        detect_behavior = getattr(provider, "_detect_thinking_behavior", None)
+        if callable(detect_behavior):
+            if getattr(provider, "_thinking_behavior", None) is None:
+                provider._thinking_behavior = await detect_behavior()
+            from src.core.llm.thinking.behavior import ThinkingBehavior
+            return provider._thinking_behavior != ThinkingBehavior.STANDARD
+
+        return self.get_is_thinking_model()
 
 
 # Global instance for backward compatibility
