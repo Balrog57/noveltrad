@@ -29,23 +29,46 @@ from src.config import (
     REPETITION_MIN_COUNT_STREAMING
 )
 
+# Specialized MT / encoder-decoder models that only speak Ollama /api/generate.
+_GENERATE_ONLY_MODEL_RE = re.compile(
+    r'hy-?mt|hunyuan-mt|nllb|madlad|opus-mt|m2m100|mbart|mt5',
+    re.IGNORECASE,
+)
+
+
+def _is_generate_only_model(model: str) -> bool:
+    """True when the model is a completion-style translator, not a chat LLM."""
+    return bool(_GENERATE_ONLY_MODEL_RE.search(model or ""))
+
 
 class OllamaProvider(LLMProvider):
-    """Ollama API provider - uses /api/chat for proper think parameter support"""
+    """Ollama API provider.
+
+    Chat LLMs use /api/chat (think parameter). Specialized MT models such as
+    Hy-MT2 use /api/generate.
+    """
 
     def __init__(self, api_endpoint: str = API_ENDPOINT, model: str = DEFAULT_MODEL,
                  context_window: int = OLLAMA_NUM_CTX, log_callback: Optional[Callable] = None):
         super().__init__(model)
-        # Convert /api/generate endpoint to /api/chat for proper think support
-        self.api_endpoint = api_endpoint.replace('/api/generate', '/api/chat')
+        self._use_generate_api = _is_generate_only_model(model)
+        if self._use_generate_api:
+            # Hy-MT2 and similar MT models only implement /api/generate.
+            self.api_endpoint = api_endpoint.replace('/api/chat', '/api/generate')
+        else:
+            # Chat LLMs need /api/chat for the think parameter.
+            self.api_endpoint = api_endpoint.replace('/api/generate', '/api/chat')
         self.context_window = context_window
         self.log_callback = log_callback
         # Will be detected on first request via _detect_thinking_behavior()
-        self._thinking_behavior: Optional[ThinkingBehavior] = None
-        self._supports_think_param: bool = True
+        self._thinking_behavior: Optional[ThinkingBehavior] = (
+            ThinkingBehavior.STANDARD if self._use_generate_api else None
+        )
+        self._supports_think_param: bool = not self._use_generate_api
         # Quick check against known model lists (fallback if detection fails)
         self._known_uncontrollable = any(_model_matches_pattern(model, tm) for tm in UNCONTROLLABLE_THINKING_MODELS)
         self._known_controllable = any(_model_matches_pattern(model, tm) for tm in CONTROLLABLE_THINKING_MODELS)
+        self._context_detector = ContextDetector()
 
     def _check_known_model_lists(self) -> Optional[ThinkingBehavior]:
         """Check if model matches known model lists for quick classification."""
@@ -249,7 +272,8 @@ class OllamaProvider(LLMProvider):
         Returns:
             LLMResponse with content and token usage info, or None if failed
         """
-        # Detect thinking behavior on first request
+        # Detect thinking behavior on first request. Generate-only MT models
+        # have no chat/think support; skip the probe.
         if self._thinking_behavior is None:
             self._thinking_behavior = await self._detect_thinking_behavior()
 
@@ -265,34 +289,39 @@ class OllamaProvider(LLMProvider):
                 RESET = '\033[0m'
                 print(f"\n{GREEN}[MODEL] {self.model}: Standard model (no thinking){RESET}")
 
-        # Build messages array for chat API
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+        if getattr(self, "_use_generate_api", False):
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": True,
+                "options": {
+                    "num_ctx": self.context_window,
+                    "truncate": False
+                },
+            }
+            if system_prompt:
+                payload["system"] = system_prompt
+        else:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
 
-        # Determine think parameter based on behavior:
-        # - UNCONTROLLABLE: use think=true to cleanly separate thinking into dedicated field
-        # - CONTROLLABLE: use think=false to disable thinking
-        # - STANDARD: don't include think param (model doesn't support it)
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "stream": True,  # Enable streaming for real-time token monitoring
-            "options": {
-                "num_ctx": self.context_window,
-                "truncate": False
-            },
-        }
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "stream": True,
+                "options": {
+                    "num_ctx": self.context_window,
+                    "truncate": False
+                },
+            }
 
-        # Only add think param if model supports it
-        if self._supports_think_param:
-            if self._thinking_behavior == ThinkingBehavior.UNCONTROLLABLE:
-                # For uncontrollable models, use think=true to get clean separation
-                payload["think"] = True
-            else:
-                # For controllable and standard models, use think=false
-                payload["think"] = False
+            if self._supports_think_param:
+                if self._thinking_behavior == ThinkingBehavior.UNCONTROLLABLE:
+                    payload["think"] = True
+                else:
+                    payload["think"] = False
 
         client = await self._get_client()
         for attempt in range(MAX_TRANSLATION_ATTEMPTS):
@@ -328,10 +357,13 @@ class OllamaProvider(LLMProvider):
                                 # Recalculate max completion tokens based on actual prompt size
                                 max_completion_tokens = int((self.context_window - prompt_tokens) * 0.90)
 
-                            # Accumulate content
-                            message = chunk_data.get("message", {})
+                            # Accumulate content from chat (`message.content`) or
+                            # generate (`response`) streams.
+                            message = chunk_data.get("message") or {}
                             if message.get("content"):
                                 content_chunks.append(message["content"])
+                            elif chunk_data.get("response"):
+                                content_chunks.append(chunk_data["response"])
                             if message.get("thinking"):
                                 thinking_chunks.append(message["thinking"])
 
@@ -534,12 +566,25 @@ class OllamaProvider(LLMProvider):
                 RESET = '\033[0m'
 
                 error_message = str(e)
-                if e.response:
+                if e.response is not None:
                     try:
-                        error_data = e.response.json()
-                        error_message = error_data.get("error", str(e))
+                        await e.response.aread()
                     except Exception:
                         pass
+                    try:
+                        error_data = e.response.json()
+                        if isinstance(error_data, dict):
+                            err = error_data.get("error", error_message)
+                            error_message = (
+                                err.get("message", err) if isinstance(err, dict) else str(err)
+                            )
+                    except Exception:
+                        try:
+                            body = (e.response.text or "").strip()
+                            if body:
+                                error_message = body[:500]
+                        except Exception:
+                            pass
 
                 # Handle context overflow errors
                 if any(keyword in error_message.lower()

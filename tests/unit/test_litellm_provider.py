@@ -172,3 +172,30 @@ def test_factory_ignores_generic_endpoint_for_api_base():
         endpoint="http://localhost:11434/api/generate",
     )
     assert provider.api_base is None
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_rotates_key_pool(litellm_stub):
+    class RateLimitError(Exception):
+        pass
+
+    RateLimitError.__module__ = "litellm.exceptions"
+    RateLimitError.__name__ = "RateLimitError"
+    RateLimitError.__qualname__ = "RateLimitError"
+
+    litellm_stub.acompletion.side_effect = [
+        RateLimitError("429"),
+        _mock_response("ok"),
+    ]
+
+    from src.core.llm.providers.litellm import LiteLLMProvider
+
+    provider = LiteLLMProvider(model="openai/gpt-4o", api_key=["key-a", "key-b"])
+    result = await provider.generate("Hello")
+    assert result is not None
+    assert result.content == "ok"
+    assert litellm_stub.acompletion.call_count == 2
+    keys_used = [c.kwargs["api_key"] for c in litellm_stub.acompletion.call_args_list]
+    assert keys_used[0] != keys_used[1]
+    assert set(keys_used) == {"key-a", "key-b"}
+

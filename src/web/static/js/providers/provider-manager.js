@@ -532,6 +532,7 @@ export const ProviderManager = {
     async loadGenericCloudModels(provider) {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad(provider);
         const field = `${provider}ApiKey`;
         const setting = DomHelpers.getElement(`${provider}Settings`);
         if (setting) setting.style.display = 'block';
@@ -560,6 +561,7 @@ export const ProviderManager = {
         }[provider];
         try {
             const data = await ApiClient.getModels(provider, { apiKey: ApiKeyUtils.getValue(field) });
+            if (this._isStaleModelLoad(thisRequest, provider)) return;
             if (data.status === 'api_key_missing') {
                 populateModelSelect(fallback, fallback[0].value, provider);
                 StatusManager.setDisconnected(t('errors:api_key_required'));
@@ -569,8 +571,11 @@ export const ProviderManager = {
             populateModelSelect(models.length ? models : fallback, data.default || fallback[0].value, provider);
             StatusManager.setConnected(provider, models.length || fallback.length);
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, provider)) return;
             populateModelSelect(fallback, fallback[0].value, provider);
             StatusManager.setError(error.message);
+        } finally {
+            this._endModelLoad(thisRequest);
         }
     },
 
@@ -599,13 +604,14 @@ export const ProviderManager = {
     async loadChatGPTModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad('chatgpt');
         const setting = DomHelpers.getElement('chatgptSettings');
         if (setting) setting.style.display = 'block';
         setPlaceholderOption(modelSelect, 'settings:search_models_loading');
         StatusManager.setChecking();
         try {
             const data = await ApiClient.getModels('chatgpt');
-            if (DomHelpers.getValue('llmProvider') !== 'chatgpt') return;
+            if (this._isStaleModelLoad(thisRequest, 'chatgpt')) return;
             if (data.status === 'chatgpt_signed_out') {
                 setPlaceholderOption(modelSelect, 'settings:chatgpt_sign_in_to_load');
                 this._updateChatGPTAuthUi(false);
@@ -628,9 +634,12 @@ export const ProviderManager = {
             SettingsManager.applyPendingModelSelection();
             ModelDetector.checkAndShowRecommendation();
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, 'chatgpt')) return;
             setPlaceholderOption(modelSelect, 'settings:chatgpt_sign_in_to_load');
             this._updateChatGPTAuthUi(false);
             StatusManager.setError(error.message);
+        } finally {
+            this._endModelLoad(thisRequest);
         }
     },
 
@@ -691,21 +700,38 @@ export const ProviderManager = {
     },
 
     /**
+     * Cancel any in-flight model fetch and start a new one for `provider`.
+     * Prevents a slow previous provider from overwriting the dropdown.
+     */
+    _beginModelLoad(provider) {
+        const previous = StateManager.getState('models.currentLoadRequest');
+        if (previous) {
+            previous.cancelled = true;
+        }
+        const thisRequest = { cancelled: false, provider };
+        StateManager.setState('models.currentLoadRequest', thisRequest);
+        return thisRequest;
+    },
+
+    _isStaleModelLoad(thisRequest, provider) {
+        if (!thisRequest || thisRequest.cancelled) return true;
+        return DomHelpers.getValue('llmProvider') !== provider;
+    },
+
+    _endModelLoad(thisRequest) {
+        if (StateManager.getState('models.currentLoadRequest') === thisRequest) {
+            StateManager.setState('models.currentLoadRequest', null);
+        }
+    },
+
+    /**
      * Load Ollama models with auto-retry on failure
      */
     async loadOllamaModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
 
-        // Cancel any pending request
-        const currentRequest = StateManager.getState('models.currentLoadRequest');
-        if (currentRequest) {
-            currentRequest.cancelled = true;
-        }
-
-        // Create new request tracker
-        const thisRequest = { cancelled: false };
-        StateManager.setState('models.currentLoadRequest', thisRequest);
+        const thisRequest = this._beginModelLoad('ollama');
 
         setPlaceholderOption(modelSelect, 'settings:search_models_loading');
         StatusManager.setChecking();
@@ -714,16 +740,8 @@ export const ProviderManager = {
             const apiEndpoint = DomHelpers.getValue('apiEndpoint');
             const data = await ApiClient.getModels('ollama', { apiEndpoint });
 
-            // Check if request was cancelled
-            if (thisRequest.cancelled) {
+            if (this._isStaleModelLoad(thisRequest, 'ollama')) {
                 console.log('Model load request was cancelled');
-                return;
-            }
-
-            // Verify provider hasn't changed
-            const currentProvider = DomHelpers.getValue('llmProvider');
-            if (currentProvider !== 'ollama') {
-                console.log('Provider changed during model load, ignoring Ollama response');
                 return;
             }
 
@@ -766,7 +784,7 @@ export const ProviderManager = {
             }
 
         } catch (error) {
-            if (!thisRequest.cancelled) {
+            if (!this._isStaleModelLoad(thisRequest, 'ollama')) {
                 // Connection error - start auto-retry
                 if (ollamaRetryCount >= OLLAMA_MAX_SILENT_RETRIES) {
                     MessageLogger.showMessage(t('settings:waiting_for_ollama_msg'), 'warning');
@@ -778,10 +796,7 @@ export const ProviderManager = {
                 this.startOllamaAutoRetry();
             }
         } finally {
-            // Clear request tracker if it's still ours
-            if (StateManager.getState('models.currentLoadRequest') === thisRequest) {
-                StateManager.setState('models.currentLoadRequest', null);
-            }
+            this._endModelLoad(thisRequest);
         }
     },
 
@@ -825,6 +840,7 @@ export const ProviderManager = {
     async loadGeminiModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad('gemini');
 
         setPlaceholderOption(modelSelect, 'settings:search_models_loading_gemini');
         StatusManager.setChecking();
@@ -833,6 +849,7 @@ export const ProviderManager = {
             // Use ApiKeyUtils to get API key (returns '__USE_ENV__' if configured in .env)
             const apiKey = ApiKeyUtils.getValue('geminiApiKey');
             const data = await ApiClient.getModels('gemini', { apiKey });
+            if (this._isStaleModelLoad(thisRequest, 'gemini')) return;
 
             if (data.models && data.models.length > 0) {
                 MessageLogger.showMessage('', '');
@@ -863,10 +880,13 @@ export const ProviderManager = {
             }
 
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, 'gemini')) return;
             MessageLogger.showMessage(t('settings:gemini_fetch_error', { error: error.message }), 'error');
             MessageLogger.addLog(t('settings:gemini_fetch_error_log', { error: error.message }));
             setPlaceholderOption(modelSelect, 'settings:search_models_error');
             StatusManager.setError(error.message);
+        } finally {
+            this._endModelLoad(thisRequest);
         }
     },
 
@@ -879,6 +899,7 @@ export const ProviderManager = {
     async loadOpenAIModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad('openai');
 
         const apiEndpoint = DomHelpers.getValue('openaiEndpoint') || 'https://api.openai.com/v1/chat/completions';
         const isOfficialOpenAI = /^https?:\/\/api\.openai\.com(\/|$)/i.test(apiEndpoint);
@@ -894,6 +915,7 @@ export const ProviderManager = {
         try {
             const apiKey = ApiKeyUtils.getValue('openaiApiKey');
             const data = await ApiClient.getModels('openai', { apiKey, apiEndpoint });
+            if (this._isStaleModelLoad(thisRequest, 'openai')) return;
 
             if (data.status === 'openai_connected' && data.models && data.models.length > 0) {
                 MessageLogger.showMessage('', '');
@@ -946,6 +968,7 @@ export const ProviderManager = {
                 return;
             }
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, 'openai')) return;
             MessageLogger.showMessage(t('settings:openai_cannot_reach_endpoint', { error: error.message }), 'warning');
             MessageLogger.addLog(t('settings:openai_connection_error_log', { error: error.message }));
 
@@ -957,6 +980,8 @@ export const ProviderManager = {
             }
         }
 
+        if (this._isStaleModelLoad(thisRequest, 'openai')) return;
+
         // Last-resort static fallback — only reached for the official OpenAI host
         populateModelSelect(OPENAI_MODELS, null, 'openai');
         MessageLogger.addLog(t('settings:openai_models_common_log'));
@@ -966,6 +991,7 @@ export const ProviderManager = {
 
         StateManager.setState('models.availableModels', OPENAI_MODELS.map(m => m.value));
         StatusManager.setConnected('openai', OPENAI_MODELS.length);
+        this._endModelLoad(thisRequest);
     },
 
     /**
@@ -974,6 +1000,7 @@ export const ProviderManager = {
     async loadOpenRouterModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad('openrouter');
 
         setPlaceholderOption(modelSelect, 'settings:search_models_loading_openrouter');
         StatusManager.setChecking();
@@ -982,6 +1009,7 @@ export const ProviderManager = {
             // Use ApiKeyUtils to get API key (returns '__USE_ENV__' if configured in .env)
             const apiKey = ApiKeyUtils.getValue('openrouterApiKey');
             const data = await ApiClient.getModels('openrouter', { apiKey });
+            if (this._isStaleModelLoad(thisRequest, 'openrouter')) return;
 
             if (data.models && data.models.length > 0) {
                 MessageLogger.showMessage('', '');
@@ -1018,6 +1046,7 @@ export const ProviderManager = {
             }
 
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, 'openrouter')) return;
             // Use fallback list on error
             MessageLogger.showMessage(t('settings:openrouter_fetch_error_msg'), 'warning');
             MessageLogger.addLog(t('settings:openrouter_fetch_error_log', { error: error.message }));
@@ -1028,6 +1057,8 @@ export const ProviderManager = {
 
             // Still mark as connected since we have fallback models
             StatusManager.setConnected('openrouter', OPENROUTER_FALLBACK_MODELS.length);
+        } finally {
+            this._endModelLoad(thisRequest);
         }
     },
 
@@ -1037,6 +1068,7 @@ export const ProviderManager = {
     async loadMistralModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad('mistral');
 
         setPlaceholderOption(modelSelect, 'settings:search_models_loading_mistral');
         StatusManager.setChecking();
@@ -1052,6 +1084,7 @@ export const ProviderManager = {
             }
 
             const data = await ApiClient.getModels('mistral', { apiKey });
+            if (this._isStaleModelLoad(thisRequest, 'mistral')) return;
 
             if (data.models && data.models.length > 0) {
                 MessageLogger.showMessage('', '');
@@ -1078,9 +1111,12 @@ export const ProviderManager = {
                 StatusManager.setError(t('settings:status_no_models'));
             }
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, 'mistral')) return;
             MessageLogger.showMessage(t('settings:mistral_error', { error: error.message }), 'error');
             setPlaceholderOption(modelSelect, 'settings:search_models_error');
             StatusManager.setError(error.message);
+        } finally {
+            this._endModelLoad(thisRequest);
         }
     },
 
@@ -1090,6 +1126,7 @@ export const ProviderManager = {
     async loadDeepSeekModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad('deepseek');
 
         setPlaceholderOption(modelSelect, 'settings:search_models_loading_deepseek');
         StatusManager.setChecking();
@@ -1105,6 +1142,7 @@ export const ProviderManager = {
             }
 
             const data = await ApiClient.getModels('deepseek', { apiKey });
+            if (this._isStaleModelLoad(thisRequest, 'deepseek')) return;
 
             if (data.models && data.models.length > 0) {
                 MessageLogger.showMessage('', '');
@@ -1135,6 +1173,7 @@ export const ProviderManager = {
                 StatusManager.setConnected('deepseek', DEEPSEEK_FALLBACK_MODELS.length);
             }
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, 'deepseek')) return;
             // Use fallback list on error
             MessageLogger.showMessage(t('settings:deepseek_error_fallback_msg', { error: error.message }), 'warning');
             MessageLogger.addLog(t('settings:deepseek_error_fallback_log', { error: error.message }));
@@ -1142,6 +1181,8 @@ export const ProviderManager = {
 
             StateManager.setState('models.availableModels', DEEPSEEK_FALLBACK_MODELS.map(m => m.value));
             StatusManager.setConnected('deepseek', DEEPSEEK_FALLBACK_MODELS.length);
+        } finally {
+            this._endModelLoad(thisRequest);
         }
     },
 
@@ -1151,6 +1192,7 @@ export const ProviderManager = {
     async loadNimModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad('nim');
 
         setPlaceholderOption(modelSelect, 'settings:search_models_loading_nim');
         StatusManager.setChecking();
@@ -1165,6 +1207,7 @@ export const ProviderManager = {
             }
 
             const data = await ApiClient.getModels('nim', { apiKey });
+            if (this._isStaleModelLoad(thisRequest, 'nim')) return;
 
             if (data.models && data.models.length > 0) {
                 MessageLogger.showMessage('', '');
@@ -1193,12 +1236,15 @@ export const ProviderManager = {
                 StatusManager.setConnected('nim', NIM_FALLBACK_MODELS.length);
             }
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, 'nim')) return;
             MessageLogger.showMessage(t('settings:deepseek_error_fallback_msg', { error: error.message }), 'warning');
             MessageLogger.addLog(t('settings:nim_error_fallback_log', { error: error.message }));
             populateModelSelect(NIM_FALLBACK_MODELS, 'meta/llama-3.1-70b-instruct', 'nim');
 
             StateManager.setState('models.availableModels', NIM_FALLBACK_MODELS.map(m => m.value));
             StatusManager.setConnected('nim', NIM_FALLBACK_MODELS.length);
+        } finally {
+            this._endModelLoad(thisRequest);
         }
     },
 
@@ -1208,6 +1254,7 @@ export const ProviderManager = {
     async loadPoeModels() {
         const modelSelect = DomHelpers.getElement('model');
         if (!modelSelect) return;
+        const thisRequest = this._beginModelLoad('poe');
 
         setPlaceholderOption(modelSelect, 'settings:search_models_loading_poe');
         StatusManager.setChecking();
@@ -1223,6 +1270,7 @@ export const ProviderManager = {
             }
 
             const data = await ApiClient.getModels('poe', { apiKey });
+            if (this._isStaleModelLoad(thisRequest, 'poe')) return;
 
             if (data.models && data.models.length > 0) {
                 MessageLogger.showMessage('', '');
@@ -1247,6 +1295,7 @@ export const ProviderManager = {
                 StatusManager.setConnected('poe', POE_FALLBACK_MODELS.length);
             }
         } catch (error) {
+            if (this._isStaleModelLoad(thisRequest, 'poe')) return;
             // Use fallback list on error
             MessageLogger.showMessage(t('settings:deepseek_error_fallback_msg', { error: error.message }), 'warning');
             MessageLogger.addLog(t('settings:poe_error_fallback_log', { error: error.message }));
@@ -1254,6 +1303,8 @@ export const ProviderManager = {
 
             StateManager.setState('models.availableModels', POE_FALLBACK_MODELS.map(m => m.value));
             StatusManager.setConnected('poe', POE_FALLBACK_MODELS.length);
+        } finally {
+            this._endModelLoad(thisRequest);
         }
     },
 

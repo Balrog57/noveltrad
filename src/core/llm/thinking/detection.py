@@ -57,10 +57,10 @@ def detect_repetition_loop(
         # For longer phrases, we need fewer repetitions (they're more indicative of a loop)
         # Short phrases (5-10 chars) need more repetitions to avoid false positives
         adjusted_min_reps = min_repetitions
-        if phrase_len >= 20:
-            adjusted_min_reps = max(5, min_repetitions - 5)  # Longer phrases need fewer reps
-        elif phrase_len >= 40:
-            adjusted_min_reps = max(3, min_repetitions - 8)  # Very long phrases are very suspicious
+        if phrase_len >= 40:
+            adjusted_min_reps = max(3, min_repetitions - 8)
+        elif phrase_len >= 20:
+            adjusted_min_reps = max(5, min_repetitions - 5)
 
         # Find potential repeating phrases
         for start in range(len(check_text) - phrase_len * adjusted_min_reps):

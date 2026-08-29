@@ -37,6 +37,19 @@ _GEMINI_HARM_CATEGORIES = (
 )
 
 
+def join_gemini_text_parts(parts) -> str:
+    """Concatenate every text part; thinking models may split across parts."""
+    if not parts:
+        return ""
+    texts = []
+    for part in parts:
+        if isinstance(part, dict):
+            text = part.get("text") or ""
+            if text:
+                texts.append(text)
+    return "".join(texts)
+
+
 class GeminiProvider(LLMProvider):
     """
     Provider for Google Gemini API.
@@ -231,7 +244,7 @@ class GeminiProvider(LLMProvider):
                     content = candidate.get("content", {})
                     parts = content.get("parts", [])
                     if parts:
-                        response_text = parts[0].get("text", "")
+                        response_text = join_gemini_text_parts(parts)
                     # Detect finishReason: MAX_TOKENS = truncation; SAFETY/RECITATION
                     # = the model produced nothing because the response was blocked
                     # post-generation. We log SAFETY explicitly because a silent

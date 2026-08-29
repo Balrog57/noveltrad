@@ -82,8 +82,12 @@ def get_default_pricing(provider: str, model: str) -> dict | None:
         if known_model.lower() == model_lower:
             return _strip_note(pricing)
 
-    for known_model, pricing in provider_data.items():
-        if known_model.lower() in model_lower or model_lower in known_model.lower():
+    # Longest key first so "gemini-2.5-flash" cannot shadow "gemini-2.5-flash-lite".
+    for known_model, pricing in sorted(
+        provider_data.items(), key=lambda item: len(item[0]), reverse=True
+    ):
+        known_lower = known_model.lower()
+        if known_lower in model_lower or model_lower in known_lower:
             return _strip_note(pricing)
 
     return None

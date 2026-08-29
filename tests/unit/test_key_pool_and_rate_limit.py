@@ -133,6 +133,9 @@ class TestIsRetryableHttpStatus:
         for code in (400, 401, 402, 403, 404, 410, 422):
             assert is_retryable_http_status(code) is False, code
 
+    def test_request_timeout_is_retryable(self):
+        assert is_retryable_http_status(408) is True
+
     def test_rate_limit_is_retryable(self):
         assert is_retryable_http_status(429) is True
 

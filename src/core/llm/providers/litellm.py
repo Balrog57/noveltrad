@@ -18,6 +18,7 @@ Example:
 """
 
 import asyncio
+import time
 from typing import Optional, Union, List
 
 from src.config import REQUEST_TIMEOUT, MAX_TRANSLATION_ATTEMPTS, TEMPERATURE
@@ -126,12 +127,17 @@ class LiteLLMProvider(LLMProvider):
         kwargs = self._build_kwargs()
 
         for attempt in range(MAX_TRANSLATION_ATTEMPTS):
+            current_key = None
+            call_kwargs = dict(kwargs)
+            if self._key_pool:
+                current_key = await self._key_pool.acquire()
+                call_kwargs["api_key"] = current_key
             try:
                 response = await litellm.acompletion(
                     model=self.model,
                     messages=messages,
                     timeout=timeout,
-                    **kwargs,
+                    **call_kwargs,
                 )
 
                 choice = response.choices[0]
@@ -160,6 +166,14 @@ class LiteLLMProvider(LLMProvider):
                     raise ContextOverflowError(f"LiteLLM context overflow: {e}") from e
 
                 qualname = f"{type(e).__module__}.{type(e).__name__}"
+                if (
+                    qualname == "litellm.exceptions.RateLimitError"
+                    and self._key_pool
+                    and current_key
+                ):
+                    await self._key_pool.mark_throttled(
+                        current_key, time.monotonic() + 30
+                    )
                 is_last = attempt >= MAX_TRANSLATION_ATTEMPTS - 1
                 print(
                     f"[LiteLLM] Error (attempt {attempt + 1}/"
