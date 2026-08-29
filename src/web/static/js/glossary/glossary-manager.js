@@ -231,6 +231,22 @@ function switchTopTab(name) {
     buttons.forEach((btn) => {
         const isActive = btn.dataset.tab === name;
         btn.classList.toggle('tab-btn-active', isActive);
+        btn.setAttribute('aria-selected', String(isActive));
+        btn.tabIndex = isActive ? 0 : -1;
+    });
+
+    const panels = [
+        ['translate', translateTab],
+        ['settings', settingsTab],
+        ['glossaries', glossariesTab],
+        ['files', filesTab],
+        ['sample', sampleTab],
+        ['styles', stylesTab],
+    ];
+    panels.forEach(([tabName, panel]) => {
+        if (!panel) return;
+        const isActive = tabName === name;
+        panel.setAttribute('aria-hidden', String(!isActive));
     });
 
     if (name === 'glossaries') {
@@ -240,6 +256,38 @@ function switchTopTab(name) {
     } else if (name === 'styles' && typeof window.refreshStyleList === 'function') {
         window.refreshStyleList();
     }
+}
+
+function onTopTabKeydown(event) {
+    const nav = document.getElementById('topTabNav');
+    if (!nav || !nav.contains(event.target)) return;
+    const tabs = Array.from(nav.querySelectorAll('[role="tab"]'));
+    const current = tabs.indexOf(event.target);
+    if (current < 0) return;
+
+    let next = current;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        next = (current + 1) % tabs.length;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        next = (current - 1 + tabs.length) % tabs.length;
+    } else if (event.key === 'Home') {
+        next = 0;
+    } else if (event.key === 'End') {
+        next = tabs.length - 1;
+    } else {
+        return;
+    }
+    event.preventDefault();
+    const name = tabs[next].dataset.tab;
+    switchTopTab(name);
+    tabs[next].focus();
+}
+
+function initTopTabKeyboard() {
+    const nav = document.getElementById('topTabNav');
+    if (!nav || nav.dataset.keyboardBound === '1') return;
+    nav.dataset.keyboardBound = '1';
+    nav.addEventListener('keydown', onTopTabKeydown);
 }
 
 // ========================================
@@ -2135,6 +2183,7 @@ function wirePreviewModal() {
 
 export const GlossaryManager = {
     initialize() {
+        initTopTabKeyboard();
         wireTranslateTabDropdown();
         wireListView();
         wireEditorView();
