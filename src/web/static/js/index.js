@@ -617,6 +617,12 @@ async function showTTSModal(filename, filepath) {
     }
 
     const isChatterboxAvailable = providersInfo.chatterbox?.available || false;
+    const chatterboxProviderKey = isChatterboxAvailable
+        ? 'tts:provider_chatterbox_full_local'
+        : 'tts:provider_chatterbox_full_unavailable';
+    const gpuName = gpuStatus.cuda_available ? (gpuStatus.gpu_name || '') : '';
+    const gpuI18nKey = gpuName ? '' : (gpuStatus.cuda_available ? 'tts:gpu_cuda' : 'tts:gpu_cpu');
+    const subtitleParams = DomHelpers.escapeHtml(JSON.stringify({ filename }));
 
     // Build voice prompts options
     const voicePromptsOptions = voicePrompts.map(vp =>
@@ -628,32 +634,32 @@ async function showTTSModal(filename, filepath) {
         <div id="ttsModal" class="modal-overlay">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3>🎧 Generate Audiobook</h3>
+                    <h3 data-i18n="tts:modal_title_emoji">${t('tts:modal_title_emoji')}</h3>
                     <button class="close-btn" id="ttsModalClose">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p style="margin: 0 0 20px 0; color: #a3adb3; font-size: 14px;">
-                        Generate audio narration for: <strong style="color: #79CDDE;">${DomHelpers.escapeHtml(filename)}</strong>
-                    </p>
+                    <p style="margin: 0 0 20px 0; color: #a3adb3; font-size: 14px;"
+                       data-i18n="tts:modal_subtitle"
+                       data-i18n-params="${subtitleParams}"></p>
 
                     <!-- Provider Selection -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-size: 13px;">TTS Provider</label>
+                            <label style="font-size: 13px;" data-i18n="tts:provider">${t('tts:provider')}</label>
                             <select id="ttsModalProvider" class="form-control" style="font-size: 13px;">
-                                <option value="edge-tts">Edge TTS (Cloud)</option>
-                                <option value="chatterbox" ${!isChatterboxAvailable ? 'disabled' : ''}>
-                                    Chatterbox TTS ${!isChatterboxAvailable ? '(Not Available)' : '(Local GPU)'}
+                                <option value="edge-tts" data-i18n="tts:provider_edge">${t('tts:provider_edge')}</option>
+                                <option value="chatterbox" ${!isChatterboxAvailable ? 'disabled' : ''} data-i18n="${chatterboxProviderKey}">
+                                    ${t(chatterboxProviderKey)}
                                 </option>
                             </select>
                         </div>
 
                         <!-- GPU Status (shown when Chatterbox selected) -->
                         <div id="ttsModalGpuStatus" class="form-group" style="margin-bottom: 0; display: none;">
-                            <label style="font-size: 13px;">GPU Status</label>
+                            <label style="font-size: 13px;" data-i18n="tts:gpu_status">${t('tts:gpu_status')}</label>
                             <div class="gpu-status ${gpuStatus.cuda_available ? 'gpu-available' : 'gpu-unavailable'}">
                                 <span class="status-dot ${gpuStatus.cuda_available ? 'available' : 'unavailable'}"></span>
-                                <span>${gpuStatus.cuda_available ? (gpuStatus.gpu_name || 'CUDA GPU') : 'CPU Mode'}</span>
+                                <span${gpuI18nKey ? ` data-i18n="${gpuI18nKey}"` : ''}>${gpuName ? DomHelpers.escapeHtml(gpuName) : t(gpuI18nKey)}</span>
                             </div>
                         </div>
                     </div>
@@ -662,93 +668,93 @@ async function showTTSModal(filename, filepath) {
                     <div id="ttsModalEdgeOptions">
                         <div style="display: grid; gap: 15px;">
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-size: 13px;">Target Language</label>
+                                <label style="font-size: 13px;" data-i18n="tts:target_language">${t('tts:target_language')}</label>
                                 <select id="ttsModalLanguage" class="form-control" style="font-size: 13px;">
                                     <!-- Most Common -->
-                                    <option value="Chinese">Chinese (中文)</option>
-                                    <option value="English">English</option>
-                                    <option value="French">French (Français)</option>
-                                    <option value="Spanish">Spanish (Español)</option>
-                                    <option value="German">German (Deutsch)</option>
-                                    <option value="Japanese">Japanese (日本語)</option>
-                                    <option value="Korean">Korean (한국어)</option>
-                                    <option value="Portuguese (Brazil)">Portuguese (Brazil) (Português)</option>
-                                    <option value="Portuguese (Portugal)">Portuguese (Portugal) (Português)</option>
-                                    <option value="Russian">Russian (Русский)</option>
-                                    <option value="Arabic">Arabic (العربية)</option>
+                                    <option value="Chinese" data-i18n="tts:lang_chinese">${t('tts:lang_chinese')}</option>
+                                    <option value="English" data-i18n="tts:lang_english">${t('tts:lang_english')}</option>
+                                    <option value="French" data-i18n="tts:lang_french">${t('tts:lang_french')}</option>
+                                    <option value="Spanish" data-i18n="tts:lang_spanish">${t('tts:lang_spanish')}</option>
+                                    <option value="German" data-i18n="tts:lang_german">${t('tts:lang_german')}</option>
+                                    <option value="Japanese" data-i18n="tts:lang_japanese">${t('tts:lang_japanese')}</option>
+                                    <option value="Korean" data-i18n="tts:lang_korean">${t('tts:lang_korean')}</option>
+                                    <option value="Portuguese (Brazil)" data-i18n="tts:lang_portuguese_brazil">${t('tts:lang_portuguese_brazil')}</option>
+                                    <option value="Portuguese (Portugal)" data-i18n="tts:lang_portuguese_portugal">${t('tts:lang_portuguese_portugal')}</option>
+                                    <option value="Russian" data-i18n="tts:lang_russian">${t('tts:lang_russian')}</option>
+                                    <option value="Arabic" data-i18n="tts:lang_arabic">${t('tts:lang_arabic')}</option>
                                     <!-- European -->
-                                    <option value="Italian">Italian (Italiano)</option>
-                                    <option value="Dutch">Dutch (Nederlands)</option>
-                                    <option value="Polish">Polish (Polski)</option>
-                                    <option value="Swedish">Swedish (Svenska)</option>
-                                    <option value="Norwegian">Norwegian (Norsk)</option>
-                                    <option value="Danish">Danish (Dansk)</option>
-                                    <option value="Finnish">Finnish (Suomi)</option>
-                                    <option value="Greek">Greek (Ελληνικά)</option>
-                                    <option value="Czech">Czech (Čeština)</option>
-                                    <option value="Hungarian">Hungarian (Magyar)</option>
-                                    <option value="Romanian">Romanian (Română)</option>
-                                    <option value="Turkish">Turkish (Türkçe)</option>
-                                    <option value="Ukrainian">Ukrainian (Українська)</option>
-                                    <option value="Bulgarian">Bulgarian (Български)</option>
-                                    <option value="Croatian">Croatian (Hrvatski)</option>
-                                    <option value="Slovak">Slovak (Slovenčina)</option>
-                                    <option value="Slovenian">Slovenian (Slovenščina)</option>
-                                    <option value="Lithuanian">Lithuanian (Lietuvių)</option>
-                                    <option value="Latvian">Latvian (Latviešu)</option>
-                                    <option value="Estonian">Estonian (Eesti)</option>
+                                    <option value="Italian" data-i18n="tts:lang_italian">${t('tts:lang_italian')}</option>
+                                    <option value="Dutch" data-i18n="tts:lang_dutch">${t('tts:lang_dutch')}</option>
+                                    <option value="Polish" data-i18n="tts:lang_polish">${t('tts:lang_polish')}</option>
+                                    <option value="Swedish" data-i18n="tts:lang_swedish">${t('tts:lang_swedish')}</option>
+                                    <option value="Norwegian" data-i18n="tts:lang_norwegian">${t('tts:lang_norwegian')}</option>
+                                    <option value="Danish" data-i18n="tts:lang_danish">${t('tts:lang_danish')}</option>
+                                    <option value="Finnish" data-i18n="tts:lang_finnish">${t('tts:lang_finnish')}</option>
+                                    <option value="Greek" data-i18n="tts:lang_greek">${t('tts:lang_greek')}</option>
+                                    <option value="Czech" data-i18n="tts:lang_czech">${t('tts:lang_czech')}</option>
+                                    <option value="Hungarian" data-i18n="tts:lang_hungarian">${t('tts:lang_hungarian')}</option>
+                                    <option value="Romanian" data-i18n="tts:lang_romanian">${t('tts:lang_romanian')}</option>
+                                    <option value="Turkish" data-i18n="tts:lang_turkish">${t('tts:lang_turkish')}</option>
+                                    <option value="Ukrainian" data-i18n="tts:lang_ukrainian">${t('tts:lang_ukrainian')}</option>
+                                    <option value="Bulgarian" data-i18n="tts:lang_bulgarian">${t('tts:lang_bulgarian')}</option>
+                                    <option value="Croatian" data-i18n="tts:lang_croatian">${t('tts:lang_croatian')}</option>
+                                    <option value="Slovak" data-i18n="tts:lang_slovak">${t('tts:lang_slovak')}</option>
+                                    <option value="Slovenian" data-i18n="tts:lang_slovenian">${t('tts:lang_slovenian')}</option>
+                                    <option value="Lithuanian" data-i18n="tts:lang_lithuanian">${t('tts:lang_lithuanian')}</option>
+                                    <option value="Latvian" data-i18n="tts:lang_latvian">${t('tts:lang_latvian')}</option>
+                                    <option value="Estonian" data-i18n="tts:lang_estonian">${t('tts:lang_estonian')}</option>
                                     <!-- Asian -->
-                                    <option value="Hindi">Hindi (हिन्दी)</option>
-                                    <option value="Vietnamese">Vietnamese (Tiếng Việt)</option>
-                                    <option value="Thai">Thai (ไทย)</option>
-                                    <option value="Indonesian">Indonesian (Bahasa Indonesia)</option>
-                                    <option value="Malay">Malay (Bahasa Melayu)</option>
-                                    <option value="Filipino">Filipino (Tagalog)</option>
-                                    <option value="Bengali">Bengali (বাংলা)</option>
-                                    <option value="Tamil">Tamil (தமிழ்)</option>
-                                    <option value="Telugu">Telugu (తెలుగు)</option>
+                                    <option value="Hindi" data-i18n="tts:lang_hindi">${t('tts:lang_hindi')}</option>
+                                    <option value="Vietnamese" data-i18n="tts:lang_vietnamese">${t('tts:lang_vietnamese')}</option>
+                                    <option value="Thai" data-i18n="tts:lang_thai">${t('tts:lang_thai')}</option>
+                                    <option value="Indonesian" data-i18n="tts:lang_indonesian">${t('tts:lang_indonesian')}</option>
+                                    <option value="Malay" data-i18n="tts:lang_malay">${t('tts:lang_malay')}</option>
+                                    <option value="Filipino" data-i18n="tts:lang_filipino">${t('tts:lang_filipino')}</option>
+                                    <option value="Bengali" data-i18n="tts:lang_bengali">${t('tts:lang_bengali')}</option>
+                                    <option value="Tamil" data-i18n="tts:lang_tamil">${t('tts:lang_tamil')}</option>
+                                    <option value="Telugu" data-i18n="tts:lang_telugu">${t('tts:lang_telugu')}</option>
                                     <!-- Middle Eastern -->
-                                    <option value="Hebrew">Hebrew (עברית)</option>
-                                    <option value="Persian">Persian/Farsi (فارسی)</option>
-                                    <option value="Urdu">Urdu (اردو)</option>
+                                    <option value="Hebrew" data-i18n="tts:lang_hebrew">${t('tts:lang_hebrew')}</option>
+                                    <option value="Persian" data-i18n="tts:lang_persian">${t('tts:lang_persian')}</option>
+                                    <option value="Urdu" data-i18n="tts:lang_urdu">${t('tts:lang_urdu')}</option>
                                 </select>
                             </div>
 
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-size: 13px;">Voice (optional)</label>
-                                <input type="text" id="ttsModalVoice" class="form-control" placeholder="e.g., zh-CN-XiaoxiaoNeural" style="font-size: 13px;">
-                                <small style="color: #6b7280;">Leave empty for auto-selection based on language</small>
+                                <label style="font-size: 13px;" data-i18n="tts:voice_optional">${t('tts:voice_optional')}</label>
+                                <input type="text" id="ttsModalVoice" class="form-control" data-i18n-attr="placeholder:tts:voice_placeholder" placeholder="${t('tts:voice_placeholder')}" style="font-size: 13px;">
+                                <small style="color: #6b7280;" data-i18n="tts:voice_auto_hint">${t('tts:voice_auto_hint')}</small>
                             </div>
 
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                 <div class="form-group" style="margin-bottom: 0;">
-                                    <label style="font-size: 13px;">Speech Rate</label>
+                                    <label style="font-size: 13px;" data-i18n="tts:speech_rate">${t('tts:speech_rate')}</label>
                                     <select id="ttsModalRate" class="form-control" style="font-size: 13px;">
-                                        <option value="-20%">Slower (-20%)</option>
-                                        <option value="-10%">Slightly slower (-10%)</option>
-                                        <option value="+0%" selected>Normal</option>
-                                        <option value="+10%">Slightly faster (+10%)</option>
-                                        <option value="+20%">Faster (+20%)</option>
-                                        <option value="+30%">Much faster (+30%)</option>
+                                        <option value="-20%" data-i18n="tts:rate_slower">${t('tts:rate_slower')}</option>
+                                        <option value="-10%" data-i18n="tts:rate_slightly_slower">${t('tts:rate_slightly_slower')}</option>
+                                        <option value="+0%" selected data-i18n="tts:rate_normal">${t('tts:rate_normal')}</option>
+                                        <option value="+10%" data-i18n="tts:rate_slightly_faster">${t('tts:rate_slightly_faster')}</option>
+                                        <option value="+20%" data-i18n="tts:rate_faster">${t('tts:rate_faster')}</option>
+                                        <option value="+30%" data-i18n="tts:rate_much_faster">${t('tts:rate_much_faster')}</option>
                                     </select>
                                 </div>
 
                                 <div class="form-group" style="margin-bottom: 0;">
-                                    <label style="font-size: 13px;">Audio Format</label>
+                                    <label style="font-size: 13px;" data-i18n="tts:audio_format">${t('tts:audio_format')}</label>
                                     <select id="ttsModalFormat" class="form-control" style="font-size: 13px;">
-                                        <option value="opus" selected>Opus (compact)</option>
-                                        <option value="mp3">MP3 (compatible)</option>
+                                        <option value="opus" selected data-i18n="tts:audio_format_opus">${t('tts:audio_format_opus')}</option>
+                                        <option value="mp3" data-i18n="tts:audio_format_mp3">${t('tts:audio_format_mp3')}</option>
                                     </select>
                                 </div>
                             </div>
 
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-size: 13px;">Audio Bitrate</label>
+                                <label style="font-size: 13px;" data-i18n="tts:audio_bitrate">${t('tts:audio_bitrate')}</label>
                                 <select id="ttsModalBitrate" class="form-control" style="font-size: 13px;">
-                                    <option value="48k">48k (smaller file)</option>
-                                    <option value="64k" selected>64k (balanced)</option>
-                                    <option value="96k">96k (higher quality)</option>
-                                    <option value="128k">128k (best quality)</option>
+                                    <option value="48k" data-i18n="tts:bitrate_48">${t('tts:bitrate_48')}</option>
+                                    <option value="64k" selected data-i18n="tts:bitrate_64">${t('tts:bitrate_64')}</option>
+                                    <option value="96k" data-i18n="tts:bitrate_96">${t('tts:bitrate_96')}</option>
+                                    <option value="128k" data-i18n="tts:bitrate_128">${t('tts:bitrate_128')}</option>
                                 </select>
                             </div>
                         </div>
@@ -757,74 +763,76 @@ async function showTTSModal(filename, filepath) {
                     <!-- Chatterbox Options (hidden by default) -->
                     <div id="ttsModalChatterboxOptions" style="display: none;">
                         <div style="background: #2a2a2a; border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid #fbbf24;">
-                            <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #fbbf24;">🎤 Voice Cloning</h4>
+                            <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #fbbf24;" data-i18n="tts:voice_cloning_heading">${t('tts:voice_cloning_heading')}</h4>
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-size: 13px;">Voice Prompt</label>
+                                <label style="font-size: 13px;" data-i18n="tts:voice_prompt">${t('tts:voice_prompt')}</label>
                                 <select id="ttsModalVoicePrompt" class="form-control" style="font-size: 13px;">
-                                    <option value="">Default voice (no cloning)</option>
+                                    <option value="" data-i18n="tts:voice_prompt_default">${t('tts:voice_prompt_default')}</option>
                                     ${voicePromptsOptions}
                                 </select>
-                                <small style="color: #6b7280;">Select a previously uploaded voice sample</small>
+                                <small style="color: #6b7280;" data-i18n="tts:voice_prompt_hint">${t('tts:voice_prompt_hint')}</small>
                             </div>
                         </div>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-size: 13px;">
-                                    Exaggeration <span id="ttsModalExaggerationValue" style="color: #fbbf24;">0.50</span>
+                                    <span data-i18n="tts:exaggeration">${t('tts:exaggeration')}</span>
+                                    <span id="ttsModalExaggerationValue" style="color: #fbbf24;">0.50</span>
                                 </label>
                                 <input type="range" id="ttsModalExaggeration" min="0" max="1" step="0.05" value="0.5" class="tts-slider">
-                                <small style="color: #6b7280;">Higher = more expressive</small>
+                                <small style="color: #6b7280;" data-i18n="tts:exaggeration_hint">${t('tts:exaggeration_hint')}</small>
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-size: 13px;">
-                                    CFG Weight <span id="ttsModalCfgValue" style="color: #fbbf24;">0.50</span>
+                                    <span data-i18n="tts:cfg_weight">${t('tts:cfg_weight')}</span>
+                                    <span id="ttsModalCfgValue" style="color: #fbbf24;">0.50</span>
                                 </label>
                                 <input type="range" id="ttsModalCfgWeight" min="0" max="1" step="0.05" value="0.5" class="tts-slider">
-                                <small style="color: #6b7280;">Prompt adherence</small>
+                                <small style="color: #6b7280;" data-i18n="tts:cfg_weight_hint">${t('tts:cfg_weight_hint')}</small>
                             </div>
                         </div>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-size: 13px;">Target Language</label>
+                                <label style="font-size: 13px;" data-i18n="tts:target_language">${t('tts:target_language')}</label>
                                 <select id="ttsModalChatterboxLang" class="form-control" style="font-size: 13px;">
                                     <!-- Most Common -->
-                                    <option value="en">English</option>
-                                    <option value="zh">Chinese (中文)</option>
-                                    <option value="es">Spanish (Español)</option>
-                                    <option value="fr">French (Français)</option>
-                                    <option value="de">German (Deutsch)</option>
-                                    <option value="it">Italian (Italiano)</option>
-                                    <option value="ja">Japanese (日本語)</option>
-                                    <option value="ko">Korean (한국어)</option>
-                                    <option value="pt-br">Portuguese (Brazil) (Português)</option>
-                                    <option value="pt-pt">Portuguese (Portugal) (Português)</option>
-                                    <option value="ru">Russian (Русский)</option>
-                                    <option value="ar">Arabic (العربية)</option>
+                                    <option value="en" data-i18n="tts:lang_english">${t('tts:lang_english')}</option>
+                                    <option value="zh" data-i18n="tts:lang_chinese">${t('tts:lang_chinese')}</option>
+                                    <option value="es" data-i18n="tts:lang_spanish">${t('tts:lang_spanish')}</option>
+                                    <option value="fr" data-i18n="tts:lang_french">${t('tts:lang_french')}</option>
+                                    <option value="de" data-i18n="tts:lang_german">${t('tts:lang_german')}</option>
+                                    <option value="it" data-i18n="tts:lang_italian">${t('tts:lang_italian')}</option>
+                                    <option value="ja" data-i18n="tts:lang_japanese">${t('tts:lang_japanese')}</option>
+                                    <option value="ko" data-i18n="tts:lang_korean">${t('tts:lang_korean')}</option>
+                                    <option value="pt-br" data-i18n="tts:lang_portuguese_brazil">${t('tts:lang_portuguese_brazil')}</option>
+                                    <option value="pt-pt" data-i18n="tts:lang_portuguese_portugal">${t('tts:lang_portuguese_portugal')}</option>
+                                    <option value="ru" data-i18n="tts:lang_russian">${t('tts:lang_russian')}</option>
+                                    <option value="ar" data-i18n="tts:lang_arabic">${t('tts:lang_arabic')}</option>
                                     <!-- European -->
-                                    <option value="pl">Polish (Polski)</option>
-                                    <option value="tr">Turkish (Türkçe)</option>
-                                    <option value="nl">Dutch (Nederlands)</option>
-                                    <option value="cs">Czech (Čeština)</option>
-                                    <option value="sv">Swedish (Svenska)</option>
-                                    <option value="da">Danish (Dansk)</option>
-                                    <option value="fi">Finnish (Suomi)</option>
-                                    <option value="hu">Hungarian (Magyar)</option>
+                                    <option value="pl" data-i18n="tts:lang_polish">${t('tts:lang_polish')}</option>
+                                    <option value="tr" data-i18n="tts:lang_turkish">${t('tts:lang_turkish')}</option>
+                                    <option value="nl" data-i18n="tts:lang_dutch">${t('tts:lang_dutch')}</option>
+                                    <option value="cs" data-i18n="tts:lang_czech">${t('tts:lang_czech')}</option>
+                                    <option value="sv" data-i18n="tts:lang_swedish">${t('tts:lang_swedish')}</option>
+                                    <option value="da" data-i18n="tts:lang_danish">${t('tts:lang_danish')}</option>
+                                    <option value="fi" data-i18n="tts:lang_finnish">${t('tts:lang_finnish')}</option>
+                                    <option value="hu" data-i18n="tts:lang_hungarian">${t('tts:lang_hungarian')}</option>
                                     <!-- Asian -->
-                                    <option value="hi">Hindi (हिन्दी)</option>
-                                    <option value="vi">Vietnamese (Tiếng Việt)</option>
-                                    <option value="id">Indonesian (Bahasa Indonesia)</option>
+                                    <option value="hi" data-i18n="tts:lang_hindi">${t('tts:lang_hindi')}</option>
+                                    <option value="vi" data-i18n="tts:lang_vietnamese">${t('tts:lang_vietnamese')}</option>
+                                    <option value="id" data-i18n="tts:lang_indonesian">${t('tts:lang_indonesian')}</option>
                                     <!-- Other -->
-                                    <option value="el">Greek (Ελληνικά)</option>
+                                    <option value="el" data-i18n="tts:lang_greek">${t('tts:lang_greek')}</option>
                                 </select>
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-size: 13px;">Audio Format</label>
+                                <label style="font-size: 13px;" data-i18n="tts:audio_format">${t('tts:audio_format')}</label>
                                 <select id="ttsModalChatterboxFormat" class="form-control" style="font-size: 13px;">
-                                    <option value="wav">WAV (lossless)</option>
-                                    <option value="mp3" selected>MP3 (compatible)</option>
-                                    <option value="opus">Opus (compact)</option>
+                                    <option value="wav" data-i18n="tts:audio_format_wav">${t('tts:audio_format_wav')}</option>
+                                    <option value="mp3" selected data-i18n="tts:audio_format_mp3">${t('tts:audio_format_mp3')}</option>
+                                    <option value="opus" data-i18n="tts:audio_format_opus">${t('tts:audio_format_opus')}</option>
                                 </select>
                             </div>
                         </div>
@@ -832,9 +840,9 @@ async function showTTSModal(filename, filepath) {
                 </div>
 
                 <div class="modal-footer">
-                    <button id="ttsModalCancel" class="btn btn-secondary">Cancel</button>
-                    <button id="ttsModalGenerate" class="btn btn-primary" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);">
-                        🎧 Generate Audio
+                    <button id="ttsModalCancel" class="btn btn-secondary" data-i18n="common:cancel">${t('common:cancel')}</button>
+                    <button id="ttsModalGenerate" class="btn btn-primary" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);" data-i18n="tts:generate_audio_with_icon">
+                        ${t('tts:generate_audio_with_icon')}
                     </button>
                 </div>
             </div>
@@ -846,6 +854,7 @@ async function showTTSModal(filename, filepath) {
 
     // Get modal elements
     const modal = document.getElementById('ttsModal');
+    applyToDOM(modal);
     const closeBtn = document.getElementById('ttsModalClose');
     const cancelBtn = document.getElementById('ttsModalCancel');
     const generateBtn = document.getElementById('ttsModalGenerate');
@@ -921,6 +930,7 @@ async function showTTSModal(filename, filepath) {
 
         // Disable button and show loading
         generateBtn.disabled = true;
+        generateBtn.setAttribute('data-i18n', 'tts:starting');
         generateBtn.textContent = t('tts:starting');
 
         try {
@@ -939,7 +949,8 @@ async function showTTSModal(filename, filepath) {
         } catch (error) {
             MessageLogger.showMessage(t('tts:tts_error', { error: error.message }), 'error');
             generateBtn.disabled = false;
-            generateBtn.textContent = `🎧 ${t('tts:generate_audio')}`;
+            generateBtn.setAttribute('data-i18n', 'tts:generate_audio_with_icon');
+            generateBtn.textContent = t('tts:generate_audio_with_icon');
         }
     });
 }

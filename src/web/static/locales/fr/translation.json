@@ -14,7 +14,7 @@
   "drop_files_title": "Déposez les fichiers à traduire",
   "drop_files_support": "Prise en charge de TXT, EPUB, SRT et DOCX",
   "drop_files_refine_title": "Déposez les fichiers à raffiner (déjà traduits)",
-  "drop_files_refine_support": "Polir une traduction existante en 3 passes — même langue en entrée et en sortie",
+  "drop_files_refine_support": "Polir une traduction existante — même langue en entrée et en sortie",
   "browse_files": "Parcourir les fichiers",
   "selected_files": "Fichiers sélectionnés :",
 
@@ -24,7 +24,7 @@
   "per_file_target": "Cible",
   "per_file_language": "Langue",
   "per_file_refine_after": "Raffiner après",
-  "per_file_refine_after_title": "Lance 3 passes de raffinement sur la sortie de ce fichier après la traduction",
+  "per_file_refine_after_title": "Lance une passe de raffinement sur la sortie de ce fichier après la traduction",
   "zone_locked": "Zone de dépôt verrouillée tant que la file est en mode {{operation}}.",
   "zone_locked_current": "La file est en mode {{current}} — videz-la pour changer de mode.",
 

@@ -12,6 +12,13 @@ import { DomHelpers } from '../ui/dom-helpers.js';
 import { StatusManager } from '../utils/status-manager.js';
 import { QuickTestManager } from '../translation/quick-test.js';
 import { t } from '../i18n/i18n.js';
+import {
+    QueueStatus,
+    isQueued,
+    isCompleted,
+    isInFlight,
+    paintQueueStatus,
+} from './queue-status.js';
 
 const FILE_QUEUE_STORAGE_KEY = 'tbl_file_queue';
 
@@ -160,6 +167,11 @@ export const FileUpload = {
         this.restoreFileQueueSync();
         // Reflect any restored operation in the drop-zone locking state.
         this.refreshZoneLocking();
+        // Queue rows are built with t() + data-i18n; rebuild on locale switch
+        // so status labels (and the rest of the row chrome) update immediately.
+        window.addEventListener('localeChanged', () => {
+            this.updateFileDisplay();
+        });
         // Then verify files exist on server after a delay
         setTimeout(() => this.verifyAndCleanupFileQueue(), 1000);
     },
@@ -239,7 +251,7 @@ export const FileUpload = {
         const file = filesToProcess[fileIndex];
 
         // Only sync if file is still queued (not started)
-        if (file.status !== 'Queued') return;
+        if (!isQueued(file.status)) return;
 
         if (type === 'source') {
             file.sourceLanguage = this._getCurrentSourceLanguage();
@@ -363,7 +375,7 @@ export const FileUpload = {
         }
 
         // Only allow setting as active if file is still Queued
-        if (file.status !== 'Queued') {
+        if (!isQueued(file.status)) {
             MessageLogger.showMessage(t('translation:cannot_edit_file_processing', { name: filename }), 'info');
             return false;
         }
@@ -520,14 +532,14 @@ export const FileUpload = {
             // Restore files to state immediately (reset status to Queued for non-completed files)
             const filesToRestore = savedFiles.map(f => ({
                 ...f,
-                status: f.status === 'Completed' ? 'Completed' : 'Queued'
+                status: isCompleted(f.status) ? QueueStatus.COMPLETED : QueueStatus.QUEUED
             }));
 
             StateManager.setState('files.toProcess', filesToRestore);
             this.updateFileDisplay();
 
             // Find the last queued file and sync its languages to the interface
-            const lastQueuedFile = [...filesToRestore].reverse().find(f => f.status === 'Queued');
+            const lastQueuedFile = [...filesToRestore].reverse().find(f => isQueued(f.status));
             if (lastQueuedFile) {
                 lastUploadedFileName = lastQueuedFile.name;
                 // Store file for deferred sync (will be called after FormManager loads defaults)
@@ -564,7 +576,7 @@ export const FileUpload = {
 
         if (!fileToSync) {
             const filesToProcess = StateManager.getState('files.toProcess') || [];
-            const lastQueuedFile = [...filesToProcess].reverse().find(f => f.status === 'Queued');
+            const lastQueuedFile = [...filesToProcess].reverse().find(f => isQueued(f.status));
             if (lastQueuedFile) {
                 fileToSync = lastQueuedFile;
             }
@@ -631,7 +643,7 @@ export const FileUpload = {
                 // Restore files to state (reset status to Queued for non-completed files)
                 const filesToRestore = restoredFiles.map(f => ({
                     ...f,
-                    status: f.status === 'Completed' ? 'Completed' : 'Queued'
+                    status: isCompleted(f.status) ? QueueStatus.COMPLETED : QueueStatus.QUEUED
                 }));
 
                 StateManager.setState('files.toProcess', filesToRestore);
@@ -756,7 +768,7 @@ export const FileUpload = {
      */
     getQueueOperation() {
         const filesToProcess = StateManager.getState('files.toProcess') || [];
-        const inFlight = filesToProcess.find(f => f.status === 'Queued' || f.status === 'Preparing...' || f.status === 'Submitted');
+        const inFlight = filesToProcess.find(f => isInFlight(f.status));
         return inFlight ? (inFlight.operation || 'translate') : null;
     },
 
@@ -855,7 +867,7 @@ export const FileUpload = {
                 filePath: uploadResult.file_path,
                 fileType: uploadResult.file_type,
                 originalExtension: fileExtension,
-                status: 'Queued',
+                status: QueueStatus.QUEUED,
                 outputFilename: outputFilename,
                 size: file.size,
                 sourceLanguage: initialSourceLanguage,
@@ -931,11 +943,11 @@ export const FileUpload = {
                 li.setAttribute('data-filename', file.name);
 
                 // Mark the last uploaded file as active (editable via language selectors)
-                const isActiveFile = file.name === lastUploadedFileName && file.status === 'Queued';
+                const isActiveFile = file.name === lastUploadedFileName && isQueued(file.status);
                 li.className = isActiveFile ? 'file-item file-active' : 'file-item';
 
-                // Add click handler to set file as active (only for Queued files)
-                if (file.status === 'Queued') {
+                // Add click handler to set file as active (only for queued files)
+                if (isQueued(file.status)) {
                     li.style.cursor = 'pointer';
                     li.onclick = () => {
                         this.setActiveFile(file.name);
@@ -999,7 +1011,7 @@ export const FileUpload = {
 
                 const statusSpan = document.createElement('span');
                 statusSpan.className = 'file-status';
-                statusSpan.textContent = `(${file.status})`;
+                paintQueueStatus(statusSpan, file.status);
 
                 infoSpan.appendChild(statusSpan);
 
@@ -1016,7 +1028,7 @@ export const FileUpload = {
                 // Quick LLM test button — grabs 5 segments from this file and
                 // translates them once with the currently-selected LLM/options,
                 // so the user can eyeball quality before a big run. Queued only.
-                if (file.status === 'Queued') {
+                if (isQueued(file.status)) {
                     const testBtn = document.createElement('button');
                     testBtn.className = 'file-test-btn';
                     testBtn.title = t('translation:quicktest_button_title');
@@ -1044,13 +1056,13 @@ export const FileUpload = {
 
                 // Per-file controls: operation badge, language dropdown(s),
                 // and a "Refine after" toggle for translate items.
-                if (file.status === 'Queued') {
+                if (isQueued(file.status)) {
                     li.appendChild(this._buildFileControls(file));
                 }
 
                 // Cost badge slot — filled by CostEstimator. Identified by file
                 // path (or name as fallback) so the estimator can target it.
-                if (file.status === 'Queued') {
+                if (isQueued(file.status)) {
                     const costBadge = document.createElement('div');
                     costBadge.className = 'cost-badge file-cost-badge';
                     costBadge.setAttribute(
@@ -1226,7 +1238,7 @@ export const FileUpload = {
         const filesToProcess = StateManager.getState('files.toProcess') || [];
         const fileIndex = filesToProcess.findIndex(f => f.name === filename);
         if (fileIndex === -1) return;
-        if (filesToProcess[fileIndex].status !== 'Queued') return;
+        if (!isQueued(filesToProcess[fileIndex].status)) return;
         filesToProcess[fileIndex][field] = value;
         StateManager.setState('files.toProcess', filesToProcess);
         this._saveFileQueue();

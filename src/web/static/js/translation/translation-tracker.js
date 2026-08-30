@@ -16,6 +16,7 @@ import { ProgressManager, formatElapsedTime, deriveRateContext, buildRecommendat
 import { renderTranslationTitle, getFileIcon, createGenericEPUBIcon } from './progress-title.js';
 import { LifecycleManager } from '../utils/lifecycle-manager.js';
 import { t } from '../i18n/i18n.js';
+import { QueueStatus, migrateQueueStatus, paintQueueStatus } from '../files/queue-status.js';
 import {
     overridePanelHtml,
     openOverridePanel,
@@ -402,7 +403,7 @@ export const TranslationTracker = {
                     matchingFile = {
                         name: job.input_filename,
                         translationId: job.translation_id,
-                        status: 'Processing',
+                        status: QueueStatus.PROCESSING,
                         type: job.file_type || 'txt',
                         isVirtual: true
                     };
@@ -445,7 +446,7 @@ export const TranslationTracker = {
                     DomHelpers.show('interruptBtn');
 
                     if (!matchingFile.isVirtual) {
-                        this.updateFileStatusInList(matchingFile.name, 'Processing', job.translation_id);
+                        this.updateFileStatusInList(matchingFile.name, QueueStatus.PROCESSING, job.translation_id);
                     }
 
                     break;
@@ -568,7 +569,7 @@ export const TranslationTracker = {
             this.resetOpenRouterCostDisplay();
 
             MessageLogger.showMessage(t('translation:translation_in_progress', { name: currentFile.name }), 'info');
-            this.updateFileStatusInList(currentFile.name, 'Processing');
+            this.updateFileStatusInList(currentFile.name, QueueStatus.PROCESSING);
         }
     },
 
@@ -627,16 +628,17 @@ export const TranslationTracker = {
      * @param {string} [translationId] - Translation ID
      */
     updateFileStatusInList(fileName, newStatus, translationId = null) {
+        const code = migrateQueueStatus(newStatus);
         const fileListItem = DomHelpers.getOne(`#fileListContainer li[data-filename="${fileName}"] .file-status`);
         if (fileListItem) {
-            DomHelpers.setText(fileListItem, `(${newStatus})`);
+            paintQueueStatus(fileListItem, code);
         }
 
         // Update in state
         const filesToProcess = StateManager.getState('files.toProcess');
         const fileObj = filesToProcess.find(f => f.name === fileName);
         if (fileObj) {
-            fileObj.status = newStatus;
+            fileObj.status = code;
             if (translationId) {
                 fileObj.translationId = translationId;
             }
@@ -663,10 +665,10 @@ export const TranslationTracker = {
         MessageLogger.showMessage(statusMessage, messageType);
         this.updateFileStatusInList(
             currentFile.name,
-            resultData.status === 'completed' ? 'Completed' :
-            resultData.status === 'partial' ? 'Partial' :
-            resultData.status === 'interrupted' ? 'Interrupted' :
-            resultData.status === 'rate_limited' ? 'Rate Limited' : 'Error'
+            resultData.status === 'completed' ? QueueStatus.COMPLETED :
+            resultData.status === 'partial' ? QueueStatus.PARTIAL :
+            resultData.status === 'interrupted' ? QueueStatus.INTERRUPTED :
+            resultData.status === 'rate_limited' ? QueueStatus.RATE_LIMITED : QueueStatus.ERROR
         );
 
         if (resultData.status === 'completed' || resultData.status === 'partial') {

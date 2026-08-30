@@ -13,6 +13,7 @@
 import { DomHelpers } from './dom-helpers.js';
 import { StateManager } from '../core/state-manager.js';
 import { t } from '../i18n/i18n.js';
+import { isQueued } from '../files/queue-status.js';
 
 const PROVIDER_LABELS = {
     ollama: 'Ollama',
@@ -107,7 +108,7 @@ function isChecked(id) {
 
 function queueOperation() {
     const files = StateManager.getState('files.toProcess') || [];
-    const pending = files.find(f => f.status === 'Queued');
+    const pending = files.find(f => isQueued(f.status));
     if (!pending) return null;
     return pending.operation || 'translate';
 }

@@ -13,13 +13,14 @@
 import { DomHelpers } from './dom-helpers.js';
 import { StateManager } from '../core/state-manager.js';
 import { ModelDetector } from '../providers/model-detector.js';
+import { isQueued } from '../files/queue-status.js';
 
 /**
  * @typedef {Object} PreflightContext
  * @property {string}   provider          lowercased #llmProvider value, '' if unset
  * @property {string}   model             #model value, '' if unset
  * @property {boolean}  isSmallModel      ModelDetector.isSmallModel(model)
- * @property {boolean}  hasQueuedFiles    at least one file with status === 'Queued'
+ * @property {boolean}  hasQueuedFiles    at least one file with queued status
  * @property {string[]} queuedExts        UPPERCASED originalExtension of queued files, deduped, e.g. ['EPUB']
  * @property {Array<{source: string, target: string}>} langPairs  effective language pair per queued file to translate, refine files excluded
  * @property {boolean}  plainTextMode     #plainTextMode.checked
@@ -53,7 +54,7 @@ const TAGGED_EXTENSIONS = ['EPUB', 'DOCX'];
 function collectQueuedExtensions(files) {
     const seen = [];
     files.forEach(file => {
-        if (!file || file.status !== 'Queued') return;
+        if (!file || !isQueued(file.status)) return;
         const ext = (file.originalExtension || '').toUpperCase();
         if (ext && !seen.includes(ext)) seen.push(ext);
     });
@@ -114,7 +115,7 @@ function collectLanguagePairs(queuedFiles, formSource, formTarget) {
 export function buildContext() {
     const model = DomHelpers.getValue('model') || '';
     const files = StateManager.getState('files.toProcess') || [];
-    const queuedFiles = files.filter(f => f && f.status === 'Queued');
+    const queuedFiles = files.filter(f => f && isQueued(f.status));
     const plainTextModeEl = DomHelpers.getElement('plainTextMode');
     const parallelWorkers = parseInt(DomHelpers.getValue('parallelWorkers'), 10);
     const parallelGroup = DomHelpers.getElement('parallelWorkersGroup');

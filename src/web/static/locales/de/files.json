@@ -59,5 +59,18 @@
   "upload_failed": "Hochladen fehlgeschlagen: {{error}}",
 
   "total_label": "Gesamt:",
-  "files_unit": "Dateien"
+  "files_unit": "Dateien",
+
+  "queue_status_queued": "(In der Warteschlange)",
+  "queue_status_preparing": "(Vorbereitung...)",
+  "queue_status_submitted": "(Übermittelt)",
+  "queue_status_processing": "(Verarbeitung)",
+  "queue_status_completed": "(Abgeschlossen)",
+  "queue_status_partial": "(Teilweise)",
+  "queue_status_interrupted": "(Unterbrochen)",
+  "queue_status_rate_limited": "(Ratenlimit)",
+  "queue_status_error": "(Fehler)",
+  "queue_status_missing_api_key": "(Fehler: API-Schlüssel fehlt)",
+  "queue_status_path_error": "(Pfadfehler)",
+  "queue_status_initiation_error": "(Startfehler)"
 }

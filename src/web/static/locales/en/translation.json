@@ -14,7 +14,7 @@
   "drop_files_title": "Drop files to translate",
   "drop_files_support": "Support for TXT, EPUB, SRT, and DOCX",
   "drop_files_refine_title": "Drop files to refine (already translated)",
-  "drop_files_refine_support": "Polish an existing translation in 3 passes — same language in and out",
+  "drop_files_refine_support": "Polish an existing translation — same language in and out",
   "browse_files": "Browse Files",
   "selected_files": "Selected Files:",
 
@@ -24,7 +24,7 @@
   "per_file_target": "Target",
   "per_file_language": "Language",
   "per_file_refine_after": "Refine after",
-  "per_file_refine_after_title": "Run 3 refinement passes on this file's output after translation",
+  "per_file_refine_after_title": "Run a refinement pass on this file's output after translation",
   "zone_locked": "Drop area locked while the queue is in {{operation}} mode.",
   "zone_locked_current": "Queue is in {{current}} mode — clear it before switching.",
 

@@ -22,7 +22,7 @@ import webbrowser
 import threading
 from datetime import datetime
 from urllib.parse import urlparse
-from flask import Flask
+from flask import Flask, request
 from flask_socketio import SocketIO
 
 # Configure logging
@@ -87,6 +87,18 @@ app = Flask(__name__,
             static_folder=static_folder_path,
             template_folder=template_folder_path,
             static_url_path='/static')
+# Local desktop app: never let the browser keep stale JS/locale JSON across
+# deploys. A cached files.json without new keys (or an old file-upload.js)
+# makes i18n look "broken" after an update until a hard refresh.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+@app.after_request
+def _no_cache_frontend_assets(response):
+    path = request.path or ''
+    if path.startswith('/static/js/') or path.startswith('/static/locales/'):
+        response.headers['Cache-Control'] = 'no-store'
+    return response
+
 # Security (issue #210): no wildcard CORS. The SPA is served from and talks to
 # the same origin, so it needs no CORS headers at all; omitting cors_allowed_origins
 # makes Socket.IO fall back to its same-origin default (it derives the allowed

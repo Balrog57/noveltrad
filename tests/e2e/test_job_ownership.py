@@ -53,7 +53,7 @@ def test_owned_and_unowned_terminal_events_on_a_busy_ui(page):
 def test_batch_of_three_survives_a_foreign_terminal_event(page, input_files):
     """A three-file batch runs to the end with no UI reset, foreign event included."""
     queue_files(page, input_files["short"])
-    assert state(page)["queue"] == ["Queued"] * 3
+    assert state(page)["queue"] == ["queued"] * 3
 
     page.click("#translateBtn")
     page.wait_for_timeout(1500)

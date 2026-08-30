@@ -18,6 +18,7 @@ import { FileUpload, generateOutputFilename } from '../files/file-upload.js';
 import { TranslationTracker } from './translation-tracker.js';
 import { PreflightModal } from '../ui/preflight-modal.js';
 import { t } from '../i18n/i18n.js';
+import { QueueStatus, isQueued, migrateQueueStatus } from '../files/queue-status.js';
 
 /**
  * Validation helper for early failures
@@ -155,7 +156,7 @@ function updateFileStatusInList(filename, status, translationId = null) {
     const fileIndex = filesToProcess.findIndex(f => f.name === filename);
 
     if (fileIndex !== -1) {
-        filesToProcess[fileIndex].status = status;
+        filesToProcess[fileIndex].status = migrateQueueStatus(status);
         if (translationId) {
             filesToProcess[fileIndex].translationId = translationId;
         }
@@ -219,7 +220,7 @@ export const BatchController = {
 
         let filesUpdated = false;
         for (const file of filesToProcess) {
-            if (file.status !== 'Queued') continue;
+            if (!isQueued(file.status)) continue;
 
             if (!file.sourceLanguage || file.sourceLanguage === 'Other') {
                 file.sourceLanguage = sourceLanguageVal;
@@ -242,7 +243,7 @@ export const BatchController = {
 
         StateManager.setState('translation.isBatchActive', true);
 
-        const queuedFilesCount = filesToProcess.filter(f => f.status === 'Queued').length;
+        const queuedFilesCount = filesToProcess.filter(f => isQueued(f.status)).length;
 
         // Update UI
         const translateBtn = DomHelpers.getElement('translateBtn');
@@ -273,7 +274,7 @@ export const BatchController = {
         if (currentJob) return;
 
         const filesToProcess = StateManager.getState('files.toProcess') || [];
-        const fileToTranslate = filesToProcess.find(f => f.status === 'Queued');
+        const fileToTranslate = filesToProcess.find(f => isQueued(f.status));
 
         if (!fileToTranslate) {
             StateManager.setState('translation.isBatchActive', false);
@@ -309,7 +310,7 @@ export const BatchController = {
         this.updateTranslationTitle(fileToTranslate);
         ProgressManager.show();
         MessageLogger.addLog(t('translation:starting_translation_log', { name: fileToTranslate.name, type: fileToTranslate.fileType.toUpperCase() }));
-        updateFileStatusInList(fileToTranslate.name, 'Preparing...');
+        updateFileStatusInList(fileToTranslate.name, QueueStatus.PREPARING);
 
         const provider = DomHelpers.getValue('llmProvider');
         const endpoint = provider === 'openai' ? DomHelpers.getValue('openaiEndpoint') : '';
@@ -318,7 +319,7 @@ export const BatchController = {
         if (!apiKeyValidation.valid) {
             MessageLogger.addLog(t('translation:api_key_error_log', { message: apiKeyValidation.message }));
             MessageLogger.showMessage(apiKeyValidation.message, 'error');
-            updateFileStatusInList(fileToTranslate.name, 'Error: Missing API key');
+            updateFileStatusInList(fileToTranslate.name, QueueStatus.MISSING_API_KEY);
             StateManager.setState('translation.currentJob', null);
             this.processNextFileInQueue();
             return;
@@ -328,7 +329,7 @@ export const BatchController = {
         if (!fileToTranslate.filePath && !fileToTranslate.content) {
             MessageLogger.addLog(t('translation:critical_no_path_log', { name: fileToTranslate.name }));
             MessageLogger.showMessage(t('translation:critical_no_path_msg', { name: fileToTranslate.name }), 'error');
-            updateFileStatusInList(fileToTranslate.name, 'Path Error');
+            updateFileStatusInList(fileToTranslate.name, QueueStatus.PATH_ERROR);
             StateManager.setState('translation.currentJob', null);
             this.processNextFileInQueue();
             return;
@@ -346,7 +347,7 @@ export const BatchController = {
             TranslationTracker.registerOwnedJob(data.translation_id);
 
             fileToTranslate.translationId = data.translation_id;
-            updateFileStatusInList(fileToTranslate.name, 'Submitted', data.translation_id);
+            updateFileStatusInList(fileToTranslate.name, QueueStatus.SUBMITTED, data.translation_id);
 
             DomHelpers.show('progressSection');
             DomHelpers.show('interruptBtn');
@@ -368,7 +369,7 @@ export const BatchController = {
         } catch (error) {
             MessageLogger.addLog(t('translation:init_error_log', { name: fileToTranslate.name, error: error.message }));
             MessageLogger.showMessage(t('translation:init_error_msg', { name: fileToTranslate.name, error: error.message }), 'error');
-            updateFileStatusInList(fileToTranslate.name, 'Initiation Error');
+            updateFileStatusInList(fileToTranslate.name, QueueStatus.INITIATION_ERROR);
             StateManager.setState('translation.currentJob', null);
             this.processNextFileInQueue();
         }
