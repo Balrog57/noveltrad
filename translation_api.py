@@ -92,8 +92,20 @@ app = Flask(__name__,
 # makes i18n look "broken" after an update until a hard refresh.
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
+# Defense in depth for the local web UI. The API is same-origin and token-gated,
+# but clickjacking and MIME sniffing still matter when HOST=0.0.0.0 (LAN access).
+_SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+}
+
+
 @app.after_request
-def _no_cache_frontend_assets(response):
+def _apply_response_headers(response):
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
     path = request.path or ''
     if path.startswith('/static/js/') or path.startswith('/static/locales/'):
         response.headers['Cache-Control'] = 'no-store'
