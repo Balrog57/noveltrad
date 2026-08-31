@@ -14,6 +14,41 @@ from src.common.placeholder_format import PlaceholderFormat
 # whitespace) carries nothing an LLM could translate.
 _UNICODE_LETTER_RE = re.compile(r'[^\W\d_]', re.UNICODE)
 
+# Compiled once: is_text_free_chunk runs once per chunk in the translation loop.
+# Reusing this avoids re-compiling PLACEHOLDER_PATTERN on every chunk check.
+_UNIFIED_PLACEHOLDER_FMT = PlaceholderFormat.from_config()
+_UNIFIED_PLACEHOLDER_TUPLE = (
+    _UNIFIED_PLACEHOLDER_FMT.prefix,
+    _UNIFIED_PLACEHOLDER_FMT.suffix,
+)
+
+
+def _format_for_text_free_check(
+    placeholder_format: Optional[Union[Tuple[str, str], PlaceholderFormat]],
+) -> PlaceholderFormat:
+    """Return a PlaceholderFormat without re-compiling the unified [idN] pattern."""
+    if placeholder_format is None or placeholder_format == _UNIFIED_PLACEHOLDER_TUPLE:
+        return _UNIFIED_PLACEHOLDER_FMT
+    if hasattr(placeholder_format, 'remove_all'):
+        return placeholder_format
+    prefix, suffix = placeholder_format
+    return PlaceholderFormat(prefix, suffix, r'\[id(\d+)\]')
+
+
+def _has_translatable_letters(text: str, fmt: PlaceholderFormat) -> bool:
+    """True if any non-placeholder span contains a Unicode letter.
+
+    Single-pass scan: skips placeholder regions instead of allocating a
+    placeholder-stripped copy via regex sub (the old remove_all approach).
+    """
+    last_end = 0
+    for match in fmt._compiled_pattern.finditer(text):
+        if match.start() > last_end:
+            if _UNICODE_LETTER_RE.search(text, last_end, match.start()):
+                return True
+        last_end = match.end()
+    return _UNICODE_LETTER_RE.search(text, last_end) is not None
+
 
 def _resolve_placeholder_format(
     placeholder_format: Optional[Union[Tuple[str, str], PlaceholderFormat]]
@@ -40,8 +75,8 @@ def is_text_free_chunk(
     """True if the chunk carries no translatable characters.
 
     Procedure:
-      1. Remove every placeholder occurrence.
-      2. Return True iff the remainder contains no Unicode letter.
+      1. Scan the chunk once, skipping placeholder spans.
+      2. Return True iff no non-placeholder span contains a Unicode letter.
 
     Consequences that are INTENDED, not accidental:
       - '[id0]'          -> True   (cover page: pure markup, an <svg> image)
@@ -63,8 +98,8 @@ def is_text_free_chunk(
     if not chunk_text:
         return True
 
-    fmt = _resolve_placeholder_format(placeholder_format)
-    return _UNICODE_LETTER_RE.search(fmt.remove_all(chunk_text)) is None
+    fmt = _format_for_text_free_check(placeholder_format)
+    return not _has_translatable_letters(chunk_text, fmt)
 
 
 def extract_text_and_positions(text_with_placeholders: str) -> Tuple[str, Dict[int, float]]:
