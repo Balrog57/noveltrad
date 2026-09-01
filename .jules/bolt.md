@@ -13,3 +13,9 @@ Performance notes specific to this codebase. Routine optimizations are not logge
 **Learning:** After the two-pass detector scan, `preserve_tags_and_technical_content()` still filtered all `inline_patterns` against every HTML text segment (~1M comparisons on a 500-paragraph chapter with dense `$V_{i}$` markers). Both lists are document-order, so a single advancing pointer assigns patterns in O(segments + patterns).
 
 **Action:** When pre-scanned position-sorted items must be bucketed into contiguous segments, use a monotonic index — never re-scan the full pattern list per segment.
+
+## 2026-09-01 - TagPreserver second detector scan is not redundant
+
+**Learning:** After multiline block masking, inline patterns cannot be derived by position-shifting the first scan. Marker substitution changes backtick/LaTeX pairing (e.g. a ` spanning a replaced code block shrinks or disappears), so the second `find_all_technical_content(text_with_markers)` pass is required for correctness.
+
+**Action:** Do not replace the marker-text detector pass with first-pass position adjustment. Look elsewhere (e.g. TextSplitter force-split) for safe wins.
