@@ -280,9 +280,9 @@ def create_tts_blueprint(output_dir, socketio):
                 "message": f"TTS generation started for {filename}"
             })
 
-        except Exception as e:
-            current_app.logger.error(f"Error starting TTS generation: {str(e)}")
-            return jsonify({"error": "Failed to start TTS generation", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error starting TTS generation")
+            return jsonify({"error": "Failed to start TTS generation"}), 500
 
     @bp.route('/api/tts/status/<job_id>', methods=['GET'])
     def get_tts_status(job_id):
@@ -442,12 +442,9 @@ def create_tts_blueprint(output_dir, socketio):
                 "message": f"Voice prompt uploaded successfully"
             })
 
-        except Exception as e:
-            logger.error(f"Failed to save voice prompt: {e}")
-            return jsonify({
-                "error": "Failed to save voice prompt",
-                "details": str(e)
-            }), 500
+        except Exception:
+            logger.exception("Failed to save voice prompt")
+            return jsonify({"error": "Failed to save voice prompt"}), 500
 
     @bp.route('/api/tts/voice-prompts', methods=['GET'])
     def list_voice_prompts():
@@ -513,12 +510,9 @@ def create_tts_blueprint(output_dir, socketio):
                 "message": f"Voice prompt '{filename}' deleted"
             })
 
-        except Exception as e:
-            logger.error(f"Failed to delete voice prompt: {e}")
-            return jsonify({
-                "error": "Failed to delete voice prompt",
-                "details": str(e)
-            }), 500
+        except Exception:
+            logger.exception("Failed to delete voice prompt")
+            return jsonify({"error": "Failed to delete voice prompt"}), 500
 
     @bp.route('/api/tts/ffmpeg/status', methods=['GET'])
     def ffmpeg_status():
