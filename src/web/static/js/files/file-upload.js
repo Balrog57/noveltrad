@@ -717,6 +717,25 @@ export const FileUpload = {
                     this.handleFiles(Array.from(files), operation);
                 }
             });
+
+            const inputId = operation === 'refine' ? 'fileInputRefine' : 'fileInput';
+            const openPicker = () => {
+                if (uploadArea.classList.contains('zone-disabled')) {
+                    MessageLogger.showMessage(
+                        t('translation:zone_locked', { operation }),
+                        'info'
+                    );
+                    return;
+                }
+                DomHelpers.getElement(inputId)?.click();
+            };
+            uploadArea.addEventListener('click', openPicker);
+            uploadArea.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openPicker();
+                }
+            });
         });
     },
 
@@ -784,6 +803,8 @@ export const FileUpload = {
 
         translateZone.classList.toggle('zone-disabled', op === 'refine');
         refineZone.classList.toggle('zone-disabled', op === 'translate');
+        translateZone.setAttribute('aria-disabled', op === 'refine' ? 'true' : 'false');
+        refineZone.setAttribute('aria-disabled', op === 'translate' ? 'true' : 'false');
     },
 
     /**
@@ -1045,6 +1066,7 @@ export const FileUpload = {
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'file-remove-btn';
                 removeBtn.title = t('translation:remove_file_title');
+                removeBtn.setAttribute('aria-label', t('translation:remove_file_title'));
                 removeBtn.innerHTML = '<span class="material-symbols-outlined">close</span>';
                 removeBtn.onclick = (e) => {
                     e.stopPropagation();
