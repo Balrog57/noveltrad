@@ -9,6 +9,10 @@ from typing import List, Callable
 
 from src.core.chunking.token_chunker import TokenChunker
 
+# Compiled once: _split_on_sentences/_split_on_punctuation call re.split per oversized segment.
+_SENTENCE_BOUNDARY_RE = re.compile(r'(?<=[.!?])\s+(?=\S)|(?<=[.!?])(?=\[\[)')
+_PUNCT_BOUNDARY_RE = re.compile(r'(?<=[;:,])\s+(?=\S)|(?<=[;:,])(?=\[\[)')
+
 
 class TextSplitter:
     """Splits text using hierarchical strategies (sentences -> punctuation -> newlines -> force)."""
@@ -123,8 +127,7 @@ class TextSplitter:
             List of sentence segments
         """
         # Find sentence boundaries (. ! ? followed by space or placeholder or end)
-        sentence_pattern = r'(?<=[.!?])\s+(?=\S)|(?<=[.!?])(?=\[\[)'
-        parts = re.split(sentence_pattern, text)
+        parts = _SENTENCE_BOUNDARY_RE.split(text)
         return self._split_with_strategy(text, lambda t: parts)
 
     def _split_on_punctuation(self, text: str) -> List[str]:
@@ -135,8 +138,7 @@ class TextSplitter:
             List of punctuation-split segments
         """
         # Split on ; : , but keep the punctuation with the preceding text
-        punct_pattern = r'(?<=[;:,])\s+(?=\S)|(?<=[;:,])(?=\[\[)'
-        parts = re.split(punct_pattern, text)
+        parts = _PUNCT_BOUNDARY_RE.split(text)
         return self._split_with_strategy(text, lambda t: parts)
 
     def _split_on_newlines(self, text: str) -> List[str]:
@@ -159,34 +161,33 @@ class TextSplitter:
         """
         segments = []
         remaining = text
+        encoder = self.token_chunker.encoder
 
         while remaining:
-            # If remaining text fits, we're done
-            if self.token_chunker.count_tokens(remaining) <= self.max_tokens:
+            tokens = encoder.encode(remaining)
+            # One encode per slice; binary search on token indices avoids
+            # re-encoding every prefix (~log2(chars) tiktoken calls per chunk).
+            if len(tokens) <= self.max_tokens:
                 segments.append(remaining)
                 break
 
-            # Binary search for the largest prefix that fits
-            left, right = 0, len(remaining)
-            best_pos = left
+            left, right = 0, len(tokens)
+            best_token_count = 0
 
             while left <= right:
                 mid = (left + right) // 2
-                prefix = remaining[:mid]
-                token_count = self.token_chunker.count_tokens(prefix)
-
-                if token_count <= self.max_tokens:
-                    best_pos = mid
+                if mid <= self.max_tokens:
+                    best_token_count = mid
                     left = mid + 1
                 else:
                     right = mid - 1
 
-            # Find word boundary near best_pos
-            split_pos = self._find_word_boundary_near(remaining, best_pos)
+            prefix = encoder.decode(tokens[:best_token_count])
+            split_pos = self._find_word_boundary_near(remaining, len(prefix))
 
             # Avoid infinite loop - ensure we make progress
             if split_pos == 0:
-                split_pos = max(1, best_pos)
+                split_pos = max(1, len(prefix) if prefix else best_token_count)
 
             segments.append(remaining[:split_pos])
             remaining = remaining[split_pos:].lstrip()
