@@ -750,6 +750,13 @@ select.form-control {
     transform: scale(1.01);
 }
 
+.file-upload:focus-visible {
+    outline: none;
+    border-color: var(--primary-light);
+    box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light),
+        0 0 0 3px rgba(54, 118, 216, 0.35);
+}
+
 .file-upload.dragging {
     border-color: var(--primary-light);
     background: linear-gradient(135deg, rgba(54, 118, 216, 0.05), rgba(54, 118, 216, 0.1));

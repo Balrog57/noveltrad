@@ -470,7 +470,8 @@
                 </div>
 
                 <!-- File Upload Area (Translate) -->
-                <div class="file-upload" id="fileUpload" data-zone="translate" onclick="document.getElementById('fileInput').click()">
+                <div class="file-upload" id="fileUpload" data-zone="translate" role="button" tabindex="0"
+                     data-i18n-attr="aria-label:translation:drop_files_title" aria-label="Drop files to translate">
                     <div class="upload-icon">
                         <span class="material-symbols-outlined">cloud_upload</span>
                     </div>
@@ -481,7 +482,8 @@
                 </div>
 
                 <!-- File Upload Area (Refine, secondary) -->
-                <div class="file-upload file-upload-secondary" id="fileUploadRefine" data-zone="refine" onclick="document.getElementById('fileInputRefine').click()">
+                <div class="file-upload file-upload-secondary" id="fileUploadRefine" data-zone="refine" role="button" tabindex="0"
+                     data-i18n-attr="aria-label:translation:drop_files_refine_title" aria-label="Drop files to refine (already translated)">
                     <div class="upload-icon">
                         <span class="material-symbols-outlined">auto_fix_high</span>
                     </div>
@@ -837,7 +839,8 @@
                     </div>
 
                     <!-- File Upload (same control as Translate tab) -->
-                    <div class="file-upload" id="sampleFileUpload" onclick="document.getElementById('sampleFileInput').click()">
+                    <div class="file-upload" id="sampleFileUpload" role="button" tabindex="0"
+                         data-i18n-attr="aria-label:sample:drop_file_title" aria-label="Drop a book to sample">
                         <div class="upload-icon">
                             <span class="material-symbols-outlined">science</span>
                         </div>
