@@ -331,5 +331,45 @@ class TestGenericTranslationOrchestrator:
             assert call_kwargs['max_retries'] == 3
 
 
+class TranslateContentAdapter(MockAdapter):
+    """Adapter that bypasses the standard pipeline via translate_content."""
+
+    def __init__(self):
+        super().__init__()
+        self.translate_content_called = False
+
+    async def translate_content(self, raw_content, structure_map, context, **kwargs):
+        self.translate_content_called = True
+        from src.core.epub.translation_metrics import TranslationMetrics
+        return True, TranslationMetrics()
+
+
+class TestTranslateContentFastPath:
+    """Tests for adapters that implement translate_content directly."""
+
+    @pytest.mark.asyncio
+    async def test_skips_redundant_extract_and_preserve(self):
+        """translate_content adapters must not run duplicate preprocessing."""
+        adapter = TranslateContentAdapter()
+        orchestrator = GenericTranslationOrchestrator(adapter)
+        mock_llm = Mock()
+
+        success, stats = await orchestrator.translate(
+            source="test_source",
+            source_language="English",
+            target_language="French",
+            model_name="test-model",
+            llm_client=mock_llm,
+            max_tokens_per_chunk=450,
+        )
+
+        assert success is True
+        assert stats is not None
+        assert adapter.translate_content_called
+        assert not adapter.extract_called
+        assert not adapter.preserve_called
+        assert not adapter.chunk_called
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
