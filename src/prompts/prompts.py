@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, NamedTuple, Tuple, Optional
+import json
+import re
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from src.prompts.examples import (build_placeholder_section,
                               get_output_format_example, get_subtitle_example,
@@ -1314,3 +1316,226 @@ def generate_post_processing_prompt(
         refinement_history=refinement_history,
         source_language=source_language,
     )
+
+
+# ============================================================================
+# REFINE+ PROMPTS (Stack Overflow multi-pass templates)
+# ============================================================================
+# Pass 1 reuses generate_refinement_prompt; these extra constraints are merged
+# into additional_instructions. JSON sidecars (notes, changes, edits, omissions)
+# are logged only — never written into the published file.
+
+PASS1_PLUS_FAITHFUL_INSTRUCTIONS = (
+    "Be strictly faithful to meaning; do not paraphrase for style. "
+    "Preserve numbers, dates, units, names, and HTML/placeholder tags exactly. "
+    "If a phrase is ambiguous, keep the most literal reading. "
+    "Never insert [[AMBIGUITY]] or similar markers into the published text."
+)
+
+_AMBIGUITY_TOKEN_RE = re.compile(
+    r"\[\[\s*AMBIGU(?:ITY|ÏTÉ|ITE)\s*\]\]",
+    re.IGNORECASE,
+)
+
+_JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def strip_ambiguity_markers(text: str) -> str:
+    """Remove SO-template ambiguity tokens so they never reach the book."""
+    cleaned = _AMBIGUITY_TOKEN_RE.sub("", text or "")
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
+def extract_json_object(raw: str) -> Optional[Dict[str, Any]]:
+    """Parse the first JSON object in an LLM response, or None."""
+    if not raw or not str(raw).strip():
+        return None
+    text = str(raw).strip()
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    candidate = fence.group(1) if fence else text
+    match = _JSON_OBJECT_RE.search(candidate)
+    if not match:
+        return None
+    blob = match.group(0)
+    try:
+        parsed = json.loads(blob)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def published_text_from_payload(
+    payload: Optional[Dict[str, Any]],
+    *keys: str,
+    fallback: str = "",
+) -> str:
+    """Pick a translation field from JSON and strip log-only markers."""
+    if isinstance(payload, dict):
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return strip_ambiguity_markers(value)
+    return strip_ambiguity_markers(fallback)
+
+
+def _plus_output_format(example: str) -> str:
+    return _get_output_format_section(
+        TRANSLATE_TAG_IN,
+        TRANSLATE_TAG_OUT,
+        INPUT_TAG_IN,
+        INPUT_TAG_OUT,
+        additional_rules="",
+        example_format=example,
+    )
+
+
+def generate_style_refinement_prompt(
+    translation: str,
+    target_language: str = "English",
+    source_language: str = "",
+    source_text: str = "",
+    register: str = "literary",
+    glossary_block: str = "",
+    additional_instructions: str = "",
+    prompt_options: Optional[dict] = None,
+) -> PromptPair:
+    """Pass 2 — fluency and register. Translation-only output."""
+    prompt_options = prompt_options or {}
+    src = source_language or prompt_options.get("source_language") or ""
+    pair = _language_pair_header(src, target_language, prompt_options)
+    pair_block = f"{pair}\n\n" if pair else ""
+    extra = (additional_instructions or "").strip()
+    extra_line = f"\n{extra}" if extra else ""
+    glossary_section = f"{glossary_block.strip()}\n\n" if glossary_block and glossary_block.strip() else ""
+    source_section = ""
+    if source_text and source_text.strip():
+        source_section = f"Source text (meaning anchor):\n{source_text.strip()}\n\n"
+
+    system = f"""You are a professional literary editor for {target_language}.
+Task: Refine the provided translation in {target_language} for fluency and register [{register}].
+Constraints:
+- Preserve meaning; do not add or remove factual content.
+- Do not change named entities, numbers, dates, or glossary terms.
+- Do not explain.
+{extra_line}
+
+{_plus_output_format("Your refined translation here")}"""
+
+    user = f"""{pair_block}{source_section}{glossary_section}Task: Refine the provided translation in {target_language} for fluency and register [{register}].
+Constraints:
+- Preserve meaning; do not add or remove factual content.
+- Do not change named entities, numbers, dates, or glossary terms.
+Output: the refined translation only.
+
+{INPUT_TAG_IN}
+{translation}
+{INPUT_TAG_OUT}
+
+Start with {TRANSLATE_TAG_IN} and end with {TRANSLATE_TAG_OUT}."""
+    return PromptPair(system=system.strip(), user=user.strip())
+
+
+def generate_glossary_enforcement_prompt(
+    translation: str,
+    glossary_pairs: Sequence[Tuple[str, str]],
+    target_language: str = "English",
+    source_text: str = "",
+) -> PromptPair:
+    """Pass 3 — glossary enforcement. JSON inside TRANSLATION tags."""
+    lines = [f"{src} -> {tgt}" for src, tgt in glossary_pairs if src and tgt]
+    glossary_list = "\n".join(lines) if lines else "(none)"
+    example = (
+        '{"translation": "Your terminology-enforced translation here",'
+        ' "changes": [{"from": "", "to": ""}], "conflicts": []}'
+    )
+    source_section = f"Source text:\n{source_text.strip()}\n\n" if source_text.strip() else ""
+    system = f"""You are a terminology enforcer for {target_language} literary translation.
+Task: Enforce glossary mappings on the translation below.
+Requirements:
+- Replace all variants with exact glossary terms unless this changes meaning.
+- If a term would change meaning, leave it unchanged and list it under conflicts.
+- Output JSON only, inside the translation tags. Do not add notes to the translation string.
+
+{_plus_output_format(example)}"""
+    user = f"""{source_section}Glossary (source_term -> target_term):
+{glossary_list}
+
+Translation:
+{INPUT_TAG_IN}
+{translation}
+{INPUT_TAG_OUT}
+
+Output JSON: {{ "translation": "...", "changes": [ {{"from":"", "to":""}} ], "conflicts": [...] }}
+
+Start with {TRANSLATE_TAG_IN} and end with {TRANSLATE_TAG_OUT}."""
+    return PromptPair(system=system.strip(), user=user.strip())
+
+
+def generate_omission_qa_prompt(
+    source_text: str,
+    translation: str,
+    target_language: str = "English",
+    heuristic_notes: str = "",
+) -> PromptPair:
+    """Omission/hallucination QA used only as a targeted extra call."""
+    notes = f"\nKnown heuristic issues:\n{heuristic_notes}\n" if heuristic_notes.strip() else ""
+    example = (
+        '{"translation": "Corrected translation",'
+        ' "omissions": [{"source_segment":"", "translation_segment":""}],'
+        ' "additions": [{"translation_segment":"", "source_segment":""}]}'
+    )
+    system = f"""You are checking a {target_language} literary translation for omissions and additions.
+Task: QA check for omission and addition, then return a corrected translation.
+- List information present in the source that is missing in the translation.
+- List information in the translation that is not in the source (potential hallucination).
+- Then produce a corrected translation that restores omissions and removes additions.
+- Do not put the lists inside the translation string.
+
+{_plus_output_format(example)}"""
+    user = f"""Input: source_text, translation
+{notes}
+Source:
+{source_text}
+
+Translation:
+{INPUT_TAG_IN}
+{translation}
+{INPUT_TAG_OUT}
+
+Output JSON:
+{{
+  "translation": "...",
+  "omissions": [ {{ "source_segment":"", "translation_segment":"" }} ],
+  "additions": [ {{ "translation_segment":"", "source_segment":"" }} ]
+}}
+
+Start with {TRANSLATE_TAG_IN} and end with {TRANSLATE_TAG_OUT}."""
+    return PromptPair(system=system.strip(), user=user.strip())
+
+
+def generate_grammar_postedit_prompt(
+    translation: str,
+    target_language: str = "English",
+    variant: str = "",
+) -> PromptPair:
+    """Pass 4 — grammar and typography. JSON inside TRANSLATION tags."""
+    label = f"{target_language} ({variant})" if variant else target_language
+    example = '{"final": "Proofread translation here", "edits": [{"before":"", "after":""}]}'
+    system = f"""You are a proofreader for {label}.
+Task: Perform final proofreading and typographic fixes for {label}.
+- Correct grammar, spelling, punctuation, and formatting of dates/numbers.
+- Do not change the meaning.
+- Output JSON only inside the translation tags. The published text is the "final" field.
+
+{_plus_output_format(example)}"""
+    user = f"""Input: translation
+
+{INPUT_TAG_IN}
+{translation}
+{INPUT_TAG_OUT}
+
+Output: {{ "final": "...", "edits": [ {{"before":"", "after":""}} ] }}
+
+Start with {TRANSLATE_TAG_IN} and end with {TRANSLATE_TAG_OUT}."""
+    return PromptPair(system=system.strip(), user=user.strip())
+

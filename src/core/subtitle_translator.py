@@ -190,6 +190,10 @@ async def _refine_subtitle_translations_once(
     source_subtitles: Optional[List[Dict[str, str]]] = None,
     start_block_index: int = 0,
     block_checkpoint_callback=None,
+    plus_start_pass: int = 1,
+    plus_extra_used: bool = False,
+    plus_segment_current=None,
+    plus_on_pass_complete=None,
 ) -> Dict[int, str]:
     """
     Refine subtitle translations with a one-pass Automatic Post-Editing call.
@@ -342,78 +346,52 @@ async def _refine_subtitle_translations_once(
                 f"[{i}] {translations[g]}" for i, g in enumerate(index_groups[block_idx + 1][:5])
             )
 
-        for attempt in range(max_block_attempts):
-            if check_interruption_callback and check_interruption_callback():
-                from src.core.llm.exceptions import RefinementInterrupted
-                partial = dict(refined_translations)
-                if block_checkpoint_callback:
-                    block_checkpoint_callback(block_idx, partial)
-                exc = RefinementInterrupted(partial_result=partial)
-                exc.refinement_index = block_idx
-                raise exc
+        plus_mode = bool(prompt_options and prompt_options.get("refine_plus"))
+        if plus_mode:
+            from src.core.refine.plus_pipeline import (
+                make_plus_llm_generate,
+                refine_plus_segment,
+            )
+            draft_block = "\n".join(f"[{li}]{text}" for li, text in local_subtitle_tuples)
+            source_block = ""
+            if source_subtitle_blocks:
+                source_block = "\n".join(f"[{li}]{text}" for li, text in source_subtitle_blocks)
 
-            # On retry, reinforce the reminder with the exact missing indices.
-            extra_instructions = post_processing_instructions or ''
-            if attempt > 0:
-                missing_local = [li for li in expected_local_indices
-                                 if local_to_global[li] not in block_refined]
-                missing_str = ", ".join(f"[{li}]" for li in missing_local)
-                extra_instructions = (
-                    (extra_instructions + "\n\n" if extra_instructions else "")
-                    + f"CRITICAL: Your previous response was incomplete. "
-                    f"You MUST output ALL {len(local_subtitle_tuples)} indices "
-                    f"[0] through [{len(local_subtitle_tuples) - 1}] in order, "
-                    f"each followed by the refined subtitle. "
-                    f"Missing indices last time: {missing_str}. Do NOT stop early."
-                )
+            def _srt_safe(prev, cand):
+                return all(f"[{li}]" in (cand or "") for li, _ in local_subtitle_tuples)
 
             try:
-                prompt_pair = generate_subtitle_refinement_block_prompt(
-                    subtitle_blocks=local_subtitle_tuples,
-                    source_subtitle_blocks=source_subtitle_blocks,
-                    previous_refined_block=(
-                        previous_refined_block
-                        + (f"\n\nNext block context:\n{next_block_context}" if next_block_context else "")
-                    ),
+                plus_result = await refine_plus_segment(
+                    draft=draft_block,
+                    source=source_block,
+                    previous_refined_context=previous_refined_block,
                     target_language=target_language,
-                    additional_instructions=extra_instructions,
-                    glossary_block=glossary_block,
-                    source_language=(prompt_options or {}).get("source_language", ""),
+                    prompt_options=prompt_options,
+                    llm_generate=make_plus_llm_generate(llm_client, model_name),
+                    structure_guard=_srt_safe,
+                    log_callback=log_callback,
+                    start_pass=plus_start_pass if block_idx == start_block_index else 1,
+                    extra_used=plus_extra_used if block_idx == start_block_index else False,
+                    current_text=(
+                        plus_segment_current
+                        if block_idx == start_block_index and plus_segment_current is not None
+                        else None
+                    ),
+                    on_pass_complete=(
+                        (lambda next_pass, text, used_extra, report=None, recent_logs=None, _idx=block_idx: plus_on_pass_complete(
+                            _idx, next_pass, text, used_extra, report, recent_logs,
+                            dict(refined_translations),
+                        )) if plus_on_pass_complete else None
+                    ),
+                    segment_index=block_idx + 1,
                 )
-
-                if log_callback and attempt > 0:
-                    log_callback("srt_refinement_retry",
-                                 f"Block {block_idx + 1}: retry attempt {attempt} "
-                                 f"({len(local_subtitle_tuples) - len(block_refined)} subtitles still missing)")
-
-                llm_response = await llm_client.make_request(
-                    prompt_pair.user, model_name, system_prompt=prompt_pair.system
+                parsed = srt_processor.extract_block_translations_with_remapping(
+                    plus_result.text, local_to_global
                 )
-
-                if llm_response and llm_response.content:
-                    if log_callback:
-                        log_callback("refinement_response", "Refinement response received", data={
-                            'type': 'refinement_response',
-                            'response': llm_response.content,
-                            'model': model_name,
-                        })
-
-                    refined_block_text = llm_client.extract_translation(llm_response.content)
-                    if refined_block_text:
-                        parsed = srt_processor.extract_block_translations_with_remapping(
-                            refined_block_text, local_to_global
-                        )
-                        # Merge only the newly recovered (non-empty) entries.
-                        for g_idx, text in parsed.items():
-                            if g_idx not in block_refined and text.strip():
-                                block_refined[g_idx] = text
-
-                # All subtitles recovered? stop retrying.
-                if len(block_refined) == len(group):
-                    break
-
+                for g_idx, text in parsed.items():
+                    if text and text.strip():
+                        block_refined[g_idx] = text
             except Exception as e:
-                # Re-raise RateLimitError to trigger auto-pause
                 from src.core.llm.exceptions import RateLimitError
                 if isinstance(e, RateLimitError):
                     e.partial_result = dict(refined_translations)
@@ -422,8 +400,93 @@ async def _refine_subtitle_translations_once(
                         block_checkpoint_callback(block_idx, e.partial_result)
                     raise
                 if log_callback:
-                    log_callback("srt_refinement_error",
-                                 f"Block {block_idx + 1} attempt {attempt + 1}: {e}")
+                    log_callback(
+                        "srt_refinement_error",
+                        f"Block {block_idx + 1} Refine+: {e}",
+                    )
+        else:
+            for attempt in range(max_block_attempts):
+                if check_interruption_callback and check_interruption_callback():
+                    from src.core.llm.exceptions import RefinementInterrupted
+                    partial = dict(refined_translations)
+                    if block_checkpoint_callback:
+                        block_checkpoint_callback(block_idx, partial)
+                    exc = RefinementInterrupted(partial_result=partial)
+                    exc.refinement_index = block_idx
+                    raise exc
+
+                # On retry, reinforce the reminder with the exact missing indices.
+                extra_instructions = post_processing_instructions or ''
+                if attempt > 0:
+                    missing_local = [li for li in expected_local_indices
+                                     if local_to_global[li] not in block_refined]
+                    missing_str = ", ".join(f"[{li}]" for li in missing_local)
+                    extra_instructions = (
+                        (extra_instructions + "\n\n" if extra_instructions else "")
+                        + f"CRITICAL: Your previous response was incomplete. "
+                        f"You MUST output ALL {len(local_subtitle_tuples)} indices "
+                        f"[0] through [{len(local_subtitle_tuples) - 1}] in order, "
+                        f"each followed by the refined subtitle. "
+                        f"Missing indices last time: {missing_str}. Do NOT stop early."
+                    )
+
+                try:
+                    prompt_pair = generate_subtitle_refinement_block_prompt(
+                        subtitle_blocks=local_subtitle_tuples,
+                        source_subtitle_blocks=source_subtitle_blocks,
+                        previous_refined_block=(
+                            previous_refined_block
+                            + (f"\n\nNext block context:\n{next_block_context}" if next_block_context else "")
+                        ),
+                        target_language=target_language,
+                        additional_instructions=extra_instructions,
+                        glossary_block=glossary_block,
+                        source_language=(prompt_options or {}).get("source_language", ""),
+                    )
+
+                    if log_callback and attempt > 0:
+                        log_callback("srt_refinement_retry",
+                                     f"Block {block_idx + 1}: retry attempt {attempt} "
+                                     f"({len(local_subtitle_tuples) - len(block_refined)} subtitles still missing)")
+
+                    llm_response = await llm_client.make_request(
+                        prompt_pair.user, model_name, system_prompt=prompt_pair.system
+                    )
+
+                    if llm_response and llm_response.content:
+                        if log_callback:
+                            log_callback("refinement_response", "Refinement response received", data={
+                                'type': 'refinement_response',
+                                'response': llm_response.content,
+                                'model': model_name,
+                            })
+
+                        refined_block_text = llm_client.extract_translation(llm_response.content)
+                        if refined_block_text:
+                            parsed = srt_processor.extract_block_translations_with_remapping(
+                                refined_block_text, local_to_global
+                            )
+                            # Merge only the newly recovered (non-empty) entries.
+                            for g_idx, text in parsed.items():
+                                if g_idx not in block_refined and text.strip():
+                                    block_refined[g_idx] = text
+
+                    # All subtitles recovered? stop retrying.
+                    if len(block_refined) == len(group):
+                        break
+
+                except Exception as e:
+                    # Re-raise RateLimitError to trigger auto-pause
+                    from src.core.llm.exceptions import RateLimitError
+                    if isinstance(e, RateLimitError):
+                        e.partial_result = dict(refined_translations)
+                        e.refinement_index = block_idx
+                        if block_checkpoint_callback:
+                            block_checkpoint_callback(block_idx, e.partial_result)
+                        raise
+                    if log_callback:
+                        log_callback("srt_refinement_error",
+                                     f"Block {block_idx + 1} attempt {attempt + 1}: {e}")
 
         # Apply refined where available, keep original draft otherwise.
         # No per-subtitle fallback: small models corrupt single-subtitle calls
@@ -462,7 +525,7 @@ async def _refine_subtitle_translations_once(
             last_items.append(f"[{local_idx}]{refined_translations.get(g_idx, translations[g_idx])}")
         previous_refined_block = "\n".join(last_items)
         if block_checkpoint_callback:
-            block_checkpoint_callback(block_idx, dict(refined_translations))
+            block_checkpoint_callback(block_idx, dict(refined_translations), True)
 
     return refined_translations
 
@@ -478,28 +541,87 @@ async def refine_subtitle_translations(
     translation_id: Optional[str] = None,
     refinement_output_filepath: Optional[str] = None,
 ) -> Dict[int, str]:
-    """Run a single one-pass Automatic Post-Editing pass on translated subtitles."""
+    """Run an Automatic Post-Editing pass on translated subtitles."""
     from src.core.llm.exceptions import RateLimitError, RefinementInterrupted
     from src.core.refine.refinement_checkpoint import (
         clear_one_pass_state,
         load_one_pass_state,
+        load_plus_state,
         save_one_pass_state,
+        save_plus_state,
     )
 
-    start_block, checkpoint_current, _raw = load_one_pass_state(
-        checkpoint_manager, translation_id, total_segments=len(translations)
-    )
+    plus_mode = bool(prompt_options and prompt_options.get("refine_plus"))
+    plus_pass_index = 1
+    plus_extra_used = False
+    plus_segment_current = None
+    if plus_mode:
+        (
+            start_block,
+            checkpoint_current,
+            plus_pass_index,
+            plus_extra_used,
+            plus_segment_current,
+            _raw,
+        ) = load_plus_state(
+            checkpoint_manager, translation_id, total_segments=len(translations)
+        )
+    else:
+        start_block, checkpoint_current, _raw = load_one_pass_state(
+            checkpoint_manager, translation_id, total_segments=len(translations)
+        )
     working = dict(translations)
     if isinstance(checkpoint_current, dict):
         working.update({int(k): v for k, v in checkpoint_current.items()})
 
-    def _persist(block_idx, partial):
+    def _persist(block_idx, partial, advance=False):
+        nonlocal plus_pass_index, plus_extra_used, plus_segment_current
+        if plus_mode:
+            if advance:
+                plus_pass_index = 1
+                plus_extra_used = False
+                plus_segment_current = None
+            save_plus_state(
+                checkpoint_manager, translation_id,
+                next_segment=block_idx + 1 if advance else block_idx,
+                total_segments=len(working),
+                current=dict(partial),
+                pass_index=1 if advance else plus_pass_index,
+                extra_used=False if advance else plus_extra_used,
+                segment_current=None if advance else plus_segment_current,
+                output_filepath=refinement_output_filepath,
+                log_callback=log_callback,
+            )
+            return
         save_one_pass_state(
+            checkpoint_manager, translation_id,
+            next_segment=block_idx + 1 if advance else block_idx,
+            total_segments=len(working),
+            current=dict(partial),
+            output_filepath=refinement_output_filepath,
+            log_callback=log_callback,
+        )
+
+    def _plus_on_pass(block_idx, next_pass, text, used_extra, report, recent_logs, partial):
+        nonlocal plus_pass_index, plus_extra_used, plus_segment_current
+        plus_pass_index = next_pass
+        plus_extra_used = used_extra
+        plus_segment_current = text
+        extra = {}
+        if report is not None:
+            extra["last_qa"] = report.to_log_dict()
+        if recent_logs:
+            extra["decision_log"] = list(recent_logs)[-8:]
+        save_plus_state(
             checkpoint_manager, translation_id,
             next_segment=block_idx,
             total_segments=len(working),
             current=dict(partial),
+            pass_index=next_pass,
+            extra_used=used_extra,
+            segment_current=text,
             output_filepath=refinement_output_filepath,
+            extra=extra or None,
             log_callback=log_callback,
         )
 
@@ -519,19 +641,36 @@ async def refine_subtitle_translations(
             source_subtitles=source_subtitles,
             start_block_index=start_block,
             block_checkpoint_callback=_persist if checkpoint_manager and translation_id else None,
+            plus_start_pass=plus_pass_index,
+            plus_extra_used=plus_extra_used,
+            plus_segment_current=plus_segment_current,
+            plus_on_pass_complete=_plus_on_pass if plus_mode and checkpoint_manager and translation_id else None,
         )
     except (RateLimitError, RefinementInterrupted) as exc:
         partial = getattr(exc, "partial_result", None)
         next_segment = getattr(exc, "refinement_index", start_block)
         if isinstance(partial, dict):
-            exc.refinement_state = save_one_pass_state(
-                checkpoint_manager, translation_id,
-                next_segment=next_segment if isinstance(next_segment, int) else start_block,
-                total_segments=len(working),
-                current=dict(partial),
-                output_filepath=refinement_output_filepath,
-                log_callback=log_callback,
-            )
+            if plus_mode:
+                exc.refinement_state = save_plus_state(
+                    checkpoint_manager, translation_id,
+                    next_segment=next_segment if isinstance(next_segment, int) else start_block,
+                    total_segments=len(working),
+                    current=dict(partial),
+                    pass_index=plus_pass_index,
+                    extra_used=plus_extra_used,
+                    segment_current=plus_segment_current,
+                    output_filepath=refinement_output_filepath,
+                    log_callback=log_callback,
+                )
+            else:
+                exc.refinement_state = save_one_pass_state(
+                    checkpoint_manager, translation_id,
+                    next_segment=next_segment if isinstance(next_segment, int) else start_block,
+                    total_segments=len(working),
+                    current=dict(partial),
+                    output_filepath=refinement_output_filepath,
+                    log_callback=log_callback,
+                )
         raise
 
     clear_one_pass_state(checkpoint_manager, translation_id)

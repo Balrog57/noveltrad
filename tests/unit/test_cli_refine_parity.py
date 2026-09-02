@@ -31,6 +31,8 @@ def _args(**overrides):
         parallel=1,
         refine=False,
         refine_only=False,
+        refine_plus=False,
+        refine_plus_only=False,
         text_cleanup=False,
     )
     defaults.update(overrides)
@@ -42,6 +44,7 @@ def test_cli_prompt_options_never_set_in_pipeline_refine():
     assert options["refine"] is False
     assert options["text_cleanup"] is True
     assert options["preserve_technical_content"] is True
+    assert options["refine_plus"] is False
 
 
 @pytest.mark.asyncio
@@ -163,3 +166,74 @@ async def test_cli_refine_raises_when_refine_file_returns_false(monkeypatch, tmp
             checkpoint_manager=None, translation_id="cli_test",
             log_callback=None, stats_callback=None,
         )
+
+
+@pytest.mark.asyncio
+async def test_cli_refine_plus_sets_prompt_flag_and_calls_refine_file(monkeypatch, tmp_path):
+    src = tmp_path / "book.txt"
+    out = tmp_path / "book_fr.txt"
+    src.write_text("Once upon a time.", encoding="utf-8")
+    calls = []
+
+    async def fake_translate_file(**kwargs):
+        calls.append(("translate", kwargs))
+        Path(kwargs["output_filepath"]).write_text("translated", encoding="utf-8")
+        return True
+
+    async def fake_refine_file(**kwargs):
+        calls.append(("refine", kwargs))
+        return True
+
+    monkeypatch.setattr(translate, "translate_file", fake_translate_file)
+    monkeypatch.setattr(translate, "refine_file", fake_refine_file)
+
+    args = _args(input=str(src), output=str(out), refine_plus=True)
+    prompt_options = translate.build_cli_prompt_options(args)
+    assert prompt_options["refine"] is False
+    assert prompt_options["refine_plus"] is True
+    mode = await translate.run_cli_job(
+        args, prompt_options, checkpoint_manager=None, translation_id="cli_test",
+        log_callback=None, stats_callback=None,
+    )
+
+    assert mode == "translate_refine_plus"
+    assert [name for name, _ in calls] == ["translate", "refine"]
+    assert calls[1][1]["prompt_options"]["refine_plus"] is True
+    assert calls[1][1]["prompt_options"]["refine"] is False
+
+
+@pytest.mark.asyncio
+async def test_cli_refine_plus_only_skips_translate(monkeypatch, tmp_path):
+    src = tmp_path / "book.txt"
+    out = tmp_path / "book_refined.txt"
+    src.write_text("Already translated.", encoding="utf-8")
+    calls = []
+
+    async def fake_translate_file(**kwargs):
+        calls.append(("translate", kwargs))
+        return True
+
+    async def fake_refine_file(**kwargs):
+        calls.append(("refine", kwargs))
+        return True
+
+    monkeypatch.setattr(translate, "translate_file", fake_translate_file)
+    monkeypatch.setattr(translate, "refine_file", fake_refine_file)
+
+    args = _args(input=str(src), output=str(out), refine_plus_only=True)
+    mode = await translate.run_cli_job(
+        args, translate.build_cli_prompt_options(args),
+        checkpoint_manager=None, translation_id="cli_test",
+        log_callback=None, stats_callback=None,
+    )
+
+    assert mode == "refine-plus-only"
+    assert [name for name, _ in calls] == ["refine"]
+    assert calls[0][1]["prompt_options"]["refine_plus"] is True
+    assert calls[0][1]["prompt_options"]["refine"] is False
+
+
+def test_cli_refine_and_refine_plus_are_documented_as_exclusive():
+    source = Path(__file__).resolve().parents[2] / "translate.py"
+    text = source.read_text(encoding="utf-8")
+    assert "Use only one of --refine, --refine-only, --refine-plus, --refine-plus-only." in text

@@ -140,6 +140,10 @@ class TestAutoPrepWants:
         config = _base_config({'glossary_auto': True}, refine_only=True)
         assert handlers._auto_prep_wants(config) == (False, False)
 
+    def test_refine_plus_only_skips_glossary(self):
+        config = _base_config({'glossary_auto': True}, refine_plus_only=True)
+        assert handlers._auto_prep_wants(config) == (False, False)
+
     def test_explicit_preset_wins_over_style_auto(self):
         config = _base_config({'style_auto': True, 'custom_instruction_file': 'x.yaml'})
         assert handlers._auto_prep_wants(config) == (False, False)

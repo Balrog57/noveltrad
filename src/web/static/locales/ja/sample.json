@@ -10,7 +10,9 @@
   "mode_label": "モード",
   "mode_translate": "翻訳",
   "mode_refine": "推敲",
+  "mode_refine_plus": "推敲+",
   "mode_translate_refine": "翻訳 + 推敲",
+  "mode_translate_refine_plus": "翻訳 + 推敲+",
 
   "n_samples_label": "サンプル数 (N)",
   "max_chars_label": "サンプルごとの最大文字数",

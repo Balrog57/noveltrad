@@ -400,10 +400,22 @@ def create_translation_blueprint(state_manager, start_translation_job, output_di
             'refine_only': data.get('refine_only', False),
             # Chained refinement pass after translation
             'refine_after': data.get('refine_after', False),
+            'refine_plus_only': data.get('refine_plus_only', False),
+            'refine_plus_after': data.get('refine_plus_after', False),
             # TTS configuration
             'tts_enabled': data.get('tts_enabled', False),
             'tts_config': TTSConfig.from_web_request(data).to_dict() if data.get('tts_enabled') else None,
         }
+
+        if config['refine_plus_after']:
+            config['refine_after'] = False
+        if config['refine_plus_only']:
+            config['refine_only'] = False
+            config['refine_after'] = False
+            config['refine_plus_after'] = False
+        if config['refine_only']:
+            config['refine_after'] = False
+            config['refine_plus_after'] = False
 
         raw_chunk = data.get('max_tokens_per_chunk')
         if raw_chunk is not None and str(raw_chunk).strip() != '':

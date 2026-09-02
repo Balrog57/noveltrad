@@ -64,7 +64,7 @@ def create_cost_blueprint(output_dir):
             src_lang: str (optional)
             tgt_lang: str (optional)
             pricing:  {"input": float, "output": float} per 1M (optional, overrides defaults)
-            options:  {"refine": bool, "text_cleanup": bool} (optional)
+            options:  {"refine": bool, "refine_plus": bool, "refine_only": bool, "text_cleanup": bool} (optional)
         """
         try:
             data = request.get_json(silent=True) or {}

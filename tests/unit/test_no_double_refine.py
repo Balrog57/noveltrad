@@ -101,6 +101,21 @@ async def _run_job(config, tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_refine_plus_after_sets_plus_flag_and_does_not_combine_ape(tmp_path, monkeypatch):
+    config = _base_config(tmp_path)
+    config['refine_after'] = False
+    config['refine_plus_after'] = True
+    config['prompt_options'] = {'refine': True}
+    calls = await _run_job(config, tmp_path, monkeypatch)
+
+    assert len(calls['translate']) == 1
+    assert len(calls['refine']) == 1
+    assert calls['translate'][0]['prompt_options']['refine'] is False
+    assert calls['refine'][0]['prompt_options']['refine'] is False
+    assert calls['refine'][0]['prompt_options']['refine_plus'] is True
+
+
+@pytest.mark.asyncio
 async def test_refine_after_clears_in_pipeline_flag_and_calls_refine_file_once(tmp_path, monkeypatch):
     config = _base_config(tmp_path)
     calls = await _run_job(config, tmp_path, monkeypatch)
@@ -138,3 +153,6 @@ def test_batch_controller_never_sets_prompt_options_refine_from_refine_after():
     assert 'refine: refineAfter' not in source
     assert 'refine: false' in source
     assert 'refine_after: refineAfter' in source
+    assert 'refine_plus_after: operation === \'translate\' && refinePlus' in source
+    assert 'refine_plus_only: operation === \'refine\' && refinePlus' in source
+    assert 'refine_only: operation === \'refine\' && !refinePlus' in source

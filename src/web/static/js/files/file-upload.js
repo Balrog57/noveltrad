@@ -509,7 +509,8 @@ export const FileUpload = {
                 languageConfidence: f.languageConfidence,
                 thumbnail: f.thumbnail,
                 operation: f.operation || 'translate',
-                refineAfter: !!f.refineAfter
+                refineAfter: !!f.refineAfter,
+                refinePlus: !!f.refinePlus
             }));
             localStorage.setItem(FILE_QUEUE_STORAGE_KEY, JSON.stringify(serializableFiles));
         } catch {
@@ -879,7 +880,8 @@ export const FileUpload = {
                 languageConfidence: uploadResult.language_confidence || null,
                 thumbnail: uploadResult.thumbnail || null,  // EPUB cover thumbnail
                 operation: operation,
-                refineAfter: false
+                refineAfter: false,
+                refinePlus: operation === 'refine' && DomHelpers.getValue('refineDropMode') === 'refine_plus'
             };
 
             // Add to state
@@ -1115,9 +1117,9 @@ export const FileUpload = {
 
         // Operation badge
         const badge = document.createElement('span');
-        badge.className = `file-op-badge op-${op}`;
+        badge.className = `file-op-badge op-${op === 'refine' && file.refinePlus ? 'refine-plus' : op}`;
         badge.textContent = op === 'refine'
-            ? t('translation:op_badge_refine')
+            ? (file.refinePlus ? t('translation:op_badge_refine_plus') : t('translation:op_badge_refine'))
             : t('translation:op_badge_translate');
         wrap.appendChild(badge);
 
@@ -1193,21 +1195,38 @@ export const FileUpload = {
             tgtLabel.appendChild(tgtSelect);
             wrap.appendChild(tgtLabel);
 
-            // Refine-after toggle
+            // Refine-after / Refine+ selector (translate queue only)
             const refineLabel = document.createElement('label');
-            refineLabel.title = t('translation:per_file_refine_after_title');
-            const refineCheckbox = document.createElement('input');
-            refineCheckbox.type = 'checkbox';
-            refineCheckbox.checked = !!file.refineAfter;
-            refineCheckbox.onclick = (e) => e.stopPropagation();
-            refineCheckbox.onchange = (e) => {
+            refineLabel.title = t('translation:per_file_refine_mode_title');
+            const refineSelect = document.createElement('select');
+            refineSelect.className = 'form-control';
+            refineSelect.style.display = 'inline-block';
+            refineSelect.style.width = 'auto';
+            refineSelect.style.minWidth = '9rem';
+            const modes = [
+                ['none', t('translation:per_file_refine_none')],
+                ['refine', t('translation:per_file_refine_after')],
+                ['refine_plus', t('translation:per_file_refine_plus')],
+            ];
+            let currentMode = 'none';
+            if (file.refinePlus) currentMode = 'refine_plus';
+            else if (file.refineAfter) currentMode = 'refine';
+            modes.forEach(([value, label]) => {
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = label;
+                if (value === currentMode) opt.selected = true;
+                refineSelect.appendChild(opt);
+            });
+            refineSelect.onclick = (e) => e.stopPropagation();
+            refineSelect.onchange = (e) => {
                 e.stopPropagation();
-                this._updateFileField(file.name, 'refineAfter', refineCheckbox.checked);
+                const mode = refineSelect.value;
+                this._updateFileField(file.name, 'refineAfter', mode === 'refine');
+                this._updateFileField(file.name, 'refinePlus', mode === 'refine_plus');
             };
-            refineLabel.appendChild(refineCheckbox);
-            refineLabel.appendChild(
-                document.createTextNode(' ' + t('translation:per_file_refine_after'))
-            );
+            refineLabel.appendChild(document.createTextNode(t('translation:per_file_refine_mode') + ' '));
+            refineLabel.appendChild(refineSelect);
             wrap.appendChild(refineLabel);
         } else {
             // Refine: single language dropdown (the file's own language)
@@ -1225,6 +1244,22 @@ export const FileUpload = {
             );
             langLabel.appendChild(langSelect);
             wrap.appendChild(langLabel);
+
+            const plusLabel = document.createElement('label');
+            plusLabel.title = t('translation:per_file_refine_plus_only_title');
+            const plusCheck = document.createElement('input');
+            plusCheck.type = 'checkbox';
+            plusCheck.checked = !!file.refinePlus;
+            plusCheck.onclick = (e) => e.stopPropagation();
+            plusCheck.onchange = (e) => {
+                e.stopPropagation();
+                this._updateFileField(file.name, 'refinePlus', plusCheck.checked);
+            };
+            plusLabel.appendChild(plusCheck);
+            plusLabel.appendChild(
+                document.createTextNode(' ' + t('translation:per_file_refine_plus'))
+            );
+            wrap.appendChild(plusLabel);
         }
 
         return wrap;
@@ -1250,7 +1285,7 @@ export const FileUpload = {
         // than poking the cost estimator directly to keep this module
         // dependency-free.
         const costRelevant = new Set([
-            'refineAfter', 'operation', 'sourceLanguage', 'targetLanguage',
+            'refineAfter', 'refinePlus', 'operation', 'sourceLanguage', 'targetLanguage',
         ]);
         if (costRelevant.has(field)) {
             window.dispatchEvent(new CustomEvent('translationOptionsChanged'));

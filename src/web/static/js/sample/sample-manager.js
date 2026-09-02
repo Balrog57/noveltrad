@@ -181,8 +181,8 @@ function buildCellKey(item, col, runCtx) {
  * Which phases must have a 'done' entry for a cached cell to count as a hit?
  */
 function requiredPhases(mode) {
-    if (mode === 'refine') return ['refine'];
-    if (mode === 'translate_refine') return ['translate', 'refine'];
+    if (mode === 'refine' || mode === 'refine_plus') return ['refine'];
+    if (mode === 'translate_refine' || mode === 'translate_refine_plus') return ['translate', 'refine'];
     return ['translate'];
 }
 
@@ -1355,6 +1355,7 @@ function rerenderOnLocale() {
     window.addEventListener('localeChanged', () => {
         renderColumns();
         if (SampleTable.hasResults()) {
+            SampleTable.rerender();
             applyToDOM($('sampleResults'));
         }
     });

@@ -458,6 +458,85 @@ async def _run_cell_refine(
     )
 
 
+async def _run_cell_refine_plus(
+    *,
+    sample_id: str,
+    row: int,
+    col: int,
+    draft_text: str,
+    item: Dict[str, Any],
+    column: Dict[str, Any],
+    target_language: str,
+    prompt_options: Dict[str, Any],
+    glossary_block: str = "",
+    state: "SampleStateManager",
+    socketio,
+) -> None:
+    """Run Refine+ on one sample cell and emit a single refine-phase result."""
+    from src.core.refine.plus_pipeline import refine_plus_segment
+    from src.prompts.prompts import PromptPair
+
+    started = time.perf_counter()
+    provider = None
+    try:
+        provider = _instantiate_provider(column)
+
+        async def llm_generate(prompt_pair: PromptPair, *, temperature: float = None):
+            response = await provider.generate(
+                prompt=prompt_pair.user,
+                system_prompt=prompt_pair.system,
+                timeout=REQUEST_TIMEOUT,
+                temperature=temperature,
+            )
+            if response is None:
+                return None
+            return response.content
+
+        plus_options = dict(prompt_options or {})
+        plus_options["refine_plus"] = True
+        source_text = item.get("source_text") or ""
+        result = await refine_plus_segment(
+            draft=draft_text,
+            source=source_text if source_text != draft_text else source_text,
+            context_before=item.get("context_before", ""),
+            context_after=item.get("context_after", ""),
+            target_language=target_language,
+            prompt_options=plus_options,
+            llm_generate=llm_generate,
+            log_callback=None,
+            segment_index=row + 1,
+        )
+        output_text = (result.text or "").strip()
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        src_len = max(1, len(draft_text))
+        _emit_cell(
+            socketio, state, sample_id, row, col, "refine",
+            status="done" if output_text else "error",
+            output=output_text or None,
+            metrics={
+                "latency_ms": latency_ms,
+                "length_ratio": round(len(output_text) / src_len, 3),
+                "refine_plus_calls": result.llm_calls,
+            },
+            error=None if output_text else "Refine+ returned an empty result",
+        )
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        _emit_cell(
+            socketio, state, sample_id, row, col, "refine",
+            status="error",
+            output=None,
+            metrics={"latency_ms": latency_ms},
+            error=str(exc),
+        )
+    finally:
+        if provider is not None:
+            try:
+                await provider.close()
+            except Exception:
+                pass
+
+
 def _emit_cell(socketio, state, sample_id, row, col, phase, *, status, output, metrics, error):
     """Persist the cell result in state and emit it over WebSocket."""
     state.update_cell(
@@ -600,9 +679,10 @@ async def _run_sample_async(
             column = columns[col]
             cell_options = column_options[col]
             glossary_block = _glossary_block_for(column_glossaries[col], item["source_text"])
-            if mode == "refine":
+            if mode in ("refine", "refine_plus"):
                 # Treat the source extract as the draft to refine.
-                await _run_cell_refine(
+                refine_fn = _run_cell_refine_plus if mode == "refine_plus" else _run_cell_refine
+                await refine_fn(
                     sample_id=sample_id, row=row, col=col,
                     draft_text=item["source_text"], item=item, column=column,
                     target_language=target_language,
@@ -621,8 +701,9 @@ async def _run_sample_async(
                 state=state, socketio=socketio,
             )
 
-            if mode == "translate_refine" and draft and not state.is_cancelled(sample_id):
-                await _run_cell_refine(
+            if mode in ("translate_refine", "translate_refine_plus") and draft and not state.is_cancelled(sample_id):
+                refine_fn = _run_cell_refine_plus if mode == "translate_refine_plus" else _run_cell_refine
+                await refine_fn(
                     sample_id=sample_id, row=row, col=col,
                     draft_text=draft, item=item, column=column,
                     target_language=target_language,
@@ -828,7 +909,7 @@ def create_sample_blueprint(sample_state_manager, socketio=None, output_dir=".")
             return err
 
         mode = (data.get("mode") or "translate").lower()
-        if mode not in ("translate", "refine", "translate_refine"):
+        if mode not in ("translate", "refine", "translate_refine", "refine_plus", "translate_refine_plus"):
             return jsonify({"error": f"Invalid mode: {mode}"}), 400
 
         try:

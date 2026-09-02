@@ -20,11 +20,18 @@
 
   "op_badge_translate": "Traducir",
   "op_badge_refine": "Refinar",
+  "op_badge_refine_plus": "Refinar+",
   "per_file_source": "Origen",
   "per_file_target": "Destino",
   "per_file_language": "Idioma",
   "per_file_refine_after": "Refinar después",
   "per_file_refine_after_title": "Ejecuta una pasada de refinamiento sobre la salida de este archivo después de la traducción",
+  "per_file_refine_mode": "Tras traducir:",
+  "per_file_refine_mode_title": "Ninguno, Refinar (una pasada) o Refinar+ (4 pasadas LLM)",
+  "per_file_refine_none": "Ninguno",
+  "per_file_refine_plus": "Refinar+",
+  "per_file_refine_plus_only_title": "Ejecuta Refinar+ (4 pasadas LLM) en lugar del refinamiento de una pasada",
+  "refine_drop_mode": "Modo",
   "zone_locked": "Zona de depósito bloqueada mientras la cola está en modo {{operation}}.",
   "zone_locked_current": "La cola está en modo {{current}} — vacíala antes de cambiar.",
 
@@ -51,9 +58,11 @@
 
   "translating": "Traduciendo",
   "refining": "Refinando",
+  "refining_plus": "Refinar+",
   "preparing_auto": "Preparando (glosario/estilo automáticos)",
   "translating_step": "Traduciendo ({{step}}/{{total}})",
   "refining_step": "Refinando ({{step}}/{{total}})",
+  "refining_plus_pass": "Refinar+ pase {{pass}}/{{total}} · segmento {{segment}}/{{segments}}",
   "validation_failed_log": "❌ Validación fallida: {{message}}",
   "validation_custom_source": "Especifica el idioma de origen personalizado para el lote.",
   "validation_custom_target": "Especifica el idioma de destino personalizado para el lote.",
@@ -220,6 +229,7 @@
 
   "summary_refining_in": "Refinando en {{lang}}",
   "summary_refine_only": "Solo refinar (omite la traducción)",
+  "summary_refine_plus": "Refinar+",
   "summary_no_auto_pause": "Sin auto-pausa",
   "summary_bilingual": "Bilingüe",
   "summary_plain_text_mode": "Modo texto plano",

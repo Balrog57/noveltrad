@@ -20,11 +20,18 @@
 
   "op_badge_translate": "翻译",
   "op_badge_refine": "润色",
+  "op_badge_refine_plus": "润色+",
   "per_file_source": "源",
   "per_file_target": "目标",
   "per_file_language": "语言",
   "per_file_refine_after": "之后润色",
   "per_file_refine_after_title": "翻译完成后对此文件的输出再执行一次润色",
+  "per_file_refine_mode": "翻译之后：",
+  "per_file_refine_mode_title": "无、润色（单次）或润色+（4 次 LLM 调用）",
+  "per_file_refine_none": "无",
+  "per_file_refine_plus": "润色+",
+  "per_file_refine_plus_only_title": "使用润色+（4 次 LLM 调用）而非单次润色",
+  "refine_drop_mode": "模式",
   "zone_locked": "当队列处于 {{operation}} 模式时，此投放区已锁定。",
   "zone_locked_current": "队列正处于 {{current}} 模式 — 请先清空再切换。",
 
@@ -51,9 +58,11 @@
 
   "translating": "翻译中",
   "refining": "润色中",
+  "refining_plus": "润色+",
   "preparing_auto": "准备中（自动术语表/文体）",
   "translating_step": "翻译中 ({{step}}/{{total}})",
   "refining_step": "润色中 ({{step}}/{{total}})",
+  "refining_plus_pass": "润色+ 第 {{pass}}/{{total}} 遍 · 片段 {{segment}}/{{segments}}",
   "validation_failed_log": "❌ 校验失败：{{message}}",
   "validation_custom_source": "请为批量任务指定自定义源语言。",
   "validation_custom_target": "请为批量任务指定自定义目标语言。",
@@ -220,6 +229,7 @@
 
   "summary_refining_in": "用{{lang}}润色",
   "summary_refine_only": "仅润色（跳过翻译）",
+  "summary_refine_plus": "润色+",
   "summary_no_auto_pause": "不自动暂停",
   "summary_bilingual": "双语",
   "summary_plain_text_mode": "纯文本模式",

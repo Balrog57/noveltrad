@@ -10,7 +10,9 @@
   "mode_label": "Modo",
   "mode_translate": "Traducir",
   "mode_refine": "Refinar",
+  "mode_refine_plus": "Refinar+",
   "mode_translate_refine": "Traducir + Refinar",
+  "mode_translate_refine_plus": "Traducir + Refinar+",
 
   "n_samples_label": "Número de muestras (N)",
   "max_chars_label": "Caracteres máx. por muestra",

@@ -10,7 +10,9 @@
   "mode_label": "모드",
   "mode_translate": "번역",
   "mode_refine": "다듬기",
+  "mode_refine_plus": "다듬기+",
   "mode_translate_refine": "번역 + 다듬기",
+  "mode_translate_refine_plus": "번역 + 다듬기+",
 
   "n_samples_label": "샘플 수 (N)",
   "max_chars_label": "샘플당 최대 문자 수",

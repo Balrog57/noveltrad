@@ -10,7 +10,9 @@
   "mode_label": "模式",
   "mode_translate": "翻译",
   "mode_refine": "润色",
+  "mode_refine_plus": "润色+",
   "mode_translate_refine": "翻译 + 润色",
+  "mode_translate_refine_plus": "翻译 + 润色+",
 
   "n_samples_label": "采样数量 (N)",
   "max_chars_label": "每段最大字符数",

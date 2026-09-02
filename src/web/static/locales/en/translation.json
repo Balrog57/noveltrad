@@ -20,11 +20,18 @@
 
   "op_badge_translate": "Translate",
   "op_badge_refine": "Refine",
+  "op_badge_refine_plus": "Refine+",
   "per_file_source": "Source",
   "per_file_target": "Target",
   "per_file_language": "Language",
   "per_file_refine_after": "Refine after",
   "per_file_refine_after_title": "Run a refinement pass on this file's output after translation",
+  "per_file_refine_mode": "After translation:",
+  "per_file_refine_mode_title": "Choose none, one-pass Refine, or Refine+ (4 LLM passes)",
+  "per_file_refine_none": "None",
+  "per_file_refine_plus": "Refine+",
+  "per_file_refine_plus_only_title": "Run Refine+ (4 LLM passes) instead of one-pass Refine",
+  "refine_drop_mode": "Mode",
   "zone_locked": "Drop area locked while the queue is in {{operation}} mode.",
   "zone_locked_current": "Queue is in {{current}} mode — clear it before switching.",
 
@@ -51,9 +58,11 @@
 
   "translating": "Translating",
   "refining": "Refining",
+  "refining_plus": "Refine+",
   "preparing_auto": "Preparing (auto glossary/style)",
   "translating_step": "Translating ({{step}}/{{total}})",
   "refining_step": "Refining ({{step}}/{{total}})",
+  "refining_plus_pass": "Refine+ pass {{pass}}/{{total}} · segment {{segment}}/{{segments}}",
   "validation_failed_log": "❌ Validation failed: {{message}}",
   "validation_custom_source": "Please specify the custom source language for the batch.",
   "validation_custom_target": "Please specify the custom target language for the batch.",
@@ -220,6 +229,7 @@
 
   "summary_refining_in": "Refining in {{lang}}",
   "summary_refine_only": "Refine Only (skips translation)",
+  "summary_refine_plus": "Refine+",
   "summary_no_auto_pause": "No auto-pause",
   "summary_bilingual": "Bilingual",
   "summary_plain_text_mode": "Plain Text Mode",

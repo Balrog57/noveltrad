@@ -883,6 +883,32 @@ select.form-control {
     color: #7e22ce;
 }
 
+.file-item-controls .file-op-badge.op-refine-plus {
+    background: rgba(217, 119, 6, 0.14);
+    color: #b45309;
+}
+
+.refine-drop-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted-light);
+    pointer-events: auto;
+    cursor: default;
+}
+
+.refine-drop-mode select {
+    width: auto;
+    min-width: 9rem;
+    display: inline-block;
+    font-size: 0.8125rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+}
+
 /* ========================================
    Progress Section
    ======================================== */

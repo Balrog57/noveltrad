@@ -137,6 +137,19 @@ export function resolveOperationLabel(stats) {
     // translate a document that has not been chunked.
     if (stats.auto_prep_active) return t('translation:preparing_auto');
 
+    if (stats.refine_plus) {
+        const pass = stats.refine_plus_pass || 1;
+        const segment = stats.refine_plus_segment || stats.completed_chunks || 0;
+        const segments = stats.refine_plus_segments || stats.total_chunks || 0;
+        return t('translation:refining_plus_pass', {
+            pass,
+            total: 4,
+            segment,
+            segments,
+            defaultValue: `Refine+ pass ${pass}/4 · segment ${segment}/${segments}`,
+        });
+    }
+
     if (stats.enable_refinement) {
         return stats.current_phase === 2
             ? t('translation:refining_step', { step: 2, total: 2, defaultValue: 'Refining (2/2)' })
@@ -366,6 +379,7 @@ function toggleRecommendationPanel({ forceState, context } = {}) {
 // Latest derived rate context (retry %, fallback %, avg errors), so the click
 // handler can re-render the panel without re-receiving the stats payload.
 let _lastSeverityContext = null;
+let _lastOperationStats = null;
 
 let _fallbackCardClickBound = false;
 
@@ -429,6 +443,11 @@ window.addEventListener('localeChanged', () => {
     const panel = DomHelpers.getElement('fallbackRecommendationPanel');
     if (panel && !panel.hasAttribute('hidden') && _lastSeverityContext) {
         renderRecommendationPanel(_lastSeverityContext);
+    }
+    if (_lastOperationStats) {
+        const labelEl = DomHelpers.getElement('progressOperationLabel');
+        if (labelEl) delete labelEl.dataset.labelText;
+        updateOperationLabel(_lastOperationStats);
     }
 });
 
@@ -559,6 +578,7 @@ export const ProgressManager = {
         if (!data.stats) return;
 
         const stats = data.stats;
+        _lastOperationStats = stats;
         const scope = resolveDisplayChunks(stats);
         const completed = scope.completed;
         const total = scope.total;
@@ -598,6 +618,7 @@ export const ProgressManager = {
         DomHelpers.setText('failedChunks', '0');
         DomHelpers.setText('fallbackChunks', '0');
         _lastSeverityContext = null;
+        _lastOperationStats = null;
         updateFallbackHighlight(0);
         DomHelpers.setText('elapsedTime', '0s');
         DomHelpers.setText('estimatedTimeRemaining', '--');

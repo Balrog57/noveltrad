@@ -36,6 +36,7 @@ const estimateCache = new Map();
 function makeCacheKey(file, ctx) {
     const op = file.operation || 'translate';
     const refineAfter = !!file.refineAfter;
+    const refinePlus = !!file.refinePlus;
     return [
         ctx.provider,
         ctx.model,
@@ -44,6 +45,7 @@ function makeCacheKey(file, ctx) {
         ctx.tgt,
         op,
         refineAfter ? 1 : 0,
+        refinePlus ? 1 : 0,
         ctx.options.text_cleanup ? 1 : 0,
     ].join('|');
 }
@@ -116,8 +118,14 @@ function getOptions() {
 
 function fileOptions(file, baseOptions) {
     const op = file.operation || 'translate';
-    const refine = op === 'refine' || !!file.refineAfter;
-    return { ...baseOptions, refine };
+    const refinePlus = !!file.refinePlus;
+    const refine = !refinePlus && (op === 'refine' || !!file.refineAfter);
+    return {
+        ...baseOptions,
+        refine,
+        refine_plus: refinePlus,
+        refine_only: op === 'refine',
+    };
 }
 
 function readPricingFromModelOption() {

@@ -113,6 +113,11 @@ function queueOperation() {
     return pending.operation || 'translate';
 }
 
+function queueHasRefinePlus() {
+    const files = StateManager.getState('files.toProcess') || [];
+    return files.some((f) => isQueued(f.status) && f.refinePlus);
+}
+
 function buildLlmLine() {
     const providerKey = (DomHelpers.getValue('llmProvider') || '').trim();
     const providerLabel = PROVIDER_LABELS[providerKey] || providerKey || '—';
@@ -141,6 +146,9 @@ function buildChips() {
 
     if (queueOperation() === 'refine') {
         chips.push({ key: 'refineOnly', label: t('translation:summary_refine_only'), prominent: true });
+        if (queueHasRefinePlus()) {
+            chips.push({ key: 'refinePlus', label: t('translation:summary_refine_plus'), prominent: true });
+        }
 
         if (hasGlossary) {
             const name = getSelectText('glossarySelect').split('·')[0].trim();
@@ -159,6 +167,9 @@ function buildChips() {
     if (isChecked('plainTextMode'))     chips.push({ key: 'plainText', label: t('translation:summary_plain_text_mode') });
     if (isChecked('textCleanup'))       chips.push({ key: 'ocr', label: t('translation:summary_ocr_cleanup') });
     if (isChecked('disableAutoPause'))  chips.push({ key: 'noPause', label: t('translation:summary_no_auto_pause') });
+    if (queueHasRefinePlus()) {
+        chips.push({ key: 'refinePlus', label: t('translation:summary_refine_plus') });
+    }
 
     if (hasGlossary) {
         const name = getSelectText('glossarySelect').split('·')[0].trim();

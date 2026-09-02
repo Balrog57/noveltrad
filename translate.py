@@ -34,12 +34,17 @@ def build_cli_prompt_options(args) -> dict:
     ``prompt_options['refine']`` stays False: that flag still triggers an
     in-pipeline refine on EPUB/DOCX/SRT. ``--refine`` instead runs
     ``refine_file`` after a successful translate so TXT/EPUB/DOCX/SRT share
-    one source-aware APE pass.
+    one source-aware APE pass. ``--refine-plus`` uses the same ``refine_file``
+    path with ``prompt_options['refine_plus']``.
     """
     return {
         'preserve_technical_content': True,
         'text_cleanup': bool(getattr(args, 'text_cleanup', False)),
         'refine': False,
+        'refine_plus': bool(
+            getattr(args, 'refine_plus', False)
+            or getattr(args, 'refine_plus_only', False)
+        ),
     }
 
 
@@ -71,7 +76,9 @@ async def run_cli_job(
 ) -> str:
     """Translate and/or refine. Returns the completed mode name."""
     provider_kwargs = _cli_provider_kwargs(args)
-    if args.refine_only:
+    refine_only = bool(getattr(args, 'refine_only', False) or getattr(args, 'refine_plus_only', False))
+    want_refine_after = bool(getattr(args, 'refine', False) or getattr(args, 'refine_plus', False))
+    if refine_only:
         ok = await refine_file(
             input_filepath=args.input,
             output_filepath=args.output,
@@ -90,7 +97,7 @@ async def run_cli_job(
         )
         if ok is False:
             raise RuntimeError("Refinement adapter did not produce a valid output")
-        return 'refine-only'
+        return 'refine-plus-only' if getattr(args, 'refine_plus_only', False) else 'refine-only'
 
     await translate_file(
         input_filepath=args.input,
@@ -108,7 +115,7 @@ async def run_cli_job(
         parallel_workers=args.parallel,
         **provider_kwargs,
     )
-    if args.refine:
+    if want_refine_after:
         if not os.path.exists(args.output):
             raise RuntimeError("Translation produced no output; skipping refine")
         ok = await refine_file(
@@ -129,8 +136,12 @@ async def run_cli_job(
         )
         if ok is False:
             raise RuntimeError("Refinement adapter did not produce a valid output")
-        return 'translate_refine'
+        return 'translate_refine_plus' if getattr(args, 'refine_plus', False) else 'translate_refine'
     return 'translate'
+
+
+def _cli_refine_only(args) -> bool:
+    return bool(getattr(args, "refine_only", False) or getattr(args, "refine_plus_only", False))
 
 
 def _apply_cli_auto_prep(args, prompt_options, logger) -> None:
@@ -171,8 +182,9 @@ def _apply_cli_auto_prep(args, prompt_options, logger) -> None:
             logger.warning("⚠️ --auto-glossary ignored: --glossary was provided.")
             want_glossary = False
 
-        if want_glossary and getattr(args, "refine_only", False):
-            logger.warning("⚠️ --auto-glossary ignored in --refine-only mode.")
+        if want_glossary and _cli_refine_only(args):
+            flag = "--refine-plus-only" if getattr(args, "refine_plus_only", False) else "--refine-only"
+            logger.warning(f"⚠️ --auto-glossary ignored in {flag} mode.")
             want_glossary = False
 
         if not want_glossary and not want_style:
@@ -186,7 +198,7 @@ def _apply_cli_auto_prep(args, prompt_options, logger) -> None:
             )
             return
 
-        refine_only = bool(getattr(args, "refine_only", False))
+        refine_only = _cli_refine_only(args)
         source_language = args.target_lang if refine_only else args.source_lang
         target_language = args.target_lang
 
@@ -272,6 +284,8 @@ if __name__ == "__main__":
     prompt_group.add_argument("--text-cleanup", action="store_true", help="Enable OCR/typographic cleanup (fix broken lines, spacing, punctuation).")
     prompt_group.add_argument("--refine", action="store_true", help="After translation, run a one-pass Automatic Post-Editing pass on the output (TXT, EPUB, DOCX, SRT).")
     prompt_group.add_argument("--refine-only", action="store_true", dest="refine_only", help="Run ONLY a refinement pass on an already-translated file (skips the translation phase). The input file is assumed to already be in the target language.")
+    prompt_group.add_argument("--refine-plus", action="store_true", dest="refine_plus", help="After translation, run Refine+ (4 LLM passes: fidelity, style, glossary, grammar) on the output.")
+    prompt_group.add_argument("--refine-plus-only", action="store_true", dest="refine_plus_only", help="Run ONLY Refine+ on an already-translated file (skips the translation phase).")
     prompt_group.add_argument("--glossary", default=None, help="Path to a glossary file (.json or .csv) injected per-chunk to keep entity translations consistent.")
     prompt_group.add_argument(
         "--auto-glossary", action="store_true", dest="auto_glossary",
@@ -292,6 +306,16 @@ if __name__ == "__main__":
     tts_group.add_argument("--tts-format", default=TTS_OUTPUT_FORMAT, choices=["opus", "mp3"], help="Audio output format (default: %(default)s).")
 
     args = parser.parse_args()
+
+    refine_flags = sum(bool(x) for x in (
+        args.refine, args.refine_only,
+        getattr(args, "refine_plus", False),
+        getattr(args, "refine_plus_only", False),
+    ))
+    if refine_flags > 1:
+        parser.error(
+            "Use only one of --refine, --refine-only, --refine-plus, --refine-plus-only."
+        )
 
     # Auto-select default model based on provider if not explicitly set
     from src.config import NIM_MODEL, MISTRAL_MODEL, DEEPSEEK_MODEL, POE_MODEL, OPENROUTER_MODEL, GEMINI_MODEL, LITELLM_MODEL, ANTHROPIC_MODEL, XAI_MODEL, OPENCODE_MODEL, OPENCODE_GO_MODEL
@@ -337,8 +361,9 @@ if __name__ == "__main__":
             output_ext = '.epub'
         elif args.input.lower().endswith('.srt'):
             output_ext = '.srt'
-        if args.refine_only:
-            args.output = f"{base} (refined){output_ext}"
+        if _cli_refine_only(args):
+            suffix = "refined-plus" if getattr(args, "refine_plus_only", False) else "refined"
+            args.output = f"{base} ({suffix}){output_ext}"
         else:
             args.output = f"{base} ({args.target_lang}){output_ext}"
 
@@ -397,15 +422,17 @@ if __name__ == "__main__":
 
     # Refinement is monolingual: mismatched source/target almost always
     # means the user forgot. Warn but proceed using target_lang.
-    if args.refine_only and args.source_lang != args.target_lang:
+    if _cli_refine_only(args) and args.source_lang != args.target_lang:
+        flag = "--refine-plus-only" if getattr(args, "refine_plus_only", False) else "--refine-only"
         logger.warning(
-            f"⚠️ --refine-only: source language ({args.source_lang}) differs from "
+            f"⚠️ {flag}: source language ({args.source_lang}) differs from "
             f"target language ({args.target_lang}). The file is polished as "
             f"{args.target_lang}; source_lang is used only to name the source "
             f"segment in the post-edit prompt."
         )
 
-    if args.refine_only:
+    if _cli_refine_only(args):
+        mode_name = "refine-plus-only" if getattr(args, "refine_plus_only", False) else "refine-only"
         logger.info("Refine-Only Started", LogType.TRANSLATION_START, {
             'target_lang': args.target_lang,
             'file_type': file_type,
@@ -414,7 +441,7 @@ if __name__ == "__main__":
             'output_file': args.output,
             'api_endpoint': args.api_endpoint,
             'llm_provider': args.provider,
-            'mode': 'refine-only',
+            'mode': mode_name,
         })
     else:
         logger.info("Translation Started", LogType.TRANSLATION_START, {
@@ -496,7 +523,7 @@ if __name__ == "__main__":
             'duration_seconds': time.time() - start_time,
             'provider': args.provider,
             'model': args.model,
-            'source_lang': None if args.refine_only else args.source_lang,
+            'source_lang': None if _cli_refine_only(args) else args.source_lang,
             'target_lang': args.target_lang,
             'mode': mode,
         })

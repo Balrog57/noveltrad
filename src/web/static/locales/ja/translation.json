@@ -20,11 +20,18 @@
 
   "op_badge_translate": "翻訳",
   "op_badge_refine": "推敲",
+  "op_badge_refine_plus": "推敲+",
   "per_file_source": "原文",
   "per_file_target": "訳文",
   "per_file_language": "言語",
   "per_file_refine_after": "翻訳後に推敲",
   "per_file_refine_after_title": "翻訳後にこのファイルの出力に対して推敲パスを実行します",
+  "per_file_refine_mode": "翻訳後：",
+  "per_file_refine_mode_title": "なし、推敲（1回）または推敲+（LLM 4回）",
+  "per_file_refine_none": "なし",
+  "per_file_refine_plus": "推敲+",
+  "per_file_refine_plus_only_title": "1回の推敲ではなく推敲+（LLM 4回）を実行します",
+  "refine_drop_mode": "モード",
   "zone_locked": "キューが {{operation}} モードの間、このドロップ領域はロックされています。",
   "zone_locked_current": "キューは {{current}} モードです — モードを切り替えるには空にしてください。",
 
@@ -51,9 +58,11 @@
 
   "translating": "翻訳中",
   "refining": "推敲中",
+  "refining_plus": "推敲+",
   "preparing_auto": "準備中（自動用語集・文体）",
   "translating_step": "翻訳中 ({{step}}/{{total}})",
   "refining_step": "推敲中 ({{step}}/{{total}})",
+  "refining_plus_pass": "推敲+ パス {{pass}}/{{total}} · セグメント {{segment}}/{{segments}}",
   "validation_failed_log": "❌ 検証に失敗しました: {{message}}",
   "validation_custom_source": "バッチ用のカスタム翻訳元の言語を指定してください。",
   "validation_custom_target": "バッチ用のカスタム翻訳先の言語を指定してください。",
@@ -220,6 +229,7 @@
 
   "summary_refining_in": "{{lang}}で洗練中",
   "summary_refine_only": "洗練のみ（翻訳をスキップ）",
+  "summary_refine_plus": "推敲+",
   "summary_no_auto_pause": "自動一時停止なし",
   "summary_bilingual": "バイリンガル",
   "summary_plain_text_mode": "プレーンテキストモード",

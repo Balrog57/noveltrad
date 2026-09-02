@@ -51,12 +51,31 @@ export function getFileIcon(fileType) {
     return '📄';
 }
 
+let _lastTitleFile = null;
+
+function resolveFileOperationLabel(file) {
+    if (!file) return t('translation:translating');
+    if (file.operation === 'refine') {
+        return file.refinePlus
+            ? t('translation:refining_plus')
+            : t('translation:refining');
+    }
+    if (file.refinePlus) {
+        return t('translation:translating_step', { step: 1, total: 2, defaultValue: 'Translating (1/2)' });
+    }
+    if (file.refineAfter) {
+        return t('translation:translating_step', { step: 1, total: 2, defaultValue: 'Translating (1/2)' });
+    }
+    return t('translation:translating');
+}
+
 /**
  * Render the progress title for the file currently being processed.
  * @param {Object} file - File descriptor: { name, fileType, operation,
  *   refineAfter, thumbnail, sourceLanguage, targetLanguage }
  */
 export function renderTranslationTitle(file) {
+    _lastTitleFile = file;
     const titleElement = DomHelpers.getElement('currentFileProgressTitle');
     if (!titleElement) return;
 
@@ -74,14 +93,7 @@ export function renderTranslationTitle(file) {
     // moves between phases, using the id below to locate the element.
     const translatingText = document.createElement('div');
     translatingText.id = 'progressOperationLabel';
-    let titleText;
-    if (file.operation === 'refine') {
-        titleText = t('translation:refining');
-    } else if (file.refineAfter) {
-        titleText = t('translation:translating_step', { step: 1, total: 2, defaultValue: 'Translating (1/2)' });
-    } else {
-        titleText = t('translation:translating');
-    }
+    const titleText = resolveFileOperationLabel(file);
     translatingText.textContent = titleText;
     translatingText.style.fontWeight = 'bold';
     mainContainer.appendChild(translatingText);
@@ -175,3 +187,12 @@ export function renderTranslationTitle(file) {
     // Add main container to title element
     titleElement.appendChild(mainContainer);
 }
+
+window.addEventListener('localeChanged', () => {
+    const labelEl = DomHelpers.getElement('progressOperationLabel');
+    if (!labelEl || !_lastTitleFile) return;
+    // ProgressManager.update() owns the label once stats have patched it
+    // (dataset.labelText). Until then, re-translate the file-based title.
+    if (labelEl.dataset.labelText) return;
+    labelEl.textContent = resolveFileOperationLabel(_lastTitleFile);
+});

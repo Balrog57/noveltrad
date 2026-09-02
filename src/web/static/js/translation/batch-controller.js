@@ -62,7 +62,8 @@ function getTranslationConfig(file) {
     );
 
     const operation = file.operation || 'translate';
-    const refineAfter = operation === 'translate' && !!file.refineAfter;
+    const refinePlus = !!file.refinePlus;
+    const refineAfter = operation === 'translate' && !!file.refineAfter && !refinePlus;
 
     const ciValue = DomHelpers.getValue('customInstructionSelect') || '';
     // Product translate+refine uses refine_after → refine_file. Do not set
@@ -116,8 +117,10 @@ function getTranslationConfig(file) {
         file_type: file.fileType,
         prompt_options: promptOptions,
         bilingual_output: DomHelpers.getElement('bilingualMode')?.checked || false,
-        refine_only: operation === 'refine',
+        refine_only: operation === 'refine' && !refinePlus,
         refine_after: refineAfter,
+        refine_plus_only: operation === 'refine' && refinePlus,
+        refine_plus_after: operation === 'translate' && refinePlus,
         auto_pause_on_rate_limit: !(DomHelpers.getElement('disableAutoPause')?.checked || false),
         // Parallel chunk translation; only honored for cloud providers (the
         // backend forces local providers back to 1).

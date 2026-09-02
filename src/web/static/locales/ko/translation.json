@@ -20,11 +20,18 @@
 
   "op_badge_translate": "번역",
   "op_badge_refine": "다듬기",
+  "op_badge_refine_plus": "다듬기+",
   "per_file_source": "원본",
   "per_file_target": "대상",
   "per_file_language": "언어",
   "per_file_refine_after": "이후 다듬기",
   "per_file_refine_after_title": "번역 후 이 파일의 출력에 대해 다듬기 패스를 실행합니다",
+  "per_file_refine_mode": "번역 후:",
+  "per_file_refine_mode_title": "없음, 다듬기(1회) 또는 다듬기+(LLM 4회)",
+  "per_file_refine_none": "없음",
+  "per_file_refine_plus": "다듬기+",
+  "per_file_refine_plus_only_title": "1회 다듬기 대신 다듬기+(LLM 4회)를 실행합니다",
+  "refine_drop_mode": "모드",
   "zone_locked": "큐가 {{operation}} 모드일 때는 이 드롭 영역이 잠깁니다.",
   "zone_locked_current": "큐가 {{current}} 모드입니다 — 모드를 바꾸려면 비워주세요.",
 
@@ -51,9 +58,11 @@
 
   "translating": "번역 중",
   "refining": "다듬는 중",
+  "refining_plus": "다듬기+",
   "preparing_auto": "준비 중 (자동 용어집/문체)",
   "translating_step": "번역 중 ({{step}}/{{total}})",
   "refining_step": "다듬는 중 ({{step}}/{{total}})",
+  "refining_plus_pass": "다듬기+ 패스 {{pass}}/{{total}} · 구간 {{segment}}/{{segments}}",
   "validation_failed_log": "❌ 검증 실패: {{message}}",
   "validation_custom_source": "배치에 대한 사용자 지정 원본 언어를 지정하세요.",
   "validation_custom_target": "배치에 대한 사용자 지정 대상 언어를 지정하세요.",
@@ -220,6 +229,7 @@
 
   "summary_refining_in": "{{lang}}로 다듬는 중",
   "summary_refine_only": "다듬기만 (번역 생략)",
+  "summary_refine_plus": "다듬기+",
   "summary_no_auto_pause": "자동 일시정지 없음",
   "summary_bilingual": "이중 언어",
   "summary_plain_text_mode": "일반 텍스트 모드",

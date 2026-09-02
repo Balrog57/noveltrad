@@ -9,8 +9,10 @@
 
   "mode_label": "Modus",
   "mode_translate": "Übersetzen",
-  "mode_refine": "Verfeinern",
-  "mode_translate_refine": "Übersetzen + Verfeinern",
+  "mode_refine": "Überarbeiten",
+  "mode_refine_plus": "Überarbeiten+",
+  "mode_translate_refine": "Übersetzen + Überarbeiten",
+  "mode_translate_refine_plus": "Übersetzen + Überarbeiten+",
 
   "n_samples_label": "Anzahl der Proben (N)",
   "max_chars_label": "Max. Zeichen pro Probe",
@@ -38,7 +40,7 @@
   "cell_pending": "Klicken, um diesen Auszug mit diesem LLM zu übersetzen.",
 
   "phase_translated": "Übersetzt",
-  "phase_refined": "Verfeinert",
+  "phase_refined": "Überarbeitet",
 
   "badge_truncated": "gekürzt",
   "badge_fallback": "Fallback",

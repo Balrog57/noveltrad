@@ -148,6 +148,7 @@ def _auto_prep_wants(config):
             and not prompt_options.get('glossary_terms')
             and not prompt_options.get('glossary_id')
             and not config.get('refine_only')
+            and not config.get('refine_plus_only')
         )
         want_style = bool(
             style_requested
@@ -237,7 +238,7 @@ async def _apply_auto_prep(config, log_callback, progress_callback=None, socketi
 
             source_language = config.get('source_language')
             target_language = config.get('target_language')
-            if config.get('refine_only'):
+            if config.get('refine_only') or config.get('refine_plus_only'):
                 # D7: the input is already in the target language, so the style pass
                 # must read it as such ("keep this text's voice").
                 source_language = target_language
@@ -631,18 +632,27 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
         # Phase 1. enable_refinement advertises the two-phase bar up-front when
         # a refine-after pass will follow, so phase 1 maps to the [0, 50] band.
         _emit_progress(new_stats_dict, {
-            'enable_refinement': bool(config.get('refine_after')),
+            'enable_refinement': bool(
+                config.get('refine_after') or config.get('refine_plus_after')
+            ),
             'current_phase': 1,
         })
 
     def _refine_after_stats_callback(new_stats_dict):
         # Phase 2 of a refine-after workflow: maps to the [50, 100] band.
-        _emit_progress(new_stats_dict, {'enable_refinement': True, 'current_phase': 2})
+        _emit_progress(new_stats_dict, {
+            'enable_refinement': True,
+            'current_phase': 2,
+            'refine_plus': bool(config.get('refine_plus_after')),
+        })
 
     def _refine_only_stats_callback(new_stats_dict):
         # Single-phase refine-only: the whole bar is the refinement pass.
         _emit_progress(new_stats_dict, {
-            'enable_refinement': False, 'refine_only': True, 'current_phase': 1,
+            'enable_refinement': False,
+            'refine_only': True,
+            'refine_plus': bool(config.get('refine_plus_only')),
+            'current_phase': 1,
         })
 
     def _finalize_stats_callback(new_stats_dict):
@@ -853,19 +863,31 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 f"⚠️ Could not load glossary: {glossary_load_error}"
             )
 
+        wants_refine_after = bool(
+            config.get('refine_after') or config.get('refine_plus_after')
+        )
+        wants_refine_only = bool(
+            config.get('refine_only') or config.get('refine_plus_only')
+        )
+        if config.get('refine_plus_after') or config.get('refine_plus_only'):
+            if 'prompt_options' not in config or config['prompt_options'] is None:
+                config['prompt_options'] = {}
+            config['prompt_options']['refine_plus'] = True
+            config['prompt_options']['refine'] = False
         # Product translate+refine uses refine_file after translation. Clear
         # prompt_options.refine so EPUB/DOCX/SRT cannot also run in-pipeline.
-        if config.get('refine_after') or config.get('refine_only') or refinement_resume:
+        if wants_refine_after or wants_refine_only or refinement_resume:
             if 'prompt_options' not in config or config['prompt_options'] is None:
                 config['prompt_options'] = {}
             config['prompt_options']['refine'] = False
 
-        if config.get('refine_only') or refinement_resume:
+        if wants_refine_only or refinement_resume:
+            plus_label = "Refine+" if config.get('refine_plus_only') else "Refine"
             _log_message_callback(
                 "refine_only_mode",
-                "✨ Refine-only mode: skipping translation, polishing the current output."
+                f"✨ {plus_label}-only mode: skipping translation, polishing the current output."
                 if refinement_resume
-                else "✨ Refine-only mode: skipping translation, polishing the input file as-is."
+                else f"✨ {plus_label}-only mode: skipping translation, polishing the input file as-is."
             )
             src_lang = config.get('source_language')
             tgt_lang = config.get('target_language')
@@ -950,7 +972,7 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
 
             # Optional chained refinement pass on the translated output.
             should_refine_after = (
-                config.get('refine_after')
+                wants_refine_after
                 and os.path.exists(output_filepath_on_server)
                 and not state_manager.get_translation_field(translation_id, 'interrupted')
                 and state_manager.get_translation_field(translation_id, 'status')
@@ -963,9 +985,10 @@ async def perform_actual_translation(translation_id, config, state_manager, outp
                 # never pair with phase 2, and the monotonic floor in
                 # _emit_progress keeps the bar from regressing across the
                 # transition.
+                plus_note = "Refine+" if config.get('refine_plus_after') else "refinement"
                 _log_message_callback(
                     "refine_after_start",
-                    "✨ Translation done — running refinement pass on the output."
+                    f"✨ Translation done — running {plus_note} pass on the output."
                 )
                 refine_result = await refine_file(
                     input_filepath=output_filepath_on_server,

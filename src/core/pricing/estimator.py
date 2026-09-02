@@ -100,7 +100,12 @@ class CostEstimator:
         output_max = int(main_tokens * ratio_max)
 
         passes = 1
-        if options.get("refine"):
+        if options.get("refine_plus"):
+            if options.get("refine_only"):
+                passes = 4
+            else:
+                passes = 1 + 4
+        elif options.get("refine") and not options.get("refine_only"):
             passes += 1
         if options.get("text_cleanup"):
             passes += 1

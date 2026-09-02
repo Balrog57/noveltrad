@@ -930,13 +930,36 @@ async def refine_chunks(
     from src.core.refine.refinement_checkpoint import (
         clear_one_pass_state,
         load_one_pass_state,
+        load_plus_state,
         save_one_pass_state,
+        save_plus_state,
+    )
+    from src.core.refine.plus_pipeline import (
+        is_refine_plus_enabled,
+        make_plus_llm_generate,
+        refine_plus_segment,
     )
 
     total_chunks = len(translated_chunks)
-    start_index, checkpoint_current, _checkpoint_state = load_one_pass_state(
-        checkpoint_manager, translation_id, total_segments=total_chunks
-    )
+    plus_mode = is_refine_plus_enabled(prompt_options)
+    plus_pass_index = 1
+    plus_extra_used = False
+    plus_segment_current = None
+    if plus_mode:
+        (
+            start_index,
+            checkpoint_current,
+            plus_pass_index,
+            plus_extra_used,
+            plus_segment_current,
+            _checkpoint_state,
+        ) = load_plus_state(
+            checkpoint_manager, translation_id, total_segments=total_chunks
+        )
+    else:
+        start_index, checkpoint_current, _checkpoint_state = load_one_pass_state(
+            checkpoint_manager, translation_id, total_segments=total_chunks
+        )
     working_chunks = list(translated_chunks)
     if isinstance(checkpoint_current, list) and len(checkpoint_current) == total_chunks:
         working_chunks = list(checkpoint_current)
@@ -959,7 +982,13 @@ async def refine_chunks(
         progress_tracker.register_chunk(token_count)
 
     if log_callback:
-        log_callback("refinement_start", f"✨ Starting refinement pass ({total_chunks} chunks)...")
+        if plus_mode:
+            log_callback(
+                "refinement_start",
+                f"✨ Starting Refine+ (4 LLM passes, {total_chunks} chunks)...",
+            )
+        else:
+            log_callback("refinement_start", f"✨ Starting refinement pass ({total_chunks} chunks)...")
 
     # Determine if model is a thinking model for initial context sizing
     is_known_thinking_model = any(tm in model_name.lower() for tm in THINKING_MODELS)
@@ -1033,11 +1062,23 @@ async def refine_chunks(
                 else:
                     tqdm.write(f"\nRefinement interrupted at chunk {i+1}/{total_chunks}")
                 partial = refined_parts + working_chunks[i:]
-                state = save_one_pass_state(
-                    checkpoint_manager, translation_id,
-                    next_segment=i, total_segments=total_chunks, current=list(partial),
-                    output_filepath=refinement_output_filepath, log_callback=log_callback,
-                )
+                if plus_mode:
+                    state = save_plus_state(
+                        checkpoint_manager, translation_id,
+                        next_segment=i, total_segments=total_chunks,
+                        current=list(partial),
+                        pass_index=plus_pass_index,
+                        extra_used=plus_extra_used,
+                        segment_current=plus_segment_current,
+                        output_filepath=refinement_output_filepath,
+                        log_callback=log_callback,
+                    )
+                else:
+                    state = save_one_pass_state(
+                        checkpoint_manager, translation_id,
+                        next_segment=i, total_segments=total_chunks, current=list(partial),
+                        output_filepath=refinement_output_filepath, log_callback=log_callback,
+                    )
                 raise RefinementInterrupted(partial_result=list(partial), refinement_state=state)
 
             # Progress update (token-based)
@@ -1072,21 +1113,83 @@ async def refine_chunks(
             # Make refinement request
             try:
                 from src.core.refine.structure import text_has_placeholders
-                refined_text, llm_response = await _make_refinement_request(
-                    draft_translation=draft_text,
-                    context_before=context_before,
-                    context_after=context_after,
-                    previous_refined_context=last_refined_context,
-                    target_language=target_language,
-                    model=model_name,
-                    llm_client=llm_client,
-                    log_callback=log_callback,
-                    has_placeholders=text_has_placeholders(draft_text),
-                    prompt_options=prompt_options,
-                    context_manager=context_manager,
-                    runtime_state=runtime_state,
-                    source_translation=source_translation,
-                )
+                llm_response = None
+                if plus_mode:
+                    resume_pass = plus_pass_index if i == start_index else 1
+                    resume_extra = plus_extra_used if i == start_index else False
+                    resume_current = (
+                        plus_segment_current if i == start_index and plus_segment_current is not None
+                        else None
+                    )
+
+                    def _plus_persist(next_pass, text, used_extra, report=None, recent_logs=None):
+                        nonlocal plus_pass_index, plus_extra_used, plus_segment_current
+                        plus_pass_index = next_pass
+                        plus_extra_used = used_extra
+                        plus_segment_current = text
+                        extra = {}
+                        if report is not None:
+                            extra["last_qa"] = report.to_log_dict()
+                        if recent_logs:
+                            extra["decision_log"] = list(recent_logs)[-8:]
+                        partial = list(refined_parts) + [text] + list(working_chunks[i + 1:])
+                        save_plus_state(
+                            checkpoint_manager, translation_id,
+                            next_segment=i, total_segments=total_chunks,
+                            current=partial,
+                            pass_index=next_pass,
+                            extra_used=used_extra,
+                            segment_current=text,
+                            output_filepath=refinement_output_filepath,
+                            extra=extra or None,
+                            log_callback=log_callback,
+                        )
+                        if stats_callback:
+                            payload = progress_tracker.get_stats().to_dict()
+                            payload.update({
+                                "refine_plus": True,
+                                "refine_plus_pass": min(next_pass, 4),
+                                "refine_plus_segment": i + 1,
+                                "refine_plus_segments": total_chunks,
+                            })
+                            stats_callback(payload)
+
+                    plus_result = await refine_plus_segment(
+                        draft=draft_text,
+                        source=source_translation,
+                        context_before=context_before,
+                        context_after=context_after,
+                        previous_refined_context=last_refined_context,
+                        target_language=target_language,
+                        prompt_options=prompt_options,
+                        llm_generate=make_plus_llm_generate(llm_client, model_name),
+                        log_callback=log_callback,
+                        start_pass=resume_pass,
+                        extra_used=resume_extra,
+                        current_text=resume_current,
+                        on_pass_complete=_plus_persist,
+                        segment_index=i + 1,
+                    )
+                    refined_text = plus_result.text
+                    plus_pass_index = 1
+                    plus_extra_used = False
+                    plus_segment_current = None
+                else:
+                    refined_text, llm_response = await _make_refinement_request(
+                        draft_translation=draft_text,
+                        context_before=context_before,
+                        context_after=context_after,
+                        previous_refined_context=last_refined_context,
+                        target_language=target_language,
+                        model=model_name,
+                        llm_client=llm_client,
+                        log_callback=log_callback,
+                        has_placeholders=text_has_placeholders(draft_text),
+                        prompt_options=prompt_options,
+                        context_manager=context_manager,
+                        runtime_state=runtime_state,
+                        source_translation=source_translation,
+                    )
             except RateLimitError as e:
                 if log_callback:
                     retry_msg = f" (retry after ~{e.retry_after}s)" if e.retry_after else ""
@@ -1100,12 +1203,23 @@ async def refine_chunks(
                 # the list is complete, chunks at index >= i are the unrefined
                 # drafts. Hand it to the caller so the partial pass can be saved.
                 e.partial_result = list(refined_parts)
-                e.refinement_state = save_one_pass_state(
-                    checkpoint_manager, translation_id,
-                    next_segment=i, total_segments=total_chunks,
-                    current=list(refined_parts),
-                    output_filepath=refinement_output_filepath, log_callback=log_callback,
-                )
+                if plus_mode:
+                    e.refinement_state = save_plus_state(
+                        checkpoint_manager, translation_id,
+                        next_segment=i, total_segments=total_chunks,
+                        current=list(refined_parts),
+                        pass_index=plus_pass_index,
+                        extra_used=plus_extra_used,
+                        segment_current=plus_segment_current,
+                        output_filepath=refinement_output_filepath, log_callback=log_callback,
+                    )
+                else:
+                    e.refinement_state = save_one_pass_state(
+                        checkpoint_manager, translation_id,
+                        next_segment=i, total_segments=total_chunks,
+                        current=list(refined_parts),
+                        output_filepath=refinement_output_filepath, log_callback=log_callback,
+                    )
                 raise  # Re-raise to handlers.py
 
             # Record success in context manager
@@ -1149,7 +1263,15 @@ async def refine_chunks(
                 last_refined_context = ""
 
             if stats_callback:
-                stats_callback(progress_tracker.get_stats().to_dict())
+                payload = progress_tracker.get_stats().to_dict()
+                if plus_mode:
+                    payload.update({
+                        "refine_plus": True,
+                        "refine_plus_pass": 4,
+                        "refine_plus_segment": i + 1,
+                        "refine_plus_segments": total_chunks,
+                    })
+                stats_callback(payload)
 
     finally:
         if llm_client:

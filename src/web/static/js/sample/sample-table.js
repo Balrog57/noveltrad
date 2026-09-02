@@ -201,7 +201,7 @@ export const SampleTable = {
             `;
         };
 
-        if (this._mode === 'translate_refine') {
+        if (this._mode === 'translate_refine' || this._mode === 'translate_refine_plus') {
             const blocks = [];
             blocks.push(renderPhase(t('sample:phase_translated'), tr));
             if (rf) {
@@ -222,7 +222,7 @@ export const SampleTable = {
             return blocks.join('') || `<div class="sample-cell-pending" data-i18n="sample:cell_pending">${escapeHtml(t('sample:cell_pending'))}</div>`;
         }
 
-        if (this._mode === 'refine') {
+        if (this._mode === 'refine' || this._mode === 'refine_plus') {
             return rf ? renderPhase(t('sample:phase_refined'), rf) : `<div class="sample-cell-pending" data-i18n="sample:cell_pending">${escapeHtml(t('sample:cell_pending'))}</div>`;
         }
 
@@ -275,13 +275,13 @@ export const SampleTable = {
                     }
                 };
 
-                if (this._mode === 'translate_refine') {
-                    emitBlock('Translated', state.translate);
-                    emitBlock('Refined', state.refine);
-                } else if (this._mode === 'refine') {
-                    emitBlock('Refined', state.refine);
+                if (this._mode === 'translate_refine' || this._mode === 'translate_refine_plus') {
+                    emitBlock(t('sample:phase_translated'), state.translate);
+                    emitBlock(t('sample:phase_refined'), state.refine);
+                } else if (this._mode === 'refine' || this._mode === 'refine_plus') {
+                    emitBlock(t('sample:phase_refined'), state.refine);
                 } else {
-                    emitBlock('Translated', state.translate);
+                    emitBlock(t('sample:phase_translated'), state.translate);
                 }
             }
             lines.push('---');
@@ -292,5 +292,14 @@ export const SampleTable = {
 
     hasResults() {
         return this._items && this._items.length > 0;
+    },
+
+    /**
+     * Rebuild the grid from stored items/columns/cell state (locale switch).
+     */
+    rerender() {
+        if (!this._root || this._items == null) return;
+        const prefilled = new Map(this._cellState);
+        this.render(this._root, this._items, this._columns, this._mode, { prefilled });
     },
 };
