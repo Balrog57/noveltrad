@@ -184,7 +184,8 @@ export const FileManager = {
             audiobookBtn.type = 'button';
             audiobookBtn.className = 'file-action-btn audiobook';
             audiobookBtn.title = t('translation:audiobook_btn_title');
-            audiobookBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 0.875rem;">headphones</span>';
+            audiobookBtn.setAttribute('aria-label', audiobookBtn.title);
+            audiobookBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 0.875rem;" aria-hidden="true">headphones</span>';
             audiobookBtn.addEventListener('click', () => window.createAudiobook(file.filename, file.file_path));
             actionsHost.appendChild(audiobookBtn);
         }
