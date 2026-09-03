@@ -10,8 +10,31 @@ Verifies:
 
 import pytest
 import time
+import random
 from src.core.epub.tag_preservation import TagPreserver
 from src.core.epub.technical_content_detector import TechnicalContentDetector
+from src.core.glossary.filter import filter_glossary
+from src.core.glossary.models import GlossaryConfig
+
+
+class TestGlossaryFilterPerformance:
+    """Benchmark per-chunk glossary filtering (translation hot path)."""
+
+    def test_large_glossary_sparse_chunk(self):
+        """2000-term glossary on a chunk matching ~1% of terms stays under 5ms/chunk."""
+        terms = {f"Term{i}": f"T{i}" for i in range(2000)}
+        chunk = " ".join(f"Term{random.randint(0, 1999)}" for _ in range(20))
+        config = GlossaryConfig(max_entries=50)
+
+        iterations = 200
+        start = time.perf_counter()
+        for _ in range(iterations):
+            filter_glossary(chunk, terms, config)
+        elapsed = time.perf_counter() - start
+
+        avg_ms = (elapsed / iterations) * 1000
+        print(f"\nGlossary filter (2000 terms, ~20 hits/chunk): {avg_ms:.2f}ms/chunk (target: <5ms)")
+        assert avg_ms < 5, f"Too slow: {avg_ms:.2f}ms/chunk"
 
 
 class TestDetectorPerformance:

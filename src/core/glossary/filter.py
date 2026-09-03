@@ -58,6 +58,9 @@ class _IndexedGlossaryEntry:
     source: str
     target: str
     patterns: Tuple[_MatchPattern, ...]
+    # Lowercased (when case-insensitive) substring needles for O(C) prefilter
+    # before regex/CJK counting — skips entries that cannot appear in the chunk.
+    needles: Tuple[str, ...]
 
 
 @lru_cache(maxsize=32)
@@ -83,12 +86,15 @@ def _build_glossary_index(
         if not alternatives:
             continue
         patterns: List[_MatchPattern] = []
+        needles: List[str] = []
         for alt in alternatives:
+            needle = alt if case_sensitive else alt.lower()
+            needles.append(needle)
             if _is_cjk(alt) or not _has_word_char_at_edge(alt):
-                patterns.append(alt if case_sensitive else alt.lower())
+                patterns.append(needle)
             else:
                 patterns.append(re.compile(r'\b' + re.escape(alt) + r'\b', flags))
-        entries.append(_IndexedGlossaryEntry(source, target, tuple(patterns)))
+        entries.append(_IndexedGlossaryEntry(source, target, tuple(patterns), tuple(needles)))
     return tuple(entries)
 
 
@@ -127,6 +133,11 @@ def filter_glossary(
 
     matched: List[Tuple[str, str, int]] = []  # (source, target, occurrence_count)
     for entry in index:
+        # Cheap O(C) substring check per alternative before regex/CJK counting.
+        # Necessary for a match (word-boundary or substring); skips ~95% of entries
+        # on large glossaries where only a few terms appear per chunk.
+        if not any(needle in haystack for needle in entry.needles):
+            continue
         total_count = sum(
             _count_with_pattern(pattern, chunk, haystack) for pattern in entry.patterns
         )
