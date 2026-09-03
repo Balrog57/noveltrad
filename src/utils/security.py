@@ -774,14 +774,11 @@ rate_limiter = RateLimiter()
 
 
 def get_client_ip(request) -> str:
-    """Get client IP address from Flask request"""
-    # Check for X-Forwarded-For header (proxy/load balancer)
-    if 'X-Forwarded-For' in request.headers:
-        return request.headers['X-Forwarded-For'].split(',')[0].strip()
-    
-    # Check for X-Real-IP header (nginx)
-    if 'X-Real-IP' in request.headers:
-        return request.headers['X-Real-IP']
-    
-    # Fallback to remote address
+    """Return the direct client IP for rate limiting.
+
+    X-Forwarded-For and X-Real-IP are intentionally ignored: this app is a
+    local/desktop server with no trusted reverse proxy in front. Honoring those
+    headers would let any client pick an arbitrary IP and bypass the upload
+    rate limiter.
+    """
     return request.remote_addr or '127.0.0.1'
