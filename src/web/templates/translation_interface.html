@@ -521,7 +521,7 @@
                      they moved here verbatim, ids included, so every consumer that
                      reads them by id keeps working untouched. -->
                 <div id="preflightZone" class="preflight-zone" role="region"
-                     data-i18n-attr="aria-label:translation:preflight_region_label">
+                     data-i18n-attr="aria-label:translation:preflight_region_label" aria-label="Pre-launch options">
 
                     <!-- Settings Summary (concise overview of LLM + active options) -->
                     <div id="settingsSummary" style="margin-top: 12px; text-align: center; font-size: 0.8125rem; color: var(--text-muted-light); line-height: 1.5;"></div>
@@ -641,7 +641,7 @@
                          and the locked message has to stay readable when it does. -->
                     <p id="preflightPanelHelp" class="preflight-panel__help" hidden></p>
 
-                    <button type="button" id="preflightDismissedLink" class="preflight-dismissed-link" hidden></button>
+                    <button type="button" id="preflightDismissedLink" class="preflight-dismissed-link" data-i18n-attr="aria-label:translation:preflight_show_dismissed" aria-label="Show hidden tips" hidden></button>
                 </div>
 
                 <!-- Messages (connection status, notifications) -->
