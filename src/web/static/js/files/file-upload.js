@@ -1047,7 +1047,8 @@ export const FileUpload = {
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'file-remove-btn';
                 removeBtn.title = t('translation:remove_file_title');
-                removeBtn.innerHTML = '<span class="material-symbols-outlined">close</span>';
+                removeBtn.setAttribute('aria-label', t('translation:remove_file_title'));
+                removeBtn.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">close</span>';
                 removeBtn.onclick = (e) => {
                     e.stopPropagation();
                     this.removeFile(file.name);
