@@ -289,11 +289,27 @@ export const FileManager = {
         const downloadBtn = DomHelpers.getElement('batchDownloadBtn');
         const deleteBtn = DomHelpers.getElement('batchDeleteBtn');
         if (hasSelection) {
-            if (downloadBtn) downloadBtn.innerHTML = `<span class="material-symbols-outlined">download</span> ${t('files:download_selected_with_count', { count: selectedFiles.size })}`;
-            if (deleteBtn) deleteBtn.innerHTML = `<span class="material-symbols-outlined">delete</span> ${t('files:delete_selected_with_count', { count: selectedFiles.size })}`;
+            if (downloadBtn) {
+                downloadBtn.innerHTML = `<span class="material-symbols-outlined">download</span> ${t('files:download_selected_with_count', { count: selectedFiles.size })}`;
+                downloadBtn.title = '';
+                downloadBtn.removeAttribute('data-i18n-attr');
+            }
+            if (deleteBtn) {
+                deleteBtn.innerHTML = `<span class="material-symbols-outlined">delete</span> ${t('files:delete_selected_with_count', { count: selectedFiles.size })}`;
+                deleteBtn.title = '';
+                deleteBtn.removeAttribute('data-i18n-attr');
+            }
         } else {
-            if (downloadBtn) downloadBtn.innerHTML = `<span class="material-symbols-outlined">download</span> ${t('files:download_selected')}`;
-            if (deleteBtn) deleteBtn.innerHTML = `<span class="material-symbols-outlined">delete</span> ${t('files:delete_selected')}`;
+            if (downloadBtn) {
+                downloadBtn.innerHTML = `<span class="material-symbols-outlined">download</span> ${t('files:download_selected')}`;
+                downloadBtn.title = t('files:no_selection_download');
+                downloadBtn.setAttribute('data-i18n-attr', 'title:files:no_selection_download');
+            }
+            if (deleteBtn) {
+                deleteBtn.innerHTML = `<span class="material-symbols-outlined">delete</span> ${t('files:delete_selected')}`;
+                deleteBtn.title = t('files:no_selection_delete');
+                deleteBtn.setAttribute('data-i18n-attr', 'title:files:no_selection_delete');
+            }
         }
     },
 
