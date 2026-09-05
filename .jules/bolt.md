@@ -13,3 +13,9 @@ Performance notes specific to this codebase. Routine optimizations are not logge
 **Learning:** After the two-pass detector scan, `preserve_tags_and_technical_content()` still filtered all `inline_patterns` against every HTML text segment (~1M comparisons on a 500-paragraph chapter with dense `$V_{i}$` markers). Both lists are document-order, so a single advancing pointer assigns patterns in O(segments + patterns).
 
 **Action:** When pre-scanned position-sorted items must be bucketed into contiguous segments, use a monotonic index — never re-scan the full pattern list per segment.
+
+## 2026-09-05 - restore_tags sequential replace was O(placeholders × text length)
+
+**Learning:** `restore_tags()` sorted ~500 placeholders then called `str.replace()` on the full translated string per entry (~3.7 ms/call on a 500-paragraph chapter). A single `placeholder_format._compiled_pattern.sub()` pass drops that to ~0.15 ms (~25×) because each replace no longer rescans the growing output string.
+
+**Action:** For bulk placeholder/tag restoration, prefer one regex scan + dict lookup over repeated `str.replace()` loops — even when placeholders don't overlap.
