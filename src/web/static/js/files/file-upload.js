@@ -688,12 +688,16 @@ export const FileUpload = {
      */
     setupDragDrop() {
         const zones = [
-            { id: 'fileUpload', operation: 'translate' },
+            { id: 'fileUpload', inputId: 'fileInput', operation: 'translate' },
             { id: 'fileUploadRefine', operation: 'refine' }
         ];
-        zones.forEach(({ id, operation }) => {
+        zones.forEach(({ id, inputId, operation }) => {
             const uploadArea = DomHelpers.getElement(id);
             if (!uploadArea) return;
+
+            if (inputId) {
+                this._setupUploadZoneKeyboard(uploadArea, inputId);
+            }
 
             uploadArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
@@ -718,6 +722,19 @@ export const FileUpload = {
                     this.handleFiles(Array.from(files), operation);
                 }
             });
+        });
+    },
+
+    /**
+     * Make a drop zone activatable via Enter/Space (the zone already has role="button").
+     * Skipped for zones that embed other controls (e.g. refine mode select).
+     */
+    _setupUploadZoneKeyboard(uploadArea, inputId) {
+        uploadArea.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            if (uploadArea.classList.contains('zone-disabled')) return;
+            DomHelpers.getElement(inputId)?.click();
         });
     },
 
