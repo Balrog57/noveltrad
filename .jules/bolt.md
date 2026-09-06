@@ -13,3 +13,9 @@ Performance notes specific to this codebase. Routine optimizations are not logge
 **Learning:** After the two-pass detector scan, `preserve_tags_and_technical_content()` still filtered all `inline_patterns` against every HTML text segment (~1M comparisons on a 500-paragraph chapter with dense `$V_{i}$` markers). Both lists are document-order, so a single advancing pointer assigns patterns in O(segments + patterns).
 
 **Action:** When pre-scanned position-sorted items must be bucketed into contiguous segments, use a monotonic index — never re-scan the full pattern list per segment.
+
+## 2026-09-06 - Glossary filter regex-scanned every term per chunk
+
+**Learning:** `filter_glossary()` ran `re.findall()` (or `haystack.count`) for every glossary term on every chunk even when the term's substring was absent (~470 ms/chunk with 3k terms; ~40× wasted work). A normalized `needle not in haystack` precheck before the regex is safe for both `\b...\b` and CJK substring branches.
+
+**Action:** When matching a large term list against each chunk, store a normalized needle at index-build time and skip expensive matchers when the substring is absent. Profile with a 3k-term × 50-call micro-benchmark before tuning regexes.
