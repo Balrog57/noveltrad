@@ -3,6 +3,7 @@
   "subtitle": "Vergleiche mehrere LLM-Konfigurationen Seite an Seite anhand einiger Auszüge aus deinem Buch — ohne vollständige Übersetzung.",
 
   "drop_file_title": "Buch zum Sampeln ablegen",
+  "drop_file_aria_label": "Buch zum Testen auswählen oder ablegen",
   "drop_file_support": "Unterstützt TXT, EPUB, SRT und DOCX",
   "selected_file": "Ausgewähltes Buch",
   "remove_file": "Dieses Buch entfernen und ein anderes wählen",

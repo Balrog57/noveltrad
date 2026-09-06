@@ -635,7 +635,7 @@ async function showTTSModal(filename, filepath) {
             <div class="modal-content">
                 <div class="modal-header">
                     <h3 data-i18n="tts:modal_title_emoji">${t('tts:modal_title_emoji')}</h3>
-                    <button class="close-btn" id="ttsModalClose">&times;</button>
+                    <button class="close-btn" id="ttsModalClose" aria-label="${t('common:close')}">&times;</button>
                 </div>
                 <div class="modal-body">
                     <p style="margin: 0 0 20px 0; color: #a3adb3; font-size: 14px;"

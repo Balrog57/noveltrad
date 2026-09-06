@@ -479,7 +479,7 @@ export const CostEstimator = {
             <div class="modal-content cost-pricing-modal">
                 <div class="modal-header">
                     <h3>${t('settings:cost_edit_modal_title')}</h3>
-                    <button class="close-btn" data-action="close">&times;</button>
+                    <button class="close-btn" data-action="close" aria-label="${t('common:close')}">&times;</button>
                 </div>
                 <div class="modal-body">
                     <p class="cost-pricing-subtitle">
