@@ -1280,6 +1280,12 @@ function wireFileInput() {
     }
 
     if (uploadZone) {
+        uploadZone.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            input?.click();
+        });
+
         ['dragover', 'dragenter'].forEach((evt) => {
             uploadZone.addEventListener(evt, (e) => {
                 e.preventDefault();
