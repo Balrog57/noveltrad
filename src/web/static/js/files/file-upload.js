@@ -688,12 +688,14 @@ export const FileUpload = {
      */
     setupDragDrop() {
         const zones = [
-            { id: 'fileUpload', operation: 'translate' },
-            { id: 'fileUploadRefine', operation: 'refine' }
+            { id: 'fileUpload', inputId: 'fileInput', operation: 'translate' },
+            { id: 'fileUploadRefine', inputId: 'fileInputRefine', operation: 'refine' }
         ];
-        zones.forEach(({ id, operation }) => {
+        zones.forEach(({ id, inputId, operation }) => {
             const uploadArea = DomHelpers.getElement(id);
             if (!uploadArea) return;
+
+            this._wireUploadZoneKeyboard(uploadArea, inputId, operation);
 
             uploadArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
@@ -718,6 +720,24 @@ export const FileUpload = {
                     this.handleFiles(Array.from(files), operation);
                 }
             });
+        });
+    },
+
+    /**
+     * Allow keyboard users to activate a drop zone with Enter or Space.
+     */
+    _wireUploadZoneKeyboard(uploadArea, inputId, operation) {
+        uploadArea.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            if (uploadArea.classList.contains('zone-disabled')) {
+                MessageLogger.showMessage(
+                    t('translation:zone_locked', { operation }),
+                    'info'
+                );
+                return;
+            }
+            DomHelpers.getElement(inputId)?.click();
         });
     },
 
