@@ -1,5 +1,6 @@
 import json
 import re
+from functools import lru_cache
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from src.prompts.examples import (build_placeholder_section,
@@ -198,6 +199,131 @@ def _build_optional_prompt_sections(prompt_options: dict, *, plain_text: bool = 
 # TRANSLATION PROMPT FUNCTIONS
 # ============================================================================
 
+def _system_prompt_options_key(prompt_options: Optional[Dict[str, Any]]) -> Tuple[Any, ...]:
+    """Hashable snapshot of prompt_options fields that affect the system prompt.
+
+    Only keys read by _build_translation_system_prompt are included so
+    unrelated per-job options (glossary paths, runtime flags, etc.) do not
+    bust the cache.
+    """
+    opts = prompt_options or {}
+    custom = (opts.get("custom_instructions") or "").strip()
+    text_cleanup = bool(opts.get("text_cleanup", False))
+    expected = opts.get(PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION)
+    if not isinstance(expected, int) or isinstance(expected, bool) or expected < 1:
+        expected = None
+    return (custom, text_cleanup, expected)
+
+
+@lru_cache(maxsize=128)
+def _build_translation_system_prompt(
+    source_language: str,
+    target_language: str,
+    has_placeholders: bool,
+    translate_tag_in: str,
+    translate_tag_out: str,
+    placeholder_format: Optional[Tuple[str, str]],
+    options_key: Tuple[Any, ...],
+) -> str:
+    """Build the chunk-invariant system prompt once per translation job.
+
+    Performance: the system half of generate_translation_prompt is identical
+    for every chunk in a job (glossary and source text live in the user
+    prompt). Caching avoids ~3-8 KB of f-string work and placeholder-example
+    assembly per chunk — e.g. ~500 rebuilds on a typical EPUB chapter.
+    """
+    prompt_options = {
+        "custom_instructions": options_key[0],
+        "text_cleanup": options_key[1],
+    }
+    if options_key[2] is not None:
+        prompt_options[PLAIN_TEXT_EXPECTED_PARAGRAPHS_OPTION] = options_key[2]
+
+    custom_instructions = prompt_options.get("custom_instructions", "")
+
+    example_texts = {
+        "chinese": "您翻译的文本在这里" if not has_placeholders else f"您翻译的文本在这里，所有{TAG0}标记都精确保留",
+        "french": "Votre texte traduit ici" if not has_placeholders else f"Votre texte traduit ici, tous les marqueurs {TAG0} sont préservés exactement",
+        "spanish": "Su texto traducido aquí" if not has_placeholders else f"Su texto traducido aquí, todos los marcadores {TAG0} se preservan exactamente",
+        "german": "Ihr übersetzter Text hier" if not has_placeholders else f"Ihr übersetzter Text hier, alle {TAG0}-Markierungen werden genau beibehalten",
+        "japanese": "翻訳されたテキストはこちら" if not has_placeholders else f"翻訳されたテキストはこちら、すべての{TAG0}マーカーは正確に保持されます",
+        "italian": "Il tuo testo tradotto qui" if not has_placeholders else f"Il tuo testo tradotto qui, tutti i marcatori {TAG0} sono conservati esattamente",
+        "portuguese": "Seu texto traduzido aqui" if not has_placeholders else f"Seu texto traduzido aqui, todos os marcadores {TAG0} são preservados exatamente",
+        "russian": "Ваш переведенный текст здесь" if not has_placeholders else f"Ваш переведенный текст здесь, все маркеры {TAG0} сохранены точно",
+        "korean": "번역된 텍스트는 여기에" if not has_placeholders else f"번역된 텍스트는 여기에, 모든 {TAG0} 마커는 정확히 보존됩니다",
+    }
+
+    from src.utils.lang_normalize import normalize_lang_key
+    target_lang_lower = normalize_lang_key(target_language)
+    example_format_text = example_texts.get(target_lang_lower, "Your translated text here")
+
+    output_format_section = _get_output_format_section(
+        translate_tag_in,
+        translate_tag_out,
+        INPUT_TAG_IN,
+        INPUT_TAG_OUT,
+        additional_rules=_plain_text_format_rules(prompt_options) if not has_placeholders else "",
+        example_format=example_format_text,
+    )
+
+    if has_placeholders:
+        placeholder_section = build_placeholder_section(
+            source_language, target_language, placeholder_format
+        )
+    else:
+        placeholder_section = ""
+
+    optional_sections = _build_optional_prompt_sections(
+        prompt_options, plain_text=not has_placeholders
+    )
+
+    custom_instructions_section = ""
+    if custom_instructions:
+        custom_instructions_section = f"""# STYLE INSTRUCTIONS
+
+**Apply these throughout the translation. They take precedence over the general style guidance in this prompt.**
+
+{custom_instructions}
+
+Keep them in force across the whole passage, not only in its opening lines.
+
+"""
+
+    return f"""You are a professional {target_language} translator and writer.
+
+{custom_instructions_section}# TRANSLATION PRINCIPLES
+
+Translate {source_language} to {target_language}. Output only the translation.
+
+**PRIORITY ORDER:**
+1. Preserve exact names
+2. Match original tone and formality
+3. Use natural {target_language} phrasing - never word-for-word
+4. Fix grammar/spelling errors in output
+5. Translate idioms to {target_language} equivalents
+
+**QUALITY CHECK:**
+- Does it sound natural to a native {target_language} speaker?
+- Are all details from the original included?
+- Does punctuation follow {target_language} conventions?
+
+If unsure between literal and natural phrasing: **choose natural**.
+
+**LAYOUT PRESERVATION:**
+- Keep the exact text layout, spacing, line breaks, and indentation
+- **WRITE YOUR TRANSLATION IN {target_language.upper()} - THIS IS MANDATORY**
+{optional_sections}
+{placeholder_section}
+
+# FINAL REMINDER: YOUR OUTPUT LANGUAGE
+
+**YOU MUST TRANSLATE INTO {target_language.upper()}.**
+Your entire translation output must be written in {target_language}.
+Do NOT write in {source_language} or any other language - ONLY {target_language.upper()}.
+
+{output_format_section}"""
+
+
 def generate_translation_prompt(
     main_content: str,
     context_before: str,
@@ -239,104 +365,18 @@ def generate_translation_prompt(
     if prompt_options is None:
         prompt_options = {}
 
-    # Extract custom instructions if provided
-    custom_instructions = prompt_options.get('custom_instructions', '')
+    options_key = _system_prompt_options_key(prompt_options)
 
-    # Get target-language-specific example text for output format
-    example_texts = {
-        "chinese": "您翻译的文本在这里" if not has_placeholders else f"您翻译的文本在这里，所有{TAG0}标记都精确保留",
-        "french": "Votre texte traduit ici" if not has_placeholders else f"Votre texte traduit ici, tous les marqueurs {TAG0} sont préservés exactement",
-        "spanish": "Su texto traducido aquí" if not has_placeholders else f"Su texto traducido aquí, todos los marcadores {TAG0} se preservan exactamente",
-        "german": "Ihr übersetzter Text hier" if not has_placeholders else f"Ihr übersetzter Text hier, alle {TAG0}-Markierungen werden genau beibehalten",
-        "japanese": "翻訳されたテキストはこちら" if not has_placeholders else f"翻訳されたテキストはこちら、すべての{TAG0}マーカーは正確に保持されます",
-        "italian": "Il tuo testo tradotto qui" if not has_placeholders else f"Il tuo testo tradotto qui, tutti i marcatori {TAG0} sono conservati esattamente",
-        "portuguese": "Seu texto traduzido aqui" if not has_placeholders else f"Seu texto traduzido aqui, todos os marcadores {TAG0} são preservados exatamente",
-        "russian": "Ваш переведенный текст здесь" if not has_placeholders else f"Ваш переведенный текст здесь, все маркеры {TAG0} сохранены точно",
-        "korean": "번역된 텍스트는 여기에" if not has_placeholders else f"번역된 텍스트는 여기에, 모든 {TAG0} 마커는 정확히 보존됩니다",
-    }
-
-    # Try to match target language to get appropriate example
-    from src.utils.lang_normalize import normalize_lang_key
-    target_lang_lower = normalize_lang_key(target_language)
-    example_format_text = example_texts.get(target_lang_lower, "Your translated text here")
-
-    # Build the output format section outside the f-string to avoid backslash issues in Python 3.11.
-    # The paragraph-structure contract is only emitted in Plain Text Mode (has_placeholders is
-    # False): the placeholder path has its own structural contract and must not be perturbed.
-    output_format_section = _get_output_format_section(
+    # SYSTEM PROMPT - Role and instructions (stable across chunks; cached)
+    system_prompt = _build_translation_system_prompt(
+        source_language,
+        target_language,
+        has_placeholders,
         translate_tag_in,
         translate_tag_out,
-        INPUT_TAG_IN,
-        INPUT_TAG_OUT,
-        additional_rules=_plain_text_format_rules(prompt_options) if not has_placeholders else "",
-        example_format=example_format_text
+        placeholder_format,
+        options_key,
     )
-
-    # Build placeholder preservation section dynamically based on languages
-    if has_placeholders:
-        placeholder_section = build_placeholder_section(source_language, target_language, placeholder_format)
-    else:
-        placeholder_section = ""
-
-    # Build optional prompt sections based on prompt_options
-    optional_sections = _build_optional_prompt_sections(prompt_options, plain_text=not has_placeholders)
-
-    # Build custom instructions section.
-    #
-    # Deliberately firm but not absolutist. An earlier wording ("ABSOLUTE
-    # PRIORITY", "Non-compliance = FAILURE", "Zero exceptions") contradicted
-    # the presets themselves: a style preset ends with a guard telling the
-    # model to favour natural phrasing whenever a rule fights the passage, so
-    # the wrapper was ordering the opposite of its own payload. What the
-    # emphasis actually needs to buy is persistence — models apply a style to
-    # the opening lines and then drift — which the closing line states without
-    # claiming the instructions outrank meaning.
-    custom_instructions_section = ""
-    if custom_instructions and custom_instructions.strip():
-        custom_instructions_section = f"""# STYLE INSTRUCTIONS
-
-**Apply these throughout the translation. They take precedence over the general style guidance in this prompt.**
-
-{custom_instructions.strip()}
-
-Keep them in force across the whole passage, not only in its opening lines.
-
-"""
-
-    # SYSTEM PROMPT - Role and instructions (stable across requests)
-    system_prompt = f"""You are a professional {target_language} translator and writer.
-
-{custom_instructions_section}# TRANSLATION PRINCIPLES
-
-Translate {source_language} to {target_language}. Output only the translation.
-
-**PRIORITY ORDER:**
-1. Preserve exact names
-2. Match original tone and formality
-3. Use natural {target_language} phrasing - never word-for-word
-4. Fix grammar/spelling errors in output
-5. Translate idioms to {target_language} equivalents
-
-**QUALITY CHECK:**
-- Does it sound natural to a native {target_language} speaker?
-- Are all details from the original included?
-- Does punctuation follow {target_language} conventions?
-
-If unsure between literal and natural phrasing: **choose natural**.
-
-**LAYOUT PRESERVATION:**
-- Keep the exact text layout, spacing, line breaks, and indentation
-- **WRITE YOUR TRANSLATION IN {target_language.upper()} - THIS IS MANDATORY**
-{optional_sections}
-{placeholder_section}
-
-# FINAL REMINDER: YOUR OUTPUT LANGUAGE
-
-**YOU MUST TRANSLATE INTO {target_language.upper()}.**
-Your entire translation output must be written in {target_language}.
-Do NOT write in {source_language} or any other language - ONLY {target_language.upper()}.
-
-{output_format_section}"""
 
     # USER PROMPT - Context and content to translate (varies per request)
     previous_translation_block_text = ""
