@@ -413,6 +413,10 @@ def create_tts_blueprint(output_dir, socketio):
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
 
+        is_valid, error = PathValidator.validate_filename(file.filename)
+        if not is_valid:
+            return jsonify({"error": error}), 400
+
         # Validate file extension
         filename = secure_filename(file.filename)
         ext = os.path.splitext(filename)[1].lower()
