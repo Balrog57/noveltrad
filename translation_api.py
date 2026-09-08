@@ -93,10 +93,22 @@ app = Flask(__name__,
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 @app.after_request
-def _no_cache_frontend_assets(response):
+def _apply_response_headers(response):
+    """Apply cache policy for hot frontend assets and baseline security headers."""
     path = request.path or ''
     if path.startswith('/static/js/') or path.startswith('/static/locales/'):
         response.headers['Cache-Control'] = 'no-store'
+
+    # Baseline HTTP security headers for the local web UI and JSON API.
+    # CSP is intentionally omitted: the template relies on inline boot scripts,
+    # onclick handlers, and third-party CDNs — a policy belongs in a follow-up.
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault(
+        'Permissions-Policy',
+        'camera=(), microphone=(), geolocation=(), payment=()',
+    )
     return response
 
 # Security (issue #210): no wildcard CORS. The SPA is served from and talks to
