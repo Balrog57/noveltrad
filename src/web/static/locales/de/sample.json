@@ -4,6 +4,7 @@
 
   "drop_file_title": "Buch zum Sampeln ablegen",
   "drop_file_support": "Unterstützt TXT, EPUB, SRT und DOCX",
+  "drop_file_aria": "Buch zum Testen hochladen. Drücken Sie Eingabe oder Leertaste zum Durchsuchen.",
   "selected_file": "Ausgewähltes Buch",
   "remove_file": "Dieses Buch entfernen und ein anderes wählen",
 

@@ -16,6 +16,8 @@
   "drop_files_refine_title": "Déposez les fichiers à raffiner (déjà traduits)",
   "drop_files_refine_support": "Polir une traduction existante — même langue en entrée et en sortie",
   "browse_files": "Parcourir les fichiers",
+  "drop_files_aria": "Importer des fichiers à traduire. Appuyez sur Entrée ou Espace pour parcourir.",
+  "drop_files_refine_aria": "Importer des fichiers à raffiner. Appuyez sur Entrée ou Espace pour parcourir.",
   "selected_files": "Fichiers sélectionnés :",
 
   "op_badge_translate": "Traduction",

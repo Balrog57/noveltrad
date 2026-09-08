@@ -4,6 +4,7 @@
 
   "drop_file_title": "샘플링할 책을 드롭하세요",
   "drop_file_support": "TXT, EPUB, SRT, DOCX 지원",
+  "drop_file_aria": "시험 번역할 책을 업로드합니다. Enter 또는 Space를 눌러 찾아보세요.",
   "selected_file": "선택한 책",
   "remove_file": "이 책을 삭제하고 다른 책을 선택",
 

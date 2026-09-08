@@ -745,6 +745,11 @@ select.form-control {
     position: relative;
 }
 
+.file-upload:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
 .file-upload:hover {
     border-color: rgba(54, 118, 216, 0.6);
     transform: scale(1.01);

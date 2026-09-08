@@ -16,6 +16,8 @@
   "drop_files_refine_title": "Drop files to refine (already translated)",
   "drop_files_refine_support": "Polish an existing translation — same language in and out",
   "browse_files": "Browse Files",
+  "drop_files_aria": "Upload files to translate. Press Enter or Space to browse.",
+  "drop_files_refine_aria": "Upload files to refine. Press Enter or Space to browse.",
   "selected_files": "Selected Files:",
 
   "op_badge_translate": "Translate",

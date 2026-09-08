@@ -4,6 +4,7 @@
 
   "drop_file_title": "拖入一本书进行采样",
   "drop_file_support": "支持 TXT、EPUB、SRT 和 DOCX",
+  "drop_file_aria": "上传要试译的书籍。按 Enter 或空格键浏览文件。",
   "selected_file": "已选书籍",
   "remove_file": "移除此书并选择另一本",
 
