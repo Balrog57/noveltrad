@@ -13,3 +13,7 @@ Performance notes specific to this codebase. Routine optimizations are not logge
 **Learning:** After the two-pass detector scan, `preserve_tags_and_technical_content()` still filtered all `inline_patterns` against every HTML text segment (~1M comparisons on a 500-paragraph chapter with dense `$V_{i}$` markers). Both lists are document-order, so a single advancing pointer assigns patterns in O(segments + patterns).
 
 **Action:** When pre-scanned position-sorted items must be bucketed into contiguous segments, use a monotonic index — never re-scan the full pattern list per segment.
+
+## 2026-08-30 - TagPreserver restore_tags was O(N*M)
+**Learning:** `TagPreserver.restore_tags` used a sequential loop to `str.replace` every placeholder individually. For large documents with thousands of tags, this resulted in O(N*M) string replacements where N is the text length and M is the tag count, causing multi-second blocking operations.
+**Action:** Replace sequential looping `str.replace` over placeholders with a single pass `re.sub` using a replacement function. This drops time complexity to O(N) and takes milliseconds instead of seconds for thousands of tags.

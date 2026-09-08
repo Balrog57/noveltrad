@@ -344,21 +344,14 @@ class TagPreserver:
             >>> preserver.restore_tags('[id0]Hello[id1]', tag_map)
             '<p><span>Hello</span></p>'
         """
-        restored_text = text
+        if not tag_map:
+            return text
 
-        # Sort placeholders by number in reverse order to avoid partial replacements
-        # e.g., replace [id10] before [id1]
-        placeholders = sorted(
-            tag_map.keys(),
-            key=lambda p: self.placeholder_format.parse(p) or 0,
-            reverse=True
-        )
+        def repl(match):
+            placeholder = match.group(0)
+            return tag_map.get(placeholder, placeholder)
 
-        for placeholder in placeholders:
-            if placeholder in restored_text:
-                restored_text = restored_text.replace(placeholder, tag_map[placeholder])
-
-        return restored_text
+        return self.placeholder_format._compiled_pattern.sub(repl, text)
 
     def validate_placeholders(self, text: str, tag_map: Dict[str, str]) -> Tuple[bool, List[str], List[Tuple[str, str]]]:
         """
