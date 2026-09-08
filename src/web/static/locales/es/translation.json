@@ -16,6 +16,8 @@
   "drop_files_refine_title": "Suelta archivos para refinar (ya traducidos)",
   "drop_files_refine_support": "Pule una traducción existente — misma lengua de entrada y salida",
   "browse_files": "Explorar archivos",
+  "drop_files_aria": "Subir archivos para traducir. Pulse Intro o Espacio para explorar.",
+  "drop_files_refine_aria": "Subir archivos para refinar. Pulse Intro o Espacio para explorar.",
   "selected_files": "Archivos seleccionados:",
 
   "op_badge_translate": "Traducir",

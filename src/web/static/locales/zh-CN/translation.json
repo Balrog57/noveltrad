@@ -16,6 +16,8 @@
   "drop_files_refine_title": "拖放文件以润色（已翻译）",
   "drop_files_refine_support": "润色已有的译文 — 同一语言输入，同一语言输出",
   "browse_files": "浏览文件",
+  "drop_files_aria": "上传要翻译的文件。按 Enter 或空格键浏览文件。",
+  "drop_files_refine_aria": "上传要润色的文件。按 Enter 或空格键浏览文件。",
   "selected_files": "已选择的文件：",
 
   "op_badge_translate": "翻译",

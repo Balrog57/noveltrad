@@ -16,6 +16,8 @@
   "drop_files_refine_title": "推敲するファイルをここにドロップ（翻訳済み）",
   "drop_files_refine_support": "既存の翻訳を磨く — 同じ言語入力、同じ言語出力",
   "browse_files": "ファイルを選択",
+  "drop_files_aria": "翻訳するファイルをアップロードします。Enter または Space でファイルを選択。",
+  "drop_files_refine_aria": "推敲するファイルをアップロードします。Enter または Space でファイルを選択。",
   "selected_files": "選択されたファイル:",
 
   "op_badge_translate": "翻訳",

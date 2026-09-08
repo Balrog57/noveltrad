@@ -16,6 +16,8 @@
   "drop_files_refine_title": "다듬을 파일을 여기에 놓으세요 (이미 번역됨)",
   "drop_files_refine_support": "기존 번역을 다듬기 — 같은 언어 입력, 같은 언어 출력",
   "browse_files": "파일 찾아보기",
+  "drop_files_aria": "번역할 파일을 업로드합니다. Enter 또는 Space를 눌러 찾아보세요.",
+  "drop_files_refine_aria": "다듬을 파일을 업로드합니다. Enter 또는 Space를 눌러 찾아보세요.",
   "selected_files": "선택된 파일:",
 
   "op_badge_translate": "번역",

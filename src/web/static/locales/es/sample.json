@@ -4,6 +4,7 @@
 
   "drop_file_title": "Suelta un libro para muestrear",
   "drop_file_support": "Compatible con TXT, EPUB, SRT y DOCX",
+  "drop_file_aria": "Subir un libro para muestras. Pulse Intro o Espacio para explorar.",
   "selected_file": "Libro seleccionado",
   "remove_file": "Eliminar este libro y elegir otro",
 

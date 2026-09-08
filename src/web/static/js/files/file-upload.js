@@ -22,6 +22,30 @@ import {
 
 const FILE_QUEUE_STORAGE_KEY = 'tbl_file_queue';
 
+/**
+ * Make a drop zone keyboard- and click-activatable (opens the hidden file input).
+ * @param {HTMLElement} zone
+ * @param {string} inputId
+ * @param {{ ignoreSelector?: string }} [options]
+ */
+function bindUploadZoneActivation(zone, inputId, options = {}) {
+    if (!zone) return;
+    const { ignoreSelector } = options;
+    const activate = () => {
+        if (zone.classList.contains('zone-disabled')) return;
+        DomHelpers.getElement(inputId)?.click();
+    };
+    zone.addEventListener('click', (e) => {
+        if (ignoreSelector && e.target.closest(ignoreSelector)) return;
+        activate();
+    });
+    zone.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        activate();
+    });
+}
+
 // Track the last uploaded file for language synchronization
 let lastUploadedFileName = null;
 
@@ -688,12 +712,14 @@ export const FileUpload = {
      */
     setupDragDrop() {
         const zones = [
-            { id: 'fileUpload', operation: 'translate' },
-            { id: 'fileUploadRefine', operation: 'refine' }
+            { id: 'fileUpload', inputId: 'fileInput', operation: 'translate' },
+            { id: 'fileUploadRefine', inputId: 'fileInputRefine', operation: 'refine', ignoreSelector: '.refine-drop-mode' }
         ];
-        zones.forEach(({ id, operation }) => {
+        zones.forEach(({ id, inputId, operation, ignoreSelector }) => {
             const uploadArea = DomHelpers.getElement(id);
             if (!uploadArea) return;
+
+            bindUploadZoneActivation(uploadArea, inputId, { ignoreSelector });
 
             uploadArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
