@@ -28,6 +28,11 @@ const NER_ACCEPTED_EXTS = ['txt', 'srt', 'epub', 'docx'];
 // re-render after sort / filter / bulk operations without round-tripping.
 let currentTerms = [];
 
+// Debounce filter-driven table rebuilds: each rerenderTerms() sorts/filters
+// every term and rebuilds all visible rows (~6 cells + listeners each).
+const FILTER_DEBOUNCE_MS = 300;
+let _filterInputTimer = null;
+
 // Last committed effective values for the lang selects (the visible select
 // value can be "Other" while the real lang lives in the custom input, so we
 // can't rely on per-element dataset.lastValue here).
@@ -1269,11 +1274,23 @@ function handleHeaderSortClick(th) {
     rerenderTerms();
 }
 
+function flushFilterRender() {
+    if (_filterInputTimer) {
+        clearTimeout(_filterInputTimer);
+        _filterInputTimer = null;
+        rerenderTerms();
+    }
+}
+
 function handleFilterInput(e) {
     if (currentGlossaryId == null) return;
     const text = e.target.value || '';
     setFilterText(currentGlossaryId, text);
-    rerenderTerms();
+    clearTimeout(_filterInputTimer);
+    _filterInputTimer = setTimeout(() => {
+        _filterInputTimer = null;
+        rerenderTerms();
+    }, FILTER_DEBOUNCE_MS);
 }
 
 // ========================================
@@ -2039,9 +2056,12 @@ function wireEditorView() {
     const autoExtractBtn = $('glossaryAutoExtractBtn');
     if (autoExtractBtn) autoExtractBtn.addEventListener('click', openNerModal);
 
-    // Filter
+    // Filter — debounced rerender keeps typing responsive on large glossaries
     const filterInput = $('glossaryTermsFilter');
-    if (filterInput) filterInput.addEventListener('input', handleFilterInput);
+    if (filterInput) {
+        filterInput.addEventListener('input', handleFilterInput);
+        filterInput.addEventListener('blur', flushFilterRender);
+    }
 
     // Sort headers
     document.querySelectorAll('#glossaryTermsTable th.sortable').forEach((th) => {
