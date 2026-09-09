@@ -718,6 +718,19 @@ export const FileUpload = {
                     this.handleFiles(Array.from(files), operation);
                 }
             });
+            uploadArea.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                if (uploadArea.classList.contains('zone-disabled')) {
+                    MessageLogger.showMessage(
+                        t('translation:zone_locked', { operation }),
+                        'info'
+                    );
+                    return;
+                }
+                const inputId = operation === 'refine' ? 'fileInputRefine' : 'fileInput';
+                DomHelpers.getElement(inputId)?.click();
+            });
         });
     },
 
@@ -1047,7 +1060,8 @@ export const FileUpload = {
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'file-remove-btn';
                 removeBtn.title = t('translation:remove_file_title');
-                removeBtn.innerHTML = '<span class="material-symbols-outlined">close</span>';
+                removeBtn.setAttribute('aria-label', removeBtn.title);
+                removeBtn.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">close</span>';
                 removeBtn.onclick = (e) => {
                     e.stopPropagation();
                     this.removeFile(file.name);
