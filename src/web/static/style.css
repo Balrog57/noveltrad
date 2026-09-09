@@ -750,6 +750,12 @@ select.form-control {
     transform: scale(1.01);
 }
 
+.file-upload:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 4px;
+    border-color: rgba(54, 118, 216, 0.6);
+}
+
 .file-upload.dragging {
     border-color: var(--primary-light);
     background: linear-gradient(135deg, rgba(54, 118, 216, 0.05), rgba(54, 118, 216, 0.1));
@@ -2705,6 +2711,11 @@ input[type="range"]::-moz-range-thumb {
 .file-remove-btn:hover {
     background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
+}
+
+.file-remove-btn:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
 }
 
 .file-remove-btn .material-symbols-outlined {
