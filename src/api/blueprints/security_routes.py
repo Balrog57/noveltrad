@@ -279,16 +279,15 @@ def create_security_blueprint(output_dir):
     def serve_thumbnail(filename):
         """Serve EPUB cover thumbnail with security validation"""
         try:
-            from werkzeug.utils import secure_filename
             from flask import send_file
 
             # Security: prevent path traversal
-            safe_filename = secure_filename(filename)
-            if safe_filename != filename or '..' in filename:
-                return jsonify({"error": "Invalid filename"}), 400
+            is_valid, error = PathValidator.validate_filename(filename)
+            if not is_valid:
+                return jsonify({"error": error}), 400
 
             thumbnails_dir = Path(output_dir) / 'thumbnails'
-            thumbnail_path = thumbnails_dir / safe_filename
+            thumbnail_path = thumbnails_dir / filename
 
             # Security: ensure path is within thumbnails directory
             if not PathValidator.is_within_directory(thumbnail_path, thumbnails_dir):
