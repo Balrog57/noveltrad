@@ -367,6 +367,34 @@ def fibonacci(n):
         assert elapsed < 0.5, f"Too slow: {elapsed*1000:.2f}ms"
 
 
+class TestExtractTextAndPositionsPerformance:
+    """Benchmark placeholder position extraction on dense EPUB chunks."""
+
+    def test_dense_placeholder_chunk_performance(self):
+        """extract_text_and_positions stays O(N) on placeholder-heavy recovery input."""
+        from src.core.epub.html_utils import extract_text_and_positions
+
+        parts = ["[id0]"]
+        for i in range(1, 200):
+            parts.append(f" word{i} [id{i}]")
+        text = "".join(parts)
+
+        iterations = 500
+        start = time.perf_counter()
+        for _ in range(iterations):
+            pure, positions = extract_text_and_positions(text)
+        elapsed = time.perf_counter() - start
+
+        avg_time_ms = (elapsed / iterations) * 1000
+        print(
+            f"\nDense 200-placeholder chunk: {avg_time_ms:.3f}ms per call "
+            f"(target: <1ms)"
+        )
+        assert len(positions) == 200
+        assert len(pure) > 0
+        assert avg_time_ms < 1.0, f"Too slow: {avg_time_ms:.3f}ms"
+
+
 class TestPerformanceReporting:
     """Generate performance report."""
 
