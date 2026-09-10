@@ -10,6 +10,7 @@
  */
 
 import { DomHelpers } from './dom-helpers.js';
+import { t } from '../i18n/i18n.js';
 
 /**
  * SearchableSelect class
@@ -138,7 +139,8 @@ export class SearchableSelect {
         this.clearBtn = document.createElement('button');
         this.clearBtn.type = 'button';
         this.clearBtn.className = 'searchable-select-clear';
-        this.clearBtn.innerHTML = '<span class="material-symbols-outlined">close</span>';
+        this._updateClearBtnLabel();
+        this.clearBtn.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">close</span>';
         this.clearBtn.style.display = 'none';
 
         this.searchHeader.appendChild(this.searchIcon);
@@ -172,6 +174,9 @@ export class SearchableSelect {
         // Search input events
         this.searchInput.addEventListener('input', () => this._onInput());
         this.searchInput.addEventListener('keydown', (e) => this._onKeyDown(e));
+
+        this._onLocaleChanged = () => this._updateClearBtnLabel();
+        window.addEventListener('localeChanged', this._onLocaleChanged);
 
         // Clear button
         this.clearBtn.addEventListener('click', (e) => {
@@ -239,6 +244,15 @@ export class SearchableSelect {
             this.dropdown.style.bottom = 'auto';
             this.dropdown.style.top = `${rect.bottom + gap}px`;
         }
+    }
+
+    /**
+     * Keep the icon-only clear button accessible across locale switches.
+     */
+    _updateClearBtnLabel() {
+        const label = t('common:search_clear');
+        this.clearBtn.setAttribute('aria-label', label);
+        this.clearBtn.title = label;
     }
 
     /**
@@ -663,6 +677,7 @@ export class SearchableSelect {
     destroy() {
         this._close();
         document.removeEventListener('click', this._onDocClick);
+        window.removeEventListener('localeChanged', this._onLocaleChanged);
         if (this._observer) this._observer.disconnect();
         // The dropdown was portalled to <body> — remove it explicitly.
         this.dropdown.remove();
