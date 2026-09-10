@@ -282,6 +282,11 @@ def create_security_blueprint(output_dir):
             from werkzeug.utils import secure_filename
             from flask import send_file
 
+            # Validate filename using custom architectural validator first
+            is_valid, error = PathValidator.validate_filename(filename)
+            if not is_valid:
+                return jsonify({"error": error}), 400
+
             # Security: prevent path traversal
             safe_filename = secure_filename(filename)
             if safe_filename != filename or '..' in filename:
