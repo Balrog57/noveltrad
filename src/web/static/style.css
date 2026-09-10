@@ -2931,6 +2931,11 @@ html.dark .file-info {
     color: #ef4444;
 }
 
+.searchable-select-clear:focus-visible {
+    outline: 2px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
 .searchable-select-clear .material-symbols-outlined {
     font-size: 1rem;
 }
