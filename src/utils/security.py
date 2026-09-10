@@ -13,6 +13,23 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+# Baseline HTTP response headers for the local web UI (defense in depth).
+# CSP is intentionally omitted: the SPA uses inline scripts/handlers and a
+# CDN for i18next, so a strict policy would break the UI without a larger refactor.
+_SECURITY_RESPONSE_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+}
+
+
+def apply_security_response_headers(response):
+    """Attach baseline security headers without overriding explicit values."""
+    for name, value in _SECURITY_RESPONSE_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
 
 class SecurityError(Exception):
     """Custom exception for security-related errors"""

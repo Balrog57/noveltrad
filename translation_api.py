@@ -55,6 +55,7 @@ from src.api.websocket import configure_websocket_handlers
 from src.api.handlers import start_translation_job
 from src.api.translation_state import get_state_manager
 from src.api.auth import register_auth
+from src.utils.security import apply_security_response_headers
 
 
 # Initialize Flask app with static folder configuration
@@ -93,11 +94,11 @@ app = Flask(__name__,
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 @app.after_request
-def _no_cache_frontend_assets(response):
+def _harden_responses(response):
     path = request.path or ''
     if path.startswith('/static/js/') or path.startswith('/static/locales/'):
         response.headers['Cache-Control'] = 'no-store'
-    return response
+    return apply_security_response_headers(response)
 
 # Security (issue #210): no wildcard CORS. The SPA is served from and talks to
 # the same origin, so it needs no CORS headers at all; omitting cors_allowed_origins
