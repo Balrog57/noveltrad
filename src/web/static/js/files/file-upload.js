@@ -718,6 +718,20 @@ export const FileUpload = {
                     this.handleFiles(Array.from(files), operation);
                 }
             });
+
+            const inputId = operation === 'translate' ? 'fileInput' : 'fileInputRefine';
+            uploadArea.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                if (uploadArea.classList.contains('zone-disabled')) {
+                    MessageLogger.showMessage(
+                        t('translation:zone_locked', { operation }),
+                        'info'
+                    );
+                    return;
+                }
+                DomHelpers.getElement(inputId)?.click();
+            });
         });
     },
 
@@ -783,8 +797,14 @@ export const FileUpload = {
         const refineZone = DomHelpers.getElement('fileUploadRefine');
         if (!translateZone || !refineZone) return;
 
-        translateZone.classList.toggle('zone-disabled', op === 'refine');
-        refineZone.classList.toggle('zone-disabled', op === 'translate');
+        const translateDisabled = op === 'refine';
+        const refineDisabled = op === 'translate';
+        translateZone.classList.toggle('zone-disabled', translateDisabled);
+        refineZone.classList.toggle('zone-disabled', refineDisabled);
+        translateZone.setAttribute('aria-disabled', translateDisabled ? 'true' : 'false');
+        refineZone.setAttribute('aria-disabled', refineDisabled ? 'true' : 'false');
+        translateZone.tabIndex = translateDisabled ? -1 : 0;
+        refineZone.tabIndex = refineDisabled ? -1 : 0;
     },
 
     /**
@@ -1047,7 +1067,8 @@ export const FileUpload = {
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'file-remove-btn';
                 removeBtn.title = t('translation:remove_file_title');
-                removeBtn.innerHTML = '<span class="material-symbols-outlined">close</span>';
+                removeBtn.setAttribute('aria-label', t('translation:remove_file_title'));
+                removeBtn.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">close</span>';
                 removeBtn.onclick = (e) => {
                     e.stopPropagation();
                     this.removeFile(file.name);
