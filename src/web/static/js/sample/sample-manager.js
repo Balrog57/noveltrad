@@ -1297,6 +1297,11 @@ function wireFileInput() {
             if (!f) return;
             onFileSelected(f);
         });
+        uploadZone.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            input?.click();
+        });
     }
 }
 
