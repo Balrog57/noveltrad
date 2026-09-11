@@ -86,20 +86,24 @@ def extract_text_and_positions(text_with_placeholders: str) -> Tuple[str, Dict[i
     pure_text = fmt.remove_all(text_with_placeholders)
     pure_length = len(pure_text)
 
+    placeholders = fmt.find_all(text_with_placeholders)
+
     if pure_length == 0:
         # Edge case: only placeholders, no text
-        placeholders = fmt.find_all(text_with_placeholders)
         return "", {idx: i / max(1, len(placeholders))
                     for i, (_, _, _, idx) in enumerate(placeholders)}
 
-    # Calculate relative position of each placeholder
-    positions = {}
+    # Single-pass position tracking: placeholders are non-overlapping and in
+    # document order, so text between prev_end and start has no placeholders —
+    # its length is the pure-text offset. Avoids O(P×N) remove_all() per prefix.
+    positions: Dict[int, float] = {}
+    pure_pos = 0
+    prev_end = 0
 
-    for start, end, placeholder, idx in fmt.find_all(text_with_placeholders):
-        # Text before this placeholder (without previous placeholders)
-        text_before = fmt.remove_all(text_with_placeholders[:start])
-        relative_pos = len(text_before) / pure_length
-        positions[idx] = relative_pos
+    for start, end, _placeholder, idx in placeholders:
+        pure_pos += len(text_with_placeholders[prev_end:start])
+        positions[idx] = pure_pos / pure_length
+        prev_end = end
 
     return pure_text, positions
 
