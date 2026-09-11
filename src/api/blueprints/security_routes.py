@@ -141,11 +141,12 @@ def create_security_blueprint(output_dir):
             return jsonify(response_data), 200
 
         except SecurityError as e:
-            current_app.logger.warning(f"Security violation in file upload: {str(e)}, IP: {client_ip}, Filename: {file.filename}")
-            return jsonify({
-                "error": "Security validation failed",
-                "details": str(e)
-            }), 403
+            # Log server-side only; exception text can reveal path layout or validation rules.
+            current_app.logger.warning(
+                "Security violation in file upload: %s, IP: %s, Filename: %s",
+                e, client_ip, file.filename,
+            )
+            return jsonify({"error": "Security validation failed"}), 403
 
         except Exception as e:
             current_app.logger.error(f"File upload error: {str(e)}, IP: {client_ip}, Filename: {file.filename}")
@@ -225,9 +226,9 @@ def create_security_blueprint(output_dir):
                 "missing": missing_files
             })
 
-        except Exception as e:
-            current_app.logger.error(f"Error verifying uploaded files: {str(e)}")
-            return jsonify({"error": "Verification failed", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error verifying uploaded files")
+            return jsonify({"error": "Verification failed"}), 500
 
     @bp.route('/api/detect-language', methods=['POST'])
     def detect_language():
