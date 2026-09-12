@@ -155,6 +155,7 @@ export const FileActions = {
         if (variant === 'compact') {
             btn.className = `file-action-btn ${def.compactClass}`;
             btn.innerHTML = `<span class="material-symbols-outlined" style="font-size: 0.875rem;">${def.icon}</span>`;
+            btn.setAttribute('aria-label', label);
         } else {
             btn.className = `btn ${def.labeledClass}`;
             btn.innerHTML = `<span class="material-symbols-outlined">${def.icon}</span> ${label}`;
