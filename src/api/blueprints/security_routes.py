@@ -225,9 +225,9 @@ def create_security_blueprint(output_dir):
                 "missing": missing_files
             })
 
-        except Exception as e:
-            current_app.logger.error(f"Error verifying uploaded files: {str(e)}")
-            return jsonify({"error": "Verification failed", "details": str(e)}), 500
+        except Exception:
+            current_app.logger.exception("Error verifying uploaded files")
+            return jsonify({"error": "Verification failed"}), 500
 
     @bp.route('/api/detect-language', methods=['POST'])
     def detect_language():
