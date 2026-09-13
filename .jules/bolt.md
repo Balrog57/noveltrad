@@ -13,3 +13,9 @@ Performance notes specific to this codebase. Routine optimizations are not logge
 **Learning:** After the two-pass detector scan, `preserve_tags_and_technical_content()` still filtered all `inline_patterns` against every HTML text segment (~1M comparisons on a 500-paragraph chapter with dense `$V_{i}$` markers). Both lists are document-order, so a single advancing pointer assigns patterns in O(segments + patterns).
 
 **Action:** When pre-scanned position-sorted items must be bucketed into contiguous segments, use a monotonic index — never re-scan the full pattern list per segment.
+
+## 2026-09-13 - extract_text_and_positions repeated prefix remove_all
+
+**Learning:** `extract_text_and_positions()` in `html_utils.py` called `fmt.remove_all(text[:start])` once per placeholder (~17× slower at 200 tags). Same anti-pattern as the old TagPreserver inline assignment — pre-found placeholders are document-order, so a single walk with a running pure-text offset is enough.
+
+**Action:** Before optimizing regexes in the EPUB pipeline, grep for `remove_all(` / `find_all(` inside loops over the same text; prefer one scan + monotonic offset (see `tag_preservation.py` lines 224–233).
