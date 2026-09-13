@@ -1280,6 +1280,14 @@ function wireFileInput() {
     }
 
     if (uploadZone) {
+        const openFilePicker = () => input?.click();
+        uploadZone.addEventListener('click', openFilePicker);
+        uploadZone.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            openFilePicker();
+        });
+
         ['dragover', 'dragenter'].forEach((evt) => {
             uploadZone.addEventListener(evt, (e) => {
                 e.preventDefault();

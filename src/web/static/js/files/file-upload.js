@@ -684,16 +684,44 @@ export const FileUpload = {
     },
 
     /**
+     * Make a drop zone reachable by keyboard (Enter/Space opens the file picker).
+     * @param {HTMLElement} zone
+     * @param {string} inputId
+     * @param {{ ignoreSelector?: string }} [options]
+     */
+    _bindDropZoneActivation(zone, inputId, { ignoreSelector } = {}) {
+        const input = DomHelpers.getElement(inputId);
+        if (!zone || !input) return;
+
+        const activate = () => {
+            if (zone.classList.contains('zone-disabled')) return;
+            input.click();
+        };
+
+        zone.addEventListener('click', (e) => {
+            if (ignoreSelector && e.target.closest(ignoreSelector)) return;
+            activate();
+        });
+        zone.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            activate();
+        });
+    },
+
+    /**
      * Set up drag and drop event handlers
      */
     setupDragDrop() {
         const zones = [
-            { id: 'fileUpload', operation: 'translate' },
-            { id: 'fileUploadRefine', operation: 'refine' }
+            { id: 'fileUpload', inputId: 'fileInput', operation: 'translate' },
+            { id: 'fileUploadRefine', inputId: 'fileInputRefine', operation: 'refine', ignoreSelector: '.refine-drop-mode' }
         ];
-        zones.forEach(({ id, operation }) => {
+        zones.forEach(({ id, inputId, operation, ignoreSelector }) => {
             const uploadArea = DomHelpers.getElement(id);
             if (!uploadArea) return;
+
+            this._bindDropZoneActivation(uploadArea, inputId, { ignoreSelector });
 
             uploadArea.addEventListener('dragover', (e) => {
                 e.preventDefault();

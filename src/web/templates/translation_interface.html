@@ -470,22 +470,22 @@
                 </div>
 
                 <!-- File Upload Area (Translate) -->
-                <div class="file-upload" id="fileUpload" data-zone="translate" onclick="document.getElementById('fileInput').click()">
+                <div class="file-upload" id="fileUpload" data-zone="translate" role="button" tabindex="0" aria-labelledby="fileUploadLabel">
                     <div class="upload-icon">
                         <span class="material-symbols-outlined">cloud_upload</span>
                     </div>
-                    <h3 data-i18n="translation:drop_files_title">Drop files to translate</h3>
+                    <h3 id="fileUploadLabel" data-i18n="translation:drop_files_title">Drop files to translate</h3>
                     <p data-i18n="translation:drop_files_support">Support for TXT, EPUB, SRT, and DOCX</p>
                     <div class="browse-btn" data-i18n="translation:browse_files">Browse Files</div>
                     <input type="file" id="fileInput" accept=".txt,.epub,.srt,.docx" style="display: none;" onchange="handleFileSelect(event)" multiple>
                 </div>
 
                 <!-- File Upload Area (Refine, secondary) -->
-                <div class="file-upload file-upload-secondary" id="fileUploadRefine" data-zone="refine" onclick="document.getElementById('fileInputRefine').click()">
+                <div class="file-upload file-upload-secondary" id="fileUploadRefine" data-zone="refine" role="button" tabindex="0" aria-labelledby="fileUploadRefineLabel">
                     <div class="upload-icon">
                         <span class="material-symbols-outlined">auto_fix_high</span>
                     </div>
-                    <h4 data-i18n="translation:drop_files_refine_title">Drop files to refine (already translated)</h4>
+                    <h4 id="fileUploadRefineLabel" data-i18n="translation:drop_files_refine_title">Drop files to refine (already translated)</h4>
                     <p data-i18n="translation:drop_files_refine_support">Polish an existing translation — same language in, same language out</p>
                     <label class="refine-drop-mode" onclick="event.stopPropagation()">
                         <span data-i18n="translation:refine_drop_mode">Mode</span>
@@ -844,11 +844,11 @@
                     </div>
 
                     <!-- File Upload (same control as Translate tab) -->
-                    <div class="file-upload" id="sampleFileUpload" onclick="document.getElementById('sampleFileInput').click()">
+                    <div class="file-upload" id="sampleFileUpload" role="button" tabindex="0" aria-labelledby="sampleFileUploadLabel">
                         <div class="upload-icon">
                             <span class="material-symbols-outlined">science</span>
                         </div>
-                        <h3 data-i18n="sample:drop_file_title">Drop a book to sample</h3>
+                        <h3 id="sampleFileUploadLabel" data-i18n="sample:drop_file_title">Drop a book to sample</h3>
                         <p data-i18n="sample:drop_file_support">Support for TXT, EPUB, SRT, and DOCX</p>
                         <div class="browse-btn" data-i18n="translation:browse_files">Browse Files</div>
                         <input type="file" id="sampleFileInput" accept=".txt,.epub,.srt,.docx" style="display: none;">
