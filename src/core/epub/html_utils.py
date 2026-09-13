@@ -79,29 +79,38 @@ def extract_text_and_positions(text_with_placeholders: str) -> Tuple[str, Dict[i
     Returns:
         ("Hello world", {0: 0.0, 1: 0.46, 2: 1.0})
     """
-    # Use centralized placeholder format
     fmt = PlaceholderFormat.from_config()
+    placeholders = fmt.find_all(text_with_placeholders)
 
-    # Text without placeholders
-    pure_text = fmt.remove_all(text_with_placeholders)
+    if not placeholders:
+        return "", {}
+
+    # Single pass: walk placeholders once and track pure-text offsets.
+    # Avoids O(n × p) re-scans from remove_all() on every prefix slice.
+    parts: list[str] = []
+    positions: dict[int, float] = {}
+    prev_end = 0
+    pure_offset = 0
+
+    for start, end, _placeholder, idx in placeholders:
+        segment = text_with_placeholders[prev_end:start]
+        parts.append(segment)
+        pure_offset += len(segment)
+        positions[idx] = pure_offset
+        prev_end = end
+
+    parts.append(text_with_placeholders[prev_end:])
+    pure_text = "".join(parts)
     pure_length = len(pure_text)
 
     if pure_length == 0:
         # Edge case: only placeholders, no text
-        placeholders = fmt.find_all(text_with_placeholders)
-        return "", {idx: i / max(1, len(placeholders))
-                    for i, (_, _, _, idx) in enumerate(placeholders)}
+        return "", {
+            idx: i / max(1, len(placeholders))
+            for i, (_, _, _, idx) in enumerate(placeholders)
+        }
 
-    # Calculate relative position of each placeholder
-    positions = {}
-
-    for start, end, placeholder, idx in fmt.find_all(text_with_placeholders):
-        # Text before this placeholder (without previous placeholders)
-        text_before = fmt.remove_all(text_with_placeholders[:start])
-        relative_pos = len(text_before) / pure_length
-        positions[idx] = relative_pos
-
-    return pure_text, positions
+    return pure_text, {idx: offset / pure_length for idx, offset in positions.items()}
 
 
 def reinsert_placeholders(
